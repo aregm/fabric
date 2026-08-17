@@ -15,6 +15,7 @@ Calendar, Google adapter, storage, protocol, and desktop crates should be added 
 - [Product requirements](docs/PRD.md) — problem statement, market research, product experience, requirements, roadmap, and evaluation.
 - [Technical architecture](docs/architecture.md) — platform architecture, data model, retrieval, agents, security, and implementation guidance.
 - [Calendar vertical](docs/calendar.md) — the Google Calendar-first product test, private scheduling protocol, consent model, and release gates.
+- [Calendar-guided system design](docs/system-design.md) — implementation boundaries, interfaces, failure histories, and delivery slices.
 
 ## Toolchain decision
 
