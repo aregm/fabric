@@ -1,0 +1,12 @@
+[build]
+target-dir = "target"
+
+[alias]
+check-all = "check --workspace --all-targets --all-features --locked"
+test-all = "test --workspace --all-targets --all-features --locked"
+lint = "clippy --workspace --all-targets --all-features --locked -- -D warnings"
+fmt-check = "fmt --all -- --check"
+
+[future-incompat-report]
+frequency = "always"
+

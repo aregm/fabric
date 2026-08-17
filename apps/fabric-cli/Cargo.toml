@@ -1,0 +1,17 @@
+[package]
+name = "fabric-cli"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+fabric-core = { path = "../../crates/fabric-core" }
+
+[lints]
+workspace = true
+
+[[bin]]
+name = "fabric"
+path = "src/main.rs"
+

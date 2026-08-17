@@ -1,0 +1,11 @@
+/.tooling/
+/target/
+/.local/
+/coverage/
+.env
+.env.*
+!.env.example
+*.profraw
+.DS_Store
+Thumbs.db
+
