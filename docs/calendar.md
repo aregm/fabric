@@ -450,7 +450,7 @@ sequenceDiagram
     participant BC as "Bob adapter"
 
     Alice->>AF: "Find 30 minutes with Bob"
-    AF->>AF: Parse draft; compute 3 local candidates
+    AF->>AF: Parse draft and compute 3 local candidates
     AF->>Alice: Preview exact disclosure
     Alice->>AF: Approve negotiation
     AF->>Relay: MLS-encrypted candidate round
