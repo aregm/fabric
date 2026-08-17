@@ -10,6 +10,12 @@ The scaffold begins as a small modular monolith:
 
 Calendar, Google adapter, storage, protocol, and desktop crates should be added only when they contain real behavior.
 
+## Product documentation
+
+- [Product requirements](docs/PRD.md) — problem statement, market research, product experience, requirements, roadmap, and evaluation.
+- [Technical architecture](docs/architecture.md) — platform architecture, data model, retrieval, agents, security, and implementation guidance.
+- [Calendar vertical](docs/calendar.md) — the Google Calendar-first product test, private scheduling protocol, consent model, and release gates.
+
 ## Toolchain decision
 
 Rust is installed with the official rustup bootstrap into repository-local directories:
