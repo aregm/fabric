@@ -1,0 +1,4 @@
+interface:
+  display_name: "Design Software Systems"
+  short_description: "Guide rigorous, change-resilient architecture"
+  default_prompt: "Use $design-software-systems to guide the architecture of this system from requirements through validation."
