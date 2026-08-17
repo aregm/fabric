@@ -1,8 +1,10 @@
 # Personal Knowledge Fabric — Technical Architecture
 
-**Status:** decision-ready baseline, version 1.2  
-**Prepared:** 2026-08-16  
-**Scope:** platform architecture, canonical model, retrieval, agents, automation, security, and implementation setup  
+**Status:** decision-ready baseline, version 1.2
+
+**Prepared:** 2026-08-16
+
+**Scope:** platform architecture, canonical model, retrieval, agents, automation, security, and implementation setup
 **Related:** [Product requirements](PRD.md) · [Calendar vertical](calendar.md)
 
 ---

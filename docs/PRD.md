@@ -1,8 +1,10 @@
 # Personal Knowledge Fabric — Product Requirements Document
 
-**Status:** decision-ready baseline, version 1.2  
-**Prepared:** 2026-08-16  
-**Scope:** problem statement, market research, product experience, requirements, roadmap, and evaluation  
+**Status:** decision-ready baseline, version 1.2
+
+**Prepared:** 2026-08-16
+
+**Scope:** problem statement, market research, product experience, requirements, roadmap, and evaluation
 **Related:** [Technical architecture](architecture.md) · [Calendar vertical](calendar.md)
 
 ---

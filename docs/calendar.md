@@ -1,8 +1,10 @@
 # Fabric Calendar — First Vertical Application
 
-**Status:** implementation-ready vertical specification, version 1.2  
-**Prepared:** 2026-08-16  
-**Scope:** Google Calendar-first product test, private scheduling protocol, consent model, provider projection, and release gates  
+**Status:** implementation-ready vertical specification, version 1.2
+
+**Prepared:** 2026-08-16
+
+**Scope:** Google Calendar-first product test, private scheduling protocol, consent model, provider projection, and release gates
 **Related:** [Product requirements](PRD.md) · [Technical architecture](architecture.md)
 
 ---
@@ -120,9 +122,11 @@ Do not connect one participant’s Google/Outlook free-busy API to the other par
 
 ## 23. First Fabric application: private agentic calendar synchronization
 
-**Working product name (proposed):** Fabric Calendar  
-**Agent-to-agent protocol name (proposed):** Fabric Rendezvous  
-**Specification profile:** `fabric-schedule/1`  
+**Working product name (proposed):** Fabric Calendar
+
+**Agent-to-agent protocol name (proposed):** Fabric Rendezvous
+
+**Specification profile:** `fabric-schedule/1`
 **First release shape:** macOS-first with Google Calendar; two people operationally; protocol/data structures support a small group from the start
 
 ## 23.1 Product decision and promise
