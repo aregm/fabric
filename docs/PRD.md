@@ -1,8 +1,8 @@
 # Personal Knowledge Fabric — Product Requirements Document
 
-**Status:** decision-ready baseline, version 1.2
+**Status:** decision-ready baseline, version 1.3
 
-**Prepared:** 2026-08-16
+**Prepared:** 2026-09-13
 
 **Scope:** problem statement, market research, product experience, requirements, roadmap, and evaluation
 **Related:** [Technical architecture](architecture.md) · [Calendar vertical](calendar.md)
@@ -47,7 +47,7 @@ The system succeeds when the user can:
 3. Retrieve the source or a grounded synthesis without remembering where it was filed.
 4. Share a selected subgraph without exposing the rest of the vault.
 5. Allow an agent to use a precisely scoped portion of the system, with citations and a complete audit trail.
-6. Ask another contact-listed Fabric user for a meeting, disclose only a bounded candidate set, approve exact options, and have both agents safely create the agreed event without exposing either calendar.
+6. Ask another contact-listed Fabric user for a meeting, transmit no calendar or free/busy map, disclose only a bounded candidate set and candidate-specific bits, approve exact options, and have both agents safely create the agreed event. Participants necessarily learn the proposed and final intervals; the coordinator learns the documented bounded responses.
 
 Capture volume, note count, link count, and graph density are not success metrics. Reuse, retrieval success, informed decisions, completed work, and trustworthy sharing are.
 
@@ -80,7 +80,7 @@ This specification uses only the requirements confirmed in the discovery answers
 | Scheduling contacts | Any entry in the user-selected Fabric contact list is authorized to initiate a bounded scheduling request; first-seen keys use TOFU and later key changes cannot be silent |
 | First Fabric application | A private agentic calendar and synchronization subsystem: two or more contact-listed users exchange only bounded candidate times and decisions over an E2EE channel, then commit the exact approved meeting |
 
-### 2.2 Decisions still required before installation or implementation
+### 2.2 Decisions still required before provider-connected or production implementation
 
 1. Exact Mac hardware, especially Apple Silicon generation and RAM.
 2. Email providers and number of accounts.
@@ -97,6 +97,38 @@ This specification uses only the requirements confirmed in the discovery answers
 13. Relay deployment and metadata posture: local development relay, self-hosted internet relay, or operated ciphertext relay; retention and push-delivery requirements remain open.
 
 The immediate setup in section 15 now treats macOS plus Google Calendar as primary. Other providers remain portability targets rather than hidden MVP dependencies.
+
+### 2.3 Current executable agreement slice (`fabric-schedule-sim/0`)
+
+The repository now includes a pre-production semantic simulator that deliberately
+precedes encrypted networking and provider integration. It is implementation
+evidence for the calendar protocol shape, not a claim that Phase 3 is complete.
+
+The slice has exactly two required fixture contacts, one round, at most three UTC
+candidates, synthetic local busy intervals, candidate-specific eligibility bits,
+explicit owner yes/no decisions, and the protocol-profile-fixed
+`first_unanimous_in_proposal_order` selection rule. It ends in `Agreed` or
+`NoMatch`. `Agreed` means two independent reducer instances derived the same
+exact unsigned in-memory agreement and stable comparison key; it does not mean
+a calendar event was written or that canonical wire bytes exist.
+
+The executable acceptance boundary is:
+
+- response types contain no calendar, free/busy grid, conflict reason, title,
+  provider ID, or adjacent availability; the CLI is a coordinator-sensitive
+  transcript that does expose the approved candidates and bounded response bits;
+- candidate and response vectors must match the exact negotiation, participant
+  set, option set, order, horizon, duration, projection, request opening, and
+  expiry;
+- a complete explicit response from each owner is required; while the live
+  in-memory session is retained, duplicate identical responses are idempotent
+  (including delayed retries), and conflicting replays or changed scopes fail
+  closed; durable replay protection is not implemented;
+- all Boolean eligibility/decision combinations select exactly the first
+  unanimously eligible and accepted candidate, otherwise `NoMatch`;
+- transport is in-process and unencrypted. E2EE, identity/key binding,
+  signatures, persistence, holds, Google writes, and recovery remain mandatory
+  later work and must never be inferred from this simulator.
 
 ---
 
@@ -538,6 +570,25 @@ Model latency must be reported separately. “Instant UI” cannot honestly impl
 ---
 
 ## 16. Delivery roadmap
+
+### M0 — executable two-agent agreement semantics
+
+Goal: close the gap between the prose protocol and the diagnostic Rust scaffold
+without pretending to ship production private scheduling.
+
+Deliverables:
+
+- checked half-open UTC interval and private local-availability primitives;
+- bounded candidate, eligibility, mutual-option, decision, and agreement types;
+- deterministic one-round two-agent state machine with exact-scope validation;
+- CLI happy-path fixture and exhaustive Boolean selection test;
+- explicit output that says in-process, not E2EE, no provider writes, and not
+  scheduled.
+
+Exit gate: `demo-meeting` reaches `Agreed` on `c3`; independent Alice and Bob
+reducers hold an identical exact in-memory record; the full workspace
+verification suite passes. This milestone does not change Phase 3's production
+E2EE and safe-commit obligations.
 
 ### Phase 0 — one-week reality test
 

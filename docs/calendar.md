@@ -1,8 +1,8 @@
 # Fabric Calendar — First Vertical Application
 
-**Status:** implementation-ready vertical specification, version 1.2
+**Status:** design baseline with executable semantic profile, version 1.3
 
-**Prepared:** 2026-08-16
+**Prepared:** 2026-09-13
 
 **Scope:** Google Calendar-first product test, private scheduling protocol, consent model, provider projection, and release gates
 **Related:** [Product requirements](PRD.md) · [Technical architecture](architecture.md)
@@ -36,11 +36,11 @@ The calendar is both a familiar day/week/agenda application and a projection of 
 Four surfaces make agentic scheduling understandable:
 
 1. **Calendar and agenda** — instant offline aggregation of selected calendars, Fabric-native events, private holds, task blocks, and “now/next.”
-2. **Schedule with Fabric** — a typed request composer for participants, duration, date window, modality, required/optional roles, and local preference policy.
-3. **Decision cards** — two to five exact options with `Yes` and `No`, plus an optional bounded counterproposal. Conflict details and reasons remain local. A card states exactly what an approval authorizes and when it expires.
+2. **Schedule with Fabric** — a typed request composer for participants, duration, date window, modality, all-required roles in the baseline, and local preference policy. Optional roles require a later versioned profile.
+3. **Decision cards** — one to three exact options with `Yes` and `No`. A bounded counterproposal is absent from M0 and included in the production MVP after an initial `NO_MATCH`. Conflict details and reasons remain local. A card states exactly what an approval authorizes and when it expires.
 4. **Negotiation inbox** — pending requests, responses, expiry, pairing/key status, commit/recovery state, and an auditable “what left this device” view.
 
-Before sending, the user sees a disclosure preview containing the approved meeting context, exact proposed intervals, intended recipients, expiry, and projection mode. It must also list categories that will **not** leave the device: event titles, other participants, calendar names, neighboring busy intervals, rejection reasons, local scores, tasks, and source/provider identifiers. The default finalization is a private local event or opaque provider block; native provider invitations require a separate disclosure preview.
+Before sending, the user sees a disclosure preview containing the approved meeting context, exact proposed intervals, intended recipients, expiry, and projection mode. It must also list categories that will **not** leave the device: event titles, attendees of underlying calendar events, calendar names, neighboring busy intervals, rejection reasons, local scores, tasks, and source/provider identifiers. The default finalization is a private local event or opaque provider block; native provider invitations require a separate disclosure preview.
 
 The model may translate “find 30 minutes with Sam next week” into a typed draft. Deterministic code—not the LLM—expands recurrences, resolves time zones, computes conflicts, checks policy, selects the final slot under a precommitted rule, and validates every write.
 
@@ -48,7 +48,7 @@ The model may translate “find 30 minutes with Sam next week” into a typed dr
 
 ## 7.6 Calendar and agentic scheduling
 
-This is the first Fabric application after the kernel. Its local calendar capabilities are P0/P1; encrypted peer negotiation builds on the P2 sharing substrate but is delivered as the first end-to-end multi-user vertical in section 23.
+This is the first Fabric application after the kernel. Its local calendar capabilities are P0/P1; encrypted peer negotiation builds on the P2 sharing substrate but is delivered as the first end-to-end multi-user vertical in section 23. The `CAL-P0/P1/P2` labels below describe dependency and maturity inside the calendar vertical; they are not the numbered PRD delivery phases. The implemented `fabric-schedule-sim/0` profile in section 23.16 is pre-production evidence and satisfies none of the E2EE/provider release gates by itself.
 
 | ID | Priority | Requirement | Acceptance criterion |
 |---|---:|---|---|
@@ -84,7 +84,7 @@ Calendar data adds operational records that are private by default:
 | `meeting_candidate` / `participant_decision` | Random session-local candidate ID, exact interval, signed decision/grant, and expiry |
 | `meeting_commit` | Prepare receipts, idempotency keys, provider write receipts, reconciliation state, and final event digest |
 
-Time is not reduced to one timestamp. Preserve `time_kind` (`instant`, `zoned_local`, `floating_local`, or `all_day`), original wall-time value, IANA `TZID`, resolved UTC instant/offset when applicable, and the time-zone database version. Preserve the provider’s original zone identifier and map Windows zones through a pinned CLDR mapping without overwriting the source. The peer protocol permits only exact UTC instants plus duration and an IANA display zone—never floating time.
+Time is not reduced to one timestamp. Preserve `time_kind` (`instant`, `zoned_local`, `floating_local`, or `all_day`), original wall-time value, IANA `TZID`, resolved UTC instant/offset when applicable, and the time-zone database version. Preserve the provider’s original zone identifier and map Windows zones through a pinned CLDR mapping without overwriting the source. A peer `Candidate` contains only an exact UTC instant plus duration—never floating time. A separately approved request context may carry one IANA display zone when participants need a shared presentation convention; ordinary rendering remains local.
 
 `DTSTART` is inclusive and `DTEND` is exclusive. Recurrence masters and exceptions remain canonical; a bounded expanded occurrence cache is derived and disposable. Expansion has explicit horizon, instance, CPU, and memory limits. Ambiguous/nonexistent DST times, all-day boundaries, transparent/tentative/out-of-office states, and a task’s optional time-blocking projection are tested rather than silently normalized. Preserve `UID`, `SEQUENCE`, and `DTSTAMP`, but do not misuse iCalendar `SEQUENCE` as database concurrency control. [iCalendar RFC 5545](https://www.rfc-editor.org/rfc/rfc5545.html), [JSCalendar RFC 8984](https://www.rfc-editor.org/rfc/rfc8984.html)
 
@@ -131,7 +131,7 @@ Do not connect one participant’s Google/Outlook free-busy API to the other par
 
 ## 23.1 Product decision and promise
 
-Fabric Calendar is a complete local-first calendar surface and the first executable vertical on the knowledge kernel. It has five layers:
+The product target for Fabric Calendar is a complete local-first calendar surface and the first executable vertical on the knowledge kernel. The current M0 implements only the agreement-semantics seam in section 23.16; the target has five layers:
 
 1. **Encrypted local replicas** of selected external calendars.
 2. **Fabric-native calendar** for endpoint-encrypted events, private overlays, and local holds.
@@ -149,9 +149,9 @@ This is **minimal disclosure**, not literal zero knowledge. The proposed interva
 
 | Actor | May learn in the baseline | Must not receive in private mode |
 |---|---|---|
-| Delivery relay | Random mailbox/group identifier, MLS epoch, ciphertext size, timing/frequency, network metadata | Names, email addresses, message type, calendar fields, meeting purpose, candidates, responses, final event |
+| Delivery relay | Random mailbox/group identifier, MLS epoch, ciphertext size, ciphertext expiry, timing/frequency, network metadata | Names, email addresses, message type, calendar fields, meeting purpose, candidates, responses, final meeting |
 | Coordinator | Verified negotiation participants, approved request envelope, candidate intervals, each participant’s eligibility/decision for those candidates, final approval | Calendar/event objects, calendar names, surrounding occupancy, reasons, preference scores, tasks, provider identifiers |
-| Non-coordinator participant | Participant roster, approved request envelope, candidate/mutual options, final consensus and event | Other participants’ individual negative vectors, event details, reasons, local policy/scores, provider identifiers |
+| Non-coordinator participant | Participant roster, approved request envelope, candidate/mutual options, final consensus, and approved final-meeting fields | Other participants’ individual negative vectors, underlying calendar-event details, reasons, local policy/scores, provider identifiers |
 | Calendar provider | Whatever its owner projects—at minimum final time in an opaque-busy mode | Fabric must not imply that peer E2EE conceals provider-stored fields from that provider |
 | Local scheduling core | Policy-reduced calendar projection and exact source revisions needed for correctness | Event titles/bodies are not required for ordinary conflict calculation and are withheld from the LLM by default |
 
@@ -266,10 +266,10 @@ Encode capabilities with deterministic CBOR and COSE signatures; keep them insid
 ## 23.6 Cryptographic and transport profile
 
 - Use a current, reviewed MLS implementation and one ephemeral MLS group per negotiation, including two-person sessions. MLS supplies asynchronous group encryption, authentication, forward secrecy, and post-compromise recovery; it does not supply product authorization or hide traffic metadata. [MLS RFC 9420](https://www.rfc-editor.org/rfc/rfc9420.html), [MLS architecture RFC 9750](https://www.rfc-editor.org/rfc/rfc9750.html)
-- Broadcast candidate rounds and final state with MLS private application messages. In groups of three or more, sign and HPKE-seal individual eligibility/decision vectors to the coordinator inside MLS so peers learn only mutual options/final consensus. HPKE base mode alone does not authenticate the sender, so the signed body binds the key-bound member, capability, negotiation, roster, round, policy, and purpose. [HPKE RFC 9180](https://www.rfc-editor.org/rfc/rfc9180.html)
+- Broadcast candidate rounds and final state with MLS private application messages. In groups of three or more, sign and HPKE-seal individual eligibility/decision vectors to the coordinator inside MLS so peers learn only mutual options/final consensus. HPKE base mode alone does not authenticate the sender, so the signed body binds the key-bound member, capability, negotiation, membership/roster, round, privacy-profile digest, and approved purpose. [HPKE RFC 9180](https://www.rfc-editor.org/rfc/rfc9180.html)
 - Use deterministic CBOR for signed/transcript-hashed bodies. Do not place identity, message type, purpose, or calendar data in relay headers or sensitive MLS authenticated-but-visible metadata.
 - Use TLS/QUIC to the relay, random mailboxes/group IDs, short ciphertext retention, generic notifications, fixed size buckets, and batching where latency permits. Document that the relay can still see IP/connection data, timing, size, frequency, group ID, and epoch.
-- Pin the minimum protocol version and allowed MLS cipher suites; bind the version, privacy profile, capability/policy digests, roster digest, and feature set into the session context. Never silently downgrade to TLS-only, plaintext free/busy, group-readable personal responses, email, or a more revealing projection.
+- Pin the minimum protocol version and allowed MLS cipher suites; bind the version, privacy-profile digest, capability digest, membership/roster digest, and feature set into the session context. Never silently downgrade to TLS-only, plaintext free/busy, group-readable personal responses, email, or a more revealing projection.
 - Persist MLS state, replay windows, feed heads, and protocol state transactionally with rollback detection. After cryptographic state loss, rejoin as a new member and restart active negotiations rather than replaying stale approval authority.
 
 An optional later metadata-reduction profile can partition relay and gateway roles with Oblivious HTTP, but the baseline must not claim anonymity. [Oblivious HTTP RFC 9458](https://www.rfc-editor.org/rfc/rfc9458.html)
@@ -293,7 +293,7 @@ FabricScheduleMessage {
   membership_digest: bytes[32]
   previous_state_digest: bytes[32]
   capability_digest: bytes[32]
-  policy_profile_digest: bytes[32]
+  privacy_profile_digest: bytes[32]
   body: typed_map
 }
 ```
@@ -322,7 +322,7 @@ Candidate {
 }
 ```
 
-The approved request envelope may contain only: participant pseudonyms/roles; duration; UTC horizon; required/optional status; meeting mode; an optional user-approved purpose label; candidate/round limits; public selection rule; expiry; privacy profile; and final projection profile. Local time-zone rendering is local. Calendar IDs, event IDs, existing attendees, titles, locations, busy intervals, rejection reasons, raw scores, source revisions, and provider names never enter a peer message.
+The approved request envelope may contain only: participant pseudonyms and all-required roles in the baseline; duration; UTC horizon; meeting mode; an optional user-approved purpose label; candidate/round limits; public selection rule; expiry; privacy profile; final projection profile; and, when explicitly approved, one IANA `display_zone` used only as a shared presentation convention. Optional roles and quorum semantics require a later versioned profile. Provider calendar zones and ordinary time-zone rendering remain local. Calendar IDs, event IDs, existing attendees, titles, locations, busy intervals, rejection reasons, raw scores, source revisions, and provider names never enter a peer message.
 
 Each responder enforces a privacy budget across all negotiation IDs associated with the same key-bound pairwise contact. Proposed MVP defaults—configurable but never silently expanded—are:
 
@@ -365,7 +365,7 @@ stateDiagram-v2
     CancelPending --> Cancelled: "all required policy checks pass"
 ```
 
-Every transition has allowed message types, sender roles, required digests, grant checks, expiry, and idempotent effects. The state machine rejects free-form model output. Membership changes or material changes to time, duration, required participants, purpose label, mode, or projection profile create a new meeting digest and invalidate all earlier decisions.
+Every transition has allowed message types, sender roles, required digests, grant checks, expiry, and idempotent effects. The state machine rejects free-form model output. Any change to a digest-bound field—including membership, candidate content or order, selected time or duration, purpose, mode, display zone, projection or privacy profile, selection rule, and consent expiry—creates a new digest and invalidates all earlier decisions.
 
 ## 23.8 Deterministic availability and selection algorithm
 
@@ -389,7 +389,7 @@ and sends the fixed-length vector sealed to the coordinator. The coordinator pub
 M_r = \{c \in C_r \mid e_i(c)=1\ \text{for every required }i\}
 \]
 
-Each user then supplies `d_i(c) ∈ {yes,no}` for the displayed subset of `M_r`. The selectable set is:
+Each user then supplies exactly one explicit `d_i(c) ∈ {yes,no}` for every candidate in the displayed `M_r`, in its committed order. The selectable set is:
 
 \[
 A_r = \{c \in M_r \mid d_i(c)=yes\ \text{for every required }i\}
@@ -399,15 +399,37 @@ If `A_r` is non-empty, choose the first candidate under the selection order comm
 
 To prevent a participant from adapting an answer after seeing another’s, every participant first broadcasts a salted commitment to its decision vector, then HPKE-seals the vector and salt to the coordinator. Candidate times and yes/no values are enumerable; the commitment requires a fresh 32-byte random salt. The coordinator can still omit an option and harm liveness, so every device verifies the candidate/options transcript and no product claim promises Byzantine fairness.
 
-The exact meeting digest is:
+The event template and ordered candidate round are independently canonicalized so
+an approval cannot be moved to a different projection or proposal order:
+
+```text
+event_template_digest = SHA-256(
+  "fabric-schedule-event-template-v1" || deterministic_CBOR({
+    membership_digest, duration_seconds,
+    approved_purpose_digest, meeting_mode, display_zone?,
+    projection_profile
+  })
+)
+
+candidate_set_digest = SHA-256(
+  "fabric-schedule-candidate-set-v1" || deterministic_CBOR({
+    round,
+    ordered_candidates: [
+      { candidate_id, start_utc_ms, duration_seconds }, ...
+    ]
+  })
+)
+```
+
+The array order is normative and is the deterministic selection order. The exact
+meeting digest is:
 
 ```text
 meeting_digest = SHA-256(
   "fabric-schedule-meeting-v1" || deterministic_CBOR({
     negotiation_id, membership_digest, selected_candidate_id,
     selected_utc_start, duration_seconds,
-    approved_purpose_digest, meeting_mode,
-    finalization_profile, privacy_profile_digest,
+    event_template_digest, privacy_profile_digest,
     candidate_set_digest, selection_rule,
     consent_expiry
   })
@@ -422,7 +444,7 @@ Keep these meanings distinct:
 
 - `JOIN_ACK` — consent to join a negotiation, not to book;
 - agent eligibility — current deterministic local feasibility, not human preference or consent;
-- user yes/no — exact consent to candidate, participants, duration, disclosed purpose/mode, and finalization profile;
+- user yes/no — exact consent to candidate, participants, duration, disclosed purpose/mode, and projection profile;
 - `PREPARED` — the calendar remains eligible and a local hold exists immediately before writing;
 - `FINALIZE_REQUEST` — deterministic permission to execute only the previously approved local write.
 
@@ -499,7 +521,7 @@ This is prepare plus a **saga**, not database two-phase commit. Before `PREPARED
 
 After all required participants prepare, each agent writes only its owner’s event. Provider markers are independently derived per owner; never place one common Fabric negotiation ID or iCalendar UID into two cloud accounts in private mode, because the same provider could correlate them. The encrypted Fabric meeting links the local bindings.
 
-Duplicate, delayed, and reordered messages return the prior logical result. Receivers enforce unique message ID, increasing per-sender sequence, expected state/message type, round/state version, prior-state digest, roster/policy/candidate digests, expiry, single-use consent/finalization nonces, and a replay cache retained through negotiation expiry. A stale round can never commit.
+Duplicate, delayed, and reordered messages return the prior logical result. Receivers enforce unique message ID, increasing per-sender sequence, expected state/message type, round/state version, prior-state digest, membership, privacy-profile, and ordered-candidate-set digests, expiry, single-use consent/finalization nonces, and a replay cache retained through negotiation expiry. A stale round can never commit.
 
 If only some provider writes succeed, state becomes `recovery_required`; the outbox retries idempotently. If policy permits, it can compensate by removing an already-created projection. If outcome is uncertain, notify users and preserve the provider receipts for repair—never report “scheduled.” Cancellation and rescheduling are new signed transitions with new authority, not mutation of historical consent.
 
@@ -605,7 +627,7 @@ The protocol structures support two or more participants; the first operational 
 | Calendar | Offline day/week/month/agenda, multiple calendar toggles, Fabric-native and external provenance, event search, now/next, recurrence editing with scope preview |
 | Event view | Separate private, participant-shared, and provider-projected fields; graph links to people/project/source/agenda/note/tasks; external authority and sync status |
 | Time policy | Human-readable rules plus structured editor, scope, version history, simulation on past weeks, conflict explanation, rollback |
-| Schedule composer | Contact/key status, duration/horizon/mode, required participants, optional purpose, candidate/privacy limits, selection rule, finalization profile |
+| Schedule composer | Contact/key status, duration/horizon/mode, required participants, optional purpose, candidate/privacy limits, selection rule, projection profile |
 | Disclosure preview | Exact fields, recipients, intervals, expiry, relay/provider caveats, and explicit “stays on this device” list |
 | Candidate card | Local date/time/zone, user-local conflict or preference explanation, `Yes`/`No`, approval scope and expiry; no reason field sent |
 | Negotiation inbox | Waiting-on state, round/budget consumed, expiry, roster/key changes, withdraw/counter controls, disclosure receipts |
@@ -620,8 +642,8 @@ Every external effect has a plain-language preview independent of the agent. Acc
 |---|---|---|
 | Curious relay / traffic analysis | MLS private messages, TLS/QUIC, rotating opaque mailboxes, padding buckets, short retention, generic notifications, no sensitive logs/AAD | Network, timing, size, frequency, group/epoch metadata remain observable |
 | Malicious participant probing routines | Key-bound capabilities, bounded candidates/rounds/horizon/granularity, cross-session pairwise budgets, overlap detection, quarantine/rate limits | A legitimate peer still learns the proposed slots and bounded answers |
-| Coordinator learns/omits responses | Coordinator-only HPKE, decision commitments, transcript digests, deterministic precommitted selection | Coordinator learns bounded per-candidate bits and can harm liveness by omission |
-| Replay/reorder/equivocation/downgrade | Message IDs, sequence, state/round, previous digest, expiry, replay cache, signed roster/policy/candidate digests, pinned protocol/suites | A malicious delivery service can still delay or partition participants |
+| Coordinator learns/omits responses | Coordinator-only HPKE, decision commitments, transcript digests, deterministic selection bound to the request | Coordinator learns bounded per-candidate bits and can harm liveness by omission |
+| Replay/reorder/equivocation/downgrade | Message IDs, sequence, state/round, previous digest, expiry, replay cache, signed membership/privacy-profile/candidate digests, pinned protocol/suites | A malicious delivery service can still delay or partition participants |
 | First-contact key substitution | Contact-list authorization, TOFU key pinning, E2EE thereafter, hard block/warning on unexpected key changes, optional later fingerprint verification | Without out-of-band verification, the first key binding can be impersonated; this is the conscious simplicity tradeoff |
 | Compromised connector/imported event prompt injection | Adapter sandbox, brokered credentials, reduced availability records, event text treated as untrusted, no model/tool authority from content | A compromised trusted endpoint can lie or leak; crypto cannot repair it |
 | Stale calendar / double booking | Incremental sync freshness, local reservation ledger, prepare revalidation, expiring holds, state preconditions | A provider change after final recheck can still race; recovery is required |
@@ -634,8 +656,51 @@ Do not market the baseline as anonymous scheduling, zero-knowledge calendars, at
 
 ## 23.16 Implementation slices
 
+### 23.16.1 Implemented semantic profile: `fabric-schedule-sim/0`
+
+The first repository implementation is deliberately smaller than C0–C3. It
+exists to make the agreement semantics executable while every security and
+external-effect boundary remains conspicuous.
+
+Normative simulator scope:
+
+1. exactly two distinct, required fixture members; coordinator is the first
+   member in the approved request;
+2. synthetic agent-local half-open UTC busy intervals with no public getter;
+3. one round containing one to three unique exact candidates inside the approved
+   horizon and with the approved duration;
+4. fixed-order eligibility responses containing candidate IDs and Boolean bits,
+   with no reasons or calendar data;
+5. mutual options formed only by intersection of both complete vectors;
+6. explicit owner yes/no decisions for every mutual option—agents do not infer
+   consent;
+7. deterministic selection of the first unanimously accepted mutual option in
+   original proposal order; this rule is fixed by the simulator profile;
+8. exact structural binding to negotiation, roster, horizon, duration,
+   candidates, projection, request opening, and expiry; while the in-memory state is retained,
+   identical duplicate envelopes are idempotent and conflicting replays fail;
+9. terminal result `Agreed` or `NoMatch`; two independent reducer instances can
+   derive the identical exact unsigned in-memory agreement and stable comparison
+   key, but no canonical wire serialization;
+10. in-process transport only, explicitly reporting `e2ee=false`,
+    `provider_writes=false`, and `scheduled=false`.
+
+The simulator is run with `fabric demo-meeting`. Its stdout is a
+coordinator-sensitive transcript that intentionally contains proposed times and
+bounded per-candidate responses; it is neither public-log-safe nor a model of
+participant visibility. It does not implement or mimic
+TOFU, MLS/HPKE, deterministic CBOR, COSE signatures, commit/reveal, a relay,
+SQLCipher, recurrence/DST, holds/revalidation, Google Calendar, or the commit
+saga. Replay memory is process-local and fixture IDs are bounded labels, not
+identity, authority, or privacy guarantees. Its structural agreement key is
+intentionally labeled non-cryptographic;
+production decisions still require the signed SHA-256 meeting digest in section
+23.8. No networked deployment may use the simulator profile as a security
+protocol.
+
 | Slice | Indicative effort | Deliverable and exit gate |
 |---|---:|---|
+| M0 Semantic simulator | Implemented | Checked interval/domain types, two private synthetic calendars, bounded in-memory messages, explicit yes/no, deterministic agreement/no-match state, replay/scope validation, CLI fixture, and exhaustive Boolean consensus test; no security/provider claim |
 | C0 Standards/Google spike | 2 weeks | Canonical time/recurrence model; ICS and Google fixtures; Google personal/Workspace permission test; DST oracle; capability/loss matrix; no real writes |
 | C1 Personal calendar | 4–6 weeks | macOS app, SQLCipher schema, direct Google replica, Fabric-native events, agenda/week UI, policy engine, occurrence cache, ICS; deterministic conformance passes |
 | C2 Two-agent Rendezvous | 4–6 weeks | Contact-list authorization, TOFU key pinning, MLS, opaque relay, bounded candidate/eligibility exchange, yes/no commitments, disclosure audit, synthetic calendars; independent protocol review begins |
@@ -686,4 +751,4 @@ These implementation-changing details remain open:
 5. **Relay deployment:** local development, self-hosted internet, or operated ciphertext relay; define retention, availability, push delivery, and IP-log policy.
 6. **Initial group boundary:** two-person production with multi-party test fixtures, or all-required small groups at launch.
 
-Once those remaining decisions are answered, the implementation package should begin with ADR-011 through ADR-013, CDDL schemas/test vectors for `fabric-schedule/1`, the deterministic time oracle, a Google capability/loss matrix, a two-profile simulator, the disclosure auditor, and a fault-injected commit-saga harness.
+The M0 semantic simulator is now implemented. Once the remaining decisions are answered, the production package should continue with ADR-011 through ADR-013, CDDL schemas/test vectors for `fabric-schedule/1`, the deterministic time oracle, a Google capability/loss matrix, a disclosure auditor, and a fault-injected commit-saga harness.

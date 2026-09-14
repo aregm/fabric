@@ -1,20 +1,58 @@
 # Fabric
 
-Initial Rust workspace for the Personal Knowledge Fabric.
+Initial Rust workspace for the Personal Knowledge Fabric. The first executable
+vertical is a deterministic, in-memory two-agent meeting-agreement simulator.
 
 The scaffold begins as a small modular monolith:
 
-- apps/fabric-cli — diagnostic command-line application;
-- crates/fabric-core — shared domain library;
+- apps/fabric-cli — diagnostic CLI plus the `demo-meeting` executable fixture;
+- crates/fabric-core — shared domain library, including checked calendar intervals and Rendezvous agreement semantics;
 - scripts — isolated setup, command runner, and verification for Windows and macOS/Linux.
 
-Calendar, Google adapter, storage, protocol, and desktop crates should be added only when they contain real behavior.
+Google adapters, encrypted transport, persistence, and desktop crates should be added only when they contain real behavior.
 
 ## Product documentation
 
 - [Product requirements](docs/PRD.md) — problem statement, market research, product experience, requirements, roadmap, and evaluation.
 - [Technical architecture](docs/architecture.md) — platform architecture, data model, retrieval, agents, security, and implementation guidance.
 - [Calendar vertical](docs/calendar.md) — the Google Calendar-first product test, private scheduling protocol, consent model, and release gates.
+
+## Current executable slice
+
+`fabric-schedule-sim/0` demonstrates the minimum honest agreement loop with two
+independent agents and synthetic private calendars:
+
+1. disclose one round of at most three exact UTC candidates;
+2. evaluate only those candidates against each agent's private local intervals;
+3. exchange candidate-specific eligibility bits, never calendar ranges or reasons;
+4. record explicit owner `Yes`/`No` decisions;
+5. select the first unanimously eligible and accepted candidate in proposal order;
+6. let two independent reducer instances derive the same exact unsigned in-memory
+   agreement and stable comparison key.
+
+macOS or Linux:
+
+    sh scripts/run.sh cargo run -p fabric-cli -- demo-meeting
+
+Windows:
+
+    powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run.ps1 cargo run -p fabric-cli -- demo-meeting
+
+The demo prints `result=agreed`, selects `c3`, and confirms that both agents hold
+the same agreement record. It also prints its trust boundary explicitly:
+`transport=in-process e2ee=false provider_writes=false` and `scheduled=false`.
+
+This is a deterministic semantics and data-minimization/type-shape simulator—not
+secure network scheduling or a participant-visibility model. Its stdout is a
+coordinator-sensitive debug transcript: it intentionally displays proposed
+times and bounded per-candidate bits and must not be treated as public-safe log
+output. The underlying event records and conflict reasons remain agent-local.
+Fixture IDs are bounded output-safe labels, not identity or authorization proof;
+never place PII or provider identifiers in them.
+
+It does not yet implement Google Calendar, a relay, MLS/TOFU, signatures,
+encrypted persistence, recurrence/DST, holds/revalidation, or the provider
+commit saga. Its result is **Agreed**, never **Scheduled**.
 
 ## Toolchain decision
 

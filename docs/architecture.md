@@ -1,8 +1,8 @@
 # Personal Knowledge Fabric — Technical Architecture
 
-**Status:** decision-ready baseline, version 1.2
+**Status:** decision-ready baseline, version 1.3
 
-**Prepared:** 2026-08-16
+**Prepared:** 2026-09-13
 
 **Scope:** platform architecture, canonical model, retrieval, agents, automation, security, and implementation setup
 **Related:** [Product requirements](PRD.md) · [Calendar vertical](calendar.md)
@@ -166,6 +166,43 @@ A personal corpus can reach millions of relations without requiring a separate g
 - a clean path to export into NetworkX/petgraph, RDF, or an analytical graph engine.
 
 A graph database becomes justified only after measured queries cannot meet budgets or multi-user server analytics becomes primary. It should never be the only copy of source text or human knowledge.
+
+### 9.5 Current executable seam: `fabric-schedule-sim/0`
+
+The repository now implements the narrow semantic seam needed to test two-agent
+agreement before storage, transport, cryptography, provider adapters, or UI are
+introduced. This is consistent with the modular-monolith decision: domain rules
+are executable in `fabric-core`, while the CLI is only a fixture driver.
+
+| Rust boundary | Current responsibility | Explicitly absent |
+|---|---|---|
+| `fabric_core::calendar` | Checked UTC-millisecond, second-duration half-open intervals; one agent-owned local calendar that answers only exact-candidate availability | Provider events, recurrence, time-zone rendering, calendar IDs, persistence |
+| `fabric_core::rendezvous` | Two required participants, one round, at most three candidates, eligibility vectors, mutual options, complete explicit decisions, live-session duplicate handling, exact structural scope checks, profile-fixed deterministic selection, exact unsigned in-memory agreement and stable comparison key | Serialization, relay, TOFU, MLS/HPKE, COSE signatures, commit/reveal, durable replay cache |
+| `fabric-cli demo-meeting` | Deterministic transcript/reducer fixture with two private calendar evaluators and two independent state reducers; coordinator-sensitive output contains approved candidates, bounded bits, decisions, and agreement | Participant-visibility enforcement, user interface, network, Google OAuth/API, holds, external writes |
+| `two_agent_meeting` and CLI tests | Two-view convergence under opposite arrival order; eligibility and decision replay/scope checks; exact-vector, expiry, started-candidate, candidate-bound, output-shape, and exhaustive 4,096-case Boolean consensus checks | Wire-schema, protocol/crypto interoperability, durable restart, and provider fault injection |
+
+The current state machine is intentionally smaller than production:
+
+```mermaid
+stateDiagram-v2
+    [*] --> AwaitingEligibility
+    AwaitingEligibility --> AwaitingDecisions: "both vectors; mutual options"
+    AwaitingEligibility --> NoMatch: "empty intersection"
+    AwaitingDecisions --> Agreed: "first unanimous yes"
+    AwaitingDecisions --> NoMatch: "no unanimous yes"
+```
+
+`Agreed` is the terminal word for this slice. It means both simulated endpoints
+independently derive the same exact in-memory agreement data and stable
+comparison key. The selection rule is fixed by the `fabric-schedule-sim/0`
+profile, not negotiated in its request. `Agreed` never means `Scheduled` because
+no hold, revalidation, transactional outbox, provider write, or final receipt
+exists yet. The CLI exposes a coordinator-sensitive full transcript and does not
+model production participant visibility. The simulator's structural scope
+binding is not a serialized canonical record, cryptographic digest, or
+authorization token; production `fabric-schedule/1` still requires
+deterministic CBOR, signed exact consent, E2EE transport, persistent replay
+protection, and the prepare/commit saga described in the calendar specification.
 
 ---
 
@@ -588,7 +625,7 @@ Proposed tools:
 
 Each grant specifies vault/space, item types, predicates, sensitivity ceiling, read/write actions, purpose, expiry, rate/volume bounds, and whether human confirmation is required. The agent receives only the minimum retrieved fragments, not the whole vault.
 
-Calendar scopes are independent: `calendar:availability.compute`, `calendar:event.read`, `schedule:negotiate`, `calendar:hold.write`, `calendar:event.commit`, `calendar:event.cancel`, and `calendar:external_invite.send`. A commit capability binds negotiation, candidate, participant-set digest, event-template digest, projection fields, destination calendar, idempotency key, and expiry. The scheduler cannot widen those arguments. Natural-language parsing can fail safely into a draft; authoritative time arithmetic, recurrence, policy, state transitions, signatures, and provider writes are model-free.
+Calendar scopes are independent: `calendar:availability.compute`, `calendar:event.read`, `schedule:negotiate`, `calendar:hold.write`, `calendar:event.commit`, `calendar:event.cancel`, and `calendar:external_invite.send`. A commit capability binds negotiation, candidate, `membership_digest`, `event_template_digest`, projection fields, destination calendar, idempotency key, and expiry. The scheduler cannot widen those arguments. Natural-language parsing can fail safely into a draft; authoritative time arithmetic, recurrence, policy, state transitions, signatures, and provider writes are model-free.
 
 ### 12.4 Prompt-injection defenses
 
