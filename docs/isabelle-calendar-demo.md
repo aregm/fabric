@@ -1,6 +1,6 @@
 # Fabric Policy Demo — Isabelle-Gated Calendar Agents
 
-**Status:** approved on 2026-10-18, version 1.0. Nothing described here is implemented yet.
+**Status:** approved on 2026-10-18; version 1.1 records gate G1. Phases 0 and 1 are done; Phase 2 is in progress.
 
 **Prepared:** 2026-10-18
 
@@ -11,7 +11,7 @@
 
 ## 1. What the demo must show
 
-Two people, Alice and Bob, each have a private calendar and an agent that plans with an LLM. Alice's agent uses a local model through Ollama; Bob's uses Claude in the cloud. The agents agree on a 30-minute meeting and add it to both calendars. Along the way the demo shows that:
+Two people, Alice and Bob, each have a private calendar and an agent that plans with an LLM. Both agents use Claude by default; either can run on a local model through Ollama instead, chosen per run (Q27). The agents agree on a 30-minute meeting and add it to both calendars. Along the way the demo shows that:
 
 1. Calendar data sits in a separate, encrypted service per person. Agents reach it only through a loopback API that demands a valid token on every call, and they only ever receive free/busy intervals, never event details.
 2. On each turn an agent's LLM writes 2–3 alternative plans. Each plan is an ordered list of typed actions.
@@ -31,7 +31,7 @@ The demo shows the semantics and how they are enforced. It is not production sec
 | Q2 | Language and location | Rust, as new crates in this workspace. |
 | Q3 | LLM backends | Claude API (cloud) and Ollama (local). |
 | Q4 | Calendar | A synthetic local store seeded with fixture events. |
-| Q5 | Participants | Two people. Alice's agent on Ollama and Bob's on Claude by default; either can be switched per run in config. |
+| Q5 | Participants | Two people. Alice's agent on Ollama and Bob's on Claude by default; either can be switched per run in config. Backends superseded by Q27. |
 | Q6 | Agent connection | Signed and encrypted messages through a relay process. |
 | Q7 | Message content | Typed protocol messages plus a short free-text note. |
 | Q8 | Cloud model's view | Free/busy within the negotiation window. No titles or other event details. |
@@ -53,6 +53,7 @@ The demo shows the semantics and how they are enforced. It is not production sec
 | Q24 | Triggering denials | Fault-injection switches in the dashboard. |
 | Q25 | Anthropic API key | Read from a git-ignored `.env` file at the repository root, which you create. An `ANTHROPIC_API_KEY` already set in the environment takes precedence. |
 | Q26 | API workspace | Your key is not scoped to a workspace, so the Claude backend sends the `anthropic-workspace-id` header with the ID from `ANTHROPIC_WORKSPACE_ID` in the same `.env` file. |
+| Q27 | Agent backends (gate G1) | Both agents use Claude by default; Ollama stays available as a per-run option. Phase 1 measured 3–4B local models picking the correct plan in only 2–4 of 10 turns. |
 
 ## 3. Decisions that need your confirmation
 
@@ -101,7 +102,7 @@ Your answers left the gaps below. You approved every proposed default on 2026-10
 | D22 | **Fixed demo clock per run**, configurable, with all times in UTC, so fixtures and denials are reproducible. | The real clock. |
 | D23 | **Owner request form** in the dashboard, pre-filled with the scenario: the other person, duration, window, and a free-text preference that only the owner's own LLM reads. | The LLM drafts the typed request from a sentence and the owner confirms it. |
 | D24 | **The dashboard is a demo observer** that shows both owners' views and both agents' traces. In a real deployment each owner would see only their own console. | Two separate owner consoles. |
-| D25 | **Models.** Bob: `claude-opus-5-5` with adaptive thinking, `effort: "medium"` set explicitly, and server-side refusal fallbacks enabled (`fallbacks: "default"`), which re-run a declined request on another Claude model. Alice: an Ollama model picked in spike T1.2 from small models that fit this machine (4 GB GPU, 64 GB RAM); you approve the pick. | Name other models, or turn fallbacks off. |
+| D25 | **Models.** Both agents: `claude-opus-5-5` with adaptive thinking, `effort: "medium"` set explicitly, and server-side refusal fallbacks enabled (`fallbacks: "default"`), which re-run a declined request on another Claude model; confirmed at G1. A local run names its Ollama model in the run config; Phase 1 measured `granite4.1:3b`, `qwen3:4b` and `qwen3.5:4b`. | Name other models, or turn fallbacks off. |
 | D26 | **Parameters** as listed in section 8.3. | Change any value. |
 | D27 | **New dependencies.** The workspace has no third-party crates today. The demo adds them only to new crates; `fabric-core` stays dependency-free. Every version is pinned in `Cargo.lock`. | — |
 | D28 | **Tests and CI.** Tests that need Isabelle or an LLM run locally and are skipped in CI. Everything else, including the existing six-host CI, stays green. The demo itself is supported on Windows only. No stand-in prover is used anywhere. | Add Isabelle to CI, which means a large download on six runners. |
@@ -111,7 +112,7 @@ Your answers left the gaps below. You approved every proposed default on 2026-10
 
 ```mermaid
 flowchart LR
-    subgraph AliceSide["Alice: local model"]
+    subgraph AliceSide["Alice"]
         AAgent["Agent runtime<br/>untrusted"]
         AHost["Trusted host<br/>policy gate, gateway, consent signer"]
         ACal["Calendar service<br/>encrypted store"]
@@ -121,16 +122,17 @@ flowchart LR
         Relay["Relay<br/>ciphertext mailboxes"]
         Dash["Dashboard<br/>demo observer"]
     end
-    subgraph BobSide["Bob: cloud model"]
+    subgraph BobSide["Bob"]
         BAgent["Agent runtime<br/>untrusted"]
         BHost["Trusted host<br/>policy gate, gateway, consent signer"]
         BCal["Calendar service<br/>encrypted store"]
     end
-    Ollama["Ollama<br/>local LLM"]
+    Ollama["Ollama<br/>local LLM, optional"]
     Claude["Claude API<br/>cloud LLM"]
 
-    AAgent -->|"turn input, returns plans"| Ollama
+    AAgent -->|"turn input, returns plans"| Claude
     BAgent -->|"turn input, returns plans"| Claude
+    AAgent -.->|"or, per run"| Ollama
     AAgent -->|"screen, authorize, send"| AHost
     BAgent -->|"screen, authorize, send"| BHost
     AHost -->|"one theory per check"| Isa
@@ -170,7 +172,7 @@ Trust levels:
 
 ### 5.3 Agent runtime (one per person, untrusted)
 
-- Holds its LLM backend configuration and credential (Bob: an Anthropic API key; Alice: none), and an Ed25519 token-binding key generated at start. The launcher registers the public half with the trusted host.
+- Holds its LLM backend configuration and credential (an Anthropic API key, or none when it runs on Ollama), and an Ed25519 token-binding key generated at start. The launcher registers the public half with the trusted host.
 - Runs the turn loop in section 10.1.
 - Sees: its owner's request, the free/busy results it fetched with tokens, inbound messages (the peer's candidates, answers, notes and decisions), its own past actions, and denial reasons.
 - Never sees: the calendar store, event titles, any key other than its own token-binding key, or the other person's data beyond the messages it receives.
@@ -184,6 +186,7 @@ Trust levels:
 
 - Isabelle2025-2 for Windows, the current release (January 2026). On Windows, Isabelle's command-line tools run through its bundled Cygwin.
 - `scripts/setup-demo.ps1` installs it into `.tooling/isabelle/` (D29), and `scripts/isabelle.ps1` runs its tools. Both set `USER_HOME`, so Isabelle's per-user directory, including session heaps, stays in `.tooling/isabelle/home` instead of your Windows profile.
+- Sessions start with `headless_consolidate_delay=0.1`; the 2.0 s default adds about a second to every check (G1). On Windows, `session_stop` always reports return code 130, so the launcher treats that as normal and always sends `shutdown` afterwards; otherwise the server keeps running.
 - The launcher starts `isabelle server -n fabric-demo`, reads the address and password from the server's first output line, and passes them privately to the two policy gates.
 - One session, `Fabric_Policy`, built from `isabelle/Fabric_Policy` with HOL as its parent. The gates use the server's `session_start`, `use_theories` and `purge_theories` commands over its TCP protocol.
 
@@ -278,7 +281,7 @@ Two people need no extra message to find mutual options: Alice knows which of he
 4. The gate submits the theory with `use_theories`, reads which lemmas failed from the reported errors and their line positions, computes the verdict (D6), and calls `purge_theories`.
 5. The proof ID is the SHA-256 of the check theory text, the hash of `Fabric_Policy.thy`, and the Isabelle version. It goes into the token and the audit log.
 
-Spike T1.1 must confirm that a failed proof does not stop Isabelle from checking the later lemmas of the same theory. If it does, each check becomes two passes: compute the truth values first, then prove only the matching polarity.
+Spike T1.1 confirmed that a failed proof does not stop Isabelle from checking the later lemmas of the same theory, so each check is a single pass. Measured on this machine: about 1.0 s for one action and 1.5 s for a 9-action screening batch (`spikes/phase1/RESULTS.md`).
 
 An abbreviated check theory, for illustration only (the exact syntax is settled in T2.1 and T2.2):
 
@@ -334,7 +337,9 @@ To use a token, the agent sends it with a proof-of-possession signature made wit
 4. The runtime sends all plans to its gate for screening. The first plan, in the LLM's order, whose actions are all permitted runs. If none is permitted, the runtime re-plans with every denial reason, at most 3 times (D5).
 5. For each action of the chosen plan, the runtime asks for authorization (the execution-time check and token), calls the service, and records the result. A denial at this point stops the plan and starts a re-plan with the reason.
 
-The plan schema shapes the output but enforces no limits; limits are Isabelle's job. Claude's structured outputs do not support numeric or string-length constraints in any case. Example of a valid plan list:
+The plan schema shapes the output but enforces no limits; limits are Isabelle's job. Claude's structured outputs do not support numeric or string-length constraints in any case.
+
+The schema lists properties in a fixed order: `kind` first in every action, and `label` and `rationale` before `actions` in every plan. Constrained decoding writes properties in schema order, and in Phase 1 an alphabetically sorted schema made Claude emit placeholder plans (G1). A test checks the order. Example of a valid plan list:
 
 ```json
 {
@@ -353,18 +358,18 @@ The plan schema shapes the output but enforces no limits; limits are Isabelle's 
 }
 ```
 
-### 10.2 Claude backend (Bob by default)
+### 10.2 Claude backend (both agents by default)
 
 - Raw HTTPS to `POST https://api.anthropic.com/v1/messages`, since there is no official Anthropic SDK for Rust. Headers: `x-api-key`, `anthropic-version: 2023-06-01`, `content-type: application/json`, `anthropic-workspace-id` (Q26), and `anthropic-beta: server-side-fallback-2026-07-01` for fallbacks.
 - Body: `"model": "claude-opus-5-5"`, `"max_tokens": 16000`, `"thinking": {"type": "adaptive"}`, `"output_config": {"effort": "medium", "format": {"type": "json_schema", "schema": <plan schema>}}`, `"fallbacks": "default"`, the system prompt, and the turn messages.
 - The runtime checks `stop_reason` before reading the content (`refusal` and `max_tokens` fail the attempt), and records which model served the turn and the token usage in the audit log.
 - Credential: `ANTHROPIC_API_KEY` and `ANTHROPIC_WORKSPACE_ID`, read from the git-ignored `.env` file at the repository root (Q25, Q26). The key is never written to the repository, logs or audit trail.
-- Rough cost: a happy-path run is about 5 Bob turns of roughly 5,000 input and 3,000 output tokens each. At $4 and $20 per million input and output tokens, that is under $1 per run. T1.3 measures the real figure.
+- Cost: Phase 1 measured 3,000–3,900 input and 400–1,000 output tokens per turn, about 3 cents. With both agents on Claude, a happy-path run is roughly 8–10 turns, about 30 cents.
 
-### 10.3 Ollama backend (Alice by default)
+### 10.3 Ollama backend (optional, per run)
 
 - `POST http://localhost:11434/api/chat` with `"stream": false`, `"format": <plan schema>` and temperature 0. The schema is also included in the prompt, as Ollama's documentation recommends.
-- Ollama is not installed yet. The model is chosen in T1.2.
+- Ollama 0.40.5 is installed. Phase 1 measured `granite4.1:3b`, `qwen3:4b` and `qwen3.5:4b`: valid JSON every time, but the correct plan in only 2–4 of 10 turns, at 20–136 s per turn. A run names its model in the run config.
 
 ### 10.4 Scripted planner (tests only)
 
@@ -372,8 +377,8 @@ Deterministic plans read from fixture scripts, for automated tests. It is never 
 
 ### 10.5 What leaves the machine
 
-- Bob's agent sends Anthropic its system prompt, Bob's request and preference text, the free/busy windows it read, Alice's candidates, notes and decisions, and its denial reasons.
-- Alice's agent sends nothing off the machine. The relay, Isabelle and both calendar services are local.
+- Each agent on Claude sends Anthropic its system prompt, its owner's request and preference text, the free/busy windows it read, the other person's candidates, notes and decisions, and its denial reasons.
+- An agent on Ollama sends nothing off the machine. The relay, Isabelle and both calendar services are always local.
 
 ## 11. Negotiation protocol
 
@@ -483,7 +488,7 @@ What it does not protect (the dashboard says so too):
 - All processes run under one Windows user, so there is no OS sandbox (D21).
 - Isabelle checks the policy over facts the trusted host supplies. The host, its signature checks and its HOL rendering are trusted, not verified.
 - Nothing checks that an agent's availability answers match its owner's calendar.
-- Bob's free/busy windows, and everything Bob's agent receives, go to Anthropic.
+- With the default backends, both owners' free/busy windows, and everything the agents receive, go to Anthropic.
 - Peer notes can carry prompt injection. They can steer a plan but cannot get an action past Isabelle.
 - The cryptography has not been independently reviewed and is not production code.
 
@@ -491,7 +496,7 @@ What it does not protect (the dashboard says so too):
 
 - Windows 11 on this machine. Rust 1.97.1 through `scripts/setup.ps1`, which downloads rustup and the toolchain into `.tooling/`.
 - Isabelle2025-2 for Windows (`Isabelle2025-2.exe`, a self-extracting archive) into `.tooling/isabelle/` (D29). The Isabelle site notes that the app has no developer signature, so Windows may warn on first run, and that Windows Defender can block external provers; this demo uses none. The site publishes no checksum, so `scripts/setup-demo.ps1` pins the size and SHA-256 of the archive approved on 2026-10-18. It downloads over HTTPS from the TUM mirror, because the site's own link redirects to plain HTTP.
-- Ollama for Windows and one model (several GB).
+- Ollama for Windows and the three Phase 1 models (about 8 GB), for optional local runs.
 - Your Anthropic API key and workspace ID in a git-ignored `.env` file at the repository root (Q25, Q26).
 - New crates, with versions pinned when added: an async runtime (tokio), an HTTP server and client (axum, and reqwest with rustls), serde, CBOR (ciborium or minicbor, with deterministic-encoding test vectors), COSE (coset), Ed25519 (ed25519-dalek), Noise (snow), XChaCha20-Poly1305 (chacha20poly1305), SHA-256 (sha2), Windows Credential Manager (keyring), and tracing.
 
@@ -515,7 +520,7 @@ Per-run state, public keys, logs and audit files go to `.local/demo/`, which is 
 | # | Criterion |
 |---|---|
 | A1 | `fabric-demo up` starts every component on this machine and prints the dashboard URL; `fabric-demo down` stops them. |
-| A2 | The happy path completes with Ollama for Alice and Claude for Bob. The meeting appears in both calendars, and every executed action in the audit log has a permit theorem and a token. |
+| A2 | The happy path completes with Claude for both agents. The meeting appears in both calendars, and every executed action in the audit log has a permit theorem and a token. A run with Ollama for one agent starts and is checked the same way; its plan quality is not a criterion (Q27). |
 | A3 | Each denial switch produces the expected rejection: rule name and condition for Isabelle denials, the token error for misuse. The run then recovers or stops cleanly. |
 | A4 | No agent-facing response contains an event title or event ID. An automated test uses fixtures with marker titles. |
 | A5 | The relay capture contains no plaintext candidate times, notes or names. An automated test searches the frames for fixture markers. |
@@ -529,10 +534,10 @@ Per-run state, public keys, logs and audit files go to `.local/demo/`, which is 
 
 | # | Risk | Mitigation |
 |---|---|---|
-| R1 | Driving Isabelle on Windows through its bundled Cygwin from Rust: process control, and Windows versus Cygwin paths for `master_dir`. | Spike T1.1 runs first. If it fails, options such as running Isabelle in WSL2 come back to you for a decision. |
-| R2 | Checks are too slow for a smooth demo. | Batched screening (D8). If still slow, `by eval` (D7) comes back to you for a decision. |
-| R3 | A small local model on a 4 GB GPU cannot produce valid plans reliably. | Spike T1.2 measures it. Options: a simpler prompt, fewer alternatives, or a larger model on the CPU (slower); you decide. |
-| R4 | Schema support differs between Ollama and Claude, for example `anyOf` for the action union, or structured outputs together with fallbacks. | Spikes T1.2 and T1.3 use the real schema. |
+| R1 | Driving Isabelle on Windows through its bundled Cygwin from Rust: process control, and Windows versus Cygwin paths for `master_dir`. | Resolved in Phase 1: it works, with `/cygdrive/c/...` paths and a `shutdown` after every session. |
+| R2 | Checks are too slow for a smooth demo. | Resolved in Phase 1: about 1 s per action and 1.5 s per screening batch. |
+| R3 | A small local model on a 4 GB GPU cannot produce valid plans reliably. | Confirmed in Phase 1 (2–4 of 10 turns correct). Both agents use Claude by default (Q27); local runs stay optional. |
+| R4 | Schema support differs between Ollama and Claude, for example `anyOf` for the action union, or structured outputs together with fallbacks. | Resolved in Phase 1: both accept the schema; property order matters (section 10.1). |
 | R5 | A CBOR library does not encode deterministically as required. | Test vectors in T3.1. |
 | R6 | Scope: this is a large build. | Phase gates G1–G3 let you stop or re-scope early. |
 
@@ -540,7 +545,7 @@ Per-run state, public keys, logs and audit files go to `.local/demo/`, which is 
 
 You approved this task list on 2026-10-18, including the Phase 0 downloads and installs. "Needs" marks steps that download software, spend money, or need something from you. Sizes are relative to each other: S small, M medium, L large.
 
-### Phase 0 — Setup
+### Phase 0 — Setup (done 2026-10-18)
 
 | Task | Work | Size | Needs |
 |---|---|---|---|
@@ -550,7 +555,7 @@ You approved this task list on 2026-10-18, including the Phase 0 downloads and i
 | T0.4 | Install Ollama for Windows and pull 2–3 candidate models for the spike. | S | install, several GB |
 | T0.5 | The git-ignored `.env` file holds `ANTHROPIC_API_KEY` (you paste it) and `ANTHROPIC_WORKSPACE_ID`. | — | you |
 
-### Phase 1 — Spikes, then gate G1
+### Phase 1 — Spikes, then gate G1 (done 2026-10-18; results in `spikes/phase1/RESULTS.md`)
 
 | Task | Work | Size | Needs |
 |---|---|---|---|
@@ -620,7 +625,7 @@ You approved this task list on 2026-10-18, including the Phase 0 downloads and i
 | Task | Work | Size | Needs |
 |---|---|---|---|
 | T9.1 | Automated acceptance tests A3–A7 with scripted planners. | M | |
-| T9.2 | Live rehearsal with Ollama and Claude; record the transcript and timings, and fix what it finds. | M | small API spend |
+| T9.2 | Live rehearsal with Claude for both agents, plus one run with Ollama for one agent; record the transcripts and timings, and fix what they find. | M | small API spend |
 | T9.3 | README section and docs updates; `scripts/verify.ps1` clean; existing CI still green. | S | |
 | G3 | You run the demo. | | your run |
 
