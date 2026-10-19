@@ -1,6 +1,6 @@
 # Fabric Policy Demo — Isabelle-Gated Calendar Agents
 
-**Status:** approved on 2026-10-18; version 1.4 records gates G1 and G2, the Phase 3 token format and the Phase 4 calendar API. Phases 0–4 are done.
+**Status:** approved on 2026-10-18; version 1.5 records gates G1 and G2, the Phase 3 token format, the Phase 4 calendar API and the Phase 5 wire protocol. Phases 0–5 are done.
 
 **Prepared:** 2026-10-18
 
@@ -191,6 +191,23 @@ Phase 4 settled the details. `fabric-demo calendar --config <file>` runs the ser
 
 - **Policy gate.** Accepts `screen(plans)` and `authorize(action)` from its own agent. Builds the context from its own records: the owner's request, the negotiation state reported by the gateway, verified consent records, round counts, the demo clock and the parameters. Renders the context and the actions as HOL terms, runs the check on Isabelle (section 8.4), and returns verdicts; for `authorize` it also mints a token. It records the check theory, Isabelle's messages, timings and the verdict in the audit log.
 - **Messaging gateway.** Holds the person's X25519 Noise static key and Ed25519 identity key. It opens a Noise session through the relay only with a valid `Handshake` token, and sends a message only with a valid `Send…` token whose argument digest matches that exact message. It signs outgoing messages, decrypts and verifies incoming ones, tracks the negotiation state, and delivers inbound messages to its agent.
+  - **Agent API** (Phase 5; `fabric-demo host --config <file>` runs the gateway for now):
+    - `POST /v1/gateway/handshake` takes a `handshake` action and answers `{"link": "calling" | "connected"}`.
+    - `POST /v1/gateway/send` takes a send action and answers `{"sent": "<type>"}`.
+    - Both need a token, as at the calendar service.
+    - `GET /v1/gateway/inbox?after=n&wait_ms=m` returns the deliveries after `n`. `GET /v1/gateway/status` returns the link (`idle`, `calling`, `ringing` or `connected`) and the negotiation. Both need `Authorization: Bearer <agent secret>`, a per-run secret. Inbound messages need no token (D19).
+  - **Refusals beyond the token reasons:**
+    - 400: `malformed_request`, `wrong_endpoint`, and `unknown_peer` for a handshake with anyone but the configured peer.
+    - 409: `no_session`, `already_connected`, `call_pending`, and `out_of_turn`.
+    - 502: `relay_failed`.
+    - None of them uses up the token.
+  - **`out_of_turn`.** When an action runs, the gateway checks the protocol rules again: the active negotiation, not closed, the role, the round, and answers or decisions in order. A message may have arrived since Isabelle checked the action.
+  - **Deliveries** are numbered events:
+    - `peer_calling`, `session_established` and `peer_key_mismatch`.
+    - `message`, carrying the verified message.
+    - `protocol_error`, for a frame or message that broke the rules. It changes nothing.
+  - **Checks on incoming messages.** The gateway checks each one before it changes the negotiation: the sender and recipient, the active negotiation (the invitee adopts the ID from the first proposal), the round, distinct candidate IDs, and answers that cover the candidates in order.
+  - **Negotiation state.** The gateway keeps the policy gate's negotiation record: ID, role, round, candidates and mutual options. Before the invitee learns the ID, the record uses the placeholder `none`. The coordinator's host opens its negotiation with a fresh ID such as `n-3f2a9c1d`.
 - **Consent signer.** When the owner clicks yes or no in the dashboard, it signs a consent record with the identity key and stores it. When the agent sends its decision, the gateway attaches the signed records.
 - Keys live in Windows Credential Manager. Each person has three keys: `gate` (Ed25519, signs tokens), `identity` (Ed25519, signs messages and consent records) and `noise` (X25519, the Noise static key). Each is a generic credential named `fabric-demo/<person>/<key>`, persisted for this computer only, so it never roams to other machines. The launcher creates missing keys on its first run.
 - The launcher writes both people's public keys to the key directory `.local/demo/keys.json` (format `fabric-demo-keys-v1`, lowercase hex), and every process reads its peers' keys from there. Readers refuse unknown fields, malformed or weak Ed25519 keys, and person IDs that break the identifier rule.
@@ -206,6 +223,12 @@ Phase 4 settled the details. `fabric-demo calendar --config <file>` runs the ser
 
 - FIFO mailboxes keyed by random 128-bit IDs, one inbox per person, set in the per-run configuration. `POST /v1/mailboxes/{id}` appends a frame; `GET /v1/mailboxes/{id}?after=n` long-polls.
 - Keeps frames in memory for 10 minutes and logs only mailbox ID, size and time.
+- Phase 5 details (`fabric-demo relay --config <file>`):
+  - A post answers `{"seq": n}`.
+  - A poll answers `{"frames": [{"seq", "at_ms", "frame": "<hex>"}]}`, oldest first. With `wait_ms=m` it waits up to `m` milliseconds for a frame, at most 25 seconds.
+  - Reading removes nothing; each reader keeps its own position.
+  - Unknown mailboxes get 404. Frames are at most about 64 KiB.
+  - Each audit line holds exactly `at_ms`, `component`, `mailbox`, `seq` and `bytes`.
 
 ### 5.5 Isabelle server (shared)
 
@@ -478,6 +501,19 @@ Handshake details: Alice's agent obtains a `Handshake(Bob)` token, and her gatew
 
 Messages travel as COSE_Sign1-signed CBOR inside Noise transport frames, in order, through FIFO mailboxes.
 
+Phase 5 settled the wire format (`crates/fabric-wire`):
+
+- **Frames** are deterministic CBOR and carry no names, keys or times:
+  - `[1, session, noise]` is the caller's first IK message.
+  - `[2, session, noise]` is the answer.
+  - `[3, session, nonce, noise]` is a transport message.
+
+  The session is 8 random bytes that the caller picks.
+- **Noise.** `Noise_IK_25519_ChaChaPoly_BLAKE2s` with the prologue `fabric-demo-noise-v1` and empty handshake payloads. Transport messages use explicit nonces (Noise's stateless transport mode). A receiver accepts only nonces above the last one, so a replayed or reordered frame is refused, and a frame that never arrived does not break the session.
+- **Messages** are `{from, to, negotiation, sent_at_ms, body}`. The body is `propose`, `respond`, `decide` (with a list of signed consent records, filled in Phase 7) or `close`. Each is signed as a COSE_Sign1 with the external data `fabric-message-v1`. Tokens sign no external data, and consent records will use `fabric-consent-v1`, so a signature for one use can never pass for another.
+- **Simultaneous calls.** If both agents call at once, the side with the lower Noise public key keeps its call, and the other gateway answers it, because its agent has already asked for a session.
+- **Stale and replayed calls.** A call that goes unanswered for 30 seconds may be replaced. A replayed call, with a session ID already seen, is ignored. A new call from the peer replaces an open session, so the agent must answer again.
+
 ## 12. Consent
 
 - When mutual options exist, the dashboard shows each owner the options with Yes and No buttons and says what yes allows, for example: "Yes lets your agent add this exact meeting: Tue 12 Jan 2027, 14:00–14:30 UTC with Bob. This consent expires at 08:00 UTC tomorrow."
@@ -563,6 +599,9 @@ What it does not protect (the dashboard says so too):
   - `reqwest` 0.13 for the calendar client, without TLS for now; loopback needs none.
   - `tower` 0.5 for tests only.
   - Open for Phase 6: reqwest 0.13's default TLS is rustls on the aws-lc-rs provider, while the Phase 1 spike used rustls on ring. Phase 6 picks one for the Claude backend.
+- Phase 5 choices:
+  - `snow` 0.10 with only the BLAKE2s, ChaCha20-Poly1305, Curve25519 and getrandom resolvers. It runs without its `std` feature, because that feature would also pull in `ring`.
+  - The COSE_Sign1 code moved from the token module into `fabric_token::cose`, unchanged, so messages and consent records share it. The token layout test still passes byte for byte.
 
 Proposed layout:
 
@@ -671,12 +710,26 @@ Results:
   - A4: across every kind of agent request and refusal, no response body, header or audit record contains a title or event ID. This holds for marker fixtures and for the demo fixtures.
 - One test runs locally only: it starts the real `fabric-demo calendar` command twice. The second start decrypts the store with the key from Credential Manager (under the test prefix, deleted afterwards), and the added meeting is still there.
 
-### Phase 5 — Messaging
+### Phase 5 — Messaging (done 2026-10-19; you asked on 2026-10-19 for the remaining gates to be approved automatically)
 
 | Task | Work | Size | Needs |
 |---|---|---|---|
 | T5.1 | Relay: FIFO mailboxes, ciphertext-only logging, retention. | S | |
 | T5.2 | Messaging gateway: Noise IK through the relay, peer key check, token-gated handshake and send, signed messages, inbound delivery, negotiation state. | L | |
+
+Results:
+
+- New: `crates/fabric-wire` (frames, signed messages, Noise IK), the relay, and the trusted host's gateway with its agent client. The `relay` and `host` commands run them.
+- The relay tests check order, waiting reads, retention and metadata-only logs.
+- The gateway tests run two gateways through a real relay on loopback:
+  - A call answered only after the invitee's own handshake.
+  - A full round updates both negotiations.
+  - A caller with another key gets `peer_key_mismatch`.
+  - Simultaneous calls settle on one session, tested both ways round.
+  - Each kind of bad send is refused.
+  - Replayed, altered and forged frames change nothing.
+  - A5: no frame contains a note, a name, the negotiation ID, a candidate ID, or a candidate time, in CBOR, JSON, decimal or ISO form.
+- One test runs locally only: the real `relay` and two `host` processes, with keys in Credential Manager under the test prefix (deleted afterwards), connect and exchange a proposal.
 
 ### Phase 6 — Agents
 

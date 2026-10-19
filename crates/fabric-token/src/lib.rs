@@ -7,6 +7,7 @@
 //! possession of its key on every use.
 
 pub mod cbor;
+pub mod cose;
 pub mod digest;
 pub mod error;
 pub mod hex;

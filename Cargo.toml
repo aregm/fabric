@@ -5,6 +5,7 @@ members = [
     "crates/fabric-core",
     "crates/fabric-policy",
     "crates/fabric-token",
+    "crates/fabric-wire",
 ]
 default-members = ["apps/fabric-cli"]
 resolver = "3"

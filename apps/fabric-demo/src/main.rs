@@ -2,10 +2,13 @@ use std::error::Error;
 use std::path::Path;
 use std::process::ExitCode;
 
-use fabric_demo::calendar::{Calendar, CalendarConfig, bind, serve};
+use fabric_demo::calendar::{self, Calendar, CalendarConfig};
+use fabric_demo::host::{self, Host, HostConfig};
+use fabric_demo::net::bind_loopback;
+use fabric_demo::relay::{self, Relay, RelayConfig};
 use fabric_token::SecretStore;
 
-const USAGE: &str = "usage: fabric-demo calendar --config <file>";
+const USAGE: &str = "usage: fabric-demo <calendar | relay | host> --config <file>";
 
 fn main() -> ExitCode {
     match run() {
@@ -21,7 +24,9 @@ fn run() -> Result<(), Box<dyn Error>> {
     let arguments: Vec<String> = std::env::args().skip(1).collect();
     let arguments: Vec<&str> = arguments.iter().map(String::as_str).collect();
     match arguments.as_slice() {
-        ["calendar", "--config", path] => calendar(Path::new(path)),
+        ["calendar", "--config", path] => run_calendar(Path::new(path)),
+        ["relay", "--config", path] => run_relay(Path::new(path)),
+        ["host", "--config", path] => run_host(Path::new(path)),
         [] | ["help" | "--help" | "-h"] => {
             println!("{USAGE}");
             Ok(())
@@ -30,23 +35,53 @@ fn run() -> Result<(), Box<dyn Error>> {
     }
 }
 
+async fn ctrl_c() {
+    let _ = tokio::signal::ctrl_c().await;
+}
+
 /// Runs one person's calendar service until Ctrl+C.
-fn calendar(path: &Path) -> Result<(), Box<dyn Error>> {
+fn run_calendar(path: &Path) -> Result<(), Box<dyn Error>> {
     let config = CalendarConfig::read(path)?;
     let secrets = secret_store(&config.credential_prefix)?;
     let calendar = Calendar::from_config(&config, secrets.as_ref())?;
-    let runtime = tokio::runtime::Runtime::new()?;
-    runtime.block_on(async move {
-        let listener = bind(config.listen).await?;
+    tokio::runtime::Runtime::new()?.block_on(async move {
+        let listener = bind_loopback(config.listen).await?;
         println!(
             "{} listening on http://{}",
             calendar.component(),
             listener.local_addr()?
         );
-        let shutdown = async {
-            let _ = tokio::signal::ctrl_c().await;
-        };
-        serve(listener, calendar, shutdown).await?;
+        calendar::serve(listener, calendar, ctrl_c()).await?;
+        Ok::<(), Box<dyn Error>>(())
+    })
+}
+
+/// Runs the relay until Ctrl+C.
+fn run_relay(path: &Path) -> Result<(), Box<dyn Error>> {
+    let config = RelayConfig::read(path)?;
+    let relay = Relay::from_config(&config)?;
+    tokio::runtime::Runtime::new()?.block_on(async move {
+        let listener = bind_loopback(config.listen).await?;
+        println!("relay listening on http://{}", listener.local_addr()?);
+        relay::serve(listener, relay, ctrl_c()).await?;
+        Ok::<(), Box<dyn Error>>(())
+    })
+}
+
+/// Runs one person's trusted host until Ctrl+C.
+fn run_host(path: &Path) -> Result<(), Box<dyn Error>> {
+    let config = HostConfig::read(path)?;
+    let secrets = secret_store(&config.credential_prefix)?;
+    let host = Host::from_config(&config, secrets.as_ref())?;
+    tokio::runtime::Runtime::new()?.block_on(async move {
+        let listener = bind_loopback(config.listen).await?;
+        println!(
+            "host:{} listening on http://{}",
+            config.person,
+            listener.local_addr()?
+        );
+        tokio::spawn(host.gateway().clone().run_inbound());
+        host::serve(listener, host, ctrl_c()).await?;
         Ok::<(), Box<dyn Error>>(())
     })
 }

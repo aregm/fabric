@@ -26,14 +26,12 @@ use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use axum::Router;
 use axum::body::Bytes;
 use axum::extract::{DefaultBodyLimit, State};
-use axum::http::header::AUTHORIZATION;
 use axum::http::{HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Json, Response};
 use axum::routing::{get, post};
 use fabric_policy::Action;
 use fabric_token::{
-    KeyDirectory, Presentation, Reason, Rejection, ReplayCache, SecretStore, Service, Verifier,
-    VerifyingKey, hex, random, sha256,
+    KeyDirectory, ReplayCache, SecretStore, Service, Verifier, VerifyingKey, hex, random,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -42,15 +40,14 @@ use tokio::net::TcpListener;
 use super::fixtures;
 use super::freebusy::free_busy;
 use super::store::{AddedBy, Event, Store, StoreKey};
+pub use crate::api::TOKEN_SCHEME;
+use crate::api::{BearerSecret, Failure, check_secret, presentation};
 use crate::audit::AuditLog;
 use crate::clock::{Clock, ClockConfig, DemoClock};
+use crate::net::{bind_loopback, check_loopback};
 
-/// The `Authorization` scheme that carries a token presentation.
-pub const TOKEN_SCHEME: &str = "FabricToken";
 /// Request bodies are actions, which are small.
 const MAX_BODY_BYTES: usize = 16 * 1024;
-/// The shortest owner secret accepted, in characters.
-const MIN_OWNER_SECRET: usize = 32;
 
 /// One calendar service's settings, from the per-run configuration the launcher writes.
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -91,18 +88,8 @@ impl CalendarConfig {
 
     fn check(&self) -> Result<(), String> {
         fabric_policy::hol::identifier(&self.person).map_err(|error| error.to_string())?;
-        if !self.listen.ip().is_loopback() {
-            return Err(format!(
-                "the calendar service listens on loopback only, not {}",
-                self.listen
-            ));
-        }
-        if self.owner_secret.len() < MIN_OWNER_SECRET {
-            return Err(format!(
-                "the owner secret needs at least {MIN_OWNER_SECRET} characters"
-            ));
-        }
-        Ok(())
+        check_loopback(self.listen)?;
+        check_secret("owner secret", &self.owner_secret)
     }
 }
 
@@ -128,7 +115,7 @@ pub struct Calendar {
     replay: ReplayCache,
     store: Mutex<Store>,
     fixtures: Vec<Event>,
-    owner_secret_sha256: [u8; 32],
+    owner_secret: BearerSecret,
     clock: Arc<dyn Clock>,
     audit: AuditLog,
 }
@@ -143,7 +130,7 @@ impl Calendar {
             replay: ReplayCache::new(),
             store: Mutex::new(parts.store),
             fixtures: parts.fixtures,
-            owner_secret_sha256: sha256(parts.owner_secret.as_bytes()),
+            owner_secret: BearerSecret::new(&parts.owner_secret),
             clock: parts.clock,
             audit: parts.audit,
         })
@@ -319,21 +306,7 @@ impl Calendar {
     }
 
     fn check_owner(&self, headers: &HeaderMap) -> Result<(), Failure> {
-        let given = headers
-            .get(AUTHORIZATION)
-            .and_then(|value| value.to_str().ok())
-            .and_then(|value| value.strip_prefix("Bearer "))
-            .unwrap_or_default();
-        // Comparing digests keeps the comparison time independent of the secret.
-        if sha256(given.as_bytes()) == self.owner_secret_sha256 {
-            Ok(())
-        } else {
-            Err(Failure::new(
-                StatusCode::UNAUTHORIZED,
-                "owner_unauthorized",
-                "the owner API needs this run's owner secret",
-            ))
-        }
+        self.owner_secret.check(headers, "owner_unauthorized")
     }
 }
 
@@ -359,75 +332,8 @@ impl Endpoint {
     }
 }
 
-/// A refused request: an HTTP status and `{"error", "detail"}`.
-#[derive(Debug)]
-struct Failure {
-    status: StatusCode,
-    error: &'static str,
-    detail: String,
-}
-
-impl Failure {
-    fn new(status: StatusCode, error: &'static str, detail: impl Into<String>) -> Self {
-        Self {
-            status,
-            error,
-            detail: detail.into(),
-        }
-    }
-}
-
-impl From<Rejection> for Failure {
-    /// 401 when the token cannot be trusted at all, 403 when it is genuine but does not allow
-    /// this request.
-    fn from(rejection: Rejection) -> Self {
-        let status = match rejection.reason {
-            Reason::BadSignature | Reason::Expired | Reason::PopInvalid => StatusCode::UNAUTHORIZED,
-            Reason::WrongAudience | Reason::TokenReplayed | Reason::TokenArgumentMismatch => {
-                StatusCode::FORBIDDEN
-            }
-        };
-        Self::new(status, rejection.reason.name(), rejection.detail)
-    }
-}
-
-impl IntoResponse for Failure {
-    fn into_response(self) -> Response {
-        let body = json!({ "error": self.error, "detail": self.detail });
-        (self.status, Json(body)).into_response()
-    }
-}
-
 fn store_failed(error: impl std::fmt::Display) -> Failure {
-    Failure::new(
-        StatusCode::INTERNAL_SERVER_ERROR,
-        "store_failed",
-        error.to_string(),
-    )
-}
-
-/// Reads `Authorization: FabricToken <hex>`. A missing or unreadable token is a
-/// `bad_signature` (section 9).
-fn presentation(headers: &HeaderMap) -> Result<Presentation, Failure> {
-    let unreadable = |detail: &str| {
-        Failure::new(
-            StatusCode::UNAUTHORIZED,
-            Reason::BadSignature.name(),
-            detail.to_owned(),
-        )
-    };
-    let value = headers
-        .get(AUTHORIZATION)
-        .ok_or_else(|| unreadable("the request carries no token"))?
-        .to_str()
-        .map_err(|_| unreadable("the Authorization header is not ASCII"))?;
-    let encoded = value
-        .strip_prefix(TOKEN_SCHEME)
-        .and_then(|rest| rest.strip_prefix(' '))
-        .ok_or_else(|| unreadable("the Authorization scheme is not FabricToken"))?;
-    let bytes =
-        hex::decode(encoded.trim()).map_err(|_| unreadable("the token is not lowercase hex"))?;
-    Presentation::from_bytes(&bytes).map_err(|error| unreadable(&error.to_string()))
+    Failure::internal("store_failed", error)
 }
 
 fn event_id() -> Result<String, Failure> {
@@ -487,13 +393,7 @@ async fn owner_reset(State(calendar): State<Arc<Calendar>>, headers: HeaderMap) 
 
 /// Binds a loopback address; any other address is refused.
 pub async fn bind(address: SocketAddr) -> io::Result<TcpListener> {
-    if !address.ip().is_loopback() {
-        return Err(io::Error::new(
-            io::ErrorKind::InvalidInput,
-            format!("the calendar service listens on loopback only, not {address}"),
-        ));
-    }
-    TcpListener::bind(address).await
+    bind_loopback(address).await
 }
 
 /// Serves `calendar` on `listener` until `shutdown` completes.

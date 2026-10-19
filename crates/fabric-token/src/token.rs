@@ -7,11 +7,12 @@
 use std::collections::BTreeMap;
 use std::fmt;
 
-use ed25519_dalek::{Signature, Signer, SigningKey, VerifyingKey};
+use ed25519_dalek::{SigningKey, VerifyingKey};
 use fabric_policy::{Action, CheckKind, CheckReport};
 use serde::{Deserialize, Serialize};
 
 use crate::cbor::{self, CborError, Value, int};
+use crate::cose;
 use crate::digest::action_digest;
 use crate::error::TokenError;
 use crate::hex;
@@ -21,12 +22,6 @@ use crate::keys::random;
 pub const LIFETIME_SECONDS: i64 = 60;
 /// Longer tokens are refused before they are parsed.
 pub const MAX_TOKEN_BYTES: usize = 4_096;
-
-/// The CBOR tag of a COSE_Sign1 message.
-const COSE_SIGN1_TAG: u64 = 18;
-/// The protected header `{1: -19}`: algorithm Ed25519 (RFC 9864). The unprotected header is
-/// always empty, and the signature covers no external data.
-const PROTECTED: [u8; 3] = [0xa1, 0x01, 0x32];
 
 // Registered claim keys (RFC 8392 section 4; RFC 8747 section 3.1).
 const ISS: i64 = 1;
@@ -360,59 +355,9 @@ pub struct Minted {
     pub claims: Claims,
 }
 
-/// Signs `claims` as a tagged COSE_Sign1.
+/// Signs `claims` as a tagged COSE_Sign1. Tokens use no external data.
 fn seal(key: &SigningKey, claims: &Claims) -> Result<Vec<u8>, CborError> {
-    let payload = cbor::encode(&claims.to_value())?;
-    let signature = key.sign(&sig_structure(&payload)?);
-    cbor::encode(&Value::Tag(
-        COSE_SIGN1_TAG,
-        Box::new(Value::Array(vec![
-            Value::Bytes(PROTECTED.to_vec()),
-            Value::Map(Vec::new()),
-            Value::Bytes(payload),
-            Value::Bytes(signature.to_bytes().to_vec()),
-        ])),
-    ))
-}
-
-/// The bytes a COSE_Sign1 signature covers (RFC 9052 section 4.4).
-fn sig_structure(payload: &[u8]) -> Result<Vec<u8>, CborError> {
-    cbor::encode(&Value::Array(vec![
-        Value::Text("Signature1".to_owned()),
-        Value::Bytes(PROTECTED.to_vec()),
-        Value::Bytes(Vec::new()),
-        Value::Bytes(payload.to_vec()),
-    ]))
-}
-
-/// A token's payload and signature, after checking the envelope's exact shape.
-fn envelope(token: &[u8]) -> Result<(Vec<u8>, Signature), String> {
-    if token.len() > MAX_TOKEN_BYTES {
-        return Err(format!(
-            "the token has {} bytes; at most {MAX_TOKEN_BYTES}",
-            token.len()
-        ));
-    }
-    let value = cbor::decode(token).map_err(|error| format!("token: {error}"))?;
-    let Value::Tag(COSE_SIGN1_TAG, inner) = value else {
-        return Err("the token is not a tagged COSE_Sign1".to_owned());
-    };
-    let Value::Array(items) = *inner else {
-        return Err("the COSE_Sign1 is not an array".to_owned());
-    };
-    let [protected, unprotected, payload, signature] = <[Value; 4]>::try_from(items)
-        .map_err(|_| "the COSE_Sign1 does not have four items".to_owned())?;
-    if protected != Value::Bytes(PROTECTED.to_vec()) {
-        return Err("the protected header must be exactly {1: -19} (Ed25519)".to_owned());
-    }
-    if unprotected != Value::Map(Vec::new()) {
-        return Err("the unprotected header must be empty".to_owned());
-    }
-    let Value::Bytes(payload) = payload else {
-        return Err("the payload is not a byte string".to_owned());
-    };
-    let signature: [u8; 64] = bytes(signature, "the signature")?;
-    Ok((payload, Signature::from_bytes(&signature)))
+    cose::sign(key, &cbor::encode(&claims.to_value())?, b"")
 }
 
 fn claims_of(payload: &[u8]) -> Result<Claims, String> {
@@ -422,18 +367,13 @@ fn claims_of(payload: &[u8]) -> Result<Claims, String> {
 
 /// Checks the gate's signature and returns the claims.
 pub(crate) fn open(token: &[u8], gate_key: &VerifyingKey) -> Result<Claims, String> {
-    let (payload, signature) = envelope(token)?;
-    let message = sig_structure(&payload).map_err(|error| error.to_string())?;
-    gate_key
-        .verify_strict(&message, &signature)
-        .map_err(|_| "the signature does not verify with this gate's key".to_owned())?;
-    claims_of(&payload)
+    claims_of(&cose::verify(token, gate_key, b"", MAX_TOKEN_BYTES)?)
 }
 
 /// Reads a token's claims without checking its signature: for the agent that holds it, and
 /// for display.
 pub fn read_unverified(token: &[u8]) -> Result<Claims, TokenError> {
-    let (payload, _) = envelope(token).map_err(TokenError::Format)?;
+    let payload = cose::read_payload(token, MAX_TOKEN_BYTES).map_err(TokenError::Format)?;
     claims_of(&payload).map_err(TokenError::Format)
 }
 

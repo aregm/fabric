@@ -1,6 +1,12 @@
-//! The processes of the calendar demo (docs/isabelle-calendar-demo.md, section 5). Phase 4 adds
-//! the calendar service; the relay, trusted host, agents, dashboard and launcher follow.
+//! The processes of the calendar demo (docs/isabelle-calendar-demo.md, section 5): the calendar
+//! service (Phase 4), the relay and the trusted host's messaging gateway (Phase 5). The agents,
+//! dashboard and launcher follow.
 
+pub mod api;
 pub mod audit;
 pub mod calendar;
+pub mod client;
 pub mod clock;
+pub mod host;
+pub mod net;
+pub mod relay;
