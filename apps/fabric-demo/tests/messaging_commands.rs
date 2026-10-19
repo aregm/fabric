@@ -82,6 +82,7 @@ fn two_hosts_connect_through_the_relay_and_exchange_a_proposal() {
                 "inbox": inboxes[index],
                 "peer_inbox": inboxes[1 - index],
                 "agent_secret": secrets[index],
+                "owner_secret": secret(),
                 "clock": clock,
                 "audit_log": directory.join(format!("{person}-host.jsonl")),
                 "credential_prefix": PREFIX,

@@ -13,7 +13,7 @@ use axum::http::{Request, StatusCode};
 use fabric_demo::api::authorization;
 use fabric_demo::audit::AuditLog;
 use fabric_demo::clock::{Clock, ManualClock};
-use fabric_demo::host::{Event, Gateway, GatewayParts, Host, router};
+use fabric_demo::host::{Event, Gateway, GatewayParts, Host, HostParts, router};
 use fabric_demo::net::bind_loopback;
 use fabric_demo::relay::{Relay, RelayClient, new_mailbox, serve};
 use fabric_policy::time::parse_utc;
@@ -210,6 +210,18 @@ impl Side {
     fn link(&self) -> String {
         self.gateway().status().link
     }
+
+    /// The owner's answers on Tuesday and Thursday, signed by the consent signer.
+    fn answer(&self, tuesday: bool, thursday: bool) {
+        let expires = at("2027-01-12T08:00Z");
+        let gateway = self.gateway();
+        gateway
+            .record_consent("slot-tuesday-afternoon", tuesday, expires)
+            .unwrap();
+        gateway
+            .record_consent("slot-thursday-afternoon", thursday, expires)
+            .unwrap();
+    }
 }
 
 /// Runs a future that is ready at once.
@@ -292,7 +304,14 @@ impl Net {
             })
             .unwrap();
             Side {
-                host: Host::new(gateway, AGENT_SECRET),
+                host: Host::new(HostParts {
+                    gateway,
+                    policy: None,
+                    agent_secret: AGENT_SECRET.to_owned(),
+                    owner_secret: AGENT_SECRET.to_owned(),
+                    clock: clock.clone(),
+                    audit: AuditLog::disabled(),
+                }),
                 gate: me.minter(),
                 agent: BindingKey::from_bytes(&[agent; 32]),
                 clock: clock.clone(),
@@ -445,12 +464,25 @@ async fn a_round_reaches_the_other_agent_and_updates_both_negotiations() {
     assert_eq!(net.bob.gateway().policy_negotiation().mutual, mutual);
 
     for (side, other) in [(&net.alice, &net.bob), (&net.bob, &net.alice)] {
+        side.answer(false, true);
+        let differs = side.act(&decide(true, true)).await;
+        assert_eq!(
+            differs.error(),
+            "no_consent_record",
+            "the owner said no to Tuesday"
+        );
         assert_eq!(
             side.act(&decide(false, true)).await.json(),
             json!({ "sent": "decide" })
         );
         other.pump().await;
     }
+    assert_eq!(
+        net.alice.gateway().consent_facts().len(),
+        4,
+        "both owners' records"
+    );
+    assert_eq!(net.bob.gateway().consent_facts().len(), 4);
     let status = net.alice.gateway().status();
     assert_eq!(status.negotiation.received_decisions.len(), 2);
 
@@ -709,6 +741,7 @@ async fn the_relay_carries_only_ciphertext() {
     net.bob.pump().await;
     net.bob.act(&respond(notes[1])).await;
     net.alice.pump().await;
+    net.alice.answer(false, true);
     net.alice.act(&decide(false, true)).await;
     net.bob.pump().await;
     net.alice

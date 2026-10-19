@@ -13,7 +13,7 @@ fabric-token = { path = "../../crates/fabric-token" }
 fabric-wire = { path = "../../crates/fabric-wire" }
 reqwest = { version = "0.13", default-features = false }
 serde = { version = "1", features = ["derive"] }
-serde_json = "1"
+serde_json = { version = "1", features = ["preserve_order"] }
 tokio = { version = "1", features = ["macros", "net", "rt-multi-thread", "signal", "sync", "time"] }
 zeroize = "1"
 
@@ -26,3 +26,8 @@ workspace = true
 [[bin]]
 name = "fabric-demo"
 path = "src/main.rs"
+
+# The Claude backend needs HTTPS. Schannel is part of Windows, so nothing is compiled for it;
+# elsewhere the demo does not run (D28) and needs no TLS.
+[target.'cfg(windows)'.dependencies]
+reqwest = { version = "0.13", default-features = false, features = ["native-tls"] }

@@ -31,6 +31,22 @@ pub struct Server {
     pub password: String,
 }
 
+/// Where a running server listens, and its password. The demo's launcher starts one server
+/// and passes this privately to both policy gates (section 5.5).
+#[derive(Clone, Eq, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct ServerAddress {
+    pub port: u16,
+    pub password: String,
+}
+
+impl std::fmt::Debug for ServerAddress {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ServerAddress")
+            .field("port", &self.port)
+            .finish_non_exhaustive()
+    }
+}
+
 impl Server {
     /// Starts (or finds) the named server and reads its address and password.
     pub fn start(options: &ServerOptions<'_>) -> Result<Self, PolicyError> {
@@ -99,6 +115,24 @@ impl Server {
                 )))
             }
         }
+    }
+
+    #[must_use]
+    pub fn address(&self) -> ServerAddress {
+        ServerAddress {
+            port: self.port,
+            password: self.password.clone(),
+        }
+    }
+
+    /// Asks the server to shut down and waits for it, killing it after 20 seconds.
+    pub fn shutdown(&mut self) {
+        if let Ok((mut connection, _)) =
+            Connection::open(self.port, &self.password, Duration::from_secs(10))
+        {
+            let _ = connection.call("shutdown", &Value::Null);
+        }
+        self.wait_or_kill(Duration::from_secs(20));
     }
 
     /// Waits for the process to exit after `shutdown`, killing it after `timeout`.

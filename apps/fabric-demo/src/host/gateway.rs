@@ -18,11 +18,13 @@ use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use std::time::Duration;
 
 use axum::http::StatusCode;
-use fabric_policy::{Action, Negotiation, Role};
+use fabric_policy::{Action, Consent, Decision, Negotiation, Role};
 use fabric_token::{
     Presentation, PublicKeys, ReplayCache, Service, SigningKey, Verifier, VerifyingKey, hex, random,
 };
-use fabric_wire::{Call, Frame, IncomingCall, Message, Session, SessionId};
+use fabric_wire::{
+    Body, Call, ConsentRecord, Frame, IncomingCall, Message, Session, SessionId, SignedRecord,
+};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use tokio::sync::Notify;
@@ -130,6 +132,16 @@ struct State {
     relay_cursor: u64,
     /// Sessions of calls already handled, so a replayed call is ignored.
     seen_calls: HashSet<SessionId>,
+    /// The owner's signed answers for this round.
+    own_consents: Vec<OwnConsent>,
+    /// The peer's verified answers for this round.
+    peer_consents: Vec<ConsentRecord>,
+}
+
+struct OwnConsent {
+    candidate_id: String,
+    record: ConsentRecord,
+    signed: SignedRecord,
 }
 
 /// What a handshake did, kept until the relay has taken its frame.
@@ -176,6 +188,8 @@ impl Gateway {
                 deliveries: Vec::new(),
                 relay_cursor: 0,
                 seen_calls: HashSet::new(),
+                own_consents: Vec::new(),
+                peer_consents: Vec::new(),
             }),
             person: parts.person,
             peer: parts.peer,
@@ -200,6 +214,11 @@ impl Gateway {
     #[must_use]
     pub fn component(&self) -> &str {
         self.verifier.audience()
+    }
+
+    #[must_use]
+    pub fn person(&self) -> &str {
+        &self.person
     }
 
     #[must_use]
@@ -388,15 +407,15 @@ impl Gateway {
         body: &[u8],
     ) -> Result<Value, Failure> {
         let now_ms = self.clock.now_ms();
-        // Phase 7 attaches the owner's signed consent records to a decision here.
-        let Some(message) =
-            Message::for_action(action, &self.person, &self.peer, now_ms, Vec::new())
-        else {
-            return Err(Failure::bad_request(
+        let wrong_endpoint = || {
+            Failure::bad_request(
                 "wrong_endpoint",
                 format!("the send endpoint runs send actions, not {}", action.kind()),
-            ));
+            )
         };
+        if Message::for_action(action, &self.person, &self.peer, now_ms, Vec::new()).is_none() {
+            return Err(wrong_endpoint());
+        }
         let _outbound = self.outbound.lock().await;
         let accepted = self.verifier.check(
             presentation,
@@ -406,9 +425,17 @@ impl Gateway {
             &self.replay,
         )?;
 
-        let frame = {
+        let (frame, message) = {
             let mut guard = self.state();
             let state = &mut *guard;
+            // A decision carries the owner's signed record for each option (section 12).
+            let consents = match action {
+                Action::SendDecide { decisions, .. } => attach(&state.own_consents, decisions)
+                    .map_err(|detail| Failure::conflict("no_consent_record", detail))?,
+                _ => Vec::new(),
+            };
+            let message = Message::for_action(action, &self.person, &self.peer, now_ms, consents)
+                .ok_or_else(wrong_endpoint)?;
             let Link::Connected(session) = &mut state.link else {
                 return Err(Failure::conflict(
                     "no_session",
@@ -422,16 +449,25 @@ impl Gateway {
             let signed = message
                 .sign(&self.identity)
                 .map_err(|error| Failure::internal("wire_failed", error))?;
-            session
+            let frame = session
                 .seal(&signed)
-                .map_err(|error| Failure::internal("noise_failed", error))?
+                .map_err(|error| Failure::internal("noise_failed", error))?;
+            (frame, message)
         };
         // If the relay fails, nothing is recorded and the token is released. The nonce the frame
         // used is simply skipped.
         self.post(&frame).await?;
         let claims = accepted.claims.clone();
         accepted.commit();
-        self.state().negotiation.record_outgoing(&message);
+        {
+            let mut state = self.state();
+            let round = state.negotiation.round;
+            state.negotiation.record_outgoing(&message);
+            if state.negotiation.round != round {
+                state.own_consents.clear();
+                state.peer_consents.clear();
+            }
+        }
         self.record(json!({
             "kind": "send",
             "outcome": "executed",
@@ -591,12 +627,210 @@ impl Gateway {
             let detail = format!("a message from {} to {}", message.from, message.to);
             return self.deliver(state, Event::ProtocolError { detail });
         }
+        // A decision must carry the peer's owner's signed record for each option.
+        let peer_records = match &message.body {
+            Body::Decide {
+                decisions,
+                consents,
+                ..
+            } => match self.check_peer_consents(state, &message, decisions, consents) {
+                Ok(records) => Some(records),
+                Err(detail) => {
+                    let detail = format!("a refused decide: {detail}");
+                    return self.deliver(state, Event::ProtocolError { detail });
+                }
+            },
+            _ => None,
+        };
+        let round = state.negotiation.round;
         match state.negotiation.receive(&message) {
-            Ok(()) => self.deliver(state, Event::Message { message }),
+            Ok(()) => {
+                if state.negotiation.round != round {
+                    state.own_consents.clear();
+                    state.peer_consents.clear();
+                }
+                if let Some(records) = peer_records {
+                    state.peer_consents = records;
+                }
+                self.deliver(state, Event::Message { message });
+            }
             Err(detail) => {
                 let detail = format!("a refused {}: {detail}", message.body.kind());
                 self.deliver(state, Event::ProtocolError { detail });
             }
         }
     }
+
+    /// Checks the consent records in the peer's decision: one per decision, signed with the
+    /// peer's identity key, for exactly that candidate of the active negotiation, and saying
+    /// the same as the decision.
+    fn check_peer_consents(
+        &self,
+        state: &State,
+        message: &Message,
+        decisions: &[Decision],
+        consents: &[SignedRecord],
+    ) -> Result<Vec<ConsentRecord>, String> {
+        if consents.len() != decisions.len() {
+            return Err(format!(
+                "{} decisions but {} consent records",
+                decisions.len(),
+                consents.len()
+            ));
+        }
+        let participants = self.participants();
+        decisions
+            .iter()
+            .zip(consents)
+            .map(|(decision, signed)| {
+                let record = ConsentRecord::verify(signed, &self.peer_identity)
+                    .map_err(|error| error.to_string())?;
+                let candidate = state
+                    .negotiation
+                    .candidates
+                    .iter()
+                    .find(|candidate| candidate.id == decision.candidate_id)
+                    .ok_or_else(|| format!("no candidate {}", decision.candidate_id))?;
+                let matches = record.signer == self.peer
+                    && record.negotiation == message.negotiation
+                    && record.start_ms == candidate.start_ms
+                    && record.length_ms == candidate.length_ms
+                    && record.yes == decision.accept
+                    && record.participants == participants;
+                if matches {
+                    Ok(record)
+                } else {
+                    Err(format!(
+                        "the record for {} does not match the decision",
+                        decision.candidate_id
+                    ))
+                }
+            })
+            .collect()
+    }
+
+    /// Both people, in alphabetical order, as consent records name them.
+    fn participants(&self) -> Vec<String> {
+        let mut participants = vec![self.person.clone(), self.peer.clone()];
+        participants.sort();
+        participants
+    }
+
+    /// The consent signer (section 5.2): signs the owner's yes or no to a mutual option of this
+    /// round with the identity key and keeps it for the decision. A new answer replaces the old
+    /// one until the decisions are sent.
+    pub fn record_consent(
+        &self,
+        candidate_id: &str,
+        yes: bool,
+        expires_ms: i64,
+    ) -> Result<ConsentRecord, Failure> {
+        let mut state = self.state();
+        let negotiation = &state.negotiation;
+        let refuse = |detail: String| Failure::conflict("no_such_option", detail);
+        if negotiation.closed.is_some() {
+            return Err(refuse("the negotiation is closed".to_owned()));
+        }
+        if !negotiation.sent_decisions.is_empty() {
+            return Err(Failure::conflict(
+                "decisions_sent",
+                "this round's decisions were already sent",
+            ));
+        }
+        if !negotiation.mutual.iter().any(|id| id == candidate_id) {
+            return Err(refuse(format!(
+                "{candidate_id} is not a mutual option of round {}",
+                negotiation.round
+            )));
+        }
+        let (Some(id), Some(candidate)) = (
+            negotiation.id.clone(),
+            negotiation
+                .candidates
+                .iter()
+                .find(|candidate| candidate.id == candidate_id),
+        ) else {
+            return Err(refuse(format!("{candidate_id} is unknown")));
+        };
+        let record = ConsentRecord {
+            signer: self.person.clone(),
+            negotiation: id,
+            start_ms: candidate.start_ms,
+            length_ms: candidate.length_ms,
+            participants: self.participants(),
+            yes,
+            issued_at_ms: self.clock.now_ms(),
+            expires_ms,
+        };
+        let signed = record
+            .sign(&self.identity)
+            .map_err(|error| Failure::internal("wire_failed", error))?;
+        state
+            .own_consents
+            .retain(|consent| consent.candidate_id != candidate_id);
+        state.own_consents.push(OwnConsent {
+            candidate_id: candidate_id.to_owned(),
+            record: record.clone(),
+            signed,
+        });
+        drop(state);
+        self.record(json!({ "kind": "consent", "candidate": candidate_id, "record": record }));
+        Ok(record)
+    }
+
+    /// The owner's answers so far, in mutual-option order.
+    #[must_use]
+    pub fn owner_decisions(&self) -> Vec<Decision> {
+        let state = self.state();
+        state
+            .negotiation
+            .mutual
+            .iter()
+            .filter_map(|id| {
+                state
+                    .own_consents
+                    .iter()
+                    .find(|consent| &consent.candidate_id == id)
+                    .map(|consent| Decision {
+                        candidate_id: id.clone(),
+                        accept: consent.record.yes,
+                    })
+            })
+            .collect()
+    }
+
+    /// The consent facts for the policy gate: the owner's records and the peer's verified ones.
+    #[must_use]
+    pub fn consent_facts(&self) -> Vec<Consent> {
+        let state = self.state();
+        state
+            .own_consents
+            .iter()
+            .map(|consent| consent.record.fact())
+            .chain(state.peer_consents.iter().map(ConsentRecord::fact))
+            .collect()
+    }
+}
+
+/// The owner's signed records for `decisions`, in order.
+fn attach(own: &[OwnConsent], decisions: &[Decision]) -> Result<Vec<SignedRecord>, String> {
+    decisions
+        .iter()
+        .map(|decision| {
+            let consent = own
+                .iter()
+                .find(|consent| consent.candidate_id == decision.candidate_id)
+                .ok_or_else(|| {
+                    format!("the owner has not answered on {}", decision.candidate_id)
+                })?;
+            if consent.record.yes == decision.accept {
+                Ok(consent.signed.clone())
+            } else {
+                Err(format!(
+                    "the decision on {} differs from the owner's answer",
+                    decision.candidate_id
+                ))
+            }
+        })
+        .collect()
 }

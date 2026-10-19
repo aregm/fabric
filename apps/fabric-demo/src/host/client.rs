@@ -3,11 +3,12 @@
 use std::time::Duration;
 
 use fabric_policy::Action;
-use fabric_token::BindingKey;
+use fabric_token::{BindingKey, VerifyingKey, hex};
 use serde::Deserialize;
-use serde_json::Value;
+use serde_json::{Value, json};
 
 use super::gateway::{Delivery, MAX_WAIT_MS, Status};
+use super::{AgentState, AuthorizeAnswer, ScreenAnswer};
 use crate::client::{CallError, TIMEOUT, post_action, read};
 
 #[derive(Deserialize)]
@@ -80,5 +81,62 @@ impl HostClient {
             .bearer_auth(&self.agent_secret)
             .timeout(TIMEOUT);
         read(request.send().await?).await
+    }
+
+    /// Registers the agent's token-binding key.
+    pub async fn register(&self, binding_key: &VerifyingKey) -> Result<(), CallError> {
+        let request = self
+            .http
+            .post(format!("{}/v1/agent/register", self.base))
+            .bearer_auth(&self.agent_secret)
+            .json_body(&json!({ "binding_key": hex::encode(binding_key.as_bytes()) }))
+            .timeout(TIMEOUT);
+        let _: Value = read(request.send().await?).await?;
+        Ok(())
+    }
+
+    pub async fn state(&self) -> Result<AgentState, CallError> {
+        let request = self
+            .http
+            .get(format!("{}/v1/agent/state", self.base))
+            .bearer_auth(&self.agent_secret)
+            .timeout(TIMEOUT);
+        read(request.send().await?).await
+    }
+
+    /// Screens actions; Isabelle checks them all in one theory.
+    pub async fn screen(&self, actions: &[Action]) -> Result<ScreenAnswer, CallError> {
+        let request = self
+            .http
+            .post(format!("{}/v1/gate/screen", self.base))
+            .bearer_auth(&self.agent_secret)
+            .json_body(&json!({ "actions": actions }))
+            .timeout(CHECK_TIMEOUT);
+        read(request.send().await?).await
+    }
+
+    /// The execution-time check of one action, with its token when permitted.
+    pub async fn authorize(&self, action: &Action) -> Result<AuthorizeAnswer, CallError> {
+        let request = self
+            .http
+            .post(format!("{}/v1/gate/authorize", self.base))
+            .bearer_auth(&self.agent_secret)
+            .json_body(&json!({ "action": action }))
+            .timeout(CHECK_TIMEOUT);
+        read(request.send().await?).await
+    }
+}
+
+/// Isabelle's watchdog is 30 seconds per check (section 8.3); the call allows a little more.
+const CHECK_TIMEOUT: Duration = Duration::from_secs(45);
+
+trait JsonBody {
+    fn json_body(self, value: &Value) -> Self;
+}
+
+impl JsonBody for reqwest::RequestBuilder {
+    fn json_body(self, value: &Value) -> Self {
+        self.header(reqwest::header::CONTENT_TYPE, "application/json")
+            .body(value.to_string())
     }
 }

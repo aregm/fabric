@@ -21,3 +21,4 @@ pub use model::{
     Action, Answer, Candidate, CloseReason, Consent, Context, Decision, Negotiation, Parameters,
     Request, Role, Rule,
 };
+pub use server::ServerAddress;

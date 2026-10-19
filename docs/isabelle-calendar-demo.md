@@ -1,6 +1,6 @@
 # Fabric Policy Demo — Isabelle-Gated Calendar Agents
 
-**Status:** approved on 2026-10-18; version 1.5 records gates G1 and G2, the Phase 3 token format, the Phase 4 calendar API and the Phase 5 wire protocol. Phases 0–5 are done.
+**Status:** approved on 2026-10-18; version 1.6 records gates G1 and G2 and the choices of Phases 3–7. Phases 0–7 are done.
 
 **Prepared:** 2026-10-18
 
@@ -216,6 +216,22 @@ Phase 4 settled the details. `fabric-demo calendar --config <file>` runs the ser
 
 - Holds its LLM backend configuration and credential (an Anthropic API key, or none when it runs on Ollama), and an Ed25519 token-binding key generated at start. The launcher registers the public half with the trusted host.
 - Runs the turn loop in section 10.1.
+- Phase 6 details (`fabric-demo agent --config <file>`):
+  - At start the agent makes its binding key and registers it with `POST /v1/agent/register`, authenticated by the per-run agent secret that only the agent and its host know. Tokens are bound to the key registered last.
+  - **Host endpoints.** The agent reads `GET /v1/agent/state` (the owner's request with its preference, the link, the negotiation, and the owner's decisions). It checks actions with `POST /v1/gate/screen` and `POST /v1/gate/authorize`, which answer with verdicts, the proof ID and, for a permit, the token. The host builds the context itself (D14), including the consent facts.
+  - **When it takes a turn.** A turn starts when the owner files a request or decides, when a delivery arrives, or right after a read (D3, at most 3 such turns in a row). The agent's own actions never start a turn.
+  - **What a turn does.**
+    - The agent screens every action of every plan in one check (D8).
+    - It runs the first plan whose actions are all permitted, authorizing and tokening one action at a time.
+    - A denial at either point goes back to the planner, with the rule and condition, for at most 3 re-plans (D5).
+    - Then the agent gives up until the next outside event, and logs `gave_up`.
+  - **Fault switches** (Q24) are hooks in the runtime, each firing once on the next turn:
+    - `over_broad_read` widens every read 30 days past the window and adds a `read_event_details` plan.
+    - `too_many_candidates` pads proposals to 5.
+    - `write_without_consent` puts an `add_meeting` first in the chosen plan.
+    - `replay_token` sends a request again with its used token.
+    - `token_for_different_slot` presents a calendar token for the action moved by 15 minutes, then gets a fresh token.
+  - **Audit.** The agent logs each turn's input, plans, planner usage, screening verdicts, authorizations and results.
 - Sees: its owner's request, the free/busy results it fetched with tokens, inbound messages (the peer's candidates, answers, notes and decisions), its own past actions, and denial reasons.
 - Never sees: the calendar store, event titles, any key other than its own token-binding key, or the other person's data beyond the messages it receives.
 
@@ -236,6 +252,7 @@ Phase 4 settled the details. `fabric-demo calendar --config <file>` runs the ser
 - `scripts/setup-demo.ps1` installs it into `.tooling/isabelle/` (D29), and `scripts/isabelle.ps1` runs its tools. Both set `USER_HOME`, so Isabelle's per-user directory, including session heaps, stays in `.tooling/isabelle/home` instead of your Windows profile.
 - Sessions start with `headless_consolidate_delay=0.1`; the 2.0 s default adds about a second to every check (G1). On Windows, `session_stop` always reports return code 130, so the launcher treats that as normal and always sends `shutdown` afterwards; otherwise the server keeps running.
 - The launcher starts `isabelle server -n fabric-demo`, reads the address and password from the server's first output line, and passes them privately to the two policy gates.
+- Phase 6 details. Each host's gate connects to that server with `Gate::connect` and opens its own session. Stopping a gate stops only its session; the launcher alone shuts the server down.
 - One session, `Fabric_Policy`, built from `isabelle/Fabric_Policy` with HOL as its parent. The gates use the server's `session_start`, `use_theories` and `purge_theories` commands over its TCP protocol.
 
 ### 5.6 Dashboard (shared demo observer)
@@ -436,6 +453,11 @@ The schema lists properties in a fixed order: `kind` first in every action, and 
 - The runtime checks `stop_reason` before reading the content (`refusal` and `max_tokens` fail the attempt), and records which model served the turn and the token usage in the audit log.
 - Credential: `ANTHROPIC_API_KEY` and `ANTHROPIC_WORKSPACE_ID`, read from the git-ignored `.env` file at the repository root (Q25, Q26). The key is never written to the repository, logs or audit trail.
 - Cost: Phase 1 measured 3,000–3,900 input and 400–1,000 output tokens per turn, about 3 cents. With both agents on Claude, a happy-path run is roughly 8–10 turns, about 30 cents.
+- Phase 6:
+  - The backend sends the turn input as pretty-printed JSON in one user message.
+  - HTTPS is Windows' Schannel, through reqwest's `native-tls` feature, on Windows only. rustls would need aws-lc-rs or ring, both C and assembly builds, which risk the Windows ARM64 CI runner. Schannel is part of Windows.
+  - A first-turn smoke test returned three valid plans in 5.7 s, with 3,420 input and 435 output tokens.
+- **Plans to actions.** The runtime fills in the active negotiation ID and gives each proposed candidate the ID `c<round>-<position>`. A plan with no actions means "wait". A plan whose time is unreadable is skipped, and the error goes back to the planner.
 
 ### 10.3 Ollama backend (optional, per run)
 
@@ -445,6 +467,15 @@ The schema lists properties in a fixed order: `kind` first in every action, and 
 ### 10.4 Scripted planner (tests only)
 
 Deterministic plans read from fixture scripts, for automated tests. It is never used in the live demo.
+
+Phase 6 built it in two forms:
+
+- **Fixed:** plan sets returned in order, for the runtime's unit tests.
+- **Rules:** a fixed procedure that follows the section 14 scenario, for the end-to-end tests:
+  - Read the window, then call.
+  - Propose the first three free half hours in weekday working hours.
+  - Answer from free/busy.
+  - Send the owner's decisions as given, add the meeting both owners accepted, and, for the coordinator, close the negotiation as agreed.
 
 ### 10.5 What leaves the machine
 
@@ -519,6 +550,19 @@ Phase 5 settled the wire format (`crates/fabric-wire`):
 - When mutual options exist, the dashboard shows each owner the options with Yes and No buttons and says what yes allows, for example: "Yes lets your agent add this exact meeting: Tue 12 Jan 2027, 14:00–14:30 UTC with Bob. This consent expires at 08:00 UTC tomorrow."
 - A click makes the consent signer sign a record (section 6). The agent learns the decision but never holds the signature key. `SendDecide` carries the signed records, which the gateway attaches.
 - The peer's gateway verifies each signature against the configured identity key. The peer's gate then holds both owners' records as facts, and the `consent` rule can be proven for `AddMeeting`.
+- Phase 7 details (`crates/fabric-wire/src/consent.rs`):
+  - **Record.** `{signer, negotiation, start_ms, length_ms, participants, yes, issued_at_ms, expires_ms}`, with both participants in alphabetical order. It is signed as a COSE_Sign1 with the external data `fabric-consent-v1`. A consent expires with the owner's own request.
+  - **Recording.** `POST /v1/owner/consent {"candidate_id", "yes"}` signs a record only for a mutual option of the current round and before this round's decisions were sent. A new answer replaces the old one until then.
+  - **Sending.** The gateway attaches the owner's records in decision order. A decision that differs from the owner's record is refused with `no_consent_record`; Isabelle's `well_formed` also checks this.
+  - **Receiving.** The peer's gateway accepts a decision only if it carries one record per decision and each record:
+    - verifies with the peer's identity key;
+    - names the peer and the active negotiation;
+    - matches that candidate's start and length;
+    - says the same as the decision;
+    - lists both participants.
+
+    Otherwise the decision is a `protocol_error`.
+  - **Facts.** The policy gate's context holds the owner's records and the peer's verified records. Records are cleared when a new round starts.
 
 ## 13. Dashboard
 
@@ -598,7 +642,10 @@ What it does not protect (the dashboard says so too):
   - `chacha20poly1305` 0.10, the release `snow` 0.10 uses.
   - `reqwest` 0.13 for the calendar client, without TLS for now; loopback needs none.
   - `tower` 0.5 for tests only.
-  - Open for Phase 6: reqwest 0.13's default TLS is rustls on the aws-lc-rs provider, while the Phase 1 spike used rustls on ring. Phase 6 picks one for the Claude backend.
+  - Settled in Phase 6: reqwest 0.13's default TLS is rustls on the aws-lc-rs provider, and the Phase 1 spike used rustls on ring. The Claude backend uses Schannel instead (section 10.2).
+- Phase 6 choices:
+  - The app's `serde_json` has the `preserve_order` feature, so the plan schema keeps its property order (G1). A test checks the order.
+  - The agent's calls to its host and calendar go through a `World` trait. The runtime's unit tests replace it with replayed answers, so CI tests the control flow without Isabelle; the verdicts there are test inputs, not policy. The live tests use Isabelle.
 - Phase 5 choices:
   - `snow` 0.10 with only the BLAKE2s, ChaCha20-Poly1305, Curve25519 and getrandom resolvers. It runs without its `std` feature, because that feature would also pull in `ring`.
   - The COSE_Sign1 code moved from the token module into `fabric_token::cose`, unchanged, so messages and consent records share it. The token layout test still passes byte for byte.
@@ -731,7 +778,7 @@ Results:
   - A5: no frame contains a note, a name, the negotiation ID, a candidate ID, or a candidate time, in CBOR, JSON, decimal or ISO form.
 - One test runs locally only: the real `relay` and two `host` processes, with keys in Credential Manager under the test prefix (deleted afterwards), connect and exchange a proposal.
 
-### Phase 6 — Agents
+### Phase 6 — Agents (done 2026-10-19)
 
 | Task | Work | Size | Needs |
 |---|---|---|---|
@@ -740,12 +787,36 @@ Results:
 | T6.3 | Ollama backend. | S | |
 | T6.4 | Scripted planner for tests. | S | |
 
-### Phase 7 — Consent and the end-to-end flow
+Results:
+
+- New: `fabric-demo agent`, with its runtime, plan schema and conversion, turn input, Claude, Ollama and scripted planners, and fault hooks.
+- The host gained its policy gate on the shared Isabelle server, the owner's request, agent registration, and screening and authorizing with tokens. The policy crate gained `Gate::connect`.
+- CI tests cover the runtime's control flow with replayed answers:
+  - The first fully permitted plan runs.
+  - A read ends the plan.
+  - Re-planning stops at three.
+  - A denial while authorizing re-plans.
+  - Wait plans, turn triggers, and every fault switch.
+- Local tests, both passed:
+  - With live Isabelle, scripted agents on both sides reached the scenario's mutual options (Tuesday 14:00 and Thursday 14:30). Isabelle also denied an over-broad read (`view_details_never`, `read_window`), and the agent recovered.
+  - One Claude turn returned valid plans.
+
+### Phase 7 — Consent and the end-to-end flow (done 2026-10-19)
 
 | Task | Work | Size | Needs |
 |---|---|---|---|
 | T7.1 | Consent records: owner click to signed record, attached to `SendDecide`, verified on receipt, and turned into facts for `AddMeeting`. | M | |
 | T7.2 | End-to-end negotiation with scripted planners on both sides through live Isabelle. | M | |
+
+Results:
+
+- Consent records live in `fabric-wire`. The gateway is the consent signer, attaches records to decisions and verifies the peer's, and gives the gate both sides' facts.
+- The end-to-end test runs the section 14 happy path with scripted planners and live Isabelle, in 47 s:
+  - Bob says no to Tuesday, and both say yes to Thursday.
+  - Both calendars get the Thursday 14:30 meeting, with the proof ID of the check that permitted it.
+  - Both sides close as agreed.
+  - Every token in the hosts' logs comes from a permit with the same proof ID (A2).
+  - The run took 21 Isabelle checks, 0.95 s each on average and 1.8 s at most.
 
 ### Phase 8 — Dashboard and launcher
 

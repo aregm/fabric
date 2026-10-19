@@ -14,7 +14,7 @@ use sha2::{Digest, Sha256};
 use crate::check::{self, ActionVerdict, NodeReport};
 use crate::error::PolicyError;
 use crate::model::{Action, Context, Parameters};
-use crate::server::{Connection, Server, ServerOptions, platform_path};
+use crate::server::{Connection, Server, ServerAddress, ServerOptions, platform_path};
 
 const SESSION: &str = "Fabric_Policy";
 const SESSION_START_TIMEOUT: Duration = Duration::from_secs(600);
@@ -80,7 +80,8 @@ pub struct CheckReport {
 /// A running Isabelle session with the policy loaded.
 pub struct Gate {
     config: GateConfig,
-    server: Server,
+    /// The server, when this gate started it.
+    server: Option<Server>,
     connection: Connection,
     session_id: String,
     master_dir: String,
@@ -93,7 +94,7 @@ pub struct Gate {
 
 impl Gate {
     /// Starts the Isabelle server, opens a `Fabric_Policy` session (building it if needed),
-    /// and reads the policy parameters from the theory.
+    /// and reads the policy parameters from the theory. Stopping the gate stops the server.
     pub fn start(config: GateConfig) -> Result<Self, PolicyError> {
         let valid_name = !config.server_name.is_empty()
             && config
@@ -106,29 +107,43 @@ impl Gate {
                 config.server_name
             )));
         }
-        let policy = fs::read(config.policy_dir.join(SESSION).join("Fabric_Policy.thy"))?;
-        let policy_sha256 = hex(Sha256::digest(&policy).as_slice());
         fs::create_dir_all(&config.work_dir)?;
-
         let mut server = Server::start(&ServerOptions {
             isabelle_home: &config.isabelle_home,
             user_home: &config.user_home,
             name: &config.server_name,
             log_dir: &config.work_dir,
         })?;
+        match Connection::open(server.port, &server.password, SESSION_START_TIMEOUT) {
+            Ok((connection, greeting)) => Self::open(config, Some(server), connection, &greeting),
+            Err(error) => {
+                server.wait_or_kill(Duration::ZERO);
+                Err(error)
+            }
+        }
+    }
+
+    /// Connects to a server someone else started, and opens a session on it. Stopping the gate
+    /// stops only that session, so other gates on the server keep working (D9).
+    pub fn connect(config: GateConfig, address: &ServerAddress) -> Result<Self, PolicyError> {
+        fs::create_dir_all(&config.work_dir)?;
         let (connection, greeting) =
-            match Connection::open(server.port, &server.password, SESSION_START_TIMEOUT) {
-                Ok(opened) => opened,
-                Err(error) => {
-                    server.wait_or_kill(Duration::ZERO);
-                    return Err(error);
-                }
-            };
+            Connection::open(address.port, &address.password, SESSION_START_TIMEOUT)?;
+        Self::open(config, None, connection, &greeting)
+    }
+
+    fn open(
+        config: GateConfig,
+        server: Option<Server>,
+        connection: Connection,
+        greeting: &Value,
+    ) -> Result<Self, PolicyError> {
+        let policy = fs::read(config.policy_dir.join(SESSION).join("Fabric_Policy.thy"))?;
+        let policy_sha256 = hex(Sha256::digest(&policy).as_slice());
         let isabelle = greeting["isabelle_name"]
             .as_str()
             .map_or_else(|| greeting.to_string(), str::to_owned);
         let master_dir = platform_path(&config.work_dir);
-
         let mut gate = Self {
             config,
             server,
@@ -297,8 +312,9 @@ impl Gate {
         })
     }
 
-    /// Stops the session and the server. `session_stop` always reports return code 130 on
-    /// Windows, so its result is ignored and `shutdown` is always sent (gate G1).
+    /// Stops the session, and the server too when this gate started it. `session_stop` always
+    /// reports return code 130 on Windows, so its result is ignored and an owned server always
+    /// gets `shutdown` (gate G1).
     pub fn stop(&mut self) -> Result<(), PolicyError> {
         if self.stopped {
             return Ok(());
@@ -309,8 +325,11 @@ impl Gate {
                 .connection
                 .task("session_stop", &json!({"session_id": self.session_id}));
         }
+        let Some(server) = &mut self.server else {
+            return Ok(());
+        };
         let shutdown = self.connection.call("shutdown", &Value::Null);
-        self.server.wait_or_kill(Duration::from_secs(20));
+        server.wait_or_kill(Duration::from_secs(20));
         shutdown.map(|_| ())
     }
 }
