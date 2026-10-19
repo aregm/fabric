@@ -168,6 +168,174 @@ async fn scripted_agents_book_the_meeting_both_owners_accepted() {
     }
 }
 
+fn records(demo: &live::Demo, name: &str) -> Vec<serde_json::Value> {
+    std::fs::read_to_string(demo.directory.join(format!("{name}.jsonl")))
+        .unwrap()
+        .lines()
+        .map(|line| serde_json::from_str(line).unwrap())
+        .collect()
+}
+
+/// The rules Isabelle denied, when screening and when authorizing, from an agent's audit log.
+fn denied_rules(log: &[serde_json::Value]) -> Vec<String> {
+    let screening = log
+        .iter()
+        .filter(|record| record["kind"] == "plans")
+        .flat_map(|record| {
+            record["screen"]["verdicts"]
+                .as_array()
+                .cloned()
+                .unwrap_or_default()
+        });
+    let authorizing = log
+        .iter()
+        .filter(|record| record["kind"] == "authorize")
+        .map(|record| record["verdict"].clone());
+    screening
+        .chain(authorizing)
+        .flat_map(|verdict| verdict["denials"].as_array().cloned().unwrap_or_default())
+        .filter_map(|denial| denial["rule"].as_str().map(str::to_owned))
+        .collect()
+}
+
+/// The `fault` records: which switch fired, and where or with what refusal.
+fn fired(log: &[serde_json::Value]) -> Vec<(String, String)> {
+    log.iter()
+        .filter(|record| record["kind"] == "fault")
+        .map(|record| {
+            let result = record["stage"].as_str().or(record["outcome"].as_str());
+            (
+                record["fault"].as_str().unwrap_or_default().to_owned(),
+                result.unwrap_or("not refused").to_owned(),
+            )
+        })
+        .collect()
+}
+
+/// Acceptance criterion A3: every fault switch is denied by Isabelle or refused by a service,
+/// and the run still books the meeting both owners accepted.
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "needs Isabelle from scripts/setup-demo.ps1; run with --ignored"]
+async fn every_fault_switch_is_refused_and_the_run_still_books_the_meeting() {
+    let demo = live::Demo::start("live-faults").await;
+    demo.file_requests();
+    let mut alice = demo
+        .alice
+        .agent(
+            live::scripted(),
+            demo.audit("alice-agent"),
+            demo.clock.clone(),
+        )
+        .await;
+    let mut bob = demo
+        .bob
+        .agent(
+            live::scripted(),
+            demo.audit("bob-agent"),
+            demo.clock.clone(),
+        )
+        .await;
+    // Each switch waits for its action: Alice's first read and her proposal, and Bob's first
+    // calendar action.
+    alice.inject(Faults {
+        over_broad_read: true,
+        too_many_candidates: true,
+        ..Faults::default()
+    });
+    bob.inject(Faults {
+        token_for_different_slot: true,
+        ..Faults::default()
+    });
+    let mutual = live::run_until(&mut alice, &mut bob, Duration::from_secs(300), || {
+        !demo.alice.host.agent_state().negotiation.mutual.is_empty()
+            && !demo.bob.host.agent_state().negotiation.mutual.is_empty()
+    })
+    .await;
+    assert!(mutual, "the negotiation reached the mutual options");
+    assert_eq!(
+        demo.alice.host.agent_state().negotiation.mutual,
+        ["c1-1", "c1-3"]
+    );
+
+    // Both wait for their owners' decisions: Alice's decision, and Bob's next request.
+    alice.inject(Faults {
+        write_without_consent: true,
+        ..Faults::default()
+    });
+    bob.inject(Faults {
+        replay_token: true,
+        ..Faults::default()
+    });
+    demo.alice.host.consent("c1-1", true).unwrap();
+    demo.alice.host.consent("c1-3", true).unwrap();
+    demo.bob.host.consent("c1-1", false).unwrap();
+    demo.bob.host.consent("c1-3", true).unwrap();
+    let booked = |person: &live::Person| {
+        person.owner_events().into_iter().any(|event| {
+            event.added_by.is_some() && format_utc(event.start_ms) == "2027-01-14T14:30Z"
+        })
+    };
+    let done = live::run_until(&mut alice, &mut bob, Duration::from_secs(300), || {
+        booked(&demo.alice)
+            && booked(&demo.bob)
+            && demo.alice.host.agent_state().negotiation.closed.is_some()
+            && demo.bob.host.agent_state().negotiation.closed.is_some()
+    })
+    .await;
+    assert!(done, "the run recovered and booked the meeting");
+    assert_eq!(
+        alice.pending_faults(),
+        Faults::default(),
+        "every switch fired"
+    );
+    assert_eq!(
+        bob.pending_faults(),
+        Faults::default(),
+        "every switch fired"
+    );
+
+    let alice_log = records(&demo, "alice-agent");
+    let bob_log = records(&demo, "bob-agent");
+    assert_eq!(
+        fired(&alice_log),
+        [
+            ("over_broad_read".to_owned(), "screening".to_owned()),
+            ("too_many_candidates".to_owned(), "screening".to_owned()),
+            ("write_without_consent".to_owned(), "authorize".to_owned()),
+        ]
+    );
+    assert_eq!(
+        fired(&bob_log),
+        [
+            (
+                "token_for_different_slot".to_owned(),
+                "token_argument_mismatch".to_owned()
+            ),
+            ("replay_token".to_owned(), "token_replayed".to_owned()),
+        ]
+    );
+    let denied = denied_rules(&alice_log);
+    for rule in ["view_details_never", "read_window", "cand_count", "consent"] {
+        assert!(
+            denied.iter().any(|denied| denied == rule),
+            "{rule} in {denied:?}"
+        );
+    }
+    assert!(
+        denied_rules(&bob_log).is_empty(),
+        "Bob's switches never reach Isabelle"
+    );
+
+    // The services logged the misuse they refused.
+    let refused = |name: &str, error: &str| {
+        records(&demo, name)
+            .iter()
+            .any(|record| record["outcome"] == "refused" && record["error"] == error)
+    };
+    assert!(refused("bob-calendar", "token_argument_mismatch"));
+    assert!(refused("bob-gateway", "token_replayed"));
+}
+
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs Isabelle from scripts/setup-demo.ps1; run with --ignored"]
 async fn isabelle_denies_an_over_broad_read_and_the_agent_recovers() {

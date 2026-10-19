@@ -1,6 +1,6 @@
 # Fabric Policy Demo — Isabelle-Gated Calendar Agents
 
-**Status:** approved on 2026-10-18; version 1.7 records gates G1 and G2 and the choices of Phases 3–8. Phases 0–8 are done.
+**Status:** approved on 2026-10-18; version 1.8 records gates G1 and G2, the choices of Phases 3–8, and the Phase 9 results. Phases 0–9 are done; gate G3, your own run, is next.
 
 **Prepared:** 2026-10-18
 
@@ -883,7 +883,7 @@ Results:
   - The gateway did not log refusals. The page showed calendar requests as relay frames, and meeting lengths as dates.
 - The demo's keys are now in Credential Manager, as `fabric-demo/alice/…` and `fabric-demo/bob/…`. `fabric-demo reset-keys` deletes them.
 
-### Phase 9 — Verification and docs, then gate G3
+### Phase 9 — Verification and docs, then gate G3 (T9.1–T9.3 done 2026-10-19)
 
 | Task | Work | Size | Needs |
 |---|---|---|---|
@@ -891,6 +891,39 @@ Results:
 | T9.2 | Live rehearsal with Claude for both agents, plus one run with Ollama for one agent; record the transcripts and timings, and fix what they find. | M | small API spend |
 | T9.3 | README section and docs updates; `scripts/verify.ps1` clean; existing CI still green. | S | |
 | G3 | You run the demo. | | your run |
+
+Results:
+
+| # | Evidence | Status |
+|---|---|---|
+| A1 | `up` and `down`, run directly and through `scripts/demo.ps1`, in every rehearsal. `down` stops every process in about 2 seconds. | Met |
+| A2 | The Claude rehearsal below booked the meeting in both calendars. All 11 executed actions were authorized by a permit, and each token carries that permit's proof ID. The Ollama run started, and every action in it was checked the same way. | Met |
+| A3 | The new local test `every_fault_switch_is_refused_and_the_run_still_books_the_meeting` arms all five switches against live Isabelle. Each is denied (`view_details_never`, `read_window`, `cand_count`, `consent`) or refused (`token_argument_mismatch`, `token_replayed`), and the meeting is still booked. It takes 55 s. | Met |
+| A4 | The calendar tests (Phase 4), which run in CI. | Met |
+| A5 | The messaging tests (Phase 5), which run in CI. | Met |
+| A6 | The token tests (Phase 3), which run in CI. | Met |
+| A7 | The policy corpus against live Isabelle, run locally in 36 s. | Met |
+| A8 | The sanity lemmas are proven whenever the session builds (Phase 2). | Met |
+| A9 | `scripts/verify.ps1` passes. | Met |
+| A10 | Every check's time is in its report. In the Claude rehearsal, screening took 2.2 s on average and 3.8 s at most, under the 5-second target. | Met |
+
+- **Local tests.** All 9 local-only tests pass:
+  - the four live negotiations, A3 included;
+  - the Isabelle corpus, and the token minted from a permit;
+  - both Credential Manager round trips, and the two multi-process runs.
+  - The two planner tests (one Claude turn, one Ollama turn) were not rerun, because the rehearsals cover both backends.
+- **Live rehearsal with Claude for both agents.** The section 14 happy path, through the dashboard:
+  - Alice's agent proposed Tuesday 14:00, Wednesday 15:00 and Thursday 14:30, with a note about her preference. Bob's agent answered yes, no, yes.
+  - Both agents sent the owners' decisions exactly as given. They booked Thursday 14:30 in both calendars, and Alice's agent closed as agreed. No plan was denied and none failed.
+  - 13 Claude calls (6 for Alice, 7 for Bob) used 63,059 input and 4,918 output tokens, 5.2 s per call on average and 8.3 s at most. That is about $0.35 at the rates Phase 1 used ($4 and $20 per million tokens).
+  - 19 Isabelle checks: screening took 2.2 s on average (3.8 s at most), and authorizing 1.0 s (2.0 s at most). The relay carried 7 frames. From the first request to the last action took 88 s, including the owners' clicks.
+- **Live run with Ollama (`granite4.1:3b`) for Alice and Claude for Bob.** It started, and every action was checked the same way. But it stalled, as Phase 1 predicted (R3):
+  - Alice's agent read free/busy four times, at 15.5 s per turn, and never answered Bob's call.
+  - Its rationale named proposals while its only action was another read.
+  - Bob's two Claude calls cost about $0.05.
+- **Live spend in Phase 9:** about $0.40 in all.
+- The transcripts, with each agent's turn inputs, plans and verdicts, are in `.local/rehearsal/`, which git ignores.
+- **Not verified: CI.** The branch has no upstream and was not pushed, so GitHub Actions has not run on it.
 
 ## 20. Out of scope
 
