@@ -18,6 +18,7 @@ pub mod verify;
 
 pub use cbor::CborError;
 pub use digest::{action_digest, sha256};
+pub use ed25519_dalek::{SigningKey, VerifyingKey};
 pub use error::TokenError;
 #[cfg(windows)]
 pub use keys::CredentialStore;

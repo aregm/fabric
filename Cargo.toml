@@ -1,6 +1,7 @@
 [workspace]
 members = [
     "apps/fabric-cli",
+    "apps/fabric-demo",
     "crates/fabric-core",
     "crates/fabric-policy",
     "crates/fabric-token",

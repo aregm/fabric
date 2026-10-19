@@ -1,6 +1,6 @@
 # Fabric Policy Demo — Isabelle-Gated Calendar Agents
 
-**Status:** approved on 2026-10-18; version 1.3 records gates G1 and G2 and the Phase 3 token format. Phases 0–3 are done.
+**Status:** approved on 2026-10-18; version 1.4 records gates G1 and G2, the Phase 3 token format and the Phase 4 calendar API. Phases 0–4 are done.
 
 **Prepared:** 2026-10-18
 
@@ -164,6 +164,29 @@ Trust levels:
 - Owner API, used only by the dashboard and authenticated by a per-run owner secret: list events with titles, reset fixtures.
 - Before acting, it checks the token: signed by this person's policy gate key, addressed to this service, argument digest matches the request, not expired, nonce unused, and a valid proof-of-possession signature by the agent key named in the token. The nonce is consumed only when the action executes.
 
+Phase 4 settled the details. `fabric-demo calendar --config <file>` runs the service.
+
+| Request | Body | Answer |
+|---|---|---|
+| `POST /v1/freebusy` | the `read_free_busy` action, as JSON | 200 `{"busy": [{"start_ms", "end_ms"}, ...]}` |
+| `POST /v1/meetings` | the `add_meeting` action, as JSON | 201 `{"start_ms", "length_ms"}` |
+| `GET /v1/owner/events` | none | 200 `{"person", "events": [...]}`, with titles |
+| `POST /v1/owner/reset` | none | 200 `{"events": <count>}`; the fixtures are restored |
+| `GET /v1/health` | none | 200 `{"service": "calendar:<person>"}` |
+
+- **Token.** The agent sends `Authorization: FabricToken <lowercase hex of the presentation>` (section 9). The body is exactly the action the token was minted for, so the service checks the token against the action it parses from the body.
+- **Refusals.** A refusal is `{"error", "detail"}`:
+  - 401 when the token cannot be trusted: `bad_signature` (also for a missing or unreadable token), `expired` or `pop_invalid`.
+  - 403 when the token is genuine but does not allow this request: `wrong_audience`, `token_replayed` or `token_argument_mismatch`.
+  - 400 `malformed_request` when the body is not an action, and 400 `wrong_endpoint` when the action belongs to the other endpoint (or to none, as `read_event_details` does). Both come before the token check, so they never use up a token.
+  - 500 `store_failed` when the meeting cannot be written. The token is released and can be retried.
+  - Bodies are limited to 16 KiB.
+- **Owner API.** It needs `Authorization: Bearer <owner secret>`, the per-run secret of at least 32 characters. Anything else gets 401 `owner_unauthorized`.
+- **Meetings.** A meeting gets the title "Meeting with *peer* (Fabric)", where *peer* is the configured name of the other person. It also records the negotiation, proof ID and token nonce, which only the owner sees.
+- **Store file.** The magic `FABCAL01`, a random 24-byte nonce, then the XChaCha20-Poly1305 ciphertext of the deterministic CBOR of the events. The associated data binds the file to its person. The 32-byte key is the generic credential `fabric-demo/<person>/store`, which the service creates on first start. If the key cannot open an existing file, the service refuses to start instead of overwriting the calendar.
+- **Audit.** Every agent and owner request appends a JSON line to the service's audit log: the endpoint, the action kind, the outcome, the refusal reason, and for executed actions the token's claims. Records never contain titles or event IDs.
+- **Addresses.** The service binds only loopback addresses. Port 0 picks a free port, which the service prints.
+
 ### 5.2 Trusted host (one per person)
 
 - **Policy gate.** Accepts `screen(plans)` and `authorize(action)` from its own agent. Builds the context from its own records: the owner's request, the negotiation state reported by the gateway, verified consent records, round counts, the demo clock and the parameters. Renders the context and the actions as HOL terms, runs the check on Isabelle (section 8.4), and returns verdicts; for `authorize` it also mints a token. It records the check theory, Isabelle's messages, timings and the verdict in the audit log.
@@ -203,7 +226,7 @@ See section 13. Components post audit events to it with a per-run secret, and it
 
 ## 6. Data model
 
-Times are UTC milliseconds since the Unix epoch and durations are seconds, as in `fabric-core`. Intervals are half-open, `[start, end)`. The JSON the LLM reads and writes uses ISO 8601 UTC strings; the runtime converts them.
+Times are UTC milliseconds since the Unix epoch, and durations are milliseconds too, as in the policy theory. (`fabric-core` keeps durations in seconds; the demo does not use its types.) Intervals are half-open, `[start, end)`. The JSON the LLM reads and writes uses ISO 8601 UTC strings; the runtime converts them.
 
 | Record | Fields | Notes |
 |---|---|---|
@@ -476,9 +499,13 @@ The page is plain HTML, CSS and JS with no build step, updated over Server-Sent 
 
 ## 14. Scenario and expected runs
 
-- Demo clock: Monday 11 January 2027, 08:00 UTC (configurable, D22).
+- Demo clock: Monday 11 January 2027, 08:00 UTC (configurable, D22). The clock starts there when the run starts and then advances in real time, so tokens still expire. The launcher records the start and the wall-clock instant of the run in the per-run configuration, and every process derives the demo time from them, so all processes agree.
 - Requests: Alice and Bob each ask for 30 minutes with the other within 7 days; the negotiation expires after 24 hours.
 - Fixtures: chosen so that Alice's free/busy suggests three afternoon candidates, Bob is busy for one of them, and round 1 yields two mutual options. Exact times live in `demo/fixtures/` and are reviewed at gate G3.
+  - The Phase 4 draft: in weekday working hours (09:00–17:00 UTC) within the window, Alice is free for exactly three half hours: Tuesday 14:00, Wednesday 15:00 and Thursday 14:30.
+  - Bob is busy on Wednesday 15:00–16:00, so the mutual options are Tuesday 14:00 and Thursday 14:30.
+  - Both calendars include events outside working hours and events that are not busy. Some titles are sensitive ("Dentist appointment", "Doctor appointment"), so a leak would be obvious.
+  - A test checks these properties.
 
 Expected happy path:
 
@@ -530,6 +557,12 @@ What it does not protect (the dashboard says so too):
   - COSE_Sign1 is built directly on that encoder, since the header is fixed. `coset` 0.4 is a test-only dependency that checks the tokens read as standard CWTs.
   - Credential Manager access uses `keyring-core` 1 and `windows-native-keyring-store` 1, on Windows only. The `keyring` crate's version 4 split the platform stores into these separate crates.
   - Also added: `getrandom` 0.3 for keys and nonces, and `zeroize` to wipe secrets.
+- Phase 4 choices:
+  - `tokio` 1.53 and `axum` 0.8, with only axum's HTTP/1, JSON and tokio features.
+  - `chacha20poly1305` 0.10, the release `snow` 0.10 uses.
+  - `reqwest` 0.13 for the calendar client, without TLS for now; loopback needs none.
+  - `tower` 0.5 for tests only.
+  - Open for Phase 6: reqwest 0.13's default TLS is rustls on the aws-lc-rs provider, while the Phase 1 spike used rustls on ring. Phase 6 picks one for the Claude backend.
 
 Proposed layout:
 
@@ -538,7 +571,7 @@ crates/fabric-core/        unchanged, still dependency-free
 crates/fabric-policy/      actions, context, HOL rendering, Isabelle client, verdicts
 crates/fabric-token/       deterministic CBOR, CWT/COSE tokens, proof of possession, replay cache, keys
 crates/fabric-wire/        protocol messages, signatures, Noise sessions
-apps/fabric-demo/          one binary: up, down, relay, host, calendar, agent, dashboard
+apps/fabric-demo/          one binary: up, down, relay, host, calendar, agent, dashboard (Phase 4 added calendar)
 isabelle/Fabric_Policy/    ROOT, Fabric_Policy.thy
 demo/                      config, fixtures, prompts, dashboard assets
 scripts/                   setup-demo.ps1 (Isabelle), demo.ps1 (start)
@@ -605,7 +638,7 @@ You approved this task list on 2026-10-18, including the Phase 0 downloads and i
 | T2.4 | Policy test corpus with permit and deny cases for every rule, run against live Isabelle, plus renderer tests against hand-written theories. | M | |
 | G2 | You review the Isabelle rules and the test corpus. | | your review |
 
-### Phase 3 — Tokens and keys (done 2026-10-18)
+### Phase 3 — Tokens and keys (done 2026-10-18; you approved its choices as made, sections 9 and 16)
 
 | Task | Work | Size | Needs |
 |---|---|---|---|
@@ -620,12 +653,23 @@ Results:
   - A Credential Manager round trip under the test prefix `fabric-demo-test/`, which deletes its entries afterwards.
   - A live Isabelle check: a permitted `ReadFreeBusy` (0.7 s) mints a 275-byte token that the calendar verifier accepts once. An over-broad read is denied by `read_window`, and minting from that denial is refused.
 
-### Phase 4 — Calendar service
+### Phase 4 — Calendar service (done 2026-10-18)
 
 | Task | Work | Size | Needs |
 |---|---|---|---|
 | T4.1 | Encrypted store, fixture loader and owner API. | S | |
 | T4.2 | Token-gated `ReadFreeBusy` and `AddMeeting`, with tests for misuse and for "no titles reach agents". | M | |
+
+Results:
+
+- `apps/fabric-demo` has the calendar service, its client, the demo clock, the audit log, and draft fixtures in `demo/fixtures/`. Section 5.1 describes the API.
+- Its 13 tests run everywhere, CI included:
+  - Each kind of misuse is refused without running the action, and a failed write releases the token.
+  - The store opens only with its own key and person.
+  - Fixtures are checked, and the demo fixtures set up the section 14 scenario.
+  - A round trip over a real loopback socket.
+  - A4: across every kind of agent request and refusal, no response body, header or audit record contains a title or event ID. This holds for marker fixtures and for the demo fixtures.
+- One test runs locally only: it starts the real `fabric-demo calendar` command twice. The second start decrypts the store with the key from Credential Manager (under the test prefix, deleted afterwards), and the added meeting is still there.
 
 ### Phase 5 — Messaging
 
