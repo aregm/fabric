@@ -1,6 +1,6 @@
 # Fabric Policy Demo — Isabelle-Gated Calendar Agents
 
-**Status:** approved on 2026-10-18; version 1.1 records gate G1. Phases 0 and 1 are done; Phase 2 is in progress.
+**Status:** approved on 2026-10-18; version 1.3 records gates G1 and G2 and the Phase 3 token format. Phases 0–3 are done.
 
 **Prepared:** 2026-10-18
 
@@ -54,6 +54,7 @@ The demo shows the semantics and how they are enforced. It is not production sec
 | Q25 | Anthropic API key | Read from a git-ignored `.env` file at the repository root, which you create. An `ANTHROPIC_API_KEY` already set in the environment takes precedence. |
 | Q26 | API workspace | Your key is not scoped to a workspace, so the Claude backend sends the `anthropic-workspace-id` header with the ID from `ANTHROPIC_WORKSPACE_ID` in the same `.env` file. |
 | Q27 | Agent backends (gate G1) | Both agents use Claude by default; Ollama stays available as a per-run option. Phase 1 measured 3–4B local models picking the correct plan in only 2–4 of 10 turns. |
+| Q28 | Rules and test corpus (gate G2) | `Fabric_Policy.thy` and the 39-case corpus are approved as written. `read_window` bounds a read by the request's window only: the 14-day `horizon` limits what an agent sends, not what it reads. A decision must match the owner's signed record, checked under `well_formed`. Each side's `horizon` and `consent_lifetime` use its own owner's request. The consent rule stays minimal (D12), and notes may not contain digits (D13). |
 
 ## 3. Decisions that need your confirmation
 
@@ -168,7 +169,8 @@ Trust levels:
 - **Policy gate.** Accepts `screen(plans)` and `authorize(action)` from its own agent. Builds the context from its own records: the owner's request, the negotiation state reported by the gateway, verified consent records, round counts, the demo clock and the parameters. Renders the context and the actions as HOL terms, runs the check on Isabelle (section 8.4), and returns verdicts; for `authorize` it also mints a token. It records the check theory, Isabelle's messages, timings and the verdict in the audit log.
 - **Messaging gateway.** Holds the person's X25519 Noise static key and Ed25519 identity key. It opens a Noise session through the relay only with a valid `Handshake` token, and sends a message only with a valid `Send…` token whose argument digest matches that exact message. It signs outgoing messages, decrypts and verifies incoming ones, tracks the negotiation state, and delivers inbound messages to its agent.
 - **Consent signer.** When the owner clicks yes or no in the dashboard, it signs a consent record with the identity key and stores it. When the agent sends its decision, the gateway attaches the signed records.
-- Keys live in Windows Credential Manager. The launcher distributes both people's public keys in the per-run configuration.
+- Keys live in Windows Credential Manager. Each person has three keys: `gate` (Ed25519, signs tokens), `identity` (Ed25519, signs messages and consent records) and `noise` (X25519, the Noise static key). Each is a generic credential named `fabric-demo/<person>/<key>`, persisted for this computer only, so it never roams to other machines. The launcher creates missing keys on its first run.
+- The launcher writes both people's public keys to the key directory `.local/demo/keys.json` (format `fabric-demo-keys-v1`, lowercase hex), and every process reads its peers' keys from there. Readers refuse unknown fields, malformed or weak Ed25519 keys, and person IDs that break the identifier rule.
 
 ### 5.3 Agent runtime (one per person, untrusted)
 
@@ -269,6 +271,8 @@ Two people need no extra message to find mutual options: Alice knows which of he
 | `consent_ttl` | 24 hours | calendar.md §23.7 default |
 | `note_max` | 200 characters | your example value |
 | Token lifetime | 60 seconds | proposed |
+| Proof-of-possession window | from 10 seconds old to 2 seconds ahead | chosen in Phase 3 |
+| Token size limit | 4 KiB | chosen in Phase 3 |
 | Isabelle check timeout | 30 seconds | proposed |
 | Re-plan attempts per turn | 3 | proposed (D5) |
 | Plans per turn | 2 to 3 | your answer (Q23) |
@@ -283,26 +287,26 @@ Two people need no extra message to find mutual options: Alice knows which of he
 
 Spike T1.1 confirmed that a failed proof does not stop Isabelle from checking the later lemmas of the same theory, so each check is a single pass. Measured on this machine: about 1.0 s for one action and 1.5 s for a 9-action screening batch (`spikes/phase1/RESULTS.md`).
 
-An abbreviated check theory, for illustration only (the exact syntax is settled in T2.1 and T2.2):
+An abbreviated check theory. The renderer test's `crates/fabric-policy/tests/fixtures/Check_000001.thy` shows the complete form the gate generates:
 
 ```isabelle
-theory Check_0042
-  imports Fabric_Policy
+theory Check_000042
+  imports "Fabric_Policy.Fabric_Policy"
 begin
 
-definition ctx :: context where "ctx = ..."   (* rendered from the gate's records *)
-definition act :: action where "act = SendPropose ..."   (* five candidates *)
+definition ctx :: gate_context where "ctx = ..."   (* rendered from the gate's records *)
+definition a0 :: action where "a0 = SendPropose ..."   (* five candidates *)
 
-lemma cand_count_holds: "holds Cand_count ctx act"
-  by (simp add: policy_defs ctx_def act_def)
-lemma cand_count_fails: "\<not> holds Cand_count ctx act"
-  by (simp add: policy_defs ctx_def act_def)
-value "length (candidates_of act)"
+lemma a0_cand_count_holds: "holds Cand_count ctx a0" by (simp add: a0_def ctx_def policy_simps)
+lemma a0_cand_count_fails: "\<not> holds Cand_count ctx a0" by (simp add: a0_def ctx_def policy_simps)
+(* ... two lemmas for each of the other rules ... *)
+value "payload_count a0"
+value "length (note_of a0)"
 
 end
 ```
 
-Here the first lemma fails, the second is proven, and `value` returns 5, so the gate reports `cand_count: 5 > 3`.
+Here the first lemma fails, the second is proven, and `value` returns 5, so the gate reports `cand_count: 5 candidates; 1 to 3 allowed`.
 
 ### 8.5 What Isabelle does not check
 
@@ -311,21 +315,42 @@ Here the first lemma fails, the second is proven, and `value` returns 5, so the 
 
 ## 9. Access tokens
 
-A token is a CBOR Web Token (CWT, RFC 8392) in a COSE_Sign1 envelope (RFC 9052), signed with the person's policy-gate Ed25519 key. The payload uses deterministic CBOR (RFC 8949 §4.2).
+A token is a CBOR Web Token (CWT, RFC 8392) in a COSE_Sign1 envelope (RFC 9052), signed with the person's policy-gate Ed25519 key. The payload uses deterministic CBOR (RFC 8949 §4.2). `crates/fabric-token` implements this section.
 
-| Claim | Meaning |
+| Claim | Key | Meaning |
+|---|---|---|
+| `iss` | 1 | the policy gate that minted it: `gate:<person>` |
+| `aud` | 3 | the one service that may accept it: `calendar:<person>` or `gateway:<person>` |
+| `exp`, `iat` | 4, 6 | expiry and issue time in whole seconds; expiry is 60 seconds after issue |
+| `cti` | 7 | a random 128-bit nonce; the token works once |
+| `cnf` | 8 | the agent's token-binding public key (proof of possession, RFC 8747), as `{1: COSE_Key}` with `kty` OKP, `crv` Ed25519 and `x` |
+| private: action | -65537 | the action kind, for example `add_meeting` |
+| private: args | -65538 | SHA-256 of the deterministic CBOR of the action: a map of `kind` and the exact arguments, under the same names as in the action's JSON |
+| private: negotiation | -65539 | the negotiation ID, when there is one |
+| private: proof | -65540 | the Isabelle proof ID (section 8.4), as 32 bytes |
+
+The private claims use keys below -65536, the range RFC 8392 reserves for private use.
+
+**Envelope.** `18([h'a10132', {}, payload, signature])`: the protected header is exactly `{1: -19}`, the fully specified Ed25519 algorithm of RFC 9864 (it deprecates the older `-8`, EdDSA). The unprotected header is empty, and the signature covers no external data. A test checks the bytes against a hand-assembled token, and another reads tokens with coset, an independent COSE library.
+
+**Deterministic CBOR.** Integers and lengths take their shortest form, lengths are definite, and map keys are sorted by the bytes of their encodings. The decoder accepts no other encoding, so every value has exactly one byte form for signatures and digests. The profile has no floating-point numbers, bignums, or simple values other than `false`, `true` and `null`. Test vectors come from RFC 8949 appendix A and RFC 8392 appendix A.1.
+
+**Minting.** The gate mints only from an authorize check (D2) that covered exactly one action and permitted it. It takes `aud` from the action kind: `ReadFreeBusy` and `AddMeeting` go to the calendar service, `Handshake` and `Send…` to the gateway. Nothing executes `ReadEventDetails`, so no token can name it.
+
+**Presentation.** With each request, the agent sends the deterministic CBOR `[token, timestamp_ms, signature]`. The signature is made with the token-binding key over `["fabric-pop-v1", cti, SHA-256(request body), timestamp_ms]`. A service accepts it from 10 seconds old to 2 seconds ahead of its own clock. Tokens longer than 4 KiB are refused unread.
+
+**Checks.** The service runs these checks in order and names the first that fails:
+
+| Reason | Fails when |
 |---|---|
-| `iss` | the policy gate that minted it |
-| `aud` | the one service that may accept it: `calendar:<person>` or `gateway:<person>` |
-| `cnf` | the agent's token-binding public key (proof of possession, RFC 8747) |
-| `iat`, `exp` | issue time, and expiry 60 seconds later |
-| `cti` | a random 128-bit nonce; the token works once |
-| private: action | the action kind |
-| private: args | SHA-256 of the deterministic CBOR of the action's exact arguments |
-| private: negotiation | the negotiation ID, when there is one |
-| private: proof | the Isabelle proof ID (section 8.4) |
+| `bad_signature` | the token is malformed, not deterministic CBOR, has another header or algorithm, is not signed by this person's gate key, or names another issuer |
+| `wrong_audience` | `aud` is not this service |
+| `expired` | the service's clock is at or past `exp` |
+| `token_replayed` | the nonce was used, or another request is using it |
+| `pop_invalid` | the proof of possession is too old, dated ahead, or not signed with the `cnf` key over this body and timestamp |
+| `token_argument_mismatch` | the requested action's kind, negotiation or argument digest differs from the token's |
 
-To use a token, the agent sends it with a proof-of-possession signature made with its token-binding key over the nonce, the hash of the request body, and a timestamp. The service rejects the call if any check fails and names the reason: `bad_signature`, `wrong_audience`, `expired`, `token_replayed`, `token_argument_mismatch` or `pop_invalid`.
+A token that passes is reserved for its request. The service commits the nonce once the action has executed (section 5.1). If the action cannot execute, the service drops the reservation and the nonce is released. A refused attempt never uses up a token, so a misdirected request cannot burn it. The service keeps each nonce until its token expires. It also tracks the latest time any check has used, so a clock that runs behind cannot revive a forgotten nonce.
 
 ## 10. Agents and LLM backends
 
@@ -498,14 +523,20 @@ What it does not protect (the dashboard says so too):
 - Isabelle2025-2 for Windows (`Isabelle2025-2.exe`, a self-extracting archive) into `.tooling/isabelle/` (D29). The Isabelle site notes that the app has no developer signature, so Windows may warn on first run, and that Windows Defender can block external provers; this demo uses none. The site publishes no checksum, so `scripts/setup-demo.ps1` pins the size and SHA-256 of the archive approved on 2026-10-18. It downloads over HTTPS from the TUM mirror, because the site's own link redirects to plain HTTP.
 - Ollama for Windows and the three Phase 1 models (about 8 GB), for optional local runs.
 - Your Anthropic API key and workspace ID in a git-ignored `.env` file at the repository root (Q25, Q26).
-- New crates, with versions pinned when added: an async runtime (tokio), an HTTP server and client (axum, and reqwest with rustls), serde, CBOR (ciborium or minicbor, with deterministic-encoding test vectors), COSE (coset), Ed25519 (ed25519-dalek), Noise (snow), XChaCha20-Poly1305 (chacha20poly1305), SHA-256 (sha2), Windows Credential Manager (keyring), and tracing.
+- New crates, with versions pinned when added: an async runtime (tokio), an HTTP server and client (axum, and reqwest with rustls), serde, CBOR (ciborium), COSE (coset), Ed25519 (ed25519-dalek), Noise (snow), XChaCha20-Poly1305 (chacha20poly1305), SHA-256 (sha2), Windows Credential Manager (keyring), and tracing.
+- Phase 3 choices:
+  - `ed25519-dalek` 2.2 and `x25519-dalek` 2.0, not the new 3.0 releases. The 2.x releases share `curve25519-dalek` 4 and `sha2` 0.10 with `snow` 0.10 and `fabric-policy`.
+  - `ciborium` 0.2 parses CBOR. `fabric-token` has its own deterministic encoder of about 75 lines. ciborium writes map entries in the order given, and its optional canonical ordering is the older length-first rule (RFC 8949 §4.2.3), not the §4.2.1 bytewise rule.
+  - COSE_Sign1 is built directly on that encoder, since the header is fixed. `coset` 0.4 is a test-only dependency that checks the tokens read as standard CWTs.
+  - Credential Manager access uses `keyring-core` 1 and `windows-native-keyring-store` 1, on Windows only. The `keyring` crate's version 4 split the platform stores into these separate crates.
+  - Also added: `getrandom` 0.3 for keys and nonces, and `zeroize` to wipe secrets.
 
 Proposed layout:
 
 ```text
 crates/fabric-core/        unchanged, still dependency-free
 crates/fabric-policy/      actions, context, HOL rendering, Isabelle client, verdicts
-crates/fabric-token/       CWT/COSE tokens, proof of possession, replay cache
+crates/fabric-token/       deterministic CBOR, CWT/COSE tokens, proof of possession, replay cache, keys
 crates/fabric-wire/        protocol messages, signatures, Noise sessions
 apps/fabric-demo/          one binary: up, down, relay, host, calendar, agent, dashboard
 isabelle/Fabric_Policy/    ROOT, Fabric_Policy.thy
@@ -538,7 +569,7 @@ Per-run state, public keys, logs and audit files go to `.local/demo/`, which is 
 | R2 | Checks are too slow for a smooth demo. | Resolved in Phase 1: about 1 s per action and 1.5 s per screening batch. |
 | R3 | A small local model on a 4 GB GPU cannot produce valid plans reliably. | Confirmed in Phase 1 (2–4 of 10 turns correct). Both agents use Claude by default (Q27); local runs stay optional. |
 | R4 | Schema support differs between Ollama and Claude, for example `anyOf` for the action union, or structured outputs together with fallbacks. | Resolved in Phase 1: both accept the schema; property order matters (section 10.1). |
-| R5 | A CBOR library does not encode deterministically as required. | Test vectors in T3.1. |
+| R5 | A CBOR library does not encode deterministically as required. | Resolved in Phase 3: ciborium's encoder keeps map entries in the order given, and its optional ordering is the older length-first rule. `fabric-token` has its own encoder, checked against RFC 8949 and RFC 8392 vectors, and its decoder refuses every other encoding. |
 | R6 | Scope: this is a large build. | Phase gates G1–G3 let you stop or re-scope early. |
 
 ## 19. Task list
@@ -564,7 +595,7 @@ You approved this task list on 2026-10-18, including the Phase 0 downloads and i
 | T1.3 | Claude spike: the same 5 inputs with `claude-opus-5-5` over raw HTTP, with structured output, adaptive thinking, `effort: "medium"` and fallbacks; measure validity, latency, tokens and cost. | S | small API spend |
 | G1 | You review the spike results and confirm or adjust D6, D7, D8 and D25. | | your review |
 
-### Phase 2 — Semantic layer, then gate G2
+### Phase 2 — Semantic layer, then gate G2 (done 2026-10-18; rules approved as written, Q28)
 
 | Task | Work | Size | Needs |
 |---|---|---|---|
@@ -574,13 +605,20 @@ You approved this task list on 2026-10-18, including the Phase 0 downloads and i
 | T2.4 | Policy test corpus with permit and deny cases for every rule, run against live Isabelle, plus renderer tests against hand-written theories. | M | |
 | G2 | You review the Isabelle rules and the test corpus. | | your review |
 
-### Phase 3 — Tokens and keys
+### Phase 3 — Tokens and keys (done 2026-10-18)
 
 | Task | Work | Size | Needs |
 |---|---|---|---|
 | T3.1 | Deterministic CBOR encoding with test vectors. | S | |
 | T3.2 | CWT/COSE_Sign1 tokens: mint and verify, proof of possession, expiry, single-use nonces, argument digests. | M | |
 | T3.3 | Keys: generate, store in Windows Credential Manager, and distribute public keys through the launcher's configuration. | S | |
+
+Results:
+
+- `crates/fabric-token` has 27 tests that run everywhere, CI included. They cover the CBOR vectors, the hand-assembled token layout, coset interoperability, and every rejection reason. They also cover A6: single use (including two requests at once), binding to the arguments, and binding to the agent key.
+- Two tests run locally only:
+  - A Credential Manager round trip under the test prefix `fabric-demo-test/`, which deletes its entries afterwards.
+  - A live Isabelle check: a permitted `ReadFreeBusy` (0.7 s) mints a 275-byte token that the calendar verifier accepts once. An over-broad read is denied by `read_window`, and minting from that denial is refused.
 
 ### Phase 4 — Calendar service
 

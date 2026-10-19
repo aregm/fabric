@@ -160,6 +160,19 @@ impl Action {
             _ => None,
         }
     }
+
+    /// The negotiation an action belongs to; reads and handshakes have none.
+    #[must_use]
+    pub fn negotiation(&self) -> Option<&str> {
+        match self {
+            Self::SendPropose { negotiation, .. }
+            | Self::SendRespond { negotiation, .. }
+            | Self::SendDecide { negotiation, .. }
+            | Self::SendClose { negotiation, .. }
+            | Self::AddMeeting { negotiation, .. } => Some(negotiation),
+            _ => None,
+        }
+    }
 }
 
 /// The policy theory's parameters. The gate reads them from Isabelle when it starts, so denial
