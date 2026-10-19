@@ -52,6 +52,7 @@ The demo shows the semantics and how they are enforced. It is not production sec
 | Q23 | Alternatives | Alternative plans: 2–3 action lists per turn; the first plan whose actions are all permitted runs. |
 | Q24 | Triggering denials | Fault-injection switches in the dashboard. |
 | Q25 | Anthropic API key | Read from a git-ignored `.env` file at the repository root, which you create. An `ANTHROPIC_API_KEY` already set in the environment takes precedence. |
+| Q26 | API workspace | Your key is not scoped to a workspace, so the Claude backend sends the `anthropic-workspace-id` header with the ID from `ANTHROPIC_WORKSPACE_ID` in the same `.env` file. |
 
 ## 3. Decisions that need your confirmation
 
@@ -182,6 +183,7 @@ Trust levels:
 ### 5.5 Isabelle server (shared)
 
 - Isabelle2025-2 for Windows, the current release (January 2026). On Windows, Isabelle's command-line tools run through its bundled Cygwin.
+- `scripts/setup-demo.ps1` installs it into `.tooling/isabelle/` (D29), and `scripts/isabelle.ps1` runs its tools. Both set `USER_HOME`, so Isabelle's per-user directory, including session heaps, stays in `.tooling/isabelle/home` instead of your Windows profile.
 - The launcher starts `isabelle server -n fabric-demo`, reads the address and password from the server's first output line, and passes them privately to the two policy gates.
 - One session, `Fabric_Policy`, built from `isabelle/Fabric_Policy` with HOL as its parent. The gates use the server's `session_start`, `use_theories` and `purge_theories` commands over its TCP protocol.
 
@@ -353,10 +355,10 @@ The plan schema shapes the output but enforces no limits; limits are Isabelle's 
 
 ### 10.2 Claude backend (Bob by default)
 
-- Raw HTTPS to `POST https://api.anthropic.com/v1/messages`, since there is no official Anthropic SDK for Rust. Headers: `x-api-key`, `anthropic-version: 2023-06-01`, `content-type: application/json`, and `anthropic-beta: server-side-fallback-2026-07-01` for fallbacks.
+- Raw HTTPS to `POST https://api.anthropic.com/v1/messages`, since there is no official Anthropic SDK for Rust. Headers: `x-api-key`, `anthropic-version: 2023-06-01`, `content-type: application/json`, `anthropic-workspace-id` (Q26), and `anthropic-beta: server-side-fallback-2026-07-01` for fallbacks.
 - Body: `"model": "claude-opus-5-5"`, `"max_tokens": 16000`, `"thinking": {"type": "adaptive"}`, `"output_config": {"effort": "medium", "format": {"type": "json_schema", "schema": <plan schema>}}`, `"fallbacks": "default"`, the system prompt, and the turn messages.
 - The runtime checks `stop_reason` before reading the content (`refusal` and `max_tokens` fail the attempt), and records which model served the turn and the token usage in the audit log.
-- Credential: `ANTHROPIC_API_KEY`, read from the git-ignored `.env` file at the repository root (Q25). The key is never written to the repository, logs or audit trail.
+- Credential: `ANTHROPIC_API_KEY` and `ANTHROPIC_WORKSPACE_ID`, read from the git-ignored `.env` file at the repository root (Q25, Q26). The key is never written to the repository, logs or audit trail.
 - Rough cost: a happy-path run is about 5 Bob turns of roughly 5,000 input and 3,000 output tokens each. At $4 and $20 per million input and output tokens, that is under $1 per run. T1.3 measures the real figure.
 
 ### 10.3 Ollama backend (Alice by default)
@@ -488,9 +490,9 @@ What it does not protect (the dashboard says so too):
 ## 16. Platform, setup and dependencies
 
 - Windows 11 on this machine. Rust 1.97.1 through `scripts/setup.ps1`, which downloads rustup and the toolchain into `.tooling/`.
-- Isabelle2025-2 for Windows (`Isabelle2025-2.exe`, a self-extracting archive) into `.tooling/isabelle/` (D29). The Isabelle site notes that the app has no developer signature, so Windows may warn on first run, and that Windows Defender can block external provers; this demo uses none.
+- Isabelle2025-2 for Windows (`Isabelle2025-2.exe`, a self-extracting archive) into `.tooling/isabelle/` (D29). The Isabelle site notes that the app has no developer signature, so Windows may warn on first run, and that Windows Defender can block external provers; this demo uses none. The site publishes no checksum, so `scripts/setup-demo.ps1` pins the size and SHA-256 of the archive approved on 2026-10-18. It downloads over HTTPS from the TUM mirror, because the site's own link redirects to plain HTTP.
 - Ollama for Windows and one model (several GB).
-- Your Anthropic API key in a git-ignored `.env` file at the repository root (Q25).
+- Your Anthropic API key and workspace ID in a git-ignored `.env` file at the repository root (Q25, Q26).
 - New crates, with versions pinned when added: an async runtime (tokio), an HTTP server and client (axum, and reqwest with rustls), serde, CBOR (ciborium or minicbor, with deterministic-encoding test vectors), COSE (coset), Ed25519 (ed25519-dalek), Noise (snow), XChaCha20-Poly1305 (chacha20poly1305), SHA-256 (sha2), Windows Credential Manager (keyring), and tracing.
 
 Proposed layout:
@@ -546,7 +548,7 @@ You approved this task list on 2026-10-18, including the Phase 0 downloads and i
 | T0.2 | Install the pinned Rust 1.97.1 with `scripts/setup.ps1` (rustup 1.29.0 and the toolchain, into `.tooling/`). | S | download |
 | T0.3 | Download Isabelle2025-2 for Windows into `.tooling/isabelle/` and record its SHA-256. | S | large download |
 | T0.4 | Install Ollama for Windows and pull 2–3 candidate models for the spike. | S | install, several GB |
-| T0.5 | You create the git-ignored `.env` file containing `ANTHROPIC_API_KEY=…`. | — | you |
+| T0.5 | The git-ignored `.env` file holds `ANTHROPIC_API_KEY` (you paste it) and `ANTHROPIC_WORKSPACE_ID`. | — | you |
 
 ### Phase 1 — Spikes, then gate G1
 
