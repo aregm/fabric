@@ -171,6 +171,8 @@ pub struct Gateway {
     /// Serializes inbox processing.
     inbound: tokio::sync::Mutex<()>,
     delivered: Notify,
+    /// Ends the agent's wait for deliveries early: the owner did something.
+    woken: Notify,
 }
 
 impl Gateway {
@@ -207,6 +209,7 @@ impl Gateway {
             outbound: tokio::sync::Mutex::new(()),
             inbound: tokio::sync::Mutex::new(()),
             delivered: Notify::new(),
+            woken: Notify::new(),
         }))
     }
 
@@ -248,9 +251,12 @@ impl Gateway {
             .for_policy(matches!(state.link, Link::Connected(_)))
     }
 
-    /// The deliveries after `after`. With none yet, waits up to `wait_ms` for one.
+    /// The deliveries after `after`. With none yet, waits up to `wait_ms` for one, or until
+    /// [`Gateway::wake`].
     pub async fn deliveries(&self, after: u64, wait_ms: u64) -> Vec<Delivery> {
         let deadline = Instant::now() + Duration::from_millis(wait_ms.min(MAX_WAIT_MS));
+        let mut woken = pin!(self.woken.notified());
+        woken.as_mut().enable();
         loop {
             let mut delivered = pin!(self.delivered.notified());
             delivered.as_mut().enable();
@@ -258,10 +264,18 @@ impl Gateway {
             if !found.is_empty() || Instant::now() >= deadline {
                 return found;
             }
-            if timeout_at(deadline, delivered).await.is_err() {
-                return self.deliveries_after(after);
+            tokio::select! {
+                waited = timeout_at(deadline, delivered) => if waited.is_err() {
+                    return self.deliveries_after(after);
+                },
+                () = woken.as_mut() => return self.deliveries_after(after),
             }
         }
+    }
+
+    /// Ends every wait for deliveries now, so the agent looks at what the owner just did.
+    pub fn wake(&self) {
+        self.woken.notify_waiters();
     }
 
     fn deliveries_after(&self, after: u64) -> Vec<Delivery> {
@@ -304,9 +318,38 @@ impl Gateway {
             })
     }
 
+    /// Records a refused agent request, as the calendar service does (section 5.1).
+    fn refused<T>(
+        &self,
+        kind: &str,
+        action: &Action,
+        result: Result<T, Failure>,
+    ) -> Result<T, Failure> {
+        if let Err(failure) = &result {
+            self.record(json!({
+                "kind": kind,
+                "outcome": "refused",
+                "action": action.kind(),
+                "error": failure.error,
+                "detail": failure.detail,
+            }));
+        }
+        result
+    }
+
     /// Runs a `handshake` action: answers the peer's call if one is waiting, and otherwise
     /// places a call. Returns `{"link": "connected"}` or `{"link": "calling"}`.
     pub async fn handshake(
+        &self,
+        presentation: &Presentation,
+        action: &Action,
+        body: &[u8],
+    ) -> Result<Value, Failure> {
+        let result = self.run_handshake(presentation, action, body).await;
+        self.refused("handshake", action, result)
+    }
+
+    async fn run_handshake(
         &self,
         presentation: &Presentation,
         action: &Action,
@@ -401,6 +444,16 @@ impl Gateway {
     /// Runs a send action: signs the message, encrypts it in the session, and posts it to the
     /// peer's inbox. Returns `{"sent": "<type>"}`.
     pub async fn send(
+        &self,
+        presentation: &Presentation,
+        action: &Action,
+        body: &[u8],
+    ) -> Result<Value, Failure> {
+        let result = self.run_send(presentation, action, body).await;
+        self.refused("send", action, result)
+    }
+
+    async fn run_send(
         &self,
         presentation: &Presentation,
         action: &Action,

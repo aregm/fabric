@@ -1,15 +1,24 @@
 use std::error::Error;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use fabric_demo::agent::{self, AgentConfig, BackendConfig};
 use fabric_demo::calendar::{self, Calendar, CalendarConfig};
+use fabric_demo::dashboard::{self, Dashboard, DashboardConfig};
 use fabric_demo::host::{self, Host, HostConfig};
+use fabric_demo::launcher::{self, UpOptions};
 use fabric_demo::net::bind_loopback;
 use fabric_demo::relay::{self, Relay, RelayConfig};
 use fabric_token::SecretStore;
 
-const USAGE: &str = "usage: fabric-demo <calendar | relay | host | agent> --config <file>";
+const USAGE: &str = "\
+usage:
+  fabric-demo up [--alice <backend>] [--bob <backend>] [--start <UTC time>] [--repository <dir>]
+  fabric-demo down [--repository <dir>]
+  fabric-demo reset-keys [--repository <dir>]
+  fabric-demo <calendar | relay | host | agent | dashboard> --config <file>
+
+A backend is claude (the default), ollama:<model>, or scripted (tests only).";
 /// How long an agent waits for an outside event before checking again.
 const AGENT_WAIT_MS: u64 = 20_000;
 
@@ -31,12 +40,71 @@ fn run() -> Result<(), Box<dyn Error>> {
         ["relay", "--config", path] => run_relay(Path::new(path)),
         ["host", "--config", path] => run_host(Path::new(path)),
         ["agent", "--config", path] => run_agent(Path::new(path)),
+        ["dashboard", "--config", path] => run_dashboard(Path::new(path)),
+        ["up", options @ ..] => launcher::up(&up_options(options)?),
+        ["down", options @ ..] => launcher::down(&repository_option(options)?),
+        ["reset-keys", options @ ..] => launcher::reset_keys(&repository_option(options)?),
         [] | ["help" | "--help" | "-h"] => {
             println!("{USAGE}");
             Ok(())
         }
         _ => Err(format!("unexpected arguments {arguments:?}\n{USAGE}").into()),
     }
+}
+
+/// Reads `--name value` pairs.
+fn options<'a>(
+    arguments: &[&'a str],
+    known: &[&str],
+) -> Result<Vec<(&'a str, &'a str)>, Box<dyn Error>> {
+    let mut pairs = Vec::new();
+    let mut rest = arguments.iter();
+    while let Some(name) = rest.next() {
+        let value = rest
+            .next()
+            .ok_or_else(|| format!("{name} needs a value\n{USAGE}"))?;
+        let name = name.strip_prefix("--").filter(|name| known.contains(name));
+        let name = name.ok_or_else(|| format!("unexpected option\n{USAGE}"))?;
+        pairs.push((name, *value));
+    }
+    Ok(pairs)
+}
+
+fn up_options(arguments: &[&str]) -> Result<UpOptions, Box<dyn Error>> {
+    let mut options = UpOptions {
+        repository: PathBuf::from("."),
+        backends: ["claude".to_owned(), "claude".to_owned()],
+        start: launcher::DEFAULT_START.to_owned(),
+    };
+    for (name, value) in self::options(arguments, &["alice", "bob", "start", "repository"])? {
+        match name {
+            "alice" => options.backends[0] = value.to_owned(),
+            "bob" => options.backends[1] = value.to_owned(),
+            "start" => value.clone_into(&mut options.start),
+            _ => options.repository = PathBuf::from(value),
+        }
+    }
+    Ok(options)
+}
+
+fn repository_option(arguments: &[&str]) -> Result<PathBuf, Box<dyn Error>> {
+    let pairs = options(arguments, &["repository"])?;
+    Ok(pairs
+        .last()
+        .map_or_else(|| PathBuf::from("."), |(_, value)| PathBuf::from(value)))
+}
+
+/// Runs the dashboard until Ctrl+C.
+fn run_dashboard(path: &Path) -> Result<(), Box<dyn Error>> {
+    let config = DashboardConfig::read(path)?;
+    let listen = config.listen;
+    let dashboard = Dashboard::new(config)?;
+    tokio::runtime::Runtime::new()?.block_on(async move {
+        let listener = bind_loopback(listen).await?;
+        println!("dashboard listening on http://{}", listener.local_addr()?);
+        dashboard::serve(listener, dashboard, ctrl_c()).await?;
+        Ok::<(), Box<dyn Error>>(())
+    })
 }
 
 async fn ctrl_c() {

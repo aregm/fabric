@@ -9,6 +9,7 @@ use serde_json::{Value, json};
 
 use super::gateway::{Delivery, MAX_WAIT_MS, Status};
 use super::{AgentState, AuthorizeAnswer, ScreenAnswer};
+use crate::agent::Faults;
 use crate::client::{CallError, TIMEOUT, post_action, read};
 
 #[derive(Deserialize)]
@@ -78,6 +79,16 @@ impl HostClient {
         let request = self
             .http
             .get(format!("{}/v1/gateway/status", self.base))
+            .bearer_auth(&self.agent_secret)
+            .timeout(TIMEOUT);
+        read(request.send().await?).await
+    }
+
+    /// The fault switches the dashboard armed, which this call takes (Q24).
+    pub async fn take_faults(&self) -> Result<Faults, CallError> {
+        let request = self
+            .http
+            .post(format!("{}/v1/agent/faults", self.base))
             .bearer_auth(&self.agent_secret)
             .timeout(TIMEOUT);
         read(request.send().await?).await

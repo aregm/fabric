@@ -32,6 +32,8 @@ const MINUTE_MS: i64 = 60 * 1_000;
 /// Everything outside the agent: its host and its calendar service.
 pub trait World: Send + Sync {
     fn state(&self) -> impl Future<Output = Result<AgentState, CallError>> + Send;
+    /// The fault switches armed for the next turn, which this call takes.
+    fn take_faults(&self) -> impl Future<Output = Result<Faults, CallError>> + Send;
     fn deliveries(
         &self,
         after: u64,
@@ -64,6 +66,10 @@ pub struct HttpWorld {
 impl World for HttpWorld {
     async fn state(&self) -> Result<AgentState, CallError> {
         self.host.state().await
+    }
+
+    async fn take_faults(&self) -> Result<Faults, CallError> {
+        self.host.take_faults().await
     }
 
     async fn deliveries(&self, after: u64, wait_ms: u64) -> Result<Vec<Delivery>, CallError> {
@@ -100,15 +106,16 @@ impl World for HttpWorld {
     }
 }
 
-/// The fault-injection switches (Q24, section 14). Each fires once, on the next turn.
+/// The fault-injection switches (Q24, section 14). Each fires once, on the next turn where it
+/// can act; until then it stays armed.
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct Faults {
     /// Widens every free/busy read past the request window and adds an event-details read.
     pub over_broad_read: bool,
-    /// Pads every proposal to 5 candidates.
+    /// Pads the next proposal to 5 candidates.
     pub too_many_candidates: bool,
-    /// Puts an `add_meeting` before the chosen plan's actions.
+    /// Puts an `add_meeting` before the next chosen plan that has actions.
     pub write_without_consent: bool,
     /// Sends a request again with a token that was already used.
     pub replay_token: bool,
@@ -209,6 +216,8 @@ pub struct Agent<W: World> {
     follow_up: bool,
     follow_ups: u32,
     owner_seen: Option<String>,
+    /// Switches were armed since the last step; they get a turn of their own.
+    fresh_faults: bool,
 }
 
 impl<W: World> Agent<W> {
@@ -225,6 +234,7 @@ impl<W: World> Agent<W> {
             follow_up: false,
             follow_ups: 0,
             owner_seen: None,
+            fresh_faults: false,
         }
     }
 
@@ -238,9 +248,16 @@ impl<W: World> Agent<W> {
         &self.world
     }
 
+    /// The switches armed and not yet fired.
+    #[must_use]
+    pub const fn pending_faults(&self) -> Faults {
+        self.faults
+    }
+
     /// Arms fault switches for the next turn.
     pub fn inject(&mut self, faults: Faults) {
         self.faults.merge(faults);
+        self.fresh_faults |= faults.any();
     }
 
     fn record(&self, mut record: Value) {
@@ -258,12 +275,20 @@ impl<W: World> Agent<W> {
             .deliveries(self.memory.delivery_cursor, wait)
             .await?;
         self.memory.absorb(&deliveries);
+        let armed = self.world.take_faults().await?;
+        if armed.any() {
+            self.record(json!({ "kind": "faults_armed", "faults": armed }));
+            self.inject(armed);
+        }
         let state = self.world.state().await?;
         let owner = owner_fingerprint(&state);
         let owner_acted = self.owner_seen.as_ref() != Some(&owner);
         self.owner_seen = Some(owner);
+        // Switches still waiting for their action ride along on later turns but start none, so
+        // one that cannot act does not make the agent plan again and again.
+        let fresh_faults = std::mem::take(&mut self.fresh_faults);
         if state.request.is_none()
-            || !(self.follow_up || owner_acted || !deliveries.is_empty() || self.faults.any())
+            || !(self.follow_up || owner_acted || !deliveries.is_empty() || fresh_faults)
         {
             return Ok(None);
         }
@@ -290,6 +315,14 @@ impl<W: World> Agent<W> {
     async fn turn(&mut self) -> Result<Outcome, CallError> {
         self.turns += 1;
         let mut faults = std::mem::take(&mut self.faults);
+        let outcome = self.attempts(&mut faults).await;
+        // A switch that found nothing to act on stays armed for the next turn.
+        self.faults.merge(faults);
+        outcome
+    }
+
+    /// Plans, screens and runs, re-planning after a denial (D5).
+    async fn attempts(&mut self, faults: &mut Faults) -> Result<Outcome, CallError> {
         for attempt in 0..=MAX_REPLANS {
             let state = self.world.state().await?;
             let input = self.memory.turn_input(&state, &state.owner_decisions);
@@ -324,7 +357,9 @@ impl<W: World> Agent<W> {
                 })
                 .collect();
             if attempt == 0 {
-                distort(&mut faults, &mut options, &state);
+                for fault in distort(faults, &mut options, &state) {
+                    self.record(json!({ "kind": "fault", "fault": fault, "stage": "screening" }));
+                }
             }
 
             let batch: Vec<Action> = options.iter().flatten().flatten().cloned().collect();
@@ -375,6 +410,14 @@ impl<W: World> Agent<W> {
                     "seconds": planned.seconds,
                 },
                 "plans": planned.plans,
+                // What was screened, after any fault switch, with one verdict per action in order.
+                "options": options
+                    .iter()
+                    .map(|option| match option {
+                        Ok(actions) => json!({ "actions": actions }),
+                        Err(error) => json!({ "unreadable": error }),
+                    })
+                    .collect::<Vec<_>>(),
                 "screen": screened.as_ref().map(|answer| json!({
                     "theory": answer.theory,
                     "proof_id": answer.proof_id,
@@ -401,8 +444,13 @@ impl<W: World> Agent<W> {
             }
             if std::mem::take(&mut faults.write_without_consent) {
                 actions.insert(0, unconsented_meeting(&state, &negotiation));
+                self.record(json!({
+                    "kind": "fault",
+                    "fault": "write_without_consent",
+                    "stage": "authorize",
+                }));
             }
-            match self.execute_plan(attempt, actions, &mut faults).await? {
+            match self.execute_plan(attempt, actions, faults).await? {
                 PlanResult::Done => return Ok(Outcome::Waiting),
                 PlanResult::ReadMore => return Ok(Outcome::ReadMore),
                 PlanResult::Denied => {}
@@ -521,15 +569,19 @@ impl<W: World> Agent<W> {
     }
 }
 
-/// The screening-stage switches, applied to the first attempt's plans.
+/// The screening-stage switches, applied to the first attempt's plans. Returns the switches
+/// that fired.
 fn distort(
     faults: &mut Faults,
     options: &mut Vec<Result<Vec<Action>, String>>,
     state: &AgentState,
-) {
-    if std::mem::take(&mut faults.over_broad_read)
+) -> Vec<&'static str> {
+    let mut fired = Vec::new();
+    if faults.over_broad_read
         && let Some(owner) = &state.request
     {
+        faults.over_broad_read = false;
+        fired.push("over_broad_read");
         let window = &owner.request;
         for actions in options.iter_mut().flatten() {
             for action in actions.iter_mut() {
@@ -546,7 +598,7 @@ fn distort(
             }]),
         );
     }
-    if std::mem::take(&mut faults.too_many_candidates) {
+    if faults.too_many_candidates {
         for actions in options.iter_mut().flatten() {
             for action in actions.iter_mut() {
                 if let Action::SendPropose {
@@ -554,6 +606,10 @@ fn distort(
                 } = action
                     && let Some(last) = candidates.last().cloned()
                 {
+                    if faults.too_many_candidates {
+                        faults.too_many_candidates = false;
+                        fired.push("too_many_candidates");
+                    }
                     while candidates.len() < 5 {
                         let offset = i64::try_from(candidates.len()).unwrap_or(5) * 60 * MINUTE_MS;
                         candidates.push(Candidate {
@@ -566,6 +622,7 @@ fn distort(
             }
         }
     }
+    fired
 }
 
 /// An `add_meeting` that no owner agreed to, for the `write_without_consent` switch.

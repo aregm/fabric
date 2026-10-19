@@ -1,6 +1,6 @@
 # Fabric Policy Demo — Isabelle-Gated Calendar Agents
 
-**Status:** approved on 2026-10-18; version 1.6 records gates G1 and G2 and the choices of Phases 3–7. Phases 0–7 are done.
+**Status:** approved on 2026-10-18; version 1.7 records gates G1 and G2 and the choices of Phases 3–8. Phases 0–8 are done.
 
 **Prepared:** 2026-10-18
 
@@ -208,9 +208,15 @@ Phase 4 settled the details. `fabric-demo calendar --config <file>` runs the ser
     - `protocol_error`, for a frame or message that broke the rules. It changes nothing.
   - **Checks on incoming messages.** The gateway checks each one before it changes the negotiation: the sender and recipient, the active negotiation (the invitee adopts the ID from the first proposal), the round, distinct candidate IDs, and answers that cover the candidates in order.
   - **Negotiation state.** The gateway keeps the policy gate's negotiation record: ID, role, round, candidates and mutual options. Before the invitee learns the ID, the record uses the placeholder `none`. The coordinator's host opens its negotiation with a fresh ID such as `n-3f2a9c1d`.
+  - **Audit.** Executed handshakes and sends are logged with the token's claims, and refused ones with the refusal reason, as at the calendar service.
 - **Consent signer.** When the owner clicks yes or no in the dashboard, it signs a consent record with the identity key and stores it. When the agent sends its decision, the gateway attaches the signed records.
+- **Owner API** (Phase 8), used only by the dashboard and authenticated by the per-run owner secret (`Authorization: Bearer`):
+  - `POST /v1/owner/request` files the owner's request: `peer`, `duration_minutes`, `window_start`, `window_end` and `expires_at` (UTC), and `preference`. The negotiation opens then.
+  - `POST /v1/owner/consent {"candidate_id", "yes"}` records the owner's answer (section 12).
+  - `POST /v1/owner/faults` arms fault switches, and `GET /v1/owner/status` returns what the agent sees.
+  - Each of these actions also ends the agent's wait for deliveries, so the agent looks at once rather than within 20 seconds.
 - Keys live in Windows Credential Manager. Each person has three keys: `gate` (Ed25519, signs tokens), `identity` (Ed25519, signs messages and consent records) and `noise` (X25519, the Noise static key). Each is a generic credential named `fabric-demo/<person>/<key>`, persisted for this computer only, so it never roams to other machines. The launcher creates missing keys on its first run.
-- The launcher writes both people's public keys to the key directory `.local/demo/keys.json` (format `fabric-demo-keys-v1`, lowercase hex), and every process reads its peers' keys from there. Readers refuse unknown fields, malformed or weak Ed25519 keys, and person IDs that break the identifier rule.
+- The launcher writes both people's public keys to the key directory `.local/demo/run/keys.json` (format `fabric-demo-keys-v1`, lowercase hex), and every process reads its peers' keys from there. Readers refuse unknown fields, malformed or weak Ed25519 keys, and person IDs that break the identifier rule.
 
 ### 5.3 Agent runtime (one per person, untrusted)
 
@@ -219,18 +225,18 @@ Phase 4 settled the details. `fabric-demo calendar --config <file>` runs the ser
 - Phase 6 details (`fabric-demo agent --config <file>`):
   - At start the agent makes its binding key and registers it with `POST /v1/agent/register`, authenticated by the per-run agent secret that only the agent and its host know. Tokens are bound to the key registered last.
   - **Host endpoints.** The agent reads `GET /v1/agent/state` (the owner's request with its preference, the link, the negotiation, and the owner's decisions). It checks actions with `POST /v1/gate/screen` and `POST /v1/gate/authorize`, which answer with verdicts, the proof ID and, for a permit, the token. The host builds the context itself (D14), including the consent facts.
-  - **When it takes a turn.** A turn starts when the owner files a request or decides, when a delivery arrives, or right after a read (D3, at most 3 such turns in a row). The agent's own actions never start a turn.
+  - **When it takes a turn.** A turn starts when the owner files a request, decides or arms fault switches, when a delivery arrives, or right after a read (D3, at most 3 such turns in a row). The agent's own actions never start a turn.
   - **What a turn does.**
     - The agent screens every action of every plan in one check (D8).
     - It runs the first plan whose actions are all permitted, authorizing and tokening one action at a time.
     - A denial at either point goes back to the planner, with the rule and condition, for at most 3 re-plans (D5).
     - Then the agent gives up until the next outside event, and logs `gave_up`.
-  - **Fault switches** (Q24) are hooks in the runtime, each firing once on the next turn:
+  - **Fault switches** (Q24) are hooks in the runtime. Each fires once, on the next turn where it can act, and the agent logs a `fault` record when it does. Phase 8 changed one thing: a switch that cannot act yet stays armed instead of being used up. It rides along on later turns but starts none of its own, so a switch with nothing to act on does not make the agent plan again and again.
     - `over_broad_read` widens every read 30 days past the window and adds a `read_event_details` plan.
-    - `too_many_candidates` pads proposals to 5.
-    - `write_without_consent` puts an `add_meeting` first in the chosen plan.
-    - `replay_token` sends a request again with its used token.
-    - `token_for_different_slot` presents a calendar token for the action moved by 15 minutes, then gets a fresh token.
+    - `too_many_candidates` pads the next proposal to 5 candidates. Only the coordinator proposes.
+    - `write_without_consent` puts an `add_meeting` first in the next chosen plan that has actions.
+    - `replay_token` sends the next executed request again with its used token.
+    - `token_for_different_slot` presents the next calendar action's token for that action moved by 15 minutes, then gets a fresh token.
   - **Audit.** The agent logs each turn's input, plans, planner usage, screening verdicts, authorizations and results.
 - Sees: its owner's request, the free/busy results it fetched with tokens, inbound messages (the peer's candidates, answers, notes and decisions), its own past actions, and denial reasons.
 - Never sees: the calendar store, event titles, any key other than its own token-binding key, or the other person's data beyond the messages it receives.
@@ -257,12 +263,36 @@ Phase 4 settled the details. `fabric-demo calendar --config <file>` runs the ser
 
 ### 5.6 Dashboard (shared demo observer)
 
-See section 13. Components post audit events to it with a per-run secret, and it pushes them to the page.
+See section 13. Phase 8 details (`fabric-demo dashboard --config <file>`):
+
+- **Audit intake.** Every component appends its audit records to a JSON-lines file in the run directory. The dashboard tails those files, so no component needs the dashboard's address or a secret for it. It pushes each record to the page over Server-Sent Events, and keeps the last 5,000 for pages that connect later.
+  - It reads whole lines only, so a record still being written is never split.
+  - It leaves out its own polling of the owners' calendars. The calendar service still audits those reads (section 5.1).
+- **Endpoints**, on loopback only:
+
+  | Request | Answer |
+  |---|---|
+  | `GET /` | the page, which reads its key from the URL fragment `#key=…` |
+  | `GET /v1/overview` | both owners' status and calendars, and the relay frames' metadata |
+  | `GET /v1/stream?after=n` | the audit records after `n`, as Server-Sent Events |
+  | `GET /v1/proof?id=<proof ID>` | the check report behind that proof ID |
+  | `POST /v1/people/{name}/{request, consent, faults, reset}` | the owner action, passed to that person's host or calendar service with the owner's secret |
+
+- **Access.** Every API call needs the per-run dashboard key, in `x-dashboard-key` or the `key` query parameter (Server-Sent Events cannot send headers). The `Host` header must name the dashboard's own loopback address, which stops DNS-rebinding pages.
 
 ### 5.7 Launcher
 
-- `fabric-demo up` starts or reuses the Isabelle server, builds the policy session if needed, creates keys on first run, writes the per-run configuration to `.local/demo/` (already git-ignored), and starts the relay, both trusted hosts, both calendar services, both agents and the dashboard. It then prints the dashboard URL.
-- `fabric-demo down` stops everything. Every service listens on loopback only.
+- `fabric-demo up [--alice <backend>] [--bob <backend>] [--start <UTC time>] [--repository <dir>]`:
+  - Checks that it runs from the repository root.
+  - Creates both people's keys in Credential Manager on the first run.
+  - Writes the per-run configuration and secrets to `.local/demo/run/` (git-ignored).
+  - Starts the Isabelle server, the relay, both calendar services, both trusted hosts, the dashboard and both agents. Each runs as a `fabric-demo` child process on a free loopback port. Its first output line names its address; the rest of its output goes to `<name>.log` in the run directory.
+  - Prints the dashboard URL with its key.
+- A backend is `claude` (the default for both), `ollama:<model>` or `scripted` (tests only).
+- Every run starts from the fixtures, so the scenario is the same each time (D22). `up` deletes the previous run's calendar stores.
+- `fabric-demo down` asks the running launcher to stop, through a control endpoint whose address and per-run key are in `run.json`. The launcher stops the agents first, then the services, then Isabelle, and removes `run.json`. Ctrl+C does the same.
+- `fabric-demo reset-keys` deletes both people's keys and store keys from Credential Manager, and their calendar files.
+- `scripts/demo.ps1 [-Command up|down|reset-keys] [-Alice <backend>] [-Bob <backend>]` runs these from the repository root. For `up` it builds the release binary first.
 
 ## 6. Data model
 
@@ -577,6 +607,14 @@ Phase 5 settled the wire format (`crates/fabric-wire`):
 
 The page is plain HTML, CSS and JS with no build step, updated over Server-Sent Events, and makes no external network requests.
 
+Phase 8 details:
+
+- Values from the services are always inserted as text, never as HTML, because peer notes are untrusted.
+- A section redraws only when its data changes. A form being filled in, an open list or a button under the pointer survive the 1.5-second poll.
+- **Start scenario** files every request not yet filed, with what each form shows. A refusal shows under the form.
+- Each fault switch shows whether it is armed or has fired, and with what result. Hovering over a switch says what it does.
+- The proof dialog shows the Isabelle version, the time, the proof ID, each rule's outcome per action, and the check theory.
+
 ## 14. Scenario and expected runs
 
 - Demo clock: Monday 11 January 2027, 08:00 UTC (configurable, D22). The clock starts there when the run starts and then advances in real time, so tokens still expire. The launcher records the start and the wall-clock instant of the run in the per-run configuration, and every process derives the demo time from them, so all processes agree.
@@ -601,10 +639,10 @@ Denial runs:
 | Switch | What it does | Expected result |
 |---|---|---|
 | Over-broad read | The next turn's plans get a `ReadFreeBusy` window that runs past the request's window, and a `ReadEventDetails` | Screening denies them (`read_window`, `view_details_never`); another alternative runs, or the agent re-plans |
-| Too many candidates | Every `SendPropose` in the next turn gets 5 candidates | Screening denies every plan (`cand_count: 5 > 3`); the agent re-plans with 3 |
-| Write without consent | Inserts `AddMeeting` before any consent exists | The execution-time check denies it (`consent`); the agent re-plans |
-| Replay a token | Re-sends a request with a token that was already used | The service rejects it (`token_replayed`); Isabelle is not involved |
-| Token for a different slot | Changes the meeting time after the token was issued | The calendar service rejects it (`token_argument_mismatch`); the agent gets a fresh token and continues |
+| Too many candidates | The next proposal gets 5 candidates | Screening denies every plan (`cand_count: 5 > 3`); the agent re-plans with 3 |
+| Write without consent | Puts `AddMeeting` first in the next plan that acts, before both owners agree | The execution-time check denies it (`consent`); the agent re-plans |
+| Replay a token | Sends the next executed request again with its used token | The service rejects it (`token_replayed`); Isabelle is not involved |
+| Token for a different slot | Moves the next calendar action by 15 minutes after its token was issued | The calendar service rejects it (`token_argument_mismatch`); the agent gets a fresh token and continues |
 
 ## 15. Security model and limits
 
@@ -818,13 +856,32 @@ Results:
   - Every token in the hosts' logs comes from a permit with the same proof ID (A2).
   - The run took 21 Isabelle checks, 0.95 s each on average and 1.8 s at most.
 
-### Phase 8 — Dashboard and launcher
+### Phase 8 — Dashboard and launcher (done 2026-10-19)
 
 | Task | Work | Size | Needs |
 |---|---|---|---|
 | T8.1 | Audit event intake, Server-Sent Events, and the dashboard page (section 13). | L | |
 | T8.2 | Fault-injection switches wired to the agents. | S | |
 | T8.3 | Launcher (`up`, `down`), configuration, and `scripts/demo.ps1`. | M | |
+
+Results:
+
+- New: the `up`, `down`, `reset-keys` and `dashboard` commands, the page in `demo/dashboard/`, and `scripts/demo.ps1`. Sections 5.6, 5.7 and 13 describe them.
+- Rehearsed in the browser with scripted agents on both sides:
+  - **Happy path.** Both owners filed their requests and got the two mutual options. Bob said no to Tuesday, and both said yes to Thursday. Both calendars got the Thursday 14:30 meeting with its proof. The run took 21 Isabelle checks, 0.91 s each on average and 1.6 s at most, and the relay carried 7 frames.
+  - **Fault switches.** All five were denied or refused as section 14 expects, and the agents recovered each time:
+    - `cand_count`, and `read_window` with `view_details_never`, when screening.
+    - `consent` when authorizing.
+    - `token_replayed` and `token_argument_mismatch` at the services.
+  - **Stopping.** `down` stopped every process, Isabelle included, in under 2 seconds.
+- The rehearsal found these problems, now fixed:
+  - `up` failed on Windows, because a canonicalized path's `\\?\` prefix breaks Isabelle's Cygwin paths.
+  - The page redrew everything on every poll, which wiped a form being filled in.
+  - After an owner's click, the agent waited up to 20 seconds before its next look. Owner actions now wake it.
+  - A fault switch with nothing to act on was used up silently. It now waits for its action.
+  - A finished run's meeting stayed in the next run's calendars. Each run now starts from the fixtures.
+  - The gateway did not log refusals. The page showed calendar requests as relay frames, and meeting lengths as dates.
+- The demo's keys are now in Credential Manager, as `fabric-demo/alice/…` and `fabric-demo/bob/…`. `fabric-demo reset-keys` deletes them.
 
 ### Phase 9 — Verification and docs, then gate G3
 

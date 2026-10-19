@@ -52,6 +52,7 @@ pub use gateway::{Delivery, Event, Gateway, GatewayParts, Status};
 pub use negotiation::NegotiationRecord;
 pub use policy::{PolicyConfig, PolicyGate};
 
+use crate::agent::Faults;
 use crate::api::{BearerSecret, Failure, check_secret, presentation};
 use crate::audit::AuditLog;
 use crate::clock::{Clock, ClockConfig, DemoClock};
@@ -192,6 +193,8 @@ pub struct HostParts {
 struct Records {
     request: Option<OwnerRequest>,
     binding_key: Option<VerifyingKey>,
+    /// Fault switches the dashboard armed for this person's agent (Q24).
+    faults: Faults,
 }
 
 /// One person's trusted host.
@@ -342,6 +345,7 @@ impl Host {
         };
         self.records().request = Some(request.clone());
         self.record(json!({ "kind": "owner_request", "request": request.request }));
+        self.gateway.wake();
         Ok(request)
     }
 
@@ -368,7 +372,21 @@ impl Host {
             .as_ref()
             .map(|request| request.request.expires_at_ms)
             .ok_or_else(|| Failure::conflict("no_request", "the owner has not filed a request"))?;
-        self.gateway.record_consent(candidate_id, yes, expires_ms)
+        let record = self.gateway.record_consent(candidate_id, yes, expires_ms)?;
+        self.gateway.wake();
+        Ok(record)
+    }
+
+    /// Arms fault switches for the agent's next turn.
+    pub fn arm_faults(&self, faults: Faults) {
+        self.records().faults.merge(faults);
+        self.record(json!({ "kind": "faults_armed", "faults": faults }));
+        self.gateway.wake();
+    }
+
+    /// The armed switches, which the agent takes once.
+    pub fn take_faults(&self) -> Faults {
+        std::mem::take(&mut self.records().faults)
     }
 
     /// Registers the agent's token-binding key; later tokens are bound to it.
@@ -632,6 +650,24 @@ async fn owner_consent(State(host): State<Arc<Host>>, headers: HeaderMap, body: 
     respond(result)
 }
 
+async fn owner_faults(State(host): State<Arc<Host>>, headers: HeaderMap, body: Bytes) -> Response {
+    let result = (|| {
+        host.owner_secret.check(&headers, "owner_unauthorized")?;
+        let faults: Faults = parse(&body, "fault switches")?;
+        host.arm_faults(faults);
+        Ok(json!({ "armed": faults }))
+    })();
+    respond(result)
+}
+
+async fn agent_faults(State(host): State<Arc<Host>>, headers: HeaderMap) -> Response {
+    respond(
+        host.agent_secret
+            .check(&headers, "agent_unauthorized")
+            .map(|()| host.take_faults()),
+    )
+}
+
 async fn owner_status(State(host): State<Arc<Host>>, headers: HeaderMap) -> Response {
     respond(
         host.owner_secret
@@ -649,6 +685,7 @@ pub fn router(host: Arc<Host>) -> Router {
         .route("/v1/health", get(health))
         .route("/v1/agent/register", post(register))
         .route("/v1/agent/state", get(agent_state))
+        .route("/v1/agent/faults", post(agent_faults))
         .route("/v1/gate/screen", post(screen))
         .route("/v1/gate/authorize", post(authorize))
         .route("/v1/gateway/handshake", post(handshake))
@@ -658,6 +695,7 @@ pub fn router(host: Arc<Host>) -> Router {
         .route("/v1/owner/request", post(owner_request))
         .route("/v1/owner/consent", post(owner_consent))
         .route("/v1/owner/status", get(owner_status))
+        .route("/v1/owner/faults", post(owner_faults))
         .layer(DefaultBodyLimit::max(MAX_BODY_BYTES))
         .with_state(host)
 }

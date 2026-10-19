@@ -77,6 +77,10 @@ impl World for Script {
             .unwrap_or_else(|| state(false)))
     }
 
+    async fn take_faults(&self) -> Result<Faults, CallError> {
+        Ok(Faults::default())
+    }
+
     async fn deliveries(&self, _after: u64, _wait_ms: u64) -> Result<Vec<Delivery>, CallError> {
         Ok(self
             .deliveries
@@ -421,6 +425,54 @@ async fn a_replayed_token_goes_out_once_more_after_its_action_ran() {
     assert_eq!(
         executed[0], executed[1],
         "the same request, with the same token"
+    );
+}
+
+#[tokio::test]
+async fn a_switch_with_nothing_to_act_on_stays_armed_without_turns_of_its_own() {
+    let mut agent = agent(
+        Script::default(),
+        vec![
+            set(vec![plan("wait", Vec::new())]),
+            set(vec![plan("call", vec![handshake()])]),
+        ],
+    );
+    agent.inject(Faults {
+        replay_token: true,
+        too_many_candidates: true,
+        ..Faults::default()
+    });
+    assert_eq!(agent.step(0).await.unwrap(), Some(Outcome::Waiting));
+    assert!(agent.world().executed.lock().unwrap().is_empty());
+    assert_eq!(
+        agent.step(0).await.unwrap(),
+        None,
+        "armed switches start no turn"
+    );
+
+    agent
+        .world()
+        .deliveries
+        .lock()
+        .unwrap()
+        .push_back(vec![Delivery {
+            seq: 1,
+            at_ms: 0,
+            event: Event::PeerCalling {
+                peer: "bob".to_owned(),
+            },
+        }]);
+    assert_eq!(agent.step(0).await.unwrap(), Some(Outcome::Waiting));
+    let executed = agent.world().executed.lock().unwrap().clone();
+    assert_eq!(executed.len(), 2, "the handshake, then its replay");
+    assert_eq!(executed[0], executed[1]);
+    assert_eq!(
+        agent.pending_faults(),
+        Faults {
+            too_many_candidates: true,
+            ..Faults::default()
+        },
+        "the replay fired; no proposal came up, so that switch is still armed"
     );
 }
 
