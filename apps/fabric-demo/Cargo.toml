@@ -1,0 +1,34 @@
+[package]
+name = "fabric-demo"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+axum = { version = "0.8", default-features = false, features = ["http1", "json", "query", "tokio"] }
+chacha20poly1305 = { version = "0.10", default-features = false, features = ["alloc"] }
+fabric-policy = { path = "../../crates/fabric-policy" }
+fabric-token = { path = "../../crates/fabric-token" }
+fabric-wire = { path = "../../crates/fabric-wire" }
+futures-util = "0.3"
+reqwest = { version = "0.13", default-features = false }
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["preserve_order"] }
+tokio = { version = "1", features = ["macros", "net", "rt-multi-thread", "signal", "sync", "time"] }
+zeroize = "1"
+
+[dev-dependencies]
+tower = { version = "0.5", features = ["util"] }
+
+[lints]
+workspace = true
+
+[[bin]]
+name = "fabric-demo"
+path = "src/main.rs"
+
+# The Claude backend needs HTTPS. Schannel is part of Windows, so nothing is compiled for it;
+# elsewhere the demo does not run (D28) and needs no TLS.
+[target.'cfg(windows)'.dependencies]
+reqwest = { version = "0.13", default-features = false, features = ["native-tls"] }

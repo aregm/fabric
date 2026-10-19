@@ -1,0 +1,23 @@
+{
+  "format": "fabric-demo-fixtures-v1",
+  "person": "bob",
+  "events": [
+    {"id": "bob-01", "start": "2027-01-11T09:00Z", "minutes": 120, "title": "Sprint planning", "busy": true},
+    {"id": "bob-02", "start": "2027-01-11T11:00Z", "minutes": 60, "title": "Code review", "busy": true},
+    {"id": "bob-03", "start": "2027-01-11T13:00Z", "minutes": 240, "title": "Onsite: Fabrikam integration", "busy": true},
+
+    {"id": "bob-04", "start": "2027-01-12T09:00Z", "minutes": 60, "title": "Standup", "busy": true},
+    {"id": "bob-05", "start": "2027-01-12T10:00Z", "minutes": 120, "title": "Focus time", "busy": false},
+    {"id": "bob-06", "start": "2027-01-12T13:00Z", "minutes": 60, "title": "Interview loop", "busy": true},
+    {"id": "bob-07", "start": "2027-01-12T15:00Z", "minutes": 60, "title": "Team retrospective", "busy": true},
+
+    {"id": "bob-08", "start": "2027-01-13T09:00Z", "minutes": 180, "title": "Customer onsite: Woodgrove", "busy": true},
+    {"id": "bob-09", "start": "2027-01-13T15:00Z", "minutes": 60, "title": "Contract negotiation", "busy": true},
+
+    {"id": "bob-10", "start": "2027-01-14T10:00Z", "minutes": 60, "title": "Doctor appointment", "busy": true},
+    {"id": "bob-11", "start": "2027-01-14T13:00Z", "minutes": 60, "title": "Quarter planning", "busy": true},
+    {"id": "bob-12", "start": "2027-01-14T15:00Z", "minutes": 90, "title": "Partner sync", "busy": true},
+
+    {"id": "bob-13", "start": "2027-01-15T09:00Z", "minutes": 180, "title": "Quarterly business review", "busy": true}
+  ]
+}

@@ -1,0 +1,27 @@
+[package]
+name = "fabric-token"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+ciborium = "0.2"
+ed25519-dalek = "2.2"
+fabric-policy = { path = "../fabric-policy" }
+getrandom = "0.3"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"
+x25519-dalek = { version = "2", features = ["static_secrets"] }
+zeroize = "1"
+
+[target.'cfg(windows)'.dependencies]
+keyring-core = "1"
+windows-native-keyring-store = { version = "1", default-features = false }
+
+[dev-dependencies]
+coset = "0.4"
+
+[lints]
+workspace = true

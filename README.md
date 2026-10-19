@@ -7,6 +7,7 @@ The scaffold begins as a small modular monolith:
 
 - apps/fabric-cli — diagnostic CLI plus the `demo-meeting` executable fixture;
 - crates/fabric-core — shared domain library, including checked calendar intervals and Rendezvous agreement semantics;
+- apps/fabric-demo, crates/fabric-policy, crates/fabric-token, crates/fabric-wire and isabelle/ — the Isabelle-gated calendar demo below;
 - scripts — isolated setup, command runner, and verification for Windows and macOS/Linux.
 
 Google adapters, encrypted transport, persistence, and desktop crates should be added only when they contain real behavior.
@@ -53,6 +54,49 @@ never place PII or provider identifiers in them.
 It does not yet implement Google Calendar, a relay, MLS/TOFU, signatures,
 encrypted persistence, recurrence/DST, holds/revalidation, or the provider
 commit saga. Its result is **Agreed**, never **Scheduled**.
+
+## Isabelle-gated calendar demo (Windows)
+
+Two LLM agents, Alice's and Bob's, negotiate a meeting through an encrypted relay. Isabelle/HOL
+proves every action they plan against explicit rules, and a single-use token bound to the
+action's exact arguments gates every effect on a calendar or the messaging gateway. The
+[specification](docs/isabelle-calendar-demo.md) describes the design, the rules and the results.
+
+- isabelle/Fabric_Policy — the policy theory.
+- crates/fabric-policy — actions, contexts, the HOL renderer, and the policy gate on Isabelle's server.
+- crates/fabric-token — deterministic CBOR, COSE_Sign1 tokens, proof of possession, and keys in Windows Credential Manager.
+- crates/fabric-wire — frames, signed messages, Noise IK sessions, and consent records.
+- apps/fabric-demo — the calendar service, relay, trusted host, agent runtime (Claude, Ollama or scripted), dashboard and launcher, in one binary.
+
+Set up once. The second script downloads Isabelle2025-2 (about 1 GB) into `.tooling/isabelle/`:
+
+    powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\setup.ps1
+    powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\setup-demo.ps1
+
+Then copy `.env.example` to `.env` and fill in your Anthropic API key. For a local agent, install
+Ollama and pull a model.
+
+Run it, with Claude for both agents, or with a local model for Alice:
+
+    powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\demo.ps1
+    powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\demo.ps1 -Alice ollama:granite4.1:3b
+
+It prints the dashboard URL. Open it, press **Start scenario**, and answer each mutual option in
+both columns. The rehearsal script has Bob say no to Tuesday and both say yes to Thursday. The
+agents then add the meeting to both calendars. The fault switches show Isabelle's denials and the
+token checks. Stop with Ctrl+C, or from another terminal:
+
+    powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\demo.ps1 -Command down
+
+- The first run creates both people's keys in Windows Credential Manager, under `fabric-demo/alice/` and `fabric-demo/bob/`. `-Command reset-keys` deletes them.
+- Every run starts from the fixtures in `demo/fixtures/`. Logs and audit files go to `.local/demo/run/`.
+- With Claude, both owners' free/busy and the agents' messages go to Anthropic. A rehearsal run cost about $0.35.
+- A small local model usually stalls, for example by reading the calendar again instead of answering. Isabelle keeps it safe but cannot make it useful.
+- It is not production security: see section 15 of the specification.
+
+The tests that need Isabelle, Credential Manager, the API key or Ollama run only locally:
+
+    powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run.ps1 cargo test --workspace -- --ignored
 
 ## Toolchain decision
 

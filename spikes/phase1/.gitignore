@@ -1,0 +1,2 @@
+# Builds normally go to the repository's target/ through scripts/run.ps1.
+/target/
