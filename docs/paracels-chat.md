@@ -1,6 +1,6 @@
 # Paracels Chat — A Dummy Chat Prototype
 
-**Status:** approved at gate G0 on 2026-10-22, version 0.2. You approved every proposed default except D28, where you chose the alternative (Q20). Phase 1 is done (results in section 17); gate G1, your review of the spike results, is next.
+**Status:** version 0.3, approved at gate G0 on 2026-10-22 and updated at gate G1 the same day. You approved every proposed default except D28, where you chose the alternative (Q20). Phase 1 is done (results in section 17), and you approved its results at gate G1 (Q21). Phase 2 is in progress.
 
 **Prepared:** 2026-10-21
 
@@ -47,10 +47,11 @@ It is a dummy: no accounts, no encryption, development builds only. Section 13 l
 | Q18 | Network protection | A shared room key. The app sends it with every request and connection, and the server rejects anything without it. |
 | Q19 | Commits | Authored as Areg Melik-Adamyan <areg@hey.com>, set in this repository's git config, with the `Co-Authored-By: Claude Opus 5.5` trailer the history already uses. |
 | Q20 | Spec approval (gate G0) | Every proposed default approved as written, except D28: the app keeps the generated project's bundle ID, `com.paracels.conclave`, and `app.json` changes to match. Phase 1 starts right away and pauses when the iPhone is needed. |
+| Q21 | Spike review (gate G1) | D7 and D8 confirmed. Code that Node loads also imports types with `import type`. `tsconfig.json` gains `erasableSyntaxOnly`, and ESLint's `consistent-type-imports` rule covers `src/chat/shared/`, `src/chat/server/`, `server/` and `scripts/`, so the starter files stay as they are. The `chat:socket` script passes `--disable-warning=MODULE_TYPELESS_PACKAGE_JSON`. Phase 1's choices are approved as made. Phase 2 starts right away. |
 
 ## 3. Decisions that need your confirmation
 
-Your answers left the gaps below. You approved every proposed default on 2026-10-22, except D28, where you chose the alternative (Q20). The alternatives stay here for the record.
+Your answers left the gaps below. You approved every proposed default on 2026-10-22, except D28, where you chose the alternative (Q20). After the spikes, you confirmed D7 and D8 at gate G1 (Q21). The alternatives stay here for the record.
 
 ### 3.1 Servers and storage
 
@@ -63,7 +64,7 @@ Your answers left the gaps below. You approved every proposed default on 2026-10
 | D5 | **Limits:** text up to 4,000 characters; one attachment per message, up to 10 MB; the text may be empty when there is an attachment. | 25 MB, or several attachments per message. |
 | D6 | **Append-only log.** Sent messages cannot be edited or deleted, and nothing expires. `npm run chat:reset` deletes the whole database. | A retention window, for example 30 days. |
 | D7 | **SQLite through Node's built-in `node:sqlite`** in both processes. Native add-ons such as better-sqlite3 cannot be bundled into API routes, and Metro already treats `sqlite` as a Node built-in. This Mac has Node 26.12.0 with SQLite 3.54.1. | — |
-| D8 | **Node runs the socket server's TypeScript directly**, with no build step. Code that both Node and Metro load (`src/chat/shared/`, `src/chat/server/`) therefore uses only erasable TypeScript syntax and relative imports ending in `.ts`, and `tsconfig.json` gains `allowImportingTsExtensions`. | Run the socket server with `tsx`: one more dev dependency, but `@/` imports work everywhere. |
+| D8 | **Node runs the socket server's TypeScript directly**, with no build step. Code that both Node and Metro load (`src/chat/shared/`, `src/chat/server/`) therefore uses only erasable TypeScript syntax and relative imports ending in `.ts`, and `tsconfig.json` gains `allowImportingTsExtensions`. Confirmed at G1 (Q21), with one more rule from the spikes: this code imports types with `import type`. `erasableSyntaxOnly` and ESLint's `consistent-type-imports` check it. | Run the socket server with `tsx`: one more dev dependency, but `@/` imports work everywhere. |
 
 ### 3.2 Protocol
 
@@ -570,7 +571,7 @@ Each phase ends with one commit on the branch and a stop for your approval (Q12,
 | T0.2 | Write this spec; update the root README, the app README, `docs/architecture.md` and the app's `AGENTS.md`; commit. | M | |
 | G0 | You review this spec and approve or change D1–D33. Done 2026-10-22: all approved except D28 (Q20). | | your review |
 
-### Phase 1 — Tooling, devices and spikes, then gate G1 (done 2026-10-22; gate G1 next)
+### Phase 1 — Tooling, devices and spikes, then gate G1 (done 2026-10-22; approved at G1, Q21)
 
 | Task | Work | Size | Needs |
 |---|---|---|---|
@@ -578,7 +579,7 @@ Each phase ends with one commit on the branch and a stop for your approval (Q12,
 | T1.2 | Configure `app.json` (section 14, D28), regenerate `ios/` and run the app on the simulator. | S | |
 | T1.3 | Install on your iPhone with `npx expo run:ios --device` and allow local network access. | S | your iPhone, USB once |
 | T1.4 | Spikes: an API route that opens `node:sqlite` under `npx expo start` (R1); a socket server stub under Node that imports shared `.ts` modules (R6); the iPhone reaching both ports over Wi-Fi (R3); a 10 MB upload through an API route (R2). The results go into this spec. | M | your iPhone |
-| G1 | You review the spike results and confirm D7 and D8, or pick a fallback. | | your review |
+| G1 | You review the spike results and confirm D7 and D8, or pick a fallback. Done 2026-10-22: both confirmed (Q21). | | your review |
 
 Results (2026-10-22), on this Mac, the iPhone 18 Pro simulator (iOS 27.0) and your iPhone 16 Pro:
 
