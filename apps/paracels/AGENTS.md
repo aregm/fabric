@@ -39,3 +39,39 @@ Docs: https://docs.expo.dev/eas/index.md
 - If `ios/` and `android/` directories do not exist, they are generated (Continuous Native Generation). Never create or edit them by hand — configure native behavior in `app.json` and config plugins.
 - Expo Go only includes its bundled native modules. After adding a library with native code, the app needs a development build: `npx expo run:ios|android` locally, or `eas build --profile development`.
 - Prefer recommended Expo modules over third-party libraries, and check your available skills before adding dependencies. Docs: https://docs.expo.dev/versions/latest/index.md
+
+## Chat prototype
+
+The chat is specified in [docs/paracels-chat.md](../../docs/paracels-chat.md), the source of truth for its protocol, storage, limits and phases. It is built phase by phase, with the user's approval after each, so some paths below don't exist yet. Anything still marked as a decision (D1–D33) is not settled until the user approves it. When you change behavior the spec describes, update the spec in the same commit.
+
+Where code goes:
+
+- `src/chat/shared/`: protocol types, validators, limits and demo users. Pure TypeScript, with no React Native, Expo or Node imports.
+- `src/chat/server/`: SQLite access, the message and attachment stores, the room-key check, the policy module and the HTTP handlers. Only API routes and the socket server use it.
+- `src/chat/client/`: app logic, meaning server addresses, the HTTP and WebSocket clients, the outbox, attachments and chat state.
+- `src/components/chat/`: chat UI. `src/app/index.tsx` is the chat screen; `src/app/api/` holds thin API routes over `src/chat/server/http.ts`.
+- `server/chat-socket.ts`: the WebSocket server.
+
+Rules:
+
+- App code never imports `src/chat/server/` or a `node:` module. Don't use the `server-only` package as a guard: plain Node throws when it loads it.
+- Plain Node runs `src/chat/shared/`, `src/chat/server/` and `server/` as well as Metro. Use erasable TypeScript only (no `enum`, `namespace` or constructor parameter properties) and relative imports ending in `.ts`; no `@/` aliases there.
+- Only the socket server writes the `messages` table; only the API routes write `attachments`.
+- On the server, only `src/chat/server/policy.ts` decides whether a message or upload is acceptable, and only it reads payload fields.
+- Message and attachment IDs are UUIDs created on the device with `expo-crypto`'s `randomUUID()`. A retry resends the same ID; never create a new ID for the same message.
+- A change to a frame or the payload needs a new version (`paracels-chat/1`, `plain/1`). The server rejects what it doesn't understand; the app ignores server frames it doesn't know.
+- Render message text with `<Text>` only: no HTML, Markdown or link rendering.
+- Never log message text, file contents or the room key. Never commit `.env` or `.local/`.
+- Functional modules, no classes; descriptive names; JSDoc on exported functions; an accessibility label on every interactive element.
+- Native packages need a rebuilt app (`npx expo run:ios`), and the iOS Simulator has no camera.
+
+Commands, once Phase 2 adds them:
+
+```bash
+npm run chat:setup    # create .env with a fresh room key if it is missing
+npm run chat:socket   # start the WebSocket server on port 8787
+npx expo start        # dev server: app bundle and API routes on port 8081
+npm test              # shared, server and client-logic tests (node --test)
+npm run chat:log      # print the stored messages
+npm run chat:reset    # delete the chat database (stop both servers first)
+```

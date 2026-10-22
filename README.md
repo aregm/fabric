@@ -8,6 +8,7 @@ The scaffold begins as a small modular monolith:
 - apps/fabric-cli — diagnostic CLI plus the `demo-meeting` executable fixture;
 - crates/fabric-core — shared domain library, including checked calendar intervals and Rendezvous agreement semantics;
 - apps/fabric-demo, crates/fabric-policy, crates/fabric-token, crates/fabric-wire and isabelle/ — the Isabelle-gated calendar demo below;
+- apps/paracels — an Expo (React Native) iOS app outside the Cargo workspace, which will host the chat prototype below;
 - scripts — isolated setup, command runner, and verification for Windows and macOS/Linux.
 
 Google adapters, encrypted transport, persistence, and desktop crates should be added only when they contain real behavior.
@@ -17,6 +18,7 @@ Google adapters, encrypted transport, persistence, and desktop crates should be 
 - [Product requirements](docs/PRD.md) — problem statement, market research, product experience, requirements, roadmap, and evaluation.
 - [Technical architecture](docs/architecture.md) — platform architecture, data model, retrieval, agents, security, and implementation guidance.
 - [Calendar vertical](docs/calendar.md) — the Google Calendar-first product test, private scheduling protocol, consent model, and release gates.
+- [Paracels chat prototype](docs/paracels-chat.md) — a dummy chat in the paracels iOS app: decisions, design, protocol, and phased plan.
 
 ## Current executable slice
 
@@ -97,6 +99,22 @@ token checks. Stop with Ctrl+C, or from another terminal:
 The tests that need Isabelle, Credential Manager, the API key or Ollama run only locally:
 
     powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run.ps1 cargo test --workspace -- --ignored
+
+## Paracels chat prototype (iOS, planned)
+
+`apps/paracels` is an Expo (React Native) app for iOS that sits outside the Cargo workspace. The
+[chat specification](docs/paracels-chat.md) plans a dummy group chat in it, as a first step toward
+Fabric's messaging. Alice and Bob chat in one room from the iOS Simulator and an iPhone on the same
+Wi-Fi. Expo Router API routes and a small WebSocket server on this Mac log every sent message to
+SQLite and deliver it live, and unsent messages wait in an outbox on the phone.
+
+The prototype keeps seams for Fabric's encryption, policy and local-first storage but implements
+none of them: there is no TLS and no end-to-end encryption, and a shared room key is the only
+protection.
+
+Status: specified, not built. It is built in phases, each of which stops for review. Setup and run
+steps are in [apps/paracels/README.md](apps/paracels/README.md). It needs macOS with Xcode, plus
+Node.js and npm, which are host prerequisites: the setup scripts here install only Rust.
 
 ## Toolchain decision
 
