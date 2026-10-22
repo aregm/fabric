@@ -1,6 +1,6 @@
 # Paracels Chat — A Dummy Chat Prototype
 
-**Status:** approved at gate G0 on 2026-10-21, version 0.2. You approved every proposed default except D28, where you chose the alternative (Q20). Phase 1 is in progress.
+**Status:** approved at gate G0 on 2026-10-22, version 0.2. You approved every proposed default except D28, where you chose the alternative (Q20). Phase 1 is done (results in section 17); gate G1, your review of the spike results, is next.
 
 **Prepared:** 2026-10-21
 
@@ -50,7 +50,7 @@ It is a dummy: no accounts, no encryption, development builds only. Section 13 l
 
 ## 3. Decisions that need your confirmation
 
-Your answers left the gaps below. You approved every proposed default on 2026-10-21, except D28, where you chose the alternative (Q20). The alternatives stay here for the record.
+Your answers left the gaps below. You approved every proposed default on 2026-10-22, except D28, where you chose the alternative (Q20). The alternatives stay here for the record.
 
 ### 3.1 Servers and storage
 
@@ -502,9 +502,9 @@ What it does not protect:
 - **This Mac:** macOS with Xcode 27.1 and its iOS Simulator; Node.js 26.12.0 and npm 11.20.0. Node runs TypeScript directly and includes SQLite, both checked on this Mac. Node is a host prerequisite: the repository's setup scripts install only Rust into `.tooling/`.
 - **iPhone:** Developer Mode on, the same Wi-Fi network as the Mac (not a guest network that isolates clients), and a USB connection for the first install. The app asks for local network access the first time; it must be allowed.
 - **Signing:** the generated Xcode project signs with team `BZ5NJV27J6` (D28).
-- **Installed today:** Expo SDK 58.0.17, Expo Router 58.0.25, React Native 0.88.0, React 19.3.0, TypeScript 6.0.
-- **To add (D33):** `expo-sqlite` ~58.0.13, `expo-image-picker` ~58.0.10, `expo-document-picker` ~58.0.4, `expo-file-system` ~58.0.10, `expo-crypto` ~58.0.7, `ws` 8 (8.22.0 is already in the dependency tree through Expo CLI) and `@types/ws`; `eslint` and `eslint-config-expo` through `npx expo lint` (D30). Native modules need a rebuilt app (`npx expo run:ios`), not just a reload.
-- **App configuration (`app.json`):** `ios.infoPlist.NSLocalNetworkUsageDescription`, which the generated project lacks today; the image picker plugin's photo and camera permission texts, with the microphone permission off; and `ios.appleTeamId` (D28). Plain HTTP and WebSocket to the Mac are already allowed: the generated `Info.plist` sets `NSAllowsLocalNetworking`.
+- **From the starter:** Expo SDK 58.0.17, Expo Router 58.0.25, React Native 0.88.0, React 19.3.0, TypeScript 6.0.
+- **Added in Phase 1 (D33):** `expo-sqlite` ~58.0.13, `expo-image-picker` ~58.0.10, `expo-document-picker` ~58.0.4, `expo-file-system` ~58.0.10 and `expo-crypto` ~58.0.7; `ws` ^8.22.0 with `@types/ws` ^8.18.2, and `@types/node` ^26.6.5 (section 17); `eslint` ^9.0.0 and `eslint-config-expo` ~58.0.4 through `npx expo lint` (D30). Native modules need a rebuilt app (`npx expo run:ios`), not just a reload.
+- **App configuration (`app.json`):** `ios.infoPlist.NSLocalNetworkUsageDescription`; the image picker plugin's photo and camera permission texts, with the microphone permission off; and the bundle ID and `ios.appleTeamId` (D28). Plain HTTP and WebSocket to the Mac are allowed because the generated `Info.plist` sets `NSAllowsLocalNetworking`.
 - **Ports:** 8081 for the dev server and 8787 for the socket server (D1). macOS may ask whether Node may accept incoming connections; allow it, or the iPhone cannot connect.
 - **Files:** `apps/paracels/.env`, which the root `.gitignore` already ignores, and `apps/paracels/.local/chat.sqlite` (D2).
 
@@ -568,9 +568,9 @@ Each phase ends with one commit on the branch and a stop for your approval (Q12,
 |---|---|---|---|
 | T0.1 | Create branch `cursor/paracels-chat` and commit the paracels starter as the baseline (`147f95a`). | S | |
 | T0.2 | Write this spec; update the root README, the app README, `docs/architecture.md` and the app's `AGENTS.md`; commit. | M | |
-| G0 | You review this spec and approve or change D1–D33. Done 2026-10-21: all approved except D28 (Q20). | | your review |
+| G0 | You review this spec and approve or change D1–D33. Done 2026-10-22: all approved except D28 (Q20). | | your review |
 
-### Phase 1 — Tooling, devices and spikes, then gate G1
+### Phase 1 — Tooling, devices and spikes, then gate G1 (done 2026-10-22; gate G1 next)
 
 | Task | Work | Size | Needs |
 |---|---|---|---|
@@ -579,6 +579,23 @@ Each phase ends with one commit on the branch and a stop for your approval (Q12,
 | T1.3 | Install on your iPhone with `npx expo run:ios --device` and allow local network access. | S | your iPhone, USB once |
 | T1.4 | Spikes: an API route that opens `node:sqlite` under `npx expo start` (R1); a socket server stub under Node that imports shared `.ts` modules (R6); the iPhone reaching both ports over Wi-Fi (R3); a 10 MB upload through an API route (R2). The results go into this spec. | M | your iPhone |
 | G1 | You review the spike results and confirm D7 and D8, or pick a fallback. | | your review |
+
+Results (2026-10-22), on this Mac, the iPhone 18 Pro simulator (iOS 27.0) and your iPhone 16 Pro:
+
+- **T1.1, packages:** `npx expo install` added `expo-sqlite` 58.0.13, `expo-image-picker` 58.0.10, `expo-document-picker` 58.0.4, `expo-file-system` 58.0.10 and `expo-crypto` 58.0.7, and listed the `expo-sqlite` config plugin in `app.json` by itself. npm added `ws` 8.22.0 and `@types/ws` 8.18.2. It also added `@types/node` 26.6.5, which D33 did not list: the server code's `node:sqlite` types come from it, and until now it was in the tree only as a dependency of Expo CLI.
+- **T1.1, lint:** `npx expo lint` installed ESLint 9.39.5 and `eslint-config-expo` 58.0.4 and wrote `eslint.config.js`. That file now also has D30's rule, for everything in `src/` except `src/app/api/` and `src/chat/server/`. A throwaway file confirmed that the rule rejects `node:fs`, `../chat/server/…` and `@/chat/server/…`, type-only imports included. Without arguments, `npx expo lint` checks only `src/`, so Phase 2 adds `server/` and `scripts/` to the `lint` script. The starter's web color-scheme hook broke the React Compiler rule `react-hooks/set-state-in-effect`. D20 keeps that hook, so it now uses `useSyncExternalStore`, which gives the same result without an extra render. Lint is clean.
+- **T1.1, typecheck and tests:** `tsconfig.json` has `allowImportingTsExtensions`. `npx tsc --noEmit` reports one error, in the starter's `app-tabs.web.tsx`. It was there before Phase 1, and Phase 3 deletes that file (D20). `npm test` runs `node --test` over `src/**/*.test.ts` and `server/**/*.test.ts`; there are no tests yet.
+- **T1.1, advisories:** npm reports 19 high-severity advisories. All come from two transitive packages, `braces` and `node-forge`, reached through `expo`, `react-native`, `react-native-reanimated` and `react-native-worklets`; none comes from the new packages. `npm audit fix --force` would move SDK packages off their SDK 58 versions, so they stay as they are.
+- **T1.2:** `app.json` now has the bundle ID `com.paracels.conclave` and `ios.appleTeamId` (D28), `NSLocalNetworkUsageDescription`, and the image picker's photo and camera texts with the microphone permission removed. `npx expo prebuild --clean --platform ios` rebuilt `ios/` in 77 seconds, CocoaPods included. The old project differed from a generated one only in its bundle ID and team, which had been set by hand in Xcode; both now come from `app.json`. `npx expo run:ios` built the app in 2 minutes 15 seconds, with no errors, and launched it on the simulator.
+- **T1.3:** `npx expo run:ios --device` built the app for the iPhone and signed it with team `BZ5NJV27J6`. It then stopped with "the device is locked", because the phone had locked during the build. After you unlocked it, `xcrun devicectl` installed and launched that build. The app has local network access.
+- **R1, passed:** an API route served by the dev server opened `node:sqlite` and got SQLite 3.54.1 in WAL mode. Its working directory was `apps/paracels`, so D2's relative path works. D7 holds.
+- **R2, passed:** 10 MiB request bodies reached the route intact (same SHA-256) and were stored as BLOBs in 50–90 ms over localhost; 25 MiB took 140–175 ms. The app sent a 10 MiB body in about 0.1 seconds from the simulator and in 0.6 seconds from the iPhone over Wi-Fi, roughly 140 Mbit/s. The dev server set no limit at these sizes, so D5 holds.
+- **R6, passed:** one module in `src/chat/shared/` loaded in the app through `@/`, in the API route through `../../chat/shared/spike.ts`, and in the socket stub under plain Node 26. Node refused four things: an enum ("not supported in strip-only mode"), the `@/` alias, an import without `.ts`, and a type imported without the `type` keyword ("does not provide an export named"). D8 holds, and the last point becomes a rule: code that Node loads imports types with `import type`. TypeScript can check two of these. `erasableSyntaxOnly` already passes on the whole project; `verbatimModuleSyntax` would first need `import type` in five starter files, two of which D20 keeps. Node also warns at each start that `package.json` declares no module type (`MODULE_TYPELESS_PACKAGE_JSON`); passing `--disable-warning=MODULE_TYPELESS_PACKAGE_JSON` in the `chat:socket` script silences it without changing how Metro and Expo read the project.
+- **R3, passed:** a temporary panel on the home screen ran the checks on each device and posted its results to the spike route. On the simulator, it found the dev server at `http://localhost:8081`, reached the API route with a relative `fetch` (200 in 65–84 ms), and reached the socket stub at `ws://localhost:8787/chat` (95–221 ms). On the iPhone, it found the dev server at `http://192.168.1.185:8081`, the Mac's Wi-Fi address, and the API route answered in 34 ms. The socket stub at `ws://192.168.1.185:8787/chat` answered in 52 ms and saw the phone as 192.168.1.171. D26 works as described on both devices. Both servers listen on every interface, IPv4 and IPv6, and this Mac's firewall is off.
+- **Found for Phase 2:** a 70 KB frame made `ws` close that connection with 1009, as the 64 KiB limit in section 6.4 intends, and then emit an `error` event. With no handler, that event stopped the whole socket server. T2.4 handles errors on every connection and tests that the server keeps serving after an oversized frame.
+- **Dev server:** the first spikes used a dev server started on 2026-10-21 with `npx expo run --device`. It served the new files without a restart, but the app's live-reload connection to it failed ("Cannot connect to Expo CLI"). With your approval it was replaced by a fresh `npx expo start`. R1 and the simulator checks passed again, the warning was gone, and the iPhone's JavaScript logs appeared in the server's output.
+- **Found for Phase 3:** the iPhone has Reduce Motion on, and Reanimated reports that it disables some animations there. The chat screen must work fully without animation.
+- **Spike code** was removed before the Phase 1 commit: `src/chat/shared/spike.ts`, `src/app/api/spike+api.ts`, `server/spike-socket.ts`, `src/components/spike-panel.tsx` and two lines in `src/app/index.tsx`.
 
 ### Phase 2 — Servers, then gate G2
 

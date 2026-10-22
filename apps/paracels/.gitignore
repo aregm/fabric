@@ -33,6 +33,9 @@ yarn-error.*
 # local env files
 .env*.local
 
+# chat prototype data (docs/paracels-chat.md, D2)
+.local/
+
 # typescript
 *.tsbuildinfo
 

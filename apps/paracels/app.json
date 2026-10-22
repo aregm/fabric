@@ -9,7 +9,11 @@
     "userInterfaceStyle": "automatic",
     "ios": {
       "icon": "./assets/expo.icon",
-      "bundleIdentifier": "com.aregm.paracels"
+      "bundleIdentifier": "com.paracels.conclave",
+      "appleTeamId": "BZ5NJV27J6",
+      "infoPlist": {
+        "NSLocalNetworkUsageDescription": "$(PRODUCT_NAME) connects to the chat servers on your Mac over your local network."
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -32,6 +36,15 @@
           "backgroundColor": "#208AEF",
           "image": "./assets/images/splash-icon.png",
           "imageWidth": 76
+        }
+      ],
+      "expo-sqlite",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "$(PRODUCT_NAME) uses your photo library so you can send photos in the chat.",
+          "cameraPermission": "$(PRODUCT_NAME) uses the camera so you can take photos to send in the chat.",
+          "microphonePermission": false
         }
       ]
     ],

@@ -55,7 +55,8 @@ Where code goes:
 Rules:
 
 - App code never imports `src/chat/server/` or a `node:` module. Don't use the `server-only` package as a guard: plain Node throws when it loads it.
-- Plain Node runs `src/chat/shared/`, `src/chat/server/` and `server/` as well as Metro. Use erasable TypeScript only (no `enum`, `namespace` or constructor parameter properties) and relative imports ending in `.ts`; no `@/` aliases there.
+- Plain Node runs `src/chat/shared/`, `src/chat/server/` and `server/` as well as Metro. Use erasable TypeScript only (no `enum`, `namespace` or constructor parameter properties), relative imports ending in `.ts`, and `import type` for anything used only as a type; no `@/` aliases there. Node refuses each of these otherwise (spec section 17, Phase 1 results).
+- Give every server-side WebSocket connection an `error` handler. `ws` raises an error for a frame over the size limit, and an unhandled one stops the whole socket server.
 - Only the socket server writes the `messages` table; only the API routes write `attachments`.
 - On the server, only `src/chat/server/policy.ts` decides whether a message or upload is acceptable, and only it reads payload fields.
 - Message and attachment IDs are UUIDs created on the device with `expo-crypto`'s `randomUUID()`. A retry resends the same ID; never create a new ID for the same message.
