@@ -1,6 +1,6 @@
 # Paracels Chat — A Dummy Chat Prototype
 
-**Status:** draft for your review, version 0.1. Phase 0 (this spec and the documentation updates) is done; gate G0, your review, is next. No chat code exists yet.
+**Status:** approved at gate G0 on 2026-10-21, version 0.2. You approved every proposed default except D28, where you chose the alternative (Q20). Phase 1 is in progress.
 
 **Prepared:** 2026-10-21
 
@@ -46,10 +46,11 @@ It is a dummy: no accounts, no encryption, development builds only. Section 13 l
 | Q17 | Installing on the iPhone | Built and installed from this Mac with Xcode signing (`npx expo run:ios --device`). |
 | Q18 | Network protection | A shared room key. The app sends it with every request and connection, and the server rejects anything without it. |
 | Q19 | Commits | Authored as Areg Melik-Adamyan <areg@hey.com>, set in this repository's git config, with the `Co-Authored-By: Claude Opus 5.5` trailer the history already uses. |
+| Q20 | Spec approval (gate G0) | Every proposed default approved as written, except D28: the app keeps the generated project's bundle ID, `com.paracels.conclave`, and `app.json` changes to match. Phase 1 starts right away and pauses when the iPhone is needed. |
 
 ## 3. Decisions that need your confirmation
 
-Your answers left the gaps below. Each has a proposed default; nothing here is built until you approve or change it at gate G0.
+Your answers left the gaps below. You approved every proposed default on 2026-10-21, except D28, where you chose the alternative (Q20). The alternatives stay here for the record.
 
 ### 3.1 Servers and storage
 
@@ -97,7 +98,7 @@ Your answers left the gaps below. Each has a proposed default; nothing here is b
 
 | # | Proposed default | Alternative |
 |---|---|---|
-| D28 | **Bundle ID `com.aregm.paracels`, as in `app.json`.** The generated `ios/` project still says `com.paracels.conclave`, so Phase 1 regenerates `ios/`. The signing team in that project, `BZ5NJV27J6`, goes into `app.json` as `ios.appleTeamId` so regeneration keeps it. | Change `app.json` to `com.paracels.conclave`. |
+| D28 | **Chosen at G0 (Q20): bundle ID `com.paracels.conclave`.** `app.json` changes from `com.aregm.paracels` to match the generated `ios/` project, and that project's signing team, `BZ5NJV27J6`, goes into `app.json` as `ios.appleTeamId`, so regenerating `ios/` keeps both. | The earlier proposal: keep `com.aregm.paracels` from `app.json` and regenerate `ios/` with it. |
 | D29 | **Tests use Node's built-in test runner** (`node --test`) for the shared, server and client logic. Screens are checked by hand on both devices. No Jest. | Add `jest-expo` for component tests. |
 | D30 | **ESLint** set up by `npx expo lint` (it adds `eslint` and `eslint-config-expo`), plus a rule that stops app code from importing `src/chat/server/` or `node:` modules. | — |
 | D31 | **CI unchanged.** The GitHub workflow keeps testing only the Rust workspace. | Add a job that runs the app's typecheck, lint and tests. |
@@ -547,7 +548,7 @@ apps/paracels/
 | R1 | `node:sqlite` may fail to load inside API routes run by the dev server. Metro lists `sqlite` among the Node built-ins it leaves external, which suggests it works, but nobody has run it. | Spike T1.4. If it fails, I stop and offer options, such as serving the HTTP endpoints from the socket server process instead. |
 | R2 | The dev server may limit or slow uploads near 10 MB, because the route reads the whole body into memory. | Spike T1.4 with a 10 MB file; lower the limit (D5) if needed. |
 | R3 | The iPhone cannot reach the Mac: local network access was declined, the Wi-Fi isolates clients (common on guest networks), or the macOS firewall blocks Node. | Spike T1.4. The app README explains each fix, and the banner shows the address the app is trying. |
-| R4 | Device installs break: the bundle ID change needs a new provisioning profile, installs signed by a free team expire after 7 days, and iOS requires Developer Mode. | T1.3 covers the first install; the app README covers renewal. |
+| R4 | Device installs break: installs signed by a free team expire after 7 days, and iOS requires Developer Mode. Keeping the generated project's bundle ID (D28) avoids a new provisioning profile. | T1.3 covers the first install; the app README covers renewal. |
 | R5 | Two processes on one SQLite file can hit "database is locked". | WAL, a 5-second busy timeout, one writing process per table (D3) and short transactions. |
 | R6 | Code shared by Metro and plain Node must suit both: erasable syntax and `.ts` import extensions. | Spike T1.4; fall back to `tsx` (D8). |
 | R7 | Hermes, the app's JavaScript engine, may lack `crypto.randomUUID`. | Use `expo-crypto`'s `randomUUID()`. |
@@ -567,7 +568,7 @@ Each phase ends with one commit on the branch and a stop for your approval (Q12,
 |---|---|---|---|
 | T0.1 | Create branch `cursor/paracels-chat` and commit the paracels starter as the baseline (`147f95a`). | S | |
 | T0.2 | Write this spec; update the root README, the app README, `docs/architecture.md` and the app's `AGENTS.md`; commit. | M | |
-| G0 | You review this spec and approve or change D1–D33. | | your review |
+| G0 | You review this spec and approve or change D1–D33. Done 2026-10-21: all approved except D28 (Q20). | | your review |
 
 ### Phase 1 — Tooling, devices and spikes, then gate G1
 
