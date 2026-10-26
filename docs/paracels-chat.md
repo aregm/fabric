@@ -1,6 +1,6 @@
 # Paracels Chat — A Dummy Chat Prototype
 
-**Status:** version 0.8, approved at gates G0 and G1 on 2026-10-22, at gate G2 on 2026-10-26, and at gate G3 on 2026-10-26. You approved every proposed default except D28, where you chose the alternative (Q20). Phases 1 through 5 are done (results in section 17). Gate G4 is next: airplane mode, force-quit and reopen, and a socket restart. Gate G5 is still yours: send a photo, a camera photo, and a file in both directions.
+**Status:** version 0.9, approved at gates G0 and G1 on 2026-10-22 and at gates G2, G3, G4 and G5 on 2026-10-26. You approved every proposed default except D28, where you chose the alternative (Q20). Phases 1 through 5 are done (results in section 17). Phase 6 is next: the full acceptance check and the final docs, then gate G6.
 
 **Prepared:** 2026-10-21
 
@@ -50,6 +50,8 @@ It is a dummy: no accounts, no encryption, development builds only. Section 13 l
 | Q21 | Spike review (gate G1) | D7 and D8 confirmed. Code that Node loads also imports types with `import type`. `tsconfig.json` gains `erasableSyntaxOnly`, and ESLint's `consistent-type-imports` rule covers `src/chat/shared/`, `src/chat/server/`, `server/` and `scripts/`, so the starter files stay as they are. The `chat:socket` script passes `--disable-warning=MODULE_TYPELESS_PACKAGE_JSON`. Phase 1's choices are approved as made. Phase 2 starts right away. |
 | Q22 | Server review (gate G2) | The API answers with the room key. Phase 3 starts right away. |
 | Q23 | Two-device chat (gate G3) | Closed 2026-10-26: you chatted between the simulator and the iPhone. The list stays anchored to the newest message and is not inverted, because iOS 26 blurs an inverted scroll view. Gates G4 and G5 remain yours. |
+| Q24 | Offline queue (gate G4) | Closed 2026-10-26: airplane mode, force-quit and reopen, and a socket restart. Waiting messages survived and were delivered. |
+| Q25 | Attachments (gate G5) | Closed 2026-10-26: a library photo, a camera photo and a file, in both directions. |
 
 ## 3. Decisions that need your confirmation
 
@@ -644,35 +646,37 @@ Results (2026-10-26):
 - **Checks:** `npm test` runs 101 tests, all passing. `npm run lint` and `npx tsc --noEmit` are clean.
 - **G3, closed 2026-10-26:** you chatted between the simulator and the iPhone. Before that, the message list was washed out: iOS 26 paints its scroll-edge blur across an inverted scroll view, so every bubble was pale and unreadable while the header and composer stayed sharp. The list is no longer inverted. It keeps the newest message at the bottom and loads older pages at the top. The chat screen also hides that scroll-edge effect.
 
-### Phase 4 — Offline queue, then gate G4 (done 2026-10-26; gate G4 next)
+### Phase 4 — Offline queue, then gate G4 (done 2026-10-26; gate G4 closed 2026-10-26)
 
 | Task | Work | Size | Needs |
 |---|---|---|---|
 | T4.1 | The device outbox in expo-sqlite, behind the same interface, with migrations and recovery of interrupted sends. | M | |
 | T4.2 | The waiting state, the ordered flush after reconnecting, the ack timeout and safe retry. | S | |
-| G4 | You test airplane mode, force-quitting and reopening the app, and a socket server restart. | | your run |
+| G4 | You test airplane mode, force-quitting and reopening the app, and a socket server restart. Done 2026-10-26 (Q24). | | your run |
 
 Results (2026-10-26):
 
 - **T4.1:** the app opens `paracels-chat.db` through `expo-sqlite`'s `openDatabaseSync` (SDK 58). The table is section 6.3, including the attachment columns, which stay empty until Phase 5. `PRAGMA user_version` is 1. A schema newer than this app is refused. On open, a row left in `sending` goes back to `waiting` and keeps its ID and attempt count. Sent rows are still deleted on `ack`. The screen's first state is that list, so unsent messages are visible before history returns.
 - **T4.2:** the Phase 3 worker is unchanged and now writes the sqlite store. It still sends the oldest `waiting` row, skips `failed` rows, returns the in-flight row to `waiting` when the socket drops, and marks `ack_timeout` when 10 seconds pass with no ack. Retry puts a failed row back to `waiting` with the same ID. A duplicate `ack` from the server removes it.
-- **Checks:** `npm test` runs 104 tests, all passing, including a reopen of the same file and a flush through the worker. `npm run lint` and `npx tsc --noEmit` are clean. Airplane mode, force-quit and a socket restart are gate G4.
+- **Checks:** `npm test` runs 104 tests, all passing, including a reopen of the same file and a flush through the worker. `npm run lint` and `npx tsc --noEmit` are clean.
+- **G4, closed 2026-10-26:** you tested airplane mode, force-quit and reopen, and a socket server restart. Waiting messages survived and were delivered.
 
-### Phase 5 — Attachments, then gate G5 (done 2026-10-26; gate G5 next)
+### Phase 5 — Attachments, then gate G5 (done 2026-10-26; gate G5 closed 2026-10-26)
 
 | Task | Work | Size | Needs |
 |---|---|---|---|
 | T5.1 | Pickers for the photo library, the camera and files (D21); copies into the documents directory; size checks. | M | |
 | T5.2 | The upload step in the outbox, the attachment payload, and the policy check of size and hash. | M | |
 | T5.3 | Inline images and file rows; download and Quick Look (D22). | M | |
-| G5 | You send each kind of attachment in both directions. | | your run |
+| G5 | You send each kind of attachment in both directions. Done 2026-10-26 (Q25). | | your run |
 
 Results (2026-10-26):
 
 - **T5.1:** the composer’s attach menu offers Photo Library, Take Photo and Choose File. Photos are images only, compressed at quality 0.8. A file over 10 MB is refused before it is queued, with a message that says so. On Send the file is copied under `outbox/` in the documents directory and the row stores a new attachment id.
 - **T5.2:** the worker uploads that copy with `File.upload` (`PUT`, raw bytes) before `send`, and puts the size and SHA-256 from the response into the payload. The policy module already compares those with the stored blob. A network error or a 5xx leaves the row waiting and tries again after the reconnect backoff. 401, 409 and 413 fail the row. `attachment_missing` clears the hash and uploads once more; a second miss fails the row. Delete and `ack` remove the documents copy.
 - **T5.3:** images render inline with `expo-image`, including the room key on remote URLs. Files are a name and a size. Tapping either downloads into the cache under the sanitized name, with a progress line, and opens Quick Look through `File.preview`. `expo-sharing` is not used.
-- **Checks:** `npm test` runs 111 tests, all passing. `npm run lint` and `npx tsc --noEmit` are clean. Sending each kind of attachment both ways is gate G5. Take Photo needs the iPhone. The development build already includes `expo-file-system`; if Quick Look says it could not open, rebuild with `npx expo run:ios`.
+- **Checks:** `npm test` runs 111 tests, all passing. `npm run lint` and `npx tsc --noEmit` are clean. Take Photo needs the iPhone. The development build already includes `expo-file-system`; if Quick Look says it could not open, rebuild with `npx expo run:ios`.
+- **G5, closed 2026-10-26:** you sent a library photo, a camera photo and a file in both directions.
 
 ### Phase 6 — Verification and documentation, then gate G6
 
