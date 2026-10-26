@@ -1021,7 +1021,7 @@ The rehearsal passes when each result opens its original evidence, search works 
 4. **ADR-004 Editor document model** — portable AST, Markdown mapping, CRDT boundary.
 5. **ADR-005 Search fusion and evaluation** — FTS/vector implementation, rank explanation, benchmark.
 6. **ADR-006 Connector sandbox and capability manifest** — process/WASM boundary and credential access.
-7. **ADR-007 Operation log and sync evolution** — single-user oplog, personal devices, shared CRDT spaces.
+7. **ADR-007 Operation log and sync evolution** — single-user oplog, personal devices, shared CRDT spaces. Drafted: [ADR-007](adr/ADR-007-operation-log-and-sync-evolution.md), proposed 2026-10-26.
 8. **ADR-008 Agent/MCP permission model** — resource/tool surface, grants, consent, injection controls.
 9. **ADR-009 Sharing crypto and metadata model** — envelope encryption versus MLS, relay leakage, revocation.
 10. **ADR-010 Licensing/product posture** — personal, open-source, or commercial distribution.
