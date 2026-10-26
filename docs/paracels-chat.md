@@ -1,6 +1,6 @@
 # Paracels Chat — A Dummy Chat Prototype
 
-**Status:** version 0.9, approved at gates G0 and G1 on 2026-10-22 and at gates G2, G3, G4 and G5 on 2026-10-26. You approved every proposed default except D28, where you chose the alternative (Q20). Phases 1 through 5 are done (results in section 17). Phase 6 is next: the full acceptance check and the final docs, then gate G6.
+**Status:** version 1.0, complete. Approved at gates G0 and G1 on 2026-10-22 and at gates G2 through G6 on 2026-10-26. You approved every proposed default except D28, where you chose the alternative (Q20). Phases 0 through 6 are done (results in section 17). Gate G6 closed the prototype (Q26); what comes next is ADR-014 in the architecture document.
 
 **Prepared:** 2026-10-21
 
@@ -52,6 +52,7 @@ It is a dummy: no accounts, no encryption, development builds only. Section 13 l
 | Q23 | Two-device chat (gate G3) | Closed 2026-10-26: you chatted between the simulator and the iPhone. The list stays anchored to the newest message and is not inverted, because iOS 26 blurs an inverted scroll view. Gates G4 and G5 remain yours. |
 | Q24 | Offline queue (gate G4) | Closed 2026-10-26: airplane mode, force-quit and reopen, and a socket restart. Waiting messages survived and were delivered. |
 | Q25 | Attachments (gate G5) | Closed 2026-10-26: a library photo, a camera photo and a file, in both directions. |
+| Q26 | Final run (gate G6) | Closed 2026-10-26: you ran the prototype on the simulator and the iPhone and reported gates G2 through G6 as done. The prototype is complete; no phase remains. |
 
 ## 3. Decisions that need your confirmation
 
@@ -678,13 +679,19 @@ Results (2026-10-26):
 - **Checks:** `npm test` runs 111 tests, all passing. `npm run lint` and `npx tsc --noEmit` are clean. Take Photo needs the iPhone. The development build already includes `expo-file-system`; if Quick Look says it could not open, rebuild with `npx expo run:ios`.
 - **G5, closed 2026-10-26:** you sent a library photo, a camera photo and a file in both directions.
 
-### Phase 6 — Verification and documentation, then gate G6
+### Phase 6 — Verification and documentation, then gate G6 (done 2026-10-26; gate G6 closed 2026-10-26)
 
 | Task | Work | Size | Needs |
 |---|---|---|---|
 | T6.1 | Check every acceptance criterion on the simulator and the iPhone, and record the results here. | M | your iPhone |
 | T6.2 | Final updates to the READMEs, `AGENTS.md` and the architecture document; tests, typecheck and lint clean. | S | |
-| G6 | You run the prototype. | | your run |
+| G6 | You run the prototype. Done 2026-10-26 (Q26). | | your run |
+
+Results (2026-10-26):
+
+- **T6.1:** the criteria that need devices (A1, A2, A4, A5, A6, A7 and A9) were covered by your runs at gates G3, G4, G5 and G6 (Q23 to Q26), on the iPhone 18 Pro simulator and your iPhone 16 Pro; you reported them all as passing. The automated parts hold in `npm test`: for A3, the message store test stores a repeated message once and the socket test only acknowledges a repeat; for A8, the API handler test answers 401 without the key or with a wrong one and logs the attempt without the key, the socket test closes connections that fail `hello`, and the `chat:setup` test writes the key once and never prints it.
+- **T6.2:** the root README, the app README, `AGENTS.md` and `docs/architecture.md` section 9.6 now say the prototype is built and verified, with no phase left. `AGENTS.md` no longer warns about paths that do not exist yet or decisions that are not settled: D1 to D33 are all approved.
+- **Checks:** `npm test` runs 111 tests, all passing. `npm run lint` and `npx tsc --noEmit` are clean.
 
 ## 18. Out of scope
 

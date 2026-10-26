@@ -206,13 +206,14 @@ protection, and the prepare/commit saga described in the calendar specification.
 
 ### 9.6 Prototype mobile client and chat relay: `apps/paracels`
 
-`apps/paracels` is an Expo (React Native) iOS app outside the Cargo workspace. It will host a dummy
+`apps/paracels` is an Expo (React Native) iOS app outside the Cargo workspace. It hosts a dummy
 group chat, specified in [the paracels chat prototype](paracels-chat.md), as a first step toward
 Fabric's messaging. The prototype is deliberately server-first and unencrypted. It exists to
 exercise the message lifecycle (identity created on the device, an offline outbox, idempotent
 delivery, an ordered log, attachments) and to fix the seams where Fabric's encryption, policy, and
 local-first storage will attach. It does not change the desktop decision in §9.3. Status:
-specified, not built.
+built and verified on the simulator and an iPhone; every gate closed on 2026-10-26. Whether it
+graduates is ADR-014.
 
 | Boundary | Responsibility | Explicitly absent |
 |---|---|---|

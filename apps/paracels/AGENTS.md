@@ -42,7 +42,7 @@ Docs: https://docs.expo.dev/eas/index.md
 
 ## Chat prototype
 
-The chat is specified in [docs/paracels-chat.md](../../docs/paracels-chat.md), the source of truth for its protocol, storage, limits and phases. It is built phase by phase, with the user's approval after each, so some paths below don't exist yet. Anything still marked as a decision (D1–D33) is not settled until the user approves it. When you change behavior the spec describes, update the spec in the same commit.
+The chat is specified in [docs/paracels-chat.md](../../docs/paracels-chat.md), the source of truth for its protocol, storage, limits and phases. It was built phase by phase, with the user's approval at each gate; all six phases are done and decisions D1–D33 are all approved. When you change behavior the spec describes, update the spec in the same commit.
 
 Where code goes:
 

@@ -4,8 +4,8 @@ An Expo (React Native) app for iOS, built with Expo SDK 58 and Expo Router. It l
 repository but is not part of the Cargo workspace.
 
 It is a one-screen chat: Alice and Bob in one room, talking to servers on this Mac. The
-[chat prototype spec](../../docs/paracels-chat.md) holds the decisions, the design and the remaining
-phase (a full check of the acceptance criteria).
+[chat prototype spec](../../docs/paracels-chat.md) holds the decisions, the design and the results of
+every phase. The prototype is complete.
 
 ## Requirements
 
@@ -64,9 +64,9 @@ npm test           # the chat protocol, servers and scripts
 
 ## Chat prototype
 
-Status: the servers, the chat screen, the on-device outbox and attachments are built (Phases 2 through 5).
-Gates G3, G4 and G5 are closed. The [spec](../../docs/paracels-chat.md) holds the decisions, the design
-and the remaining phase, a full check of the acceptance criteria.
+Status: complete. The servers, the chat screen, the on-device outbox and attachments are built, and
+every gate, G0 through G6, is closed (2026-10-26). The [spec](../../docs/paracels-chat.md) holds the
+decisions, the design and the results of each phase.
 A session runs two servers on this Mac:
 
 ```bash

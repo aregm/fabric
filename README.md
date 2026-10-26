@@ -112,8 +112,8 @@ The prototype keeps seams for Fabric's encryption, policy and local-first storag
 none of them: there is no TLS and no end-to-end encryption, and a shared room key is the only
 protection.
 
-Status: the servers, the chat screen, the on-device outbox and attachments are built (Phases 2 through 5).
-Gates G3, G4 and G5 are closed. Phase 6, the full acceptance check and the final docs, is next.
+Status: complete. All six phases are done and every gate, G0 through G6, is closed (2026-10-26).
+Whether the prototype graduates is ADR-014 in [docs/architecture.md](docs/architecture.md).
 Setup and run steps are in [apps/paracels/README.md](apps/paracels/README.md).
 It needs macOS with Xcode, plus Node.js and npm, which are host prerequisites: the setup scripts
 here install only Rust.
