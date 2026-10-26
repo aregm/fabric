@@ -1,6 +1,6 @@
 # Paracels Chat — A Dummy Chat Prototype
 
-**Status:** version 0.3, approved at gate G0 on 2026-10-22 and updated at gate G1 the same day. You approved every proposed default except D28, where you chose the alternative (Q20). Phase 1 is done (results in section 17), and you approved its results at gate G1 (Q21). Phase 2 is in progress.
+**Status:** version 0.3, approved at gate G0 on 2026-10-22 and updated at gate G1 the same day. You approved every proposed default except D28, where you chose the alternative (Q20). Phases 1 and 2 are done (results in section 17), and you approved Phase 1 at gate G1 (Q21). Gate G2, your run of both servers and the tests, is next.
 
 **Prepared:** 2026-10-21
 
@@ -266,7 +266,7 @@ CREATE TABLE messages (
 CREATE INDEX messages_by_room ON messages (room_id, seq);
 ```
 
-`AUTOINCREMENT` keeps sequence numbers increasing and never reused, which the catch-up cursor relies on. Only one process writes `messages`, so sequence numbers are assigned in exactly one place.
+`AUTOINCREMENT` keeps sequence numbers increasing and never reused, which the catch-up cursor relies on. A refused insert can still leave a gap. Only one process writes `messages`, so sequence numbers are assigned in exactly one place.
 
 ### 6.3 Device database
 
@@ -301,23 +301,23 @@ A row is deleted when its message is acknowledged. Sent messages live only on th
 | `hello` deadline | 5 seconds after connecting | The socket server |
 | Ack timeout | 10 seconds (D13) | The app |
 | App ping | every 20 seconds; reconnect if no `pong` within 10 seconds (D24) | The app |
-| Server ping | every 30 seconds | The socket server |
+| Server ping | every 30 seconds; a connection that has not answered by the next ping is dropped | The socket server |
 | Reconnect backoff | 1 second, doubling to 30 seconds, with ±20% jitter (D24) | The app |
 
 ## 7. Protocol
 
 ### 7.1 HTTP API (API routes)
 
-The routes are served by the dev server at `http://<Mac address>:8081/api/…`. Every request needs `Authorization: Bearer <room key>`. Errors use one shape, `{ "error": { "code": "…", "message": "…" } }`, and unsupported methods get 405 from Expo Router.
+The routes are served by the dev server at `http://<Mac address>:8081/api/…`. Every request needs `Authorization: Bearer <room key>`. Until a key is configured, every route answers 503 `not_configured` and does not check the header. Errors use one shape, `{ "error": { "code": "…", "message": "…" } }`, and unsupported methods get 405 from Expo Router.
 
 | Method and path | Purpose | Request | Success | Errors |
 |---|---|---|---|---|
-| `GET /api/health` | Check that the server is reachable and the key is right | — | 200 `{ ok, protocol }` | 401 |
-| `GET /api/messages` | One page of history | `limit` (1–200, default 50), and optionally `before` or `after`, a sequence number | 200 `{ databaseId, messages, latestSeq, hasMore }`, messages in ascending `seq` | 400, 401 |
-| `PUT /api/attachments/{id}` | Upload one attachment's bytes | The raw bytes as the body; `X-Chat-Uploader` names the demo user | 201 if new, 200 if the same bytes are already stored: `{ id, byteSize, sha256 }` | 400; 401; 409 for different bytes under this ID; 413 over the limit |
-| `GET /api/attachments/{id}` | Download the bytes | — | 200 with `Content-Type: application/octet-stream`, `Content-Disposition: attachment`, `X-Content-Type-Options: nosniff`, `Cache-Control: private, max-age=31536000, immutable` | 401, 404 |
+| `GET /api/health` | Check that the server is reachable and the key is right | — | 200 `{ ok, protocol }` | 401, 503 |
+| `GET /api/messages` | One page of history | `roomId` (required, `main`), `limit` (1–200, default 50), and optionally `before` or `after`, a sequence number | 200 `{ databaseId, messages, latestSeq, hasMore }`, messages in ascending `seq` | 400, 401, 503 |
+| `PUT /api/attachments/{id}` | Upload one attachment's bytes | The raw bytes as the body; `X-Chat-Uploader` names the demo user | 201 if new, 200 if the same bytes are already stored: `{ id, byteSize, sha256 }` | 400; 401; 409 for different bytes under this ID; 413 over the limit; 503 |
+| `GET /api/attachments/{id}` | Download the bytes | — | 200 with `Content-Type: application/octet-stream`, `Content-Disposition: attachment`, `X-Content-Type-Options: nosniff`, `Cache-Control: private, max-age=31536000, immutable` | 401, 404, 503 |
 
-The key is compared in constant time. The upload route checks `Content-Length` before reading and counts bytes while reading, so a missing or wrong length cannot slip past the limit.
+The key is compared in constant time. The upload route checks `Content-Length` before reading and counts bytes while reading, so a missing or wrong length cannot slip past the limit. A 400 uses `invalid_query`, `invalid_attachment_id`, `unknown_uploader`, `invalid_content_length` or `incomplete_upload`. The other codes are `unauthorized` (401), `attachment_conflict` (409), `attachment_too_large` (413), `not_found` (404), `not_configured` (503) and `internal_error` (500, with no details from the failure).
 
 ### 7.2 WebSocket frames
 
@@ -340,7 +340,7 @@ From the server to the app:
 | `reject` | `id`, `code` (`invalid_message`, `unknown_sender`, `attachment_missing`, `attachment_mismatch` or `id_conflict`), `detail` |
 | `message` | `message`: a stored message |
 | `pong` | — |
-| `error` | `code` (`bad_frame`, `unsupported_protocol`, `unauthorized`, `hello_timeout` or `not_ready`), `detail`; always followed by a close |
+| `error` | `code` (`bad_frame`, `unsupported_protocol`, `unauthorized`, `hello_timeout`, `not_ready` or `internal_error`), `detail`; always followed by a close |
 
 ### 7.3 Connection rules and close codes
 
@@ -353,6 +353,7 @@ From the server to the app:
 | 1000 | Normal close |
 | 1001 | The server is shutting down |
 | 1009 | A frame was larger than 64 KiB |
+| 1011 | The server hit an unexpected error on this connection |
 | 4400 | Bad frame, wrong first frame or unsupported protocol |
 | 4401 | Missing or wrong room key |
 | 4408 | No `hello` within 5 seconds |
@@ -598,7 +599,7 @@ Results (2026-10-22), on this Mac, the iPhone 18 Pro simulator (iOS 27.0) and yo
 - **Found for Phase 3:** the iPhone has Reduce Motion on, and Reanimated reports that it disables some animations there. The chat screen must work fully without animation.
 - **Spike code** was removed before the Phase 1 commit: `src/chat/shared/spike.ts`, `src/app/api/spike+api.ts`, `server/spike-socket.ts`, `src/components/spike-panel.tsx` and two lines in `src/app/index.tsx`.
 
-### Phase 2 — Servers, then gate G2
+### Phase 2 — Servers, then gate G2 (done 2026-10-25; gate G2 next)
 
 | Task | Work | Size | Needs |
 |---|---|---|---|
@@ -608,6 +609,16 @@ Results (2026-10-22), on this Mac, the iPhone 18 Pro simulator (iOS 27.0) and yo
 | T2.4 | Socket server: `hello` and the room key, `send`, `ack` and `reject`, relay, ping, shutdown and logs, with integration tests using two clients. | M | |
 | T2.5 | Scripts: `chat:setup`, `chat:socket`, `chat:log`, `chat:reset`. | S | |
 | G2 | You run both servers and the tests. | | your review |
+
+Results (2026-10-25):
+
+- **T2.1:** `src/chat/shared/` holds the frame and envelope types, the validators, the limits and Alice and Bob. Validators return results instead of throwing. Frames from the app are checked strictly; frames from the server are parsed leniently, and an unknown server frame is reported for the app to ignore.
+- **T2.2:** `node:sqlite` opens `chat.sqlite` in WAL mode with a 5-second busy timeout. Migrations run inside `BEGIN IMMEDIATE`, and whichever process opens a new file first creates `database_id`. Switching a brand-new file to WAL can still return "database is locked" before that timeout applies, so opening retries for up to 5 seconds. A test opens the same new file from six processes at once and sees one database ID. The message log is idempotent by message ID. The attachment store computes the SHA-256 itself. Only `policy.ts` reads payload fields.
+- **T2.3:** `GET /api/health`, `GET /api/messages` and `PUT`/`GET /api/attachments/{id}` are thin routes over handlers that tests call without a server. The dev server already running on port 8081 served `/api/health` and answered 503 `not_configured`, because no room key is set yet. That also confirms `node:sqlite` still loads inside an API route.
+- **T2.4:** the socket server listens on port 8787, path `/chat`, with the 64 KiB frame limit. Every connection has an `error` handler. A frame over the limit closes that connection with 1009, and the next client still gets `welcome`. Two clients exchange a message; a repeat is acknowledged with `duplicate: true` and is not relayed again. A wrong room key closes with 4401. Shutdown on SIGTERM closes connections with 1001. Logs are JSON lines and, in the tests, contain neither the room key nor the message text.
+- **T2.5:** `npm run chat:setup` creates `.env` with mode 0600 and does not print the key; a second run leaves the file alone. `chat:log` prints the stored messages and shows `(unsupported payload)` for anything other than `plain/1`, without dumping it. `chat:reset` deletes the database and its WAL files, and says to stop both servers first.
+- **Checks:** `npm test` runs 87 tests, all passing. `npm run lint` checks `src/`, `server/` and `scripts/` and is clean. `npx tsc --noEmit` reports only the existing error in `src/components/app-tabs.web.tsx`, which Phase 3 deletes. `tsconfig.json` has `erasableSyntaxOnly` and `types: ["node"]` (Q21). ESLint's `consistent-type-imports` covers the folders Node loads.
+- **Recorded in the spec from the build:** history requires `roomId=main` (D10). A missing room key is 503 `not_configured`. An unexpected failure on one socket sends `internal_error` and closes with 1011; the process stays up. Sequence numbers can skip after a refused insert.
 
 ### Phase 3 — Chat screen, then gate G3
 

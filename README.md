@@ -8,7 +8,7 @@ The scaffold begins as a small modular monolith:
 - apps/fabric-cli — diagnostic CLI plus the `demo-meeting` executable fixture;
 - crates/fabric-core — shared domain library, including checked calendar intervals and Rendezvous agreement semantics;
 - apps/fabric-demo, crates/fabric-policy, crates/fabric-token, crates/fabric-wire and isabelle/ — the Isabelle-gated calendar demo below;
-- apps/paracels — an Expo (React Native) iOS app outside the Cargo workspace, which will host the chat prototype below;
+- apps/paracels — an Expo (React Native) iOS app outside the Cargo workspace, where the chat prototype is being built;
 - scripts — isolated setup, command runner, and verification for Windows and macOS/Linux.
 
 Google adapters, encrypted transport, persistence, and desktop crates should be added only when they contain real behavior.
@@ -100,7 +100,7 @@ The tests that need Isabelle, Credential Manager, the API key or Ollama run only
 
     powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run.ps1 cargo test --workspace -- --ignored
 
-## Paracels chat prototype (iOS, planned)
+## Paracels chat prototype (iOS)
 
 `apps/paracels` is an Expo (React Native) app for iOS that sits outside the Cargo workspace. The
 [chat specification](docs/paracels-chat.md) plans a dummy group chat in it, as a first step toward
@@ -112,9 +112,10 @@ The prototype keeps seams for Fabric's encryption, policy and local-first storag
 none of them: there is no TLS and no end-to-end encryption, and a shared room key is the only
 protection.
 
-Status: specified, not built. It is built in phases, each of which stops for review. Setup and run
-steps are in [apps/paracels/README.md](apps/paracels/README.md). It needs macOS with Xcode, plus
-Node.js and npm, which are host prerequisites: the setup scripts here install only Rust.
+Status: the servers are built (Phase 2) and the chat screen is not. It is built in phases, each of
+which stops for review. Setup and run steps are in [apps/paracels/README.md](apps/paracels/README.md).
+It needs macOS with Xcode, plus Node.js and npm, which are host prerequisites: the setup scripts
+here install only Rust.
 
 ## Toolchain decision
 

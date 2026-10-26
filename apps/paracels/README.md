@@ -58,35 +58,41 @@ Phase 1 of the chat plan tested these steps on 2026-10-22 with an iPhone 16 Pro.
 
 ```bash
 npx tsc --noEmit   # typecheck
-npx expo lint      # lint (ESLint with eslint-config-expo; checks src/)
-npm test           # node --test; the tests arrive with Phase 2
+npm run lint       # lint src/, server/ and scripts/
+npm test           # the chat protocol, servers and scripts
 ```
 
-## Chat prototype (planned)
+## Chat prototype
 
-Status: specified, with Phase 1 (packages, tooling and spikes) done; the chat itself is not built
-yet. The [spec](../../docs/paracels-chat.md) holds the decisions, the design, the phased plan and
-the spike results. Once built, a chat session runs two servers on this Mac:
+Status: the servers are built (Phase 2). The chat screen is not. The
+[spec](../../docs/paracels-chat.md) holds the decisions, the design and the phased plan. A session
+runs two servers on this Mac:
 
 ```bash
-npm run chat:setup    # once: creates .env with a room key
+npm run chat:setup    # once: creates .env with a room key, and does not print it
 npm run chat:socket   # the WebSocket server, on port 8787
 npx expo start        # the dev server: app bundle and API routes, on port 8081
+npm run chat:log      # print the stored messages
+npm run chat:reset    # delete the database; stop both servers first
 ```
 
-The `chat:` scripts don't exist yet; Phase 2 adds them.
+Restart the dev server after `chat:setup`. It reads `.env` at startup, and until then the API
+routes answer 503.
 
 ## Project layout
 
 ```text
 app.json          app configuration: name, bundle ID, plugins; native settings go here, not in ios/
-eslint.config.js  ESLint: Expo's rules, plus the rule that keeps server-only imports out of the app
-src/app/          routes: screens, and later the API routes (+api.ts files)
+.env.example     room-key variable; the real .env is git-ignored
+eslint.config.js  ESLint: Expo's rules, plus the rules that keep server code in its place
+server/           the WebSocket server
+src/app/          routes: the starter screens, and the API routes (+api.ts files)
+src/chat/         protocol, server storage and handlers
 src/components/   UI components
 src/constants/    theme: colors, fonts, spacing
 src/hooks/        color scheme and theme hooks
 assets/           icons and images
-scripts/          reset-project.js from the starter
+scripts/          chat:setup, chat:log, chat:reset, and reset-project.js from the starter
 ```
 
 ## Notes
