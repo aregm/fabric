@@ -112,8 +112,9 @@ The prototype keeps seams for Fabric's encryption, policy and local-first storag
 none of them: there is no TLS and no end-to-end encryption, and a shared room key is the only
 protection.
 
-Status: the servers are built (Phase 2) and the chat screen is not. It is built in phases, each of
-which stops for review. Setup and run steps are in [apps/paracels/README.md](apps/paracels/README.md).
+Status: the servers and the chat screen are built (Phases 2 and 3). Gate G3 is a chat between the
+simulator and the iPhone. It is built in phases, each of which stops for review. Setup and run
+steps are in [apps/paracels/README.md](apps/paracels/README.md).
 It needs macOS with Xcode, plus Node.js and npm, which are host prerequisites: the setup scripts
 here install only Rust.
 

@@ -32,3 +32,24 @@ export const HELLO_TIMEOUT_MS = 5 * 1000;
 
 /** Interval between the socket server's WebSocket pings. */
 export const SERVER_PING_INTERVAL_MS = 30 * 1000;
+
+/** How long the app waits for an `ack` before marking the message failed (D13). */
+export const ACK_TIMEOUT_MS = 10 * 1000;
+
+/** How often the app pings the socket server (D24). */
+export const APP_PING_INTERVAL_MS = 20 * 1000;
+
+/** How long the app waits for a `pong` before reconnecting (D24). */
+export const APP_PONG_TIMEOUT_MS = 10 * 1000;
+
+/** First reconnect delay; it doubles up to `RECONNECT_MAX_DELAY_MS` (D24). */
+export const RECONNECT_MIN_DELAY_MS = 1000;
+
+/** Longest reconnect delay (D24). */
+export const RECONNECT_MAX_DELAY_MS = 30 * 1000;
+
+/** Jitter applied to the reconnect delay, as a fraction of that delay (D24). */
+export const RECONNECT_JITTER = 0.2;
+
+/** Messages per catch-up page after `welcome` (D14). */
+export const HISTORY_CATCH_UP_PAGE_SIZE = 200;

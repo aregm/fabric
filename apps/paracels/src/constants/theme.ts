@@ -14,6 +14,11 @@ export const Colors = {
     backgroundElement: '#F0F0F3',
     backgroundSelected: '#E0E1E6',
     textSecondary: '#60646C',
+    ownBubble: '#007AFF',
+    otherBubble: '#F0F0F3',
+    ownText: '#ffffff',
+    danger: '#FF3B30',
+    tint: '#007AFF',
   },
   dark: {
     text: '#ffffff',
@@ -21,6 +26,11 @@ export const Colors = {
     backgroundElement: '#212225',
     backgroundSelected: '#2E3135',
     textSecondary: '#B0B4BA',
+    ownBubble: '#0A84FF',
+    otherBubble: '#212225',
+    ownText: '#ffffff',
+    danger: '#FF453A',
+    tint: '#0A84FF',
   },
 } as const;
 

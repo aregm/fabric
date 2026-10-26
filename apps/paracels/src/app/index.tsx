@@ -1,98 +1,53 @@
-import * as Device from 'expo-device';
-import { Platform, StyleSheet } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { Stack } from 'expo-router';
+import { KeyboardAvoidingView, Platform, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { AnimatedIcon } from '@/components/animated-icon';
-import { HintRow } from '@/components/hint-row';
-import { ThemedText } from '@/components/themed-text';
+import { useChatContext } from '@/chat/client/chat-context';
+import { strings } from '@/chat/client/strings';
+import { Composer } from '@/components/chat/composer';
+import { ConnectionBanner } from '@/components/chat/connection-banner';
+import { MessageList } from '@/components/chat/message-list';
+import { UserMenu, userMenuAccessibilityLabel } from '@/components/chat/user-menu';
 import { ThemedView } from '@/components/themed-view';
-import { WebBadge } from '@/components/web-badge';
-import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
 
-function getDevMenuHint() {
-  if (Platform.OS === 'web') {
-    return <ThemedText type="small">use browser devtools</ThemedText>;
-  }
-  if (Device.isDevice) {
-    return (
-      <ThemedText type="small">
-        shake device or press <ThemedText type="code">m</ThemedText> in terminal
-      </ThemedText>
-    );
-  }
-  const shortcut = Platform.OS === 'android' ? 'cmd+m (or ctrl+m)' : 'cmd+d';
+export default function ChatScreen() {
+  const chat = useChatContext();
+  const insets = useSafeAreaInsets();
+
   return (
-    <ThemedText type="small">
-      press <ThemedText type="code">{shortcut}</ThemedText>
-    </ThemedText>
-  );
-}
-
-export default function HomeScreen() {
-  return (
-    <ThemedView style={styles.container}>
-      <SafeAreaView style={styles.safeArea}>
-        <ThemedView style={styles.heroSection}>
-          <AnimatedIcon />
-          <ThemedText type="title" style={styles.title}>
-            Welcome to&nbsp;Expo, bro
-          </ThemedText>
-        </ThemedView>
-
-        <ThemedText type="code" style={styles.code}>
-          get started
-        </ThemedText>
-
-        <ThemedView type="backgroundElement" style={styles.stepContainer}>
-          <HintRow
-            title="Try editing"
-            hint={<ThemedText type="code">src/app/index.tsx</ThemedText>}
-          />
-          <HintRow title="Dev tools" hint={getDevMenuHint()} />
-          <HintRow
-            title="Fresh start"
-            hint={<ThemedText type="code">npm run reset-project</ThemedText>}
-          />
-        </ThemedView>
-
-        {Platform.OS === 'web' && <WebBadge />}
-      </SafeAreaView>
+    <ThemedView style={{ flex: 1 }}>
+      <Stack.Screen
+        options={{
+          title: strings.chatTitle,
+          headerRight: () => (
+            <View accessible accessibilityRole="button" accessibilityLabel={userMenuAccessibilityLabel(chat.userId)} accessibilityHint={strings.switchUserHint}>
+              <UserMenu userId={chat.userId} onSwitch={chat.switchUser} />
+            </View>
+          ),
+        }}
+      />
+      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+        <ConnectionBanner
+          status={chat.connection}
+          address={chat.config.socketDisplay}
+          hasRoomKey={chat.config.roomKey !== null}
+        />
+        <MessageList
+          messages={chat.messages}
+          currentUserId={chat.userId}
+          historyStatus={chat.state.historyStatus}
+          historyError={chat.state.historyError}
+          isLoadingOlder={chat.state.isLoadingOlder}
+          hasOlder={chat.state.hasOlder}
+          onRetryHistory={chat.reloadHistory}
+          onLoadOlder={chat.loadOlder}
+          onRetry={chat.retry}
+          onDelete={chat.remove}
+        />
+        <View style={{ paddingBottom: insets.bottom }}>
+          <Composer maxLength={chat.config.maxTextLength} onSend={chat.sendText} />
+        </View>
+      </KeyboardAvoidingView>
     </ThemedView>
   );
 }
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    justifyContent: 'center',
-    flexDirection: 'row',
-  },
-  safeArea: {
-    flex: 1,
-    paddingHorizontal: Spacing.four,
-    alignItems: 'center',
-    gap: Spacing.three,
-    paddingBottom: BottomTabInset + Spacing.three,
-    maxWidth: MaxContentWidth,
-  },
-  heroSection: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    flex: 1,
-    paddingHorizontal: Spacing.four,
-    gap: Spacing.four,
-  },
-  title: {
-    textAlign: 'center',
-  },
-  code: {
-    textTransform: 'uppercase',
-  },
-  stepContainer: {
-    gap: Spacing.three,
-    alignSelf: 'stretch',
-    paddingHorizontal: Spacing.three,
-    paddingVertical: Spacing.four,
-    borderRadius: Spacing.four,
-  },
-});

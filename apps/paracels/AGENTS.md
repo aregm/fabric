@@ -66,7 +66,7 @@ Rules:
 - Functional modules, no classes; descriptive names; JSDoc on exported functions; an accessibility label on every interactive element.
 - Native packages need a rebuilt app (`npx expo run:ios`), and the iOS Simulator has no camera.
 
-Commands, once Phase 2 adds them:
+Commands:
 
 ```bash
 npm run chat:setup    # create .env with a fresh room key if it is missing

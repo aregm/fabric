@@ -1,6 +1,6 @@
 # Paracels Chat — A Dummy Chat Prototype
 
-**Status:** version 0.3, approved at gate G0 on 2026-10-22 and updated at gate G1 the same day. You approved every proposed default except D28, where you chose the alternative (Q20). Phases 1 and 2 are done (results in section 17), and you approved Phase 1 at gate G1 (Q21). Gate G2, your run of both servers and the tests, is next.
+**Status:** version 0.5, approved at gates G0 and G1 on 2026-10-22 and at gate G2 on 2026-10-26. You approved every proposed default except D28, where you chose the alternative (Q20). Phases 1, 2 and 3 are done (results in section 17). Gate G3 is next: you chat between the simulator and the iPhone.
 
 **Prepared:** 2026-10-21
 
@@ -48,6 +48,7 @@ It is a dummy: no accounts, no encryption, development builds only. Section 13 l
 | Q19 | Commits | Authored as Areg Melik-Adamyan <areg@hey.com>, set in this repository's git config, with the `Co-Authored-By: Claude Opus 5.5` trailer the history already uses. |
 | Q20 | Spec approval (gate G0) | Every proposed default approved as written, except D28: the app keeps the generated project's bundle ID, `com.paracels.conclave`, and `app.json` changes to match. Phase 1 starts right away and pauses when the iPhone is needed. |
 | Q21 | Spike review (gate G1) | D7 and D8 confirmed. Code that Node loads also imports types with `import type`. `tsconfig.json` gains `erasableSyntaxOnly`, and ESLint's `consistent-type-imports` rule covers `src/chat/shared/`, `src/chat/server/`, `server/` and `scripts/`, so the starter files stay as they are. The `chat:socket` script passes `--disable-warning=MODULE_TYPELESS_PACKAGE_JSON`. Phase 1's choices are approved as made. Phase 2 starts right away. |
+| Q22 | Server review (gate G2) | The API answers with the room key. Phase 3 starts right away. |
 
 ## 3. Decisions that need your confirmation
 
@@ -144,6 +145,8 @@ The chat screen is `src/app/index.tsx`, inside a Stack in `src/app/_layout.tsx` 
 - `src/chat/client/attachments.ts`: the pickers, copying files into the app's documents directory, size checks, downloads and Quick Look (section 10).
 - `src/chat/client/state.ts`: a reducer that merges history pages, live messages, acks and outbox items by message ID. Sent messages are ordered by sequence number; unsent ones follow them, ordered by device time.
 - `src/chat/client/use-chat.ts`: the hook that wires these together for the screen.
+- `src/chat/client/chat-context.tsx`: the React context the screen and the header share (D23).
+- `src/chat/client/user-store.ts`: the selected demo user, remembered in `expo-sqlite/kv-store` (D16).
 - `src/chat/client/strings.ts`: the UI strings (D25).
 - `src/components/chat/`: message list, message bubble, composer, attachment views, user menu and connection banner.
 
@@ -469,7 +472,7 @@ None of these later changes alters the transport, the outbox or the message life
 
 ## 12. The chat screen
 
-- **Header:** the title "Chat" and, on the right, a menu that shows the current demo user and switches between Alice and Bob (D16). It is a native header from the Stack; Phase 3 picks the menu component after checking the SDK 58 docs for Expo Router and `@expo/ui`.
+- **Header:** the title "Chat" and, on the right, a menu that shows the current demo user and switches between Alice and Bob (D16). SDK 58 has no `Stack.Toolbar`, so the control is an `@expo/ui/swift-ui` `Menu` of `Toggle`s in `headerRight`.
 - **Connection banner:** below the header it shows "Connecting…", or "Can't reach the chat server. Messages will wait on this phone." along with the address it is trying (R3). It is hidden while connected.
 - **Messages:** an inverted list, newest at the bottom, that loads older pages when you scroll to the top. Each bubble shows the sender's name, the time and the text. Your messages sit on the right with their status: a clock for waiting, a spinner for sending, a check for sent, and a red "Not sent" with Retry and Delete for failed (D19).
 - **Empty, loading and error states:** "No messages yet. Say hello." when the room is empty; a spinner while the first page loads; a retry button if history fails to load, while your waiting messages stay visible.
@@ -599,7 +602,7 @@ Results (2026-10-22), on this Mac, the iPhone 18 Pro simulator (iOS 27.0) and yo
 - **Found for Phase 3:** the iPhone has Reduce Motion on, and Reanimated reports that it disables some animations there. The chat screen must work fully without animation.
 - **Spike code** was removed before the Phase 1 commit: `src/chat/shared/spike.ts`, `src/app/api/spike+api.ts`, `server/spike-socket.ts`, `src/components/spike-panel.tsx` and two lines in `src/app/index.tsx`.
 
-### Phase 2 — Servers, then gate G2 (done 2026-10-25; gate G2 next)
+### Phase 2 — Servers, then gate G2 (done 2026-10-25; gate G2 approved 2026-10-26)
 
 | Task | Work | Size | Needs |
 |---|---|---|---|
@@ -608,7 +611,7 @@ Results (2026-10-22), on this Mac, the iPhone 18 Pro simulator (iOS 27.0) and yo
 | T2.3 | API routes: health, history pages, attachment upload and download, with handler tests. | M | |
 | T2.4 | Socket server: `hello` and the room key, `send`, `ack` and `reject`, relay, ping, shutdown and logs, with integration tests using two clients. | M | |
 | T2.5 | Scripts: `chat:setup`, `chat:socket`, `chat:log`, `chat:reset`. | S | |
-| G2 | You run both servers and the tests. | | your review |
+| G2 | You run both servers and the tests. Done 2026-10-26: you ran the API with the room key and started Phase 3. | | your review |
 
 Results (2026-10-25):
 
@@ -620,7 +623,7 @@ Results (2026-10-25):
 - **Checks:** `npm test` runs 87 tests, all passing. `npm run lint` checks `src/`, `server/` and `scripts/` and is clean. `npx tsc --noEmit` reports only the existing error in `src/components/app-tabs.web.tsx`, which Phase 3 deletes. `tsconfig.json` has `erasableSyntaxOnly` and `types: ["node"]` (Q21). ESLint's `consistent-type-imports` covers the folders Node loads.
 - **Recorded in the spec from the build:** history requires `roomId=main` (D10). A missing room key is 503 `not_configured`. An unexpected failure on one socket sends `internal_error` and closes with 1011; the process stays up. Sequence numbers can skip after a refused insert.
 
-### Phase 3 — Chat screen, then gate G3
+### Phase 3 — Chat screen, then gate G3 (done 2026-10-26; gate G3 next)
 
 | Task | Work | Size | Needs |
 |---|---|---|---|
@@ -629,6 +632,15 @@ Results (2026-10-25):
 | T3.3 | Interface: message list with names and times, status on your messages, Retry and Delete (D19), composer, user menu (D16), connection banner and accessibility labels. | M | |
 | T3.4 | History when the app opens, older pages on scroll, and catch-up after reconnecting. | S | |
 | G3 | You chat between the simulator and the iPhone. | | your run |
+
+Results (2026-10-26):
+
+- **T3.1:** the starter tabs, explore screen, reset-project script and unused starter images are gone. `src/app/_layout.tsx` is a root Stack around `ChatProvider`. `src/app/index.tsx` is the chat screen. `npx tsc --noEmit` is clean: deleting `app-tabs.web.tsx` removed the only remaining error.
+- **T3.2:** `src/chat/client/` holds addresses (D26), the history client, the socket with D24 backoff and ping, the reducer, the in-memory outbox and the hook that wires them. Client modules that `node --test` loads stay on relative `.ts` imports. The persisted outbox is still Phase 4; uploads stay Phase 5.
+- **T3.3:** the list, bubbles, composer, connection banner and user menu are in `src/components/chat/`. The header control is `@expo/ui/swift-ui` `Menu` + `Toggle` (SDK 58 has no `Stack.Toolbar`). There is no animation, so Reduce Motion on the iPhone does not hide a path. Colors for own/other bubbles, tint and danger sit on the existing theme.
+- **T3.4:** opening the app loads the first history page; scrolling up asks for older pages; a `welcome` after reconnect runs catch-up. Tests cover the reducer, outbox worker, HTTP client, socket (against a real `startChatSocketServer`) and address helpers.
+- **Simulator:** the iPhone 18 Pro simulator (iOS 27.0) opened Chat with Alice in the header and the composer at the bottom. The socket accepted the app from `::1` with no `hello_refused`. `GET /api/messages` bundled on that launch. A second client sent Bob's "Hello from Bob on the Mac."; `chat:log` shows it as seq 1. A system sheet, "Open in paracels?", sat on top of the screen for the whole check, so Send was not tapped from the simulator in this run. The sheet is iOS asking to open the `paracels` URL scheme; tap Open or Cancel and the chat is underneath.
+- **Checks:** `npm test` runs 101 tests, all passing. `npm run lint` and `npx tsc --noEmit` are clean.
 
 ### Phase 4 — Offline queue, then gate G4
 

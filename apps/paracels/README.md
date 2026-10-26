@@ -3,9 +3,9 @@
 An Expo (React Native) app for iOS, built with Expo SDK 58 and Expo Router. It lives in the Fabric
 repository but is not part of the Cargo workspace.
 
-Today it is the create-expo-app starter, plus the packages and tooling the chat needs. The
-[chat prototype spec](../../docs/paracels-chat.md) describes the dummy chat that will replace the
-starter screens and the phases that build it.
+It is a one-screen chat: Alice and Bob in one room, talking to servers on this Mac. The
+[chat prototype spec](../../docs/paracels-chat.md) holds the decisions, the design and the remaining
+phases (the on-device outbox and attachments).
 
 ## Requirements
 
@@ -64,9 +64,9 @@ npm test           # the chat protocol, servers and scripts
 
 ## Chat prototype
 
-Status: the servers are built (Phase 2). The chat screen is not. The
-[spec](../../docs/paracels-chat.md) holds the decisions, the design and the phased plan. A session
-runs two servers on this Mac:
+Status: the servers and the chat screen are built (Phases 2 and 3). Gate G3 is a chat between the
+simulator and the iPhone. The [spec](../../docs/paracels-chat.md) holds the decisions, the design
+and the remaining phases. A session runs two servers on this Mac:
 
 ```bash
 npm run chat:setup    # once: creates .env with a room key, and does not print it
@@ -79,6 +79,10 @@ npm run chat:reset    # delete the database; stop both servers first
 Restart the dev server after `chat:setup`. It reads `.env` at startup, and until then the API
 routes answer 503.
 
+Keep `chat:socket` and `npx expo start` running while you use the app. The header menu switches
+between Alice and Bob on that device. iOS may ask "Open in paracels?" when the bundle URL arrives;
+Open or Cancel leaves you on the chat screen.
+
 ## Project layout
 
 ```text
@@ -86,13 +90,13 @@ app.json          app configuration: name, bundle ID, plugins; native settings g
 .env.example     room-key variable; the real .env is git-ignored
 eslint.config.js  ESLint: Expo's rules, plus the rules that keep server code in its place
 server/           the WebSocket server
-src/app/          routes: the starter screens, and the API routes (+api.ts files)
-src/chat/         protocol, server storage and handlers
-src/components/   UI components
+src/app/          the chat screen and the API routes (+api.ts files)
+src/chat/         protocol, client logic, server storage and handlers
+src/components/   chat UI and shared theme wrappers
 src/constants/    theme: colors, fonts, spacing
 src/hooks/        color scheme and theme hooks
 assets/           icons and images
-scripts/          chat:setup, chat:log, chat:reset, and reset-project.js from the starter
+scripts/          chat:setup, chat:log, chat:reset
 ```
 
 ## Notes
