@@ -1,7 +1,7 @@
 /**
  * The outbox: unsent messages, behind an interface (docs/paracels-chat.md,
- * sections 8 and 9). Phase 3 keeps them in memory; Phase 4 writes the same
- * shape to expo-sqlite.
+ * sections 8 and 9). The app uses the expo-sqlite store. This memory store is
+ * what the worker tests use.
  */
 
 import type { DemoUserId } from '../shared/users.ts';
@@ -26,7 +26,7 @@ export type OutboxStore = {
 };
 
 /**
- * An in-memory outbox. Waiting messages are lost if the app is closed (Phase 4).
+ * An in-memory outbox for tests. The app opens the expo-sqlite store instead.
  */
 export function createMemoryOutbox(): OutboxStore {
   const items = new Map<string, OutboxItem>();

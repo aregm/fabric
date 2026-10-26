@@ -12,7 +12,8 @@ import { MAIN_ROOM_ID, PLAIN_PAYLOAD_FORMAT, type StoredMessage } from '../share
 import { isDemoUserId, type DemoUserId } from '../shared/users.ts';
 import { createChatApi, type ChatApi } from './api.ts';
 import { readBundleLocation, readChatConfig, type ChatClientConfig } from './config.ts';
-import { createMemoryOutbox, createOutboxWorker, type OutboxItem, type OutboxStore, type OutboxWorker } from './outbox.ts';
+import { createOutboxWorker, type OutboxItem, type OutboxStore, type OutboxWorker } from './outbox.ts';
+import { openDeviceOutbox } from './sqlite-outbox.ts';
 import { createChatSocket, type AppLifecycle, type ChatSocket, type ConnectionStatus } from './socket.ts';
 import {
   createChatState,
@@ -111,12 +112,15 @@ export function useChat(): ChatController {
   const config = useMemo(() => readChatConfig(process.env, readBundleLocation()), []);
   const [userId, setUserId] = useState<DemoUserId>(readStoredUserId);
   const [connection, setConnection] = useState<ConnectionStatus>(config.roomKey === null ? 'disconnected' : 'idle');
-  const [state, dispatch] = useReducer(reduceChat, undefined, createChatState);
+  const storeRef = useRef<OutboxStore>(openDeviceOutbox());
+  const [state, dispatch] = useReducer(reduceChat, undefined, () => ({
+    ...createChatState(),
+    outbox: openDeviceOutbox().list(),
+  }));
   const api = useMemo<ChatApi | null>(
     () => (config.roomKey === null ? null : createChatApi({ roomKey: config.roomKey, apiOrigin: config.apiOrigin })),
     [config],
   );
-  const storeRef = useRef<OutboxStore>(createMemoryOutbox());
   const workerRef = useRef<OutboxWorker | null>(null);
   const socketRef = useRef<ChatSocket | null>(null);
   const stateRef = useRef(state);

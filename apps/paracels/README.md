@@ -5,7 +5,7 @@ repository but is not part of the Cargo workspace.
 
 It is a one-screen chat: Alice and Bob in one room, talking to servers on this Mac. The
 [chat prototype spec](../../docs/paracels-chat.md) holds the decisions, the design and the remaining
-phases (the on-device outbox and attachments).
+phases (attachments, then a full check).
 
 ## Requirements
 
@@ -64,9 +64,10 @@ npm test           # the chat protocol, servers and scripts
 
 ## Chat prototype
 
-Status: the servers and the chat screen are built (Phases 2 and 3). Gate G3 is a chat between the
-simulator and the iPhone. The [spec](../../docs/paracels-chat.md) holds the decisions, the design
-and the remaining phases. A session runs two servers on this Mac:
+Status: the servers, the chat screen and the on-device outbox are built (Phases 2 through 4).
+Gate G4 is airplane mode, force-quit and a socket server restart. The
+[spec](../../docs/paracels-chat.md) holds the decisions, the design and the remaining phases.
+A session runs two servers on this Mac:
 
 ```bash
 npm run chat:setup    # once: creates .env with a room key, and does not print it

@@ -1,6 +1,6 @@
 # Paracels Chat — A Dummy Chat Prototype
 
-**Status:** version 0.5, approved at gates G0 and G1 on 2026-10-22 and at gate G2 on 2026-10-26. You approved every proposed default except D28, where you chose the alternative (Q20). Phases 1, 2 and 3 are done (results in section 17). Gate G3 is next: you chat between the simulator and the iPhone.
+**Status:** version 0.6, approved at gates G0 and G1 on 2026-10-22 and at gate G2 on 2026-10-26. You approved every proposed default except D28, where you chose the alternative (Q20). Phases 1 through 4 are done (results in section 17). Gate G4 is next: airplane mode, force-quit, and a socket server restart. Gate G3, a chat between the simulator and the iPhone, is still yours to run.
 
 **Prepared:** 2026-10-21
 
@@ -141,7 +141,7 @@ The chat screen is `src/app/index.tsx`, inside a Stack in `src/app/_layout.tsx` 
 - `src/chat/client/config.ts`: server addresses (D26), the room key (D27) and default limits.
 - `src/chat/client/api.ts`: history pages, uploads and downloads over HTTP, with the key header and absolute URLs.
 - `src/chat/client/socket.ts`: the one WebSocket connection, with `hello`, ping, backoff and reconnect on return to the foreground (D24). It exposes the connection state and incoming frames.
-- `src/chat/client/outbox.ts`: the outbox interface with two implementations, in memory (Phase 3) and expo-sqlite (Phase 4), plus the worker that sends waiting messages in order (section 9).
+- `src/chat/client/outbox.ts`: the outbox interface and the worker that sends waiting messages in order (section 9). `outbox-sql.ts` is the schema and the recovery rule. `sqlite-outbox.ts` opens `paracels-chat.db` with expo-sqlite. The memory store remains for the worker tests.
 - `src/chat/client/attachments.ts`: the pickers, copying files into the app's documents directory, size checks, downloads and Quick Look (section 10).
 - `src/chat/client/state.ts`: a reducer that merges history pages, live messages, acks and outbox items by message ID. Sent messages are ordered by sequence number; unsent ones follow them, ordered by device time.
 - `src/chat/client/use-chat.ts`: the hook that wires these together for the screen.
@@ -642,13 +642,19 @@ Results (2026-10-26):
 - **Simulator:** the iPhone 18 Pro simulator (iOS 27.0) opened Chat with Alice in the header and the composer at the bottom. The socket accepted the app from `::1` with no `hello_refused`. `GET /api/messages` bundled on that launch. A second client sent Bob's "Hello from Bob on the Mac."; `chat:log` shows it as seq 1. A system sheet, "Open in paracels?", sat on top of the screen for the whole check, so Send was not tapped from the simulator in this run. The sheet is iOS asking to open the `paracels` URL scheme; tap Open or Cancel and the chat is underneath.
 - **Checks:** `npm test` runs 101 tests, all passing. `npm run lint` and `npx tsc --noEmit` are clean.
 
-### Phase 4 — Offline queue, then gate G4
+### Phase 4 — Offline queue, then gate G4 (done 2026-10-26; gate G4 next)
 
 | Task | Work | Size | Needs |
 |---|---|---|---|
 | T4.1 | The device outbox in expo-sqlite, behind the same interface, with migrations and recovery of interrupted sends. | M | |
 | T4.2 | The waiting state, the ordered flush after reconnecting, the ack timeout and safe retry. | S | |
 | G4 | You test airplane mode, force-quitting and reopening the app, and a socket server restart. | | your run |
+
+Results (2026-10-26):
+
+- **T4.1:** the app opens `paracels-chat.db` through `expo-sqlite`'s `openDatabaseSync` (SDK 58). The table is section 6.3, including the attachment columns, which stay empty until Phase 5. `PRAGMA user_version` is 1. A schema newer than this app is refused. On open, a row left in `sending` goes back to `waiting` and keeps its ID and attempt count. Sent rows are still deleted on `ack`. The screen's first state is that list, so unsent messages are visible before history returns.
+- **T4.2:** the Phase 3 worker is unchanged and now writes the sqlite store. It still sends the oldest `waiting` row, skips `failed` rows, returns the in-flight row to `waiting` when the socket drops, and marks `ack_timeout` when 10 seconds pass with no ack. Retry puts a failed row back to `waiting` with the same ID. A duplicate `ack` from the server removes it.
+- **Checks:** `npm test` runs 104 tests, all passing, including a reopen of the same file and a flush through the worker. `npm run lint` and `npx tsc --noEmit` are clean. Airplane mode, force-quit and a socket restart are gate G4.
 
 ### Phase 5 — Attachments, then gate G5
 
