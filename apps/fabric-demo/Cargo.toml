@@ -28,7 +28,7 @@ workspace = true
 name = "fabric-demo"
 path = "src/main.rs"
 
-# The Claude backend needs HTTPS. Schannel is part of Windows, so nothing is compiled for it;
-# elsewhere the demo does not run (D28) and needs no TLS.
-[target.'cfg(windows)'.dependencies]
+# The Claude backend needs HTTPS. Schannel is part of Windows and Security.framework is part of
+# macOS, so nothing is compiled for either; elsewhere the demo does not run (D28) and needs no TLS.
+[target.'cfg(any(windows, target_os = "macos"))'.dependencies]
 reqwest = { version = "0.13", default-features = false, features = ["native-tls"] }

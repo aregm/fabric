@@ -1,7 +1,9 @@
 //! Negotiations through live Isabelle, with scripted planners (tasks T6.1 and T7.2). They need
-//! `scripts/setup-demo.ps1`, so they are ignored by default:
+//! `scripts/setup-demo.ps1` (Windows) or `scripts/setup-demo.sh` (macOS), so they are ignored
+//! by default:
 //!
 //!   .\scripts\run.ps1 cargo test -p fabric-demo --test live_negotiation -- --ignored --nocapture
+//!   sh scripts/run.sh cargo test -p fabric-demo --test live_negotiation -- --ignored --nocapture
 
 mod live;
 
@@ -11,7 +13,7 @@ use fabric_demo::agent::{Faults, Outcome};
 use fabric_policy::time::format_utc;
 
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs Isabelle from scripts/setup-demo.ps1; run with --ignored"]
+#[ignore = "needs Isabelle from scripts/setup-demo.ps1 or setup-demo.sh; run with --ignored"]
 async fn scripted_agents_reach_the_mutual_options_through_isabelle() {
     let demo = live::Demo::start("live-mutual").await;
     demo.file_requests();
@@ -69,7 +71,7 @@ async fn scripted_agents_reach_the_mutual_options_through_isabelle() {
 
 /// Task T7.2: the section 14 happy path, with scripted planners and live Isabelle.
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs Isabelle from scripts/setup-demo.ps1; run with --ignored"]
+#[ignore = "needs Isabelle from scripts/setup-demo.ps1 or setup-demo.sh; run with --ignored"]
 async fn scripted_agents_book_the_meeting_both_owners_accepted() {
     let demo = live::Demo::start("live-meeting").await;
     demo.file_requests();
@@ -215,7 +217,7 @@ fn fired(log: &[serde_json::Value]) -> Vec<(String, String)> {
 /// Acceptance criterion A3: every fault switch is denied by Isabelle or refused by a service,
 /// and the run still books the meeting both owners accepted.
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs Isabelle from scripts/setup-demo.ps1; run with --ignored"]
+#[ignore = "needs Isabelle from scripts/setup-demo.ps1 or setup-demo.sh; run with --ignored"]
 async fn every_fault_switch_is_refused_and_the_run_still_books_the_meeting() {
     let demo = live::Demo::start("live-faults").await;
     demo.file_requests();
@@ -337,7 +339,7 @@ async fn every_fault_switch_is_refused_and_the_run_still_books_the_meeting() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs Isabelle from scripts/setup-demo.ps1; run with --ignored"]
+#[ignore = "needs Isabelle from scripts/setup-demo.ps1 or setup-demo.sh; run with --ignored"]
 async fn isabelle_denies_an_over_broad_read_and_the_agent_recovers() {
     let demo = live::Demo::start("live-broad-read").await;
     demo.file_requests();

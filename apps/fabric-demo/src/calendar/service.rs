@@ -67,7 +67,7 @@ pub struct CalendarConfig {
     pub clock: ClockConfig,
     #[serde(default)]
     pub audit_log: Option<PathBuf>,
-    /// Where the store key lives in Windows Credential Manager; tests use their own prefix.
+    /// Where the store key lives in the OS credential store; tests use their own prefix.
     #[serde(default = "default_credential_prefix")]
     pub credential_prefix: String,
 }

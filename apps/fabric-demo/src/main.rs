@@ -185,12 +185,12 @@ fn agent_backend(config: &AgentConfig) -> String {
     }
 }
 
-#[cfg(windows)]
+#[cfg(any(windows, target_os = "macos"))]
 fn secret_store(prefix: &str) -> Result<Box<dyn SecretStore>, Box<dyn Error>> {
     Ok(Box::new(fabric_token::CredentialStore::open(prefix)?))
 }
 
-#[cfg(not(windows))]
+#[cfg(not(any(windows, target_os = "macos")))]
 fn secret_store(_prefix: &str) -> Result<Box<dyn SecretStore>, Box<dyn Error>> {
-    Err("the demo runs on Windows only: its keys live in Windows Credential Manager".into())
+    Err("the demo runs on Windows and macOS only: its keys live in the OS credential store".into())
 }

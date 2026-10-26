@@ -3,6 +3,7 @@
 //! local only:
 //!
 //!   .\scripts\run.ps1 cargo test -p fabric-demo --test live_planners -- --ignored --nocapture
+//!   sh scripts/run.sh cargo test -p fabric-demo --test live_planners -- --ignored --nocapture
 
 use std::path::Path;
 

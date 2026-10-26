@@ -88,7 +88,7 @@ pub struct HostConfig {
     pub clock: ClockConfig,
     #[serde(default)]
     pub audit_log: Option<PathBuf>,
-    /// Where this person's keys live in Windows Credential Manager.
+    /// Where this person's keys live in the OS credential store.
     #[serde(default = "default_credential_prefix")]
     pub credential_prefix: String,
 }

@@ -37,7 +37,8 @@ pub struct GateConfig {
 }
 
 impl GateConfig {
-    /// Defaults for a repository checkout set up with `scripts/setup-demo.ps1`.
+    /// Defaults for a repository checkout set up with `scripts/setup-demo.ps1` (Windows) or
+    /// `scripts/setup-demo.sh` (macOS).
     #[must_use]
     pub fn for_repository(root: &Path) -> Self {
         let isabelle = root.join(".tooling").join("isabelle");

@@ -1,6 +1,6 @@
 //! The encrypted calendar store (decision D20): one file per person, holding the deterministic
 //! CBOR of the events, encrypted with XChaCha20-Poly1305 under a key that the calendar service
-//! keeps in Windows Credential Manager.
+//! keeps in the OS credential store (Windows Credential Manager, or the login Keychain on macOS).
 //!
 //! File layout: the 8-byte magic `FABCAL01`, a random 24-byte nonce, then the ciphertext with
 //! its 16-byte tag. The associated data is the magic followed by the person's ID, so a file

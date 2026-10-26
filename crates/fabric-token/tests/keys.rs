@@ -175,23 +175,23 @@ fn malformed_directories_are_refused() {
 }
 
 /// Removes the test's credentials even when an assertion fails.
-#[cfg(windows)]
+#[cfg(any(windows, target_os = "macos"))]
 struct Cleanup<'a> {
     store: &'a fabric_token::CredentialStore,
     person: String,
 }
 
-#[cfg(windows)]
+#[cfg(any(windows, target_os = "macos"))]
 impl Drop for Cleanup<'_> {
     fn drop(&mut self) {
         let _ = PersonKeys::delete(self.store, &self.person);
     }
 }
 
-#[cfg(windows)]
+#[cfg(any(windows, target_os = "macos"))]
 #[test]
-#[ignore = "writes to and deletes from Windows Credential Manager; run with --ignored"]
-fn windows_credential_manager_keeps_the_keys() {
+#[ignore = "writes to and deletes from the OS credential store; run with --ignored"]
+fn the_credential_store_keeps_the_keys() {
     use fabric_token::CredentialStore;
 
     let store = CredentialStore::open("fabric-demo-test").unwrap();

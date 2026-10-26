@@ -8,6 +8,7 @@ use std::net::TcpStream;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::sync::mpsc;
+use std::sync::{Mutex, PoisonError};
 use std::thread;
 use std::time::Duration;
 
@@ -49,7 +50,13 @@ impl std::fmt::Debug for ServerAddress {
 
 impl Server {
     /// Starts (or finds) the named server and reads its address and password.
+    ///
+    /// Isabelle keeps its named servers in a SQLite database under the user home, and two
+    /// servers registering at once make one of them exit with `SQLITE_BUSY`. Starts within
+    /// this process are therefore serialized; the live tests start one server per test.
     pub fn start(options: &ServerOptions<'_>) -> Result<Self, PolicyError> {
+        static STARTING: Mutex<()> = Mutex::new(());
+        let _starting = STARTING.lock().unwrap_or_else(PoisonError::into_inner);
         let mut command = isabelle_command(
             options.isabelle_home,
             options.user_home,
