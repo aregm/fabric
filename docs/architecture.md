@@ -1,6 +1,6 @@
 # Personal Knowledge Fabric — Technical Architecture
 
-**Status:** decision-ready baseline, version 1.3
+**Status:** decision-ready baseline, version 1.4
 
 **Prepared:** 2026-09-13
 
@@ -203,6 +203,38 @@ binding is not a serialized canonical record, cryptographic digest, or
 authorization token; production `fabric-schedule/1` still requires
 deterministic CBOR, signed exact consent, E2EE transport, persistent replay
 protection, and the prepare/commit saga described in the calendar specification.
+
+### 9.6 Prototype mobile client and chat relay: `apps/paracels`
+
+`apps/paracels` is an Expo (React Native) iOS app outside the Cargo workspace. It hosts a dummy
+group chat, specified in [the paracels chat prototype](paracels-chat.md), as a first step toward
+Fabric's messaging. The prototype is deliberately server-first and unencrypted. It exists to
+exercise the message lifecycle (identity created on the device, an offline outbox, idempotent
+delivery, an ordered log, attachments) and to fix the seams where Fabric's encryption, policy, and
+local-first storage will attach. It does not change the desktop decision in §9.3. Status:
+built and verified on the simulator and an iPhone; every gate closed on 2026-10-26. Whether it
+graduates is ADR-014.
+
+| Boundary | Responsibility | Explicitly absent |
+|---|---|---|
+| Paracels app (chat screen, `src/chat/client`) | Composes messages with IDs and times created on the device; keeps unsent messages in an on-device SQLite outbox; shows history, live messages, and each message's status | A local copy of the history, encryption, real identity, background delivery |
+| API routes (`src/app/api/*+api.ts`, run by the Expo dev server) | History pages and attachment upload and download over HTTP, behind a shared room key | WebSockets, which Expo Router API routes cannot accept in SDK 58; message writes |
+| Chat socket server (`server/chat-socket.ts`, Node and `ws`) | Accepts messages over WebSocket, applies one policy module, appends each message to the log once, acknowledges the sender, and relays to everyone else connected | More than one room, authentication beyond the shared key, TLS |
+| `chat.sqlite` (Node's built-in SQLite, WAL) | The append-only message log and the attachment blobs, with one writing process per table | At-rest encryption (unlike `vault.db`), retention rules |
+
+How the prototype relates to the invariants in §9.2:
+
+- **Invariant 2 (local interactive path) is not met.** Reading history needs the server; only writing works offline. The seams are the client's store interface and the server's sequence cursor, so a device replica can replace server-first reads without changing the protocol.
+- **Invariant 5 (attribution):** each stored message records its sender, device time, server time, and payload format.
+- **Invariant 7 (policy outside the model):** no model is involved. One server policy module decides every accept or reject, with a reason code.
+- **Invariant 8 (space):** every message carries a room ID, fixed to `main`; that is where a space ID will go.
+- **Encryption:** payloads are tagged (`plain/1`) and stored verbatim, and attachments are opaque blobs with a size and a SHA-256, so end-to-end encrypted payloads can replace them without a schema change.
+
+The relay is TypeScript on Node because the prototype uses Expo Router API routes. Whether the
+prototype graduates, and whether the relay moves into the Rust core, is proposed in
+[ADR-014](adr/ADR-014-mobile-client-and-messaging-relay.md): the Expo app stays as the UI shell over
+the Rust core, the relay becomes a Rust binary grown from the calendar demo's relay, and a chat
+message becomes an operation in a shared space.
 
 ---
 
@@ -992,13 +1024,14 @@ The rehearsal passes when each result opens its original evidence, search works 
 4. **ADR-004 Editor document model** — portable AST, Markdown mapping, CRDT boundary.
 5. **ADR-005 Search fusion and evaluation** — FTS/vector implementation, rank explanation, benchmark.
 6. **ADR-006 Connector sandbox and capability manifest** — process/WASM boundary and credential access.
-7. **ADR-007 Operation log and sync evolution** — single-user oplog, personal devices, shared CRDT spaces.
+7. **ADR-007 Operation log and sync evolution** — single-user oplog, personal devices, shared CRDT spaces. Drafted: [ADR-007](adr/ADR-007-operation-log-and-sync-evolution.md), proposed 2026-10-26.
 8. **ADR-008 Agent/MCP permission model** — resource/tool surface, grants, consent, injection controls.
-9. **ADR-009 Sharing crypto and metadata model** — envelope encryption versus MLS, relay leakage, revocation.
+9. **ADR-009 Sharing crypto and metadata model** — envelope encryption versus MLS, relay leakage, revocation. Drafted: [ADR-009](adr/ADR-009-sharing-crypto-and-metadata-model.md), proposed 2026-10-26.
 10. **ADR-010 Licensing/product posture** — personal, open-source, or commercial distribution.
 11. **ADR-011 Calendar authority and time model** — Fabric-native versus provider-authoritative events, recurrence/zone semantics, and provider bindings.
 12. **ADR-012 Fabric Rendezvous protocol** — identity pairing, MLS/HPKE profile, disclosure budget, transcript/state machine, metadata leakage, and recovery.
 13. **ADR-013 Calendar projection and commit saga** — Fabric-only/private-busy/native-invite modes, idempotency, holds, compensation, and reconciliation.
+14. **ADR-014 Mobile client and messaging relay** — whether the paracels chat prototype (§9.6: an Expo client and a Node relay) graduates, and whether the relay moves into the Rust core; it depends on ADR-007 and ADR-009. Drafted: [ADR-014](adr/ADR-014-mobile-client-and-messaging-relay.md), proposed 2026-10-26.
 
 ---
 
