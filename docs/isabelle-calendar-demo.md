@@ -1,6 +1,6 @@
 # Fabric Policy Demo — Isabelle-Gated Calendar Agents
 
-**Status:** approved on 2026-10-18; version 1.8 records gates G1 and G2, the choices of Phases 3–8, and the Phase 9 results. Phases 0–9 are done; gate G3, your own run, is next.
+**Status:** approved on 2026-10-18; version 1.9 records gates G1 and G2, the choices of Phases 3–8, the Phase 9 results, and the macOS port of 2026-10-26 (section 16). Phases 0–9 are done; gate G3, your own run, is next.
 
 **Prepared:** 2026-10-18
 
@@ -93,7 +93,7 @@ Your answers left the gaps below. You approved every proposed default on 2026-10
 | D17 | **Noise pattern IK** (`Noise_IK_25519_ChaChaPoly_BLAKE2s`). The caller is authenticated in the first message, so the responder can check it is the configured participant before answering. Each side needs its own `Handshake` token. The XX pattern mentioned in the earlier question would reveal the responder's key before it knows who is calling. | XX with a key check after the handshake, or KK. |
 | D18 | **Both owners file a request** naming the other person: duration, window, and a free-text preference. Bob's request is his pre-authorization to negotiate with Alice. Alice coordinates. | Only Alice files a request; Bob's side uses a standing configuration. |
 | D19 | **Inbound messages need no token.** The gateway delivers decrypted inbound messages to its own agent; only actions the agent starts need tokens. | Make "receive" a tokenized action too. |
-| D20 | **Calendar store:** one CBOR file per person, encrypted with XChaCha20-Poly1305, with the key in Windows Credential Manager. This avoids building SQLCipher and OpenSSL on Windows. | SQLite with SQLCipher. |
+| D20 | **Calendar store:** one CBOR file per person, encrypted with XChaCha20-Poly1305, with the key in the OS credential store (Windows Credential Manager; since 2026-10-26 also the macOS login Keychain). This avoids building SQLCipher and OpenSSL on Windows. | SQLite with SQLCipher. |
 | D21 | **Same-user limit.** Every process runs under your Windows user. The demo's isolation is the API and token boundary, not an operating-system sandbox. | Run agents under a separate Windows account or in an AppContainer. Out of scope unless you want it. |
 
 ### 3.4 Runtime and engineering
@@ -215,7 +215,7 @@ Phase 4 settled the details. `fabric-demo calendar --config <file>` runs the ser
   - `POST /v1/owner/consent {"candidate_id", "yes"}` records the owner's answer (section 12).
   - `POST /v1/owner/faults` arms fault switches, and `GET /v1/owner/status` returns what the agent sees.
   - Each of these actions also ends the agent's wait for deliveries, so the agent looks at once rather than within 20 seconds.
-- Keys live in Windows Credential Manager. Each person has three keys: `gate` (Ed25519, signs tokens), `identity` (Ed25519, signs messages and consent records) and `noise` (X25519, the Noise static key). Each is a generic credential named `fabric-demo/<person>/<key>`, persisted for this computer only, so it never roams to other machines. The launcher creates missing keys on its first run.
+- Keys live in the OS credential store. Each person has three keys: `gate` (Ed25519, signs tokens), `identity` (Ed25519, signs messages and consent records) and `noise` (X25519, the Noise static key). On Windows each is a generic credential named `fabric-demo/<person>/<key>`, persisted for this computer only, so it never roams to other machines. On macOS each is a generic password in the login Keychain with the service `fabric-demo` and the account `<person>/<key>`, so Keychain Access lists them under that name; nothing goes to iCloud Keychain. The launcher creates missing keys on its first run.
 - The launcher writes both people's public keys to the key directory `.local/demo/run/keys.json` (format `fabric-demo-keys-v1`, lowercase hex), and every process reads its peers' keys from there. Readers refuse unknown fields, malformed or weak Ed25519 keys, and person IDs that break the identifier rule.
 
 ### 5.3 Agent runtime (one per person, untrusted)
@@ -284,15 +284,15 @@ See section 13. Phase 8 details (`fabric-demo dashboard --config <file>`):
 
 - `fabric-demo up [--alice <backend>] [--bob <backend>] [--start <UTC time>] [--repository <dir>]`:
   - Checks that it runs from the repository root.
-  - Creates both people's keys in Credential Manager on the first run.
+  - Creates both people's keys in the credential store on the first run.
   - Writes the per-run configuration and secrets to `.local/demo/run/` (git-ignored).
   - Starts the Isabelle server, the relay, both calendar services, both trusted hosts, the dashboard and both agents. Each runs as a `fabric-demo` child process on a free loopback port. Its first output line names its address; the rest of its output goes to `<name>.log` in the run directory.
   - Prints the dashboard URL with its key.
 - A backend is `claude` (the default for both), `ollama:<model>` or `scripted` (tests only).
 - Every run starts from the fixtures, so the scenario is the same each time (D22). `up` deletes the previous run's calendar stores.
 - `fabric-demo down` asks the running launcher to stop, through a control endpoint whose address and per-run key are in `run.json`. The launcher stops the agents first, then the services, then Isabelle, and removes `run.json`. Ctrl+C does the same.
-- `fabric-demo reset-keys` deletes both people's keys and store keys from Credential Manager, and their calendar files.
-- `scripts/demo.ps1 [-Command up|down|reset-keys] [-Alice <backend>] [-Bob <backend>]` runs these from the repository root. For `up` it builds the release binary first.
+- `fabric-demo reset-keys` deletes both people's keys and store keys from the credential store, and their calendar files.
+- `scripts/demo.ps1 [-Command up|down|reset-keys] [-Alice <backend>] [-Bob <backend>]` on Windows, and `scripts/demo.sh [up|down|reset-keys] [--alice <backend>] [--bob <backend>]` on macOS, run these from the repository root. For `up` they build the release binary first.
 
 ## 6. Data model
 
@@ -655,7 +655,7 @@ What the demo enforces:
 
 What it does not protect (the dashboard says so too):
 
-- All processes run under one Windows user, so there is no OS sandbox (D21).
+- All processes run under one OS user, so there is no OS sandbox (D21).
 - Isabelle checks the policy over facts the trusted host supplies. The host, its signature checks and its HOL rendering are trusted, not verified.
 - Nothing checks that an agent's availability answers match its owner's calendar.
 - With the default backends, both owners' free/busy windows, and everything the agents receive, go to Anthropic.
@@ -664,7 +664,7 @@ What it does not protect (the dashboard says so too):
 
 ## 16. Platform, setup and dependencies
 
-- Windows 11 on this machine. Rust 1.97.1 through `scripts/setup.ps1`, which downloads rustup and the toolchain into `.tooling/`.
+- Windows 11 on the machine the demo was built on, and since 2026-10-26 also macOS (built and tested on macOS 27.0.1, Apple Silicon). Rust 1.97.1 through `scripts/setup.ps1` or `scripts/setup.sh`, which download rustup and the toolchain into `.tooling/`.
 - Isabelle2025-2 for Windows (`Isabelle2025-2.exe`, a self-extracting archive) into `.tooling/isabelle/` (D29). The Isabelle site notes that the app has no developer signature, so Windows may warn on first run, and that Windows Defender can block external provers; this demo uses none. The site publishes no checksum, so `scripts/setup-demo.ps1` pins the size and SHA-256 of the archive approved on 2026-10-18. It downloads over HTTPS from the TUM mirror, because the site's own link redirects to plain HTTP.
 - Ollama for Windows and the three Phase 1 models (about 8 GB), for optional local runs.
 - Your Anthropic API key and workspace ID in a git-ignored `.env` file at the repository root (Q25, Q26).
@@ -673,14 +673,14 @@ What it does not protect (the dashboard says so too):
   - `ed25519-dalek` 2.2 and `x25519-dalek` 2.0, not the new 3.0 releases. The 2.x releases share `curve25519-dalek` 4 and `sha2` 0.10 with `snow` 0.10 and `fabric-policy`.
   - `ciborium` 0.2 parses CBOR. `fabric-token` has its own deterministic encoder of about 75 lines. ciborium writes map entries in the order given, and its optional canonical ordering is the older length-first rule (RFC 8949 §4.2.3), not the §4.2.1 bytewise rule.
   - COSE_Sign1 is built directly on that encoder, since the header is fixed. `coset` 0.4 is a test-only dependency that checks the tokens read as standard CWTs.
-  - Credential Manager access uses `keyring-core` 1 and `windows-native-keyring-store` 1, on Windows only. The `keyring` crate's version 4 split the platform stores into these separate crates.
+  - Credential Manager access uses `keyring-core` 1 and `windows-native-keyring-store` 1, on Windows only. The `keyring` crate's version 4 split the platform stores into these separate crates. On macOS the store is `security-framework` 3 directly (the login Keychain's generic passwords), because the keyring crates' delete path refuses to remove an item that another binary created, while the keychain item API that the `security` command uses removes it.
   - Also added: `getrandom` 0.3 for keys and nonces, and `zeroize` to wipe secrets.
 - Phase 4 choices:
   - `tokio` 1.53 and `axum` 0.8, with only axum's HTTP/1, JSON and tokio features.
   - `chacha20poly1305` 0.10, the release `snow` 0.10 uses.
   - `reqwest` 0.13 for the calendar client, without TLS for now; loopback needs none.
   - `tower` 0.5 for tests only.
-  - Settled in Phase 6: reqwest 0.13's default TLS is rustls on the aws-lc-rs provider, and the Phase 1 spike used rustls on ring. The Claude backend uses Schannel instead (section 10.2).
+  - Settled in Phase 6: reqwest 0.13's default TLS is rustls on the aws-lc-rs provider, and the Phase 1 spike used rustls on ring. The Claude backend uses Schannel instead (section 10.2), and on macOS Security.framework, through the same `native-tls` feature.
 - Phase 6 choices:
   - The app's `serde_json` has the `preserve_order` feature, so the plan schema keeps its property order (G1). A test checks the order.
   - The agent's calls to its host and calendar go through a `World` trait. The runtime's unit tests replace it with replayed answers, so CI tests the control flow without Isabelle; the verdicts there are test inputs, not policy. The live tests use Isabelle.
@@ -698,10 +698,22 @@ crates/fabric-wire/        protocol messages, signatures, Noise sessions
 apps/fabric-demo/          one binary: up, down, relay, host, calendar, agent, dashboard (Phase 4 added calendar)
 isabelle/Fabric_Policy/    ROOT, Fabric_Policy.thy
 demo/                      config, fixtures, prompts, dashboard assets
-scripts/                   setup-demo.ps1 (Isabelle), demo.ps1 (start)
+scripts/                   setup-demo.ps1 (Isabelle), demo.ps1 (start); setup-demo.sh, isabelle.sh, demo.sh for macOS
 ```
 
 Per-run state, public keys, logs and audit files go to `.local/demo/`, which is already git-ignored.
+
+### macOS port (2026-10-26)
+
+The demo was written and verified on Windows 11. On 2026-10-26 it was brought to the same state on macOS:
+
+- **Isabelle:** `scripts/setup-demo.sh` downloads `Isabelle2025-2_macos.tar.gz` (1,730,395,791 bytes, SHA-256 `8f187496e295f169952e944745af9e4ae00c9c1cd2ed4cadbcf7d898e444913e`, pinned on the first download as D29 says) and unpacks `Isabelle2025-2.app` into `.tooling/isabelle/`. The bundle holds the whole distribution, so the script links `.tooling/isabelle/Isabelle2025-2` to it; the gate's default paths are then the same on both platforms. Isabelle2026 has since replaced 2025-2 as the current release, and both archives now come from the release's own archive site; the dist mirror that `setup-demo.ps1` used answers 404, so its URL changed too. `scripts/isabelle.sh` runs Isabelle tools with `USER_HOME` in `.tooling/isabelle/home`. No Cygwin step exists on macOS, and Gatekeeper did not object, because `curl` does not mark downloads as quarantined.
+- **Keys:** `fabric_token::CredentialStore` exists on macOS too, over the login Keychain (section 5.2). `MemoryStore` stays for tests and other platforms.
+- **TLS:** reqwest's `native-tls` feature on macOS is Security.framework, so the Claude backend needs no extra build step.
+- **Serialized server starts:** Isabelle registers named servers in a SQLite database under the user home, and four servers starting at once in the live tests made three of them exit with `SQLITE_BUSY`. `Server::start` now serializes starts within a process; the Windows runs had been lucky with timing.
+- **Keychain consent dialogs:** macOS binds a Keychain item to the binary that created it. Every demo process is the one `fabric-demo` binary, so a run does not prompt. A rebuilt binary (its ad-hoc code signature changes), or a test binary reading an item the demo created, makes macOS ask once per item whether to allow access; choosing Always Allow ends it for that build. `reset-keys` before a run avoids the dialogs altogether. The two tests that cross binaries, `calendar_command` and `messaging_commands`, therefore need a click on macOS; they say so in their headers.
+- **Results on this Mac:** `sh scripts/run.sh cargo test --workspace --all-targets --all-features --locked` passes 93 tests with 11 ignored. Of the ignored tests, run with `--ignored`: the policy corpus (gate started in 12.6 s, 22.5 s in all), `live_gate`, all four `live_negotiation` tests (29.7 s together), the credential-store `keys` test, `calendar_command` and `messaging_commands` all pass; `live_planners` was not run (it calls the Claude API or needs Ollama). Isabelle's first session build is included in those times, since the session heap was built by the corpus run.
+- **Launcher on this Mac:** `sh scripts/demo.sh up --alice scripted --bob scripted` built the release binary in 23 s, then started Isabelle, both calendar services, both hosts, both agents and the dashboard in 8 s; the dashboard answered on its loopback address, both people's keys were created in the login Keychain, and `sh scripts/demo.sh down` stopped everything with no error in any component log. Gate G3, your own run with Claude, remains yours.
 
 ## 17. Acceptance criteria
 

@@ -1,11 +1,15 @@
-//! The `fabric-demo calendar` command end to end. It keeps its store key in Windows Credential
-//! Manager and its calendar encrypted on disk, across restarts. It writes to Credential Manager
+//! The `fabric-demo calendar` command end to end. It keeps its store key in the OS credential
+//! store and its calendar encrypted on disk, across restarts. It writes to the credential store
 //! under the test prefix `fabric-demo-test/` and deletes the entry afterwards, so it is local
 //! only:
 //!
 //!   .\scripts\run.ps1 cargo test -p fabric-demo --test calendar_command -- --ignored
+//!   sh scripts/run.sh cargo test -p fabric-demo --test calendar_command -- --ignored
+//!
+//! On macOS this test reads a Keychain item that the `fabric-demo` binary created, so macOS asks
+//! whether to allow it; the test waits for the click.
 
-#![cfg(windows)]
+#![cfg(any(windows, target_os = "macos"))]
 
 use std::fs;
 use std::io::{BufRead, BufReader, Read};
@@ -95,8 +99,8 @@ impl Drop for Cleanup {
 }
 
 #[test]
-#[ignore = "writes to Windows Credential Manager and runs the command; run with --ignored"]
-fn the_calendar_command_keeps_its_store_key_in_credential_manager() {
+#[ignore = "writes to the OS credential store and runs the command; run with --ignored"]
+fn the_calendar_command_keeps_its_store_key_in_the_credential_store() {
     let directory = PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join("calendar-command");
     let _ = fs::remove_dir_all(&directory);
     fs::create_dir_all(&directory).unwrap();
@@ -173,10 +177,10 @@ fn the_calendar_command_keeps_its_store_key_in_credential_manager() {
     drop(running);
     assert!(
         cleanup.0.get("alice/store").unwrap().is_some(),
-        "the store key is in Credential Manager"
+        "the store key is in the credential store"
     );
 
-    // A restart decrypts the store with the key from Credential Manager.
+    // A restart decrypts the store with the key from the credential store.
     let (running, url) = start(&config_path);
     let events = runtime
         .block_on(CalendarClient::new(&url).owner_events(&owner_secret))

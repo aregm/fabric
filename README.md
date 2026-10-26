@@ -58,7 +58,7 @@ It does not yet implement Google Calendar, a relay, MLS/TOFU, signatures,
 encrypted persistence, recurrence/DST, holds/revalidation, or the provider
 commit saga. Its result is **Agreed**, never **Scheduled**.
 
-## Isabelle-gated calendar demo (Windows)
+## Isabelle-gated calendar demo (Windows and macOS)
 
 Two LLM agents, Alice's and Bob's, negotiate a meeting through an encrypted relay. Isabelle/HOL
 proves every action they plan against explicit rules, and a single-use token bound to the
@@ -67,22 +67,34 @@ action's exact arguments gates every effect on a calendar or the messaging gatew
 
 - isabelle/Fabric_Policy — the policy theory.
 - crates/fabric-policy — actions, contexts, the HOL renderer, and the policy gate on Isabelle's server.
-- crates/fabric-token — deterministic CBOR, COSE_Sign1 tokens, proof of possession, and keys in Windows Credential Manager.
+- crates/fabric-token — deterministic CBOR, COSE_Sign1 tokens, proof of possession, and keys in the OS credential store (Windows Credential Manager or the macOS login Keychain).
 - crates/fabric-wire — frames, signed messages, Noise IK sessions, and consent records.
 - apps/fabric-demo — the calendar service, relay, trusted host, agent runtime (Claude, Ollama or scripted), dashboard and launcher, in one binary.
 
-Set up once. The second script downloads Isabelle2025-2 (about 1 GB) into `.tooling/isabelle/`:
+Set up once. The second script downloads Isabelle2025-2 (about 1 GB on Windows, 1.7 GB on macOS) into `.tooling/isabelle/`.
+
+Windows:
 
     powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\setup.ps1
     powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\setup-demo.ps1
 
+macOS:
+
+    sh scripts/setup.sh
+    sh scripts/setup-demo.sh
+
 Then copy `.env.example` to `.env` and fill in your Anthropic API key. For a local agent, install
 Ollama and pull a model.
 
-Run it, with Claude for both agents, or with a local model for Alice:
+Run it, with Claude for both agents, or with a local model for Alice. Windows:
 
     powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\demo.ps1
     powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\demo.ps1 -Alice ollama:granite4.1:3b
+
+macOS:
+
+    sh scripts/demo.sh
+    sh scripts/demo.sh --alice ollama:granite4.1:3b
 
 It prints the dashboard URL. Open it, press **Start scenario**, and answer each mutual option in
 both columns. The rehearsal script has Bob say no to Tuesday and both say yes to Thursday. The
@@ -90,16 +102,20 @@ agents then add the meeting to both calendars. The fault switches show Isabelle'
 token checks. Stop with Ctrl+C, or from another terminal:
 
     powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\demo.ps1 -Command down
+    sh scripts/demo.sh down
 
-- The first run creates both people's keys in Windows Credential Manager, under `fabric-demo/alice/` and `fabric-demo/bob/`. `-Command reset-keys` deletes them.
+- The first run creates both people's keys in the OS credential store: Windows Credential Manager under `fabric-demo/alice/` and `fabric-demo/bob/`, or the macOS login Keychain under the service `fabric-demo`. `-Command reset-keys` (Windows) or `sh scripts/demo.sh reset-keys` (macOS) deletes them. On macOS, a rebuilt `fabric-demo` makes macOS ask once per key whether the new binary may use it; choose Always Allow, or reset the keys first.
 - Every run starts from the fixtures in `demo/fixtures/`. Logs and audit files go to `.local/demo/run/`.
 - With Claude, both owners' free/busy and the agents' messages go to Anthropic. A rehearsal run cost about $0.35.
 - A small local model usually stalls, for example by reading the calendar again instead of answering. Isabelle keeps it safe but cannot make it useful.
 - It is not production security: see section 15 of the specification.
 
-The tests that need Isabelle, Credential Manager, the API key or Ollama run only locally:
+The tests that need Isabelle, the credential store, the API key or Ollama run only locally:
 
     powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run.ps1 cargo test --workspace -- --ignored
+    sh scripts/run.sh cargo test --workspace -- --ignored
+
+On macOS, two of them (`calendar_command` and `messaging_commands`) read a Keychain item that another binary created, so macOS asks for permission; click Allow.
 
 ## Paracels chat prototype (iOS)
 

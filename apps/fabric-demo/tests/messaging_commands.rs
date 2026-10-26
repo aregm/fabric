@@ -1,10 +1,14 @@
-//! The `relay` and `host` commands end to end: two hosts whose keys live in Windows Credential
-//! Manager connect through the relay and exchange a proposal. The keys are created under the
+//! The `relay` and `host` commands end to end: two hosts whose keys live in the OS credential
+//! store connect through the relay and exchange a proposal. The keys are created under the
 //! test prefix `fabric-demo-test/` and deleted afterwards, so this test is local only:
 //!
 //!   .\scripts\run.ps1 cargo test -p fabric-demo --test messaging_commands -- --ignored
+//!   sh scripts/run.sh cargo test -p fabric-demo --test messaging_commands -- --ignored
+//!
+//! On macOS the `fabric-demo host` processes read Keychain items this test binary created, so
+//! macOS asks whether to allow it; the test waits for the clicks.
 
-#![cfg(windows)]
+#![cfg(any(windows, target_os = "macos"))]
 
 mod common;
 
@@ -34,7 +38,7 @@ fn secret() -> String {
 }
 
 #[test]
-#[ignore = "writes to Windows Credential Manager and runs the commands; run with --ignored"]
+#[ignore = "writes to the OS credential store and runs the commands; run with --ignored"]
 fn two_hosts_connect_through_the_relay_and_exchange_a_proposal() {
     let directory = scratch("messaging-commands");
     let cleanup = Cleanup(CredentialStore::open(PREFIX).unwrap());

@@ -1,5 +1,6 @@
-//! Long-term keys (section 5.2): generated once, kept in Windows Credential Manager, and
-//! published to the other processes in the launcher's key directory.
+//! Long-term keys (section 5.2): generated once, kept in the operating system's credential store
+//! (Windows Credential Manager, or the login Keychain on macOS), and published to the other
+//! processes in the launcher's key directory.
 //!
 //! Each person has three keys, all held by their trusted host:
 //!
@@ -40,7 +41,7 @@ pub trait SecretStore {
     fn delete(&self, name: &str) -> Result<(), TokenError>;
 }
 
-/// Secrets in memory only: for tests, and for platforms without Credential Manager.
+/// Secrets in memory only: for tests, and for platforms without a supported credential store.
 #[derive(Default)]
 pub struct MemoryStore {
     secrets: Mutex<HashMap<String, Zeroizing<Vec<u8>>>>,
@@ -152,6 +153,96 @@ mod credential_manager {
         fn delete(&self, name: &str) -> Result<(), TokenError> {
             match self.entry(name)?.delete_credential() {
                 Ok(()) | Err(Error::NoEntry) => Ok(()),
+                Err(error) => Err(store_error(error)),
+            }
+        }
+    }
+
+    fn store_error(error: Error) -> TokenError {
+        TokenError::Store(error.to_string())
+    }
+}
+
+#[cfg(target_os = "macos")]
+pub use keychain::CredentialStore;
+
+#[cfg(target_os = "macos")]
+mod keychain {
+    use std::fmt;
+
+    use security_framework::base::Error;
+    use security_framework::os::macos::keychain::SecKeychain;
+    use security_framework::os::macos::passwords::find_generic_password;
+    use zeroize::Zeroizing;
+
+    use super::SecretStore;
+    use crate::error::TokenError;
+
+    /// `errSecItemNotFound`.
+    const NOT_FOUND: i32 = -25300;
+
+    /// The macOS login Keychain: one generic password per secret, with the service `<prefix>`
+    /// and the account `<name>`, so Keychain Access lists the demo's items under its prefix.
+    /// Items stay in this user's login keychain on this Mac; nothing goes to iCloud Keychain.
+    ///
+    /// Reads and deletes use the keychain item API that the `security` command uses, so a
+    /// rebuilt `fabric-demo`, or a test binary, can remove items an earlier build created.
+    pub struct CredentialStore {
+        keychain: SecKeychain,
+        prefix: String,
+    }
+
+    impl CredentialStore {
+        /// The prefix of the demo's keys.
+        pub const DEMO: &'static str = "fabric-demo";
+
+        pub fn open(prefix: &str) -> Result<Self, TokenError> {
+            Ok(Self {
+                keychain: SecKeychain::default().map_err(store_error)?,
+                prefix: prefix.to_owned(),
+            })
+        }
+    }
+
+    impl fmt::Debug for CredentialStore {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            f.debug_struct("CredentialStore")
+                .field("prefix", &self.prefix)
+                .finish_non_exhaustive()
+        }
+    }
+
+    impl SecretStore for CredentialStore {
+        fn get(&self, name: &str) -> Result<Option<Zeroizing<Vec<u8>>>, TokenError> {
+            let keychains = std::slice::from_ref(&self.keychain);
+            match find_generic_password(Some(keychains), &self.prefix, name) {
+                Ok((password, _)) => Ok(Some(Zeroizing::new(password.to_vec()))),
+                Err(error) if error.code() == NOT_FOUND => Ok(None),
+                Err(error) => Err(store_error(error)),
+            }
+        }
+
+        fn put(&self, name: &str, secret: &[u8]) -> Result<(), TokenError> {
+            // Replaces the password of an existing item, or adds the item.
+            self.keychain
+                .set_generic_password(&self.prefix, name, secret)
+                .map_err(store_error)
+        }
+
+        fn delete(&self, name: &str) -> Result<(), TokenError> {
+            let keychains = std::slice::from_ref(&self.keychain);
+            match find_generic_password(Some(keychains), &self.prefix, name) {
+                // `SecKeychainItemDelete` reports nothing through this binding, so look again.
+                Ok((_, item)) => item.delete(),
+                Err(error) if error.code() == NOT_FOUND => return Ok(()),
+                Err(error) => return Err(store_error(error)),
+            }
+            match find_generic_password(Some(keychains), &self.prefix, name) {
+                Err(error) if error.code() == NOT_FOUND => Ok(()),
+                Ok(_) => Err(TokenError::Store(format!(
+                    "{}/{name} is still in the keychain after deleting it",
+                    self.prefix
+                ))),
                 Err(error) => Err(store_error(error)),
             }
         }

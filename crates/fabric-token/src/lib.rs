@@ -21,7 +21,7 @@ pub use cbor::CborError;
 pub use digest::{action_digest, sha256};
 pub use ed25519_dalek::{SigningKey, VerifyingKey};
 pub use error::TokenError;
-#[cfg(windows)]
+#[cfg(any(windows, target_os = "macos"))]
 pub use keys::CredentialStore;
 pub use keys::{KeyDirectory, MemoryStore, PersonKeys, PublicKeys, SecretStore, random};
 pub use pop::{BindingKey, POP_MAX_AGE_MS, POP_MAX_LEAD_MS, Presentation};

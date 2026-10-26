@@ -8,8 +8,9 @@ $IsabelleVersion = "Isabelle2025-2"
 # The Isabelle site publishes no checksum, so this pins the archive downloaded and approved on 2026-10-18.
 $ArchiveBytes = 1069837790
 $ArchiveSha256 = "51f47f3259f168de4517cf6e46e90409ab2c45ab4651d5b793509056571379c5"
-# isabelle.in.tum.de/dist/ redirects to plain HTTP on this mirror; the mirror also serves the file over HTTPS.
-$ArchiveUrl = "https://dist.isabelle.cit.tum.de/dist/$IsabelleVersion.exe?token=Isabelle"
+# Since Isabelle2026 replaced it as the current release, Isabelle2025-2 is served from its own archived
+# release site; the dist mirror used on 2026-10-18 now answers 404 for it.
+$ArchiveUrl = "https://isabelle.in.tum.de/website-$IsabelleVersion/dist/$IsabelleVersion.exe"
 
 $Root = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot "..")).Path
 $IsabelleTooling = Join-Path $Root ".tooling\isabelle"

@@ -1,7 +1,8 @@
-//! A token minted from a live Isabelle check. It needs `scripts/setup-demo.ps1`, so it is
-//! ignored by default:
+//! A token minted from a live Isabelle check. It needs `scripts/setup-demo.ps1` (Windows) or
+//! `scripts/setup-demo.sh` (macOS), so it is ignored by default:
 //!
 //!   .\scripts\run.ps1 cargo test -p fabric-token --test live_gate -- --ignored --nocapture
+//!   sh scripts/run.sh cargo test -p fabric-token --test live_gate -- --ignored --nocapture
 
 use std::path::Path;
 
@@ -48,7 +49,7 @@ fn alice() -> Context {
 }
 
 #[test]
-#[ignore = "needs Isabelle from scripts/setup-demo.ps1; run with --ignored"]
+#[ignore = "needs Isabelle from scripts/setup-demo.ps1 or setup-demo.sh; run with --ignored"]
 fn an_isabelle_permit_mints_a_token_the_calendar_accepts() {
     let mut config = GateConfig::for_repository(repository());
     config.work_dir = repository().join(".local").join("token-live");

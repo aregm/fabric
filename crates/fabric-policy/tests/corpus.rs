@@ -1,7 +1,9 @@
 //! The policy test corpus (task T2.4): permit and deny cases for every rule, decided by a live
-//! Isabelle session. It needs `scripts/setup-demo.ps1`, so it is ignored by default:
+//! Isabelle session. It needs `scripts/setup-demo.ps1` (Windows) or `scripts/setup-demo.sh`
+//! (macOS), so it is ignored by default:
 //!
 //!   .\scripts\run.ps1 cargo test -p fabric-policy --test corpus -- --ignored --nocapture
+//!   sh scripts/run.sh cargo test -p fabric-policy --test corpus -- --ignored --nocapture
 //!
 //! A permit case passes when every rule is proven to hold. A deny case passes when exactly the
 //! listed rules are proven to fail. `view_details_never` can never hold for the one action it
@@ -484,7 +486,7 @@ fn repository() -> &'static Path {
 }
 
 #[test]
-#[ignore = "needs Isabelle from scripts/setup-demo.ps1; run with --ignored"]
+#[ignore = "needs Isabelle from scripts/setup-demo.ps1 or setup-demo.sh; run with --ignored"]
 fn every_rule_is_decided_as_expected_by_isabelle() {
     let mut config = GateConfig::for_repository(repository());
     config.work_dir = repository().join(".local").join("policy-corpus");

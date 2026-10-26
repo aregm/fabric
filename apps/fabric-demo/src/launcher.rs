@@ -151,16 +151,16 @@ fn url_of(line: &str) -> Result<String, Box<dyn Error>> {
         .ok_or_else(|| format!("no address in {line:?}").into())
 }
 
-#[cfg(windows)]
+#[cfg(any(windows, target_os = "macos"))]
 fn secret_store() -> Result<Box<dyn SecretStore>, Box<dyn Error>> {
     Ok(Box::new(fabric_token::CredentialStore::open(
         fabric_token::CredentialStore::DEMO,
     )?))
 }
 
-#[cfg(not(windows))]
+#[cfg(not(any(windows, target_os = "macos")))]
 fn secret_store() -> Result<Box<dyn SecretStore>, Box<dyn Error>> {
-    Err("the demo runs on Windows only: its keys live in Windows Credential Manager".into())
+    Err("the demo runs on Windows and macOS only: its keys live in the OS credential store".into())
 }
 
 /// Runs the whole demo until Ctrl+C or `fabric-demo down`.
@@ -196,7 +196,7 @@ pub fn up(options: &UpOptions) -> Result<(), Box<dyn Error>> {
     }
     let exe = std::env::current_exe()?;
 
-    // Keys: created on the first run, then loaded from Credential Manager.
+    // Keys: created on the first run, then loaded from the credential store.
     let secrets = secret_store()?;
     let mut keys = KeyDirectory::new();
     for person in people {
@@ -450,7 +450,7 @@ fn stop_all(mut running: Vec<Running>) {
     }
 }
 
-/// Deletes both people's keys and store keys from Credential Manager. The next `up` makes new
+/// Deletes both people's keys and store keys from the credential store. The next `up` makes new
 /// ones; calendars encrypted with the old store keys can then no longer be opened, so their
 /// files are deleted too.
 pub fn reset_keys(repository: &Path) -> Result<(), Box<dyn Error>> {
@@ -469,7 +469,7 @@ pub fn reset_keys(repository: &Path) -> Result<(), Box<dyn Error>> {
                 .join(format!("{person}.cal")),
         );
     }
-    println!("Deleted the demo's keys from Credential Manager.");
+    println!("Deleted the demo's keys from the credential store.");
     Ok(())
 }
 
