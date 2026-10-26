@@ -1,4 +1,5 @@
-import { ActivityIndicator, FlatList, Pressable, View } from 'react-native';
+import { useRef } from 'react';
+import { ActivityIndicator, FlatList, Pressable, View, type NativeScrollEvent, type NativeSyntheticEvent } from 'react-native';
 
 import type { VisibleMessage } from '@/chat/client/state';
 import { strings } from '@/chat/client/strings';
@@ -8,8 +9,12 @@ import { ThemedText } from '@/components/themed-text';
 import { Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 
+/** How close to the latest message still counts as following the conversation. */
+const STICK_TO_BOTTOM_PX = 80;
+
 /**
- * Inverted message list: newest at the bottom, older pages when you scroll up.
+ * Message list anchored to the newest row. Older pages load when you scroll to the top.
+ * The list is not inverted: iOS 26 blurs an inverted scroll view across the whole screen.
  */
 export function MessageList({
   messages,
@@ -39,23 +44,43 @@ export function MessageList({
   roomKey: string | null;
 }) {
   const theme = useTheme();
-  const data = [...messages].reverse();
+  const listRef = useRef<FlatList<VisibleMessage>>(null);
+  const stickToBottom = useRef(true);
+
+  const scrollToLatest = () => {
+    if (stickToBottom.current) {
+      listRef.current?.scrollToEnd({ animated: false });
+    }
+  };
+
+  const onScroll = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
+    const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent;
+    const distanceFromBottom = contentSize.height - layoutMeasurement.height - contentOffset.y;
+    stickToBottom.current = distanceFromBottom < STICK_TO_BOTTOM_PX;
+  };
 
   return (
     <FlatList
-      inverted
-      data={data}
+      ref={listRef}
+      style={{ flex: 1 }}
+      data={messages}
       keyExtractor={(item) => item.key}
       keyboardShouldPersistTaps="handled"
       contentInsetAdjustmentBehavior="automatic"
+      maintainVisibleContentPosition={{ minIndexForVisible: 0 }}
       contentContainerStyle={{
         paddingHorizontal: Spacing.three,
         paddingVertical: Spacing.two,
         gap: Spacing.three,
         flexGrow: 1,
+        justifyContent: 'flex-end',
       }}
-      onEndReached={hasOlder ? onLoadOlder : undefined}
-      onEndReachedThreshold={0.2}
+      onScroll={onScroll}
+      scrollEventThrottle={16}
+      onContentSizeChange={scrollToLatest}
+      onLayout={scrollToLatest}
+      onStartReached={hasOlder ? onLoadOlder : undefined}
+      onStartReachedThreshold={0.2}
       renderItem={({ item }) => (
         <MessageBubble
           item={item}
@@ -66,17 +91,17 @@ export function MessageList({
           onDelete={onDelete}
         />
       )}
-      ListFooterComponent={
+      ListHeaderComponent={
         isLoadingOlder ? (
           <View style={{ paddingVertical: Spacing.two }}>
             <ActivityIndicator color={theme.tint} />
           </View>
         ) : undefined
       }
+      ListFooterComponent={<View style={{ height: Spacing.three }} />}
       ListEmptyComponent={
         <View
           style={{
-            transform: [{ scaleY: -1 }],
             flexGrow: 1,
             justifyContent: 'center',
             alignItems: 'center',

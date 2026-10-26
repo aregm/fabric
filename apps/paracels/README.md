@@ -65,8 +65,9 @@ npm test           # the chat protocol, servers and scripts
 ## Chat prototype
 
 Status: the servers, the chat screen, the on-device outbox and attachments are built (Phases 2 through 5).
-Gate G5 is sending a library photo, a camera photo and a file in both directions. The
-[spec](../../docs/paracels-chat.md) holds the decisions, the design and the last phase.
+Gate G3, chat between the simulator and the iPhone, is closed. Gate G4 is airplane mode, force-quit
+and reopen, and a socket restart. Gate G5 is sending a library photo, a camera photo and a file in
+both directions. The [spec](../../docs/paracels-chat.md) holds the decisions, the design and the last phase.
 A session runs two servers on this Mac:
 
 ```bash

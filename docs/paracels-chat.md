@@ -1,6 +1,6 @@
 # Paracels Chat — A Dummy Chat Prototype
 
-**Status:** version 0.7, approved at gates G0 and G1 on 2026-10-22 and at gate G2 on 2026-10-26. You approved every proposed default except D28, where you chose the alternative (Q20). Phases 1 through 5 are done (results in section 17). Gate G5 is next: send a photo, a camera photo, and a file in both directions. Gates G3 and G4 are still yours to run.
+**Status:** version 0.8, approved at gates G0 and G1 on 2026-10-22, at gate G2 on 2026-10-26, and at gate G3 on 2026-10-26. You approved every proposed default except D28, where you chose the alternative (Q20). Phases 1 through 5 are done (results in section 17). Gate G4 is next: airplane mode, force-quit and reopen, and a socket restart. Gate G5 is still yours: send a photo, a camera photo, and a file in both directions.
 
 **Prepared:** 2026-10-21
 
@@ -49,6 +49,7 @@ It is a dummy: no accounts, no encryption, development builds only. Section 13 l
 | Q20 | Spec approval (gate G0) | Every proposed default approved as written, except D28: the app keeps the generated project's bundle ID, `com.paracels.conclave`, and `app.json` changes to match. Phase 1 starts right away and pauses when the iPhone is needed. |
 | Q21 | Spike review (gate G1) | D7 and D8 confirmed. Code that Node loads also imports types with `import type`. `tsconfig.json` gains `erasableSyntaxOnly`, and ESLint's `consistent-type-imports` rule covers `src/chat/shared/`, `src/chat/server/`, `server/` and `scripts/`, so the starter files stay as they are. The `chat:socket` script passes `--disable-warning=MODULE_TYPELESS_PACKAGE_JSON`. Phase 1's choices are approved as made. Phase 2 starts right away. |
 | Q22 | Server review (gate G2) | The API answers with the room key. Phase 3 starts right away. |
+| Q23 | Two-device chat (gate G3) | Closed 2026-10-26: you chatted between the simulator and the iPhone. The list stays anchored to the newest message and is not inverted, because iOS 26 blurs an inverted scroll view. Gates G4 and G5 remain yours. |
 
 ## 3. Decisions that need your confirmation
 
@@ -474,7 +475,7 @@ None of these later changes alters the transport, the outbox or the message life
 
 - **Header:** the title "Chat" and, on the right, a menu that shows the current demo user and switches between Alice and Bob (D16). SDK 58 has no `Stack.Toolbar`, so the control is an `@expo/ui/swift-ui` `Menu` of `Toggle`s in `headerRight`.
 - **Connection banner:** below the header it shows "Connecting…", or "Can't reach the chat server. Messages will wait on this phone." along with the address it is trying (R3). It is hidden while connected.
-- **Messages:** an inverted list, newest at the bottom, that loads older pages when you scroll to the top. Each bubble shows the sender's name, the time and the text. Your messages sit on the right with their status: a clock for waiting, a spinner for sending, a check for sent, and a red "Not sent" with Retry and Delete for failed (D19).
+- **Messages:** a list anchored to the newest message, which loads older pages when you scroll to the top. It is not an inverted list: on iOS 26 that flip blurs the whole scroll view. Each bubble shows the sender's name, the time and the text. Your messages sit on the right with their status: a clock for waiting, a spinner for sending, a check for sent, and a red "Not sent" with Retry and Delete for failed (D19).
 - **Empty, loading and error states:** "No messages yet. Say hello." when the room is empty; a spinner while the first page loads; a retry button if history fails to load, while your waiting messages stay visible.
 - **Composer:** a multiline text field with a counter that appears near the 4,000-character limit; an attach button offering Photo Library, Take Photo and Choose File; a preview of the chosen attachment with a remove button; and Send, disabled when there is nothing to send. The composer stays above the keyboard.
 - **Attachments in bubbles:** images as thumbnails at their aspect ratio; files as a row with an icon, name and size. Tapping downloads with progress and opens Quick Look.
@@ -623,7 +624,7 @@ Results (2026-10-25):
 - **Checks:** `npm test` runs 87 tests, all passing. `npm run lint` checks `src/`, `server/` and `scripts/` and is clean. `npx tsc --noEmit` reports only the existing error in `src/components/app-tabs.web.tsx`, which Phase 3 deletes. `tsconfig.json` has `erasableSyntaxOnly` and `types: ["node"]` (Q21). ESLint's `consistent-type-imports` covers the folders Node loads.
 - **Recorded in the spec from the build:** history requires `roomId=main` (D10). A missing room key is 503 `not_configured`. An unexpected failure on one socket sends `internal_error` and closes with 1011; the process stays up. Sequence numbers can skip after a refused insert.
 
-### Phase 3 — Chat screen, then gate G3 (done 2026-10-26; gate G3 next)
+### Phase 3 — Chat screen, then gate G3 (done 2026-10-26; gate G3 closed 2026-10-26)
 
 | Task | Work | Size | Needs |
 |---|---|---|---|
@@ -631,7 +632,7 @@ Results (2026-10-25):
 | T3.2 | Client core: server addresses (D26), the HTTP client, the socket connection with backoff (D24), chat state, and the in-memory outbox behind the outbox interface. | M | |
 | T3.3 | Interface: message list with names and times, status on your messages, Retry and Delete (D19), composer, user menu (D16), connection banner and accessibility labels. | M | |
 | T3.4 | History when the app opens, older pages on scroll, and catch-up after reconnecting. | S | |
-| G3 | You chat between the simulator and the iPhone. | | your run |
+| G3 | You chat between the simulator and the iPhone. Done 2026-10-26 (Q23). | | your run |
 
 Results (2026-10-26):
 
@@ -641,6 +642,7 @@ Results (2026-10-26):
 - **T3.4:** opening the app loads the first history page; scrolling up asks for older pages; a `welcome` after reconnect runs catch-up. Tests cover the reducer, outbox worker, HTTP client, socket (against a real `startChatSocketServer`) and address helpers.
 - **Simulator:** the iPhone 18 Pro simulator (iOS 27.0) opened Chat with Alice in the header and the composer at the bottom. The socket accepted the app from `::1` with no `hello_refused`. `GET /api/messages` bundled on that launch. A second client sent Bob's "Hello from Bob on the Mac."; `chat:log` shows it as seq 1. A system sheet, "Open in paracels?", sat on top of the screen for the whole check, so Send was not tapped from the simulator in this run. The sheet is iOS asking to open the `paracels` URL scheme; tap Open or Cancel and the chat is underneath.
 - **Checks:** `npm test` runs 101 tests, all passing. `npm run lint` and `npx tsc --noEmit` are clean.
+- **G3, closed 2026-10-26:** you chatted between the simulator and the iPhone. Before that, the message list was washed out: iOS 26 paints its scroll-edge blur across an inverted scroll view, so every bubble was pale and unreadable while the header and composer stayed sharp. The list is no longer inverted. It keeps the newest message at the bottom and loads older pages at the top. The chat screen also hides that scroll-edge effect.
 
 ### Phase 4 — Offline queue, then gate G4 (done 2026-10-26; gate G4 next)
 

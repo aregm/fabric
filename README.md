@@ -113,8 +113,10 @@ none of them: there is no TLS and no end-to-end encryption, and a shared room ke
 protection.
 
 Status: the servers, the chat screen, the on-device outbox and attachments are built (Phases 2 through 5).
-Gate G5 is sending a library photo, a camera photo and a file in both directions. It is built in
-phases, each of which stops for review. Setup and run steps are in [apps/paracels/README.md](apps/paracels/README.md).
+Gate G3, chat between the simulator and the iPhone, is closed. Gate G4 is airplane mode, force-quit
+and reopen, and a socket restart. Gate G5 is sending a library photo, a camera photo and a file in
+both directions. It is built in phases, each of which stops for review. Setup and run steps are in
+[apps/paracels/README.md](apps/paracels/README.md).
 It needs macOS with Xcode, plus Node.js and npm, which are host prerequisites: the setup scripts
 here install only Rust.
 

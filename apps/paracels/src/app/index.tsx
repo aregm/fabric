@@ -19,6 +19,8 @@ export default function ChatScreen() {
       <Stack.Screen
         options={{
           title: strings.chatTitle,
+          // iOS 26 paints its scroll-edge blur across an inverted list, which washes out every message.
+          scrollEdgeEffects: { top: 'hidden', bottom: 'hidden', left: 'hidden', right: 'hidden' },
           headerRight: () => (
             <View accessible accessibilityRole="button" accessibilityLabel={userMenuAccessibilityLabel(chat.userId)} accessibilityHint={strings.switchUserHint}>
               <UserMenu userId={chat.userId} onSwitch={chat.switchUser} />
