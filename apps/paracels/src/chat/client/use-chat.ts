@@ -8,8 +8,10 @@ import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'r
 import { AppState } from 'react-native';
 
 import { HISTORY_CATCH_UP_PAGE_SIZE, HISTORY_DEFAULT_PAGE_SIZE } from '../shared/limits.ts';
-import { MAIN_ROOM_ID, PLAIN_PAYLOAD_FORMAT, type StoredMessage } from '../shared/protocol.ts';
+import type { StoredMessage } from '../shared/protocol.ts';
 import { isDemoUserId, type DemoUserId } from '../shared/users.ts';
+import { deleteAttachmentCopy, keepAttachmentCopy, uploadOutboxAttachment, type PickedAttachment } from './attachments.ts';
+import { strings } from './strings.ts';
 import { createChatApi, type ChatApi } from './api.ts';
 import { readBundleLocation, readChatConfig, type ChatClientConfig } from './config.ts';
 import { createOutboxWorker, type OutboxItem, type OutboxStore, type OutboxWorker } from './outbox.ts';
@@ -18,6 +20,7 @@ import { createChatSocket, type AppLifecycle, type ChatSocket, type ConnectionSt
 import {
   createChatState,
   highestHeldSeq,
+  envelopeFromOutboxItem,
   reduceChat,
   selectVisibleMessages,
   type ChatAction,
@@ -33,7 +36,8 @@ export type ChatController = {
   state: ChatState;
   messages: VisibleMessage[];
   switchUser: (userId: DemoUserId) => void;
-  sendText: (text: string) => void;
+  /** Queues a message. Returns an error string when it was not queued. */
+  send: (draft: { text: string; attachment: PickedAttachment | null }) => string | null;
   retry: (id: string) => void;
   remove: (id: string) => void;
   loadOlder: () => void;
@@ -50,17 +54,6 @@ function appLifecycle(): AppLifecycle {
       });
       return () => subscription.remove();
     },
-  };
-}
-
-function envelopeFromOutbox(item: OutboxItem) {
-  return {
-    id: item.id,
-    roomId: MAIN_ROOM_ID,
-    senderId: item.senderId,
-    clientCreatedAt: item.clientCreatedAt,
-    attachmentId: null,
-    payload: { format: PLAIN_PAYLOAD_FORMAT, text: item.text, attachment: null },
   };
 }
 
@@ -152,9 +145,27 @@ export function useChat(): ChatController {
       store,
       isConnected: () => socket.status() === 'connected',
       send(item) {
-        socket.send({ type: 'send', message: envelopeFromOutbox(item) });
+        socket.send({ type: 'send', message: envelopeFromOutboxItem(item) });
       },
       onChange: (items) => dispatch({ type: 'outbox_changed', items }),
+      onRemoved: (item) => {
+        if (item.attachment !== null) {
+          deleteAttachmentCopy(item.attachment.uri);
+        }
+      },
+      prepare: async (item) => {
+        if (config.roomKey === null || item.attachment === null) {
+          return { ok: false, retryable: false, code: 'upload_failed' };
+        }
+        const uploaded = await uploadOutboxAttachment(item, config.roomKey, config.apiOrigin);
+        if (!uploaded.ok || item.attachment === null) {
+          return uploaded.ok ? { ok: false, retryable: false, code: 'upload_failed' } : uploaded;
+        }
+        return {
+          ok: true,
+          item: { ...item, attachment: { ...item.attachment, sha256: uploaded.sha256, byteSize: uploaded.byteSize } },
+        };
+      },
       ackTimeoutMs: config.ackTimeoutMs,
     });
     workerRef.current = worker;
@@ -213,17 +224,28 @@ export function useChat(): ChatController {
     setUserId(next);
   }, []);
 
-  const sendText = useCallback(
-    (text: string) => {
-      const trimmed = text.trim();
-      if (trimmed.length === 0 || trimmed.length > config.maxTextLength) {
-        return;
+  const send = useCallback(
+    (draft: { text: string; attachment: PickedAttachment | null }): string | null => {
+      const trimmed = draft.text.trim();
+      if (trimmed.length > config.maxTextLength) {
+        return null;
+      }
+      if (trimmed.length === 0 && draft.attachment === null) {
+        return null;
+      }
+      let attachment: OutboxItem['attachment'] = null;
+      if (draft.attachment !== null) {
+        attachment = keepAttachmentCopy(draft.attachment, randomUUID());
+        if (attachment === null) {
+          return strings.attachmentNotSaved;
+        }
       }
       const item: OutboxItem = {
         id: randomUUID(),
         senderId: userId,
         clientCreatedAt: new Date().toISOString(),
         text: trimmed,
+        attachment,
         state: 'waiting',
         failureCode: null,
         attempts: 0,
@@ -231,6 +253,7 @@ export function useChat(): ChatController {
       storeRef.current.put(item);
       publishOutbox();
       workerRef.current?.kick();
+      return null;
     },
     [config.maxTextLength, publishOutbox, userId],
   );
@@ -250,7 +273,11 @@ export function useChat(): ChatController {
 
   const remove = useCallback(
     (id: string) => {
+      const removed = storeRef.current.get(id);
       storeRef.current.remove(id);
+      if (removed?.attachment !== null && removed?.attachment !== undefined) {
+        deleteAttachmentCopy(removed.attachment.uri);
+      }
       publishOutbox();
     },
     [publishOutbox],
@@ -277,7 +304,7 @@ export function useChat(): ChatController {
     state,
     messages: selectVisibleMessages(state),
     switchUser,
-    sendText,
+    send,
     retry,
     remove,
     loadOlder,

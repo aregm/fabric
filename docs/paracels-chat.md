@@ -1,6 +1,6 @@
 # Paracels Chat — A Dummy Chat Prototype
 
-**Status:** version 0.6, approved at gates G0 and G1 on 2026-10-22 and at gate G2 on 2026-10-26. You approved every proposed default except D28, where you chose the alternative (Q20). Phases 1 through 4 are done (results in section 17). Gate G4 is next: airplane mode, force-quit, and a socket server restart. Gate G3, a chat between the simulator and the iPhone, is still yours to run.
+**Status:** version 0.7, approved at gates G0 and G1 on 2026-10-22 and at gate G2 on 2026-10-26. You approved every proposed default except D28, where you chose the alternative (Q20). Phases 1 through 5 are done (results in section 17). Gate G5 is next: send a photo, a camera photo, and a file in both directions. Gates G3 and G4 are still yours to run.
 
 **Prepared:** 2026-10-21
 
@@ -142,7 +142,7 @@ The chat screen is `src/app/index.tsx`, inside a Stack in `src/app/_layout.tsx` 
 - `src/chat/client/api.ts`: history pages, uploads and downloads over HTTP, with the key header and absolute URLs.
 - `src/chat/client/socket.ts`: the one WebSocket connection, with `hello`, ping, backoff and reconnect on return to the foreground (D24). It exposes the connection state and incoming frames.
 - `src/chat/client/outbox.ts`: the outbox interface and the worker that sends waiting messages in order (section 9). `outbox-sql.ts` is the schema and the recovery rule. `sqlite-outbox.ts` opens `paracels-chat.db` with expo-sqlite. The memory store remains for the worker tests.
-- `src/chat/client/attachments.ts`: the pickers, copying files into the app's documents directory, size checks, downloads and Quick Look (section 10).
+- `src/chat/client/attachments.ts`: the pickers, copying files into the documents directory, the upload, downloads and Quick Look (section 10). `attachment-format.ts` is the file name and size formatting.
 - `src/chat/client/state.ts`: a reducer that merges history pages, live messages, acks and outbox items by message ID. Sent messages are ordered by sequence number; unsent ones follow them, ordered by device time.
 - `src/chat/client/use-chat.ts`: the hook that wires these together for the screen.
 - `src/chat/client/chat-context.tsx`: the React context the screen and the header share (D23).
@@ -656,7 +656,7 @@ Results (2026-10-26):
 - **T4.2:** the Phase 3 worker is unchanged and now writes the sqlite store. It still sends the oldest `waiting` row, skips `failed` rows, returns the in-flight row to `waiting` when the socket drops, and marks `ack_timeout` when 10 seconds pass with no ack. Retry puts a failed row back to `waiting` with the same ID. A duplicate `ack` from the server removes it.
 - **Checks:** `npm test` runs 104 tests, all passing, including a reopen of the same file and a flush through the worker. `npm run lint` and `npx tsc --noEmit` are clean. Airplane mode, force-quit and a socket restart are gate G4.
 
-### Phase 5 — Attachments, then gate G5
+### Phase 5 — Attachments, then gate G5 (done 2026-10-26; gate G5 next)
 
 | Task | Work | Size | Needs |
 |---|---|---|---|
@@ -664,6 +664,13 @@ Results (2026-10-26):
 | T5.2 | The upload step in the outbox, the attachment payload, and the policy check of size and hash. | M | |
 | T5.3 | Inline images and file rows; download and Quick Look (D22). | M | |
 | G5 | You send each kind of attachment in both directions. | | your run |
+
+Results (2026-10-26):
+
+- **T5.1:** the composer’s attach menu offers Photo Library, Take Photo and Choose File. Photos are images only, compressed at quality 0.8. A file over 10 MB is refused before it is queued, with a message that says so. On Send the file is copied under `outbox/` in the documents directory and the row stores a new attachment id.
+- **T5.2:** the worker uploads that copy with `File.upload` (`PUT`, raw bytes) before `send`, and puts the size and SHA-256 from the response into the payload. The policy module already compares those with the stored blob. A network error or a 5xx leaves the row waiting and tries again after the reconnect backoff. 401, 409 and 413 fail the row. `attachment_missing` clears the hash and uploads once more; a second miss fails the row. Delete and `ack` remove the documents copy.
+- **T5.3:** images render inline with `expo-image`, including the room key on remote URLs. Files are a name and a size. Tapping either downloads into the cache under the sanitized name, with a progress line, and opens Quick Look through `File.preview`. `expo-sharing` is not used.
+- **Checks:** `npm test` runs 111 tests, all passing. `npm run lint` and `npx tsc --noEmit` are clean. Sending each kind of attachment both ways is gate G5. Take Photo needs the iPhone. The development build already includes `expo-file-system`; if Quick Look says it could not open, rebuild with `npx expo run:ios`.
 
 ### Phase 6 — Verification and documentation, then gate G6
 

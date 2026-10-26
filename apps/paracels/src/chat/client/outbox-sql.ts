@@ -5,7 +5,7 @@
  */
 
 import { isDemoUserId } from '../shared/users.ts';
-import type { OutboxItem, OutboxState, OutboxStore } from './outbox.ts';
+import type { OutboxAttachment, OutboxItem, OutboxState, OutboxStore } from './outbox.ts';
 
 /** The on-device database file (section 5.5). */
 export const OUTBOX_DATABASE_NAME = 'paracels-chat.db';
@@ -53,10 +53,17 @@ type OutboxRow = {
   state: string;
   failure_code: string | null;
   attempts: number;
+  attachment_id: string | null;
+  attachment_uri: string | null;
+  attachment_name: string | null;
+  attachment_mime: string | null;
+  attachment_size: number | null;
+  attachment_sha256: string | null;
 };
 
 const LIST_SQL = `
-  SELECT id, sender_id, client_created_at, text, state, failure_code, attempts
+  SELECT id, sender_id, client_created_at, text, state, failure_code, attempts,
+         attachment_id, attachment_uri, attachment_name, attachment_mime, attachment_size, attachment_sha256
   FROM outbox
   ORDER BY client_created_at ASC, id ASC
 `;
@@ -66,11 +73,17 @@ const UPSERT_SQL = `
     id, sender_id, client_created_at, text,
     attachment_id, attachment_uri, attachment_name, attachment_mime, attachment_size, attachment_sha256,
     state, failure_code, attempts
-  ) VALUES (?, ?, ?, ?, NULL, NULL, NULL, NULL, NULL, NULL, ?, ?, ?)
+  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   ON CONFLICT(id) DO UPDATE SET
     sender_id = excluded.sender_id,
     client_created_at = excluded.client_created_at,
     text = excluded.text,
+    attachment_id = excluded.attachment_id,
+    attachment_uri = excluded.attachment_uri,
+    attachment_name = excluded.attachment_name,
+    attachment_mime = excluded.attachment_mime,
+    attachment_size = excluded.attachment_size,
+    attachment_sha256 = excluded.attachment_sha256,
     state = excluded.state,
     failure_code = excluded.failure_code,
     attempts = excluded.attempts
@@ -118,11 +131,18 @@ export function createSqlOutbox(connection: SqlConnection): OutboxStore {
       return this.list().find((item) => item.id === id);
     },
     put(item) {
+      const attachment = item.attachment;
       connection.run(UPSERT_SQL, [
         item.id,
         item.senderId,
         item.clientCreatedAt,
         item.text,
+        attachment?.id ?? null,
+        attachment?.uri ?? null,
+        attachment?.fileName ?? null,
+        attachment?.mimeType ?? null,
+        attachment?.byteSize ?? null,
+        attachment?.sha256 ?? null,
         item.state,
         item.failureCode,
         item.attempts,
@@ -154,14 +174,54 @@ function readItem(row: OutboxRow): OutboxItem | undefined {
   if (row.failure_code !== null && typeof row.failure_code !== 'string') {
     return undefined;
   }
+  const attachment = readAttachment(row);
+  if (attachment === 'invalid') {
+    return undefined;
+  }
   return {
     id: row.id,
     senderId: row.sender_id,
     clientCreatedAt: row.client_created_at,
     text: row.text,
+    attachment,
     state: row.state,
     failureCode: row.failure_code,
     attempts: row.attempts,
+  };
+}
+
+function readAttachment(row: OutboxRow): OutboxAttachment | null | 'invalid' {
+  const empty =
+    row.attachment_id === null &&
+    row.attachment_uri === null &&
+    row.attachment_name === null &&
+    row.attachment_mime === null &&
+    row.attachment_size === null &&
+    row.attachment_sha256 === null;
+  if (empty) {
+    return null;
+  }
+  if (
+    typeof row.attachment_id !== 'string' ||
+    typeof row.attachment_uri !== 'string' ||
+    typeof row.attachment_name !== 'string' ||
+    typeof row.attachment_mime !== 'string' ||
+    !Number.isInteger(row.attachment_size) ||
+    row.attachment_size === null ||
+    row.attachment_size < 0
+  ) {
+    return 'invalid';
+  }
+  if (row.attachment_sha256 !== null && typeof row.attachment_sha256 !== 'string') {
+    return 'invalid';
+  }
+  return {
+    id: row.attachment_id,
+    uri: row.attachment_uri,
+    fileName: row.attachment_name,
+    mimeType: row.attachment_mime,
+    byteSize: row.attachment_size,
+    sha256: row.attachment_sha256,
   };
 }
 

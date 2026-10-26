@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import { createChatApi } from './api.ts';
+import { createChatApi, readUploadResponse } from './api.ts';
 
 const TIME = '2026-10-26T05:00:00.000Z';
 const MESSAGE = {
@@ -50,5 +50,23 @@ describe('createChatApi', () => {
     const page = await api.readHistory();
     assert.ok(!page.ok);
     assert.equal(page.error.kind === 'http' && page.error.code, 'unauthorized');
+  });
+});
+
+describe('readUploadResponse', () => {
+  it('keeps the size and hash the server returns', () => {
+    const sha = 'ab'.repeat(32);
+    const result = readUploadResponse(201, JSON.stringify({ id: '1', byteSize: 12, sha256: sha }));
+    assert.deepEqual(result, { ok: true, byteSize: 12, sha256: sha });
+  });
+
+  it('treats a conflict as terminal and a server error as retryable', () => {
+    const conflict = readUploadResponse(409, JSON.stringify({ error: { code: 'attachment_conflict', message: 'Different bytes.' } }));
+    assert.deepEqual(conflict, { ok: false, retryable: false, code: 'attachment_conflict' });
+    const server = readUploadResponse(503, JSON.stringify({ error: { code: 'not_configured', message: 'No key.' } }));
+    assert.equal(server.ok, false);
+    if (!server.ok) {
+      assert.equal(server.retryable, true);
+    }
   });
 });

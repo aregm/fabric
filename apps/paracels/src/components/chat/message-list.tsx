@@ -22,6 +22,8 @@ export function MessageList({
   onLoadOlder,
   onRetry,
   onDelete,
+  apiOrigin,
+  roomKey,
 }: {
   messages: VisibleMessage[];
   currentUserId: DemoUserId;
@@ -33,6 +35,8 @@ export function MessageList({
   onLoadOlder: () => void;
   onRetry: (id: string) => void;
   onDelete: (id: string) => void;
+  apiOrigin: string;
+  roomKey: string | null;
 }) {
   const theme = useTheme();
   const data = [...messages].reverse();
@@ -53,7 +57,14 @@ export function MessageList({
       onEndReached={hasOlder ? onLoadOlder : undefined}
       onEndReachedThreshold={0.2}
       renderItem={({ item }) => (
-        <MessageBubble item={item} currentUserId={currentUserId} onRetry={onRetry} onDelete={onDelete} />
+        <MessageBubble
+          item={item}
+          currentUserId={currentUserId}
+          apiOrigin={apiOrigin}
+          roomKey={roomKey}
+          onRetry={onRetry}
+          onDelete={onDelete}
+        />
       )}
       ListFooterComponent={
         isLoadingOlder ? (

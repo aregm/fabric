@@ -4,7 +4,7 @@ import { describe, it } from 'node:test';
 import { createMemoryOutbox, createOutboxWorker, type OutboxItem } from './outbox.ts';
 
 function item(id: string, state: OutboxItem['state'] = 'waiting', created = '2026-10-26T05:00:00.000Z'): OutboxItem {
-  return { id, senderId: 'alice', clientCreatedAt: created, text: 'hi', state, failureCode: null, attempts: 0 };
+  return { id, senderId: 'alice', clientCreatedAt: created, text: 'hi', attachment: null, state, failureCode: null, attempts: 0 };
 }
 
 describe('outbox worker', () => {
@@ -89,4 +89,78 @@ describe('outbox worker', () => {
     assert.equal(store.get('a')?.failureCode, 'ack_timeout');
     worker.dispose();
   });
+
+  it('uploads an attachment before sending, and uploads once more after attachment_missing', async () => {
+    const store = createMemoryOutbox();
+    store.put(withFile('a'));
+    let uploads = 0;
+    const sent: string[] = [];
+    const worker = createOutboxWorker({
+      store,
+      isConnected: () => true,
+      send: (next) => sent.push(next.attachment?.sha256 ?? ''),
+      onChange: () => undefined,
+      ackTimeoutMs: 10_000,
+      prepare: async (next) => {
+        uploads += 1;
+        return { ok: true, item: { ...next, attachment: { ...next.attachment!, sha256: 'ab'.repeat(32) } } };
+      },
+    });
+    worker.kick();
+    await flush();
+    assert.equal(uploads, 1);
+    assert.equal(sent.length, 1);
+    worker.handleReject('a', 'attachment_missing');
+    await flush();
+    assert.equal(uploads, 2);
+    worker.handleReject('a', 'attachment_missing');
+    await flush();
+    assert.equal(store.get('a')?.state, 'failed');
+    assert.equal(uploads, 2);
+    worker.dispose();
+  });
+
+  it('leaves the message waiting and tries the upload again after a network failure', async () => {
+    const store = createMemoryOutbox();
+    store.put(withFile('a'));
+    store.put(withFile('b', '2026-10-26T05:00:01.000Z'));
+    const scheduled: { work: () => void }[] = [];
+    let uploads = 0;
+    const sent: string[] = [];
+    const worker = createOutboxWorker({
+      store,
+      isConnected: () => true,
+      send: (next) => sent.push(next.id),
+      onChange: () => undefined,
+      ackTimeoutMs: 10_000,
+      schedule: (work) => {
+        scheduled.push({ work });
+        return () => undefined;
+      },
+      prepare: async () => {
+        uploads += 1;
+        return { ok: false, retryable: true, code: 'network' };
+      },
+    });
+    worker.kick();
+    await flush();
+    assert.equal(store.get('a')?.state, 'waiting');
+    assert.equal(sent.length, 0);
+    assert.equal(scheduled.length, 1);
+    scheduled[0]?.work();
+    await flush();
+    assert.equal(uploads, 2);
+    worker.dispose();
+  });
 });
+
+function withFile(id: string, created = '2026-10-26T05:00:00.000Z'): OutboxItem {
+  return {
+    ...item(id, 'waiting', created),
+    attachment: { id: `${id}-file`, uri: 'file:///tmp/a', fileName: 'a.txt', mimeType: 'text/plain', byteSize: 4, sha256: null },
+  };
+}
+
+async function flush(): Promise<void> {
+  await new Promise((resolve) => setTimeout(resolve, 0));
+}

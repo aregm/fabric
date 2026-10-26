@@ -3,7 +3,7 @@
  * message ID (docs/paracels-chat.md, section 5.1).
  */
 
-import { MAIN_ROOM_ID, PLAIN_PAYLOAD_FORMAT, type StoredMessage } from '../shared/protocol.ts';
+import { MAIN_ROOM_ID, PLAIN_PAYLOAD_FORMAT, type MessageEnvelope, type StoredMessage } from '../shared/protocol.ts';
 import type { OutboxItem } from './outbox.ts';
 
 export type HistoryStatus = 'loading' | 'ready' | 'error';
@@ -181,15 +181,41 @@ function applyAck(state: ChatState, action: Extract<ChatAction, { type: 'acked' 
   if (item === undefined) {
     return state;
   }
-  const stored: StoredMessage = {
+  return rememberMessage(state, {
+    ...envelopeFromOutboxItem(item),
+    seq: action.seq,
+    serverReceivedAt: action.serverReceivedAt,
+  });
+}
+
+/**
+ * The envelope the socket sends for an outbox row. The attachment hash is the
+ * one the upload returned; without it the payload carries no attachment.
+ * @param item An outbox row.
+ */
+export function envelopeFromOutboxItem(item: OutboxItem): MessageEnvelope {
+  const attachment = item.attachment;
+  const base = {
     id: item.id,
     roomId: MAIN_ROOM_ID,
     senderId: item.senderId,
     clientCreatedAt: item.clientCreatedAt,
-    attachmentId: null,
-    payload: { format: PLAIN_PAYLOAD_FORMAT, text: item.text, attachment: null },
-    seq: action.seq,
-    serverReceivedAt: action.serverReceivedAt,
   };
-  return rememberMessage(state, stored);
+  if (attachment === null || attachment.sha256 === null) {
+    return { ...base, attachmentId: null, payload: { format: PLAIN_PAYLOAD_FORMAT, text: item.text, attachment: null } };
+  }
+  return {
+    ...base,
+    attachmentId: attachment.id,
+    payload: {
+      format: PLAIN_PAYLOAD_FORMAT,
+      text: item.text,
+      attachment: {
+        fileName: attachment.fileName,
+        mimeType: attachment.mimeType,
+        byteSize: attachment.byteSize,
+        sha256: attachment.sha256,
+      },
+    },
+  };
 }

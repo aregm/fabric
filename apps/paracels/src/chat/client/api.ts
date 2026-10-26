@@ -1,6 +1,7 @@
 /**
- * History over HTTP (docs/paracels-chat.md, section 7.1). Uploads and downloads
- * join this module in Phase 5.
+ * History over HTTP, plus the upload response the file uploader parses
+ * (docs/paracels-chat.md, sections 7.1 and 10). The bytes themselves travel
+ * through `expo-file-system`, which the tests do not load.
  */
 
 import { HISTORY_MAX_PAGE_SIZE, HISTORY_DEFAULT_PAGE_SIZE } from '../shared/limits.ts';
@@ -30,6 +31,11 @@ export type ApiResult<T> = { ok: true; value: T } | { ok: false; error: ApiFailu
 export type ChatApi = {
   readHistory(query?: HistoryQuery): Promise<ApiResult<HistoryPage>>;
 };
+
+/** What `PUT /api/attachments/{id}` means for the outbox. */
+export type UploadOutcome =
+  | { ok: true; byteSize: number; sha256: string }
+  | { ok: false; retryable: boolean; code: string };
 
 export type ChatApiOptions = {
   roomKey: string;
@@ -123,6 +129,51 @@ function readApiError(status: number, body: unknown): ChatApiError {
     return { kind: 'http', status, code: body.error.code as HttpErrorCode, message: body.error.message };
   }
   return { kind: 'http', status, code: 'unknown', message: `The server answered ${status}.` };
+}
+
+/**
+ * The URL of one attachment on the API origin.
+ * @param apiOrigin The bundle origin, such as `http://192.168.1.185:8081`.
+ * @param attachmentId The attachment's UUID.
+ */
+export function attachmentUrl(apiOrigin: string, attachmentId: string): string {
+  return `${apiOrigin}/api/attachments/${attachmentId}`;
+}
+
+const SHA256_PATTERN = /^[0-9a-f]{64}$/;
+
+/**
+ * Reads the upload route's answer. A network failure never reaches this function.
+ * @param status The HTTP status.
+ * @param body The response body, which is JSON on success.
+ */
+export function readUploadResponse(status: number, body: string): UploadOutcome {
+  if (status === 200 || status === 201) {
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(body);
+    } catch {
+      return { ok: false, retryable: false, code: 'upload_failed' };
+    }
+    if (!isRecord(parsed) || typeof parsed.sha256 !== 'string' || !SHA256_PATTERN.test(parsed.sha256) || !isByteSize(parsed.byteSize)) {
+      return { ok: false, retryable: false, code: 'upload_failed' };
+    }
+    return { ok: true, byteSize: parsed.byteSize, sha256: parsed.sha256 };
+  }
+  const code = readApiError(status, parseJson(body)).code;
+  return { ok: false, retryable: status === 408 || status === 429 || status >= 500, code };
+}
+
+function parseJson(body: string): unknown {
+  try {
+    return JSON.parse(body);
+  } catch {
+    return null;
+  }
+}
+
+function isByteSize(value: unknown): value is number {
+  return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

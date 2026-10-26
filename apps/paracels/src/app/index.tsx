@@ -43,9 +43,11 @@ export default function ChatScreen() {
           onLoadOlder={chat.loadOlder}
           onRetry={chat.retry}
           onDelete={chat.remove}
+          apiOrigin={chat.config.apiOrigin}
+          roomKey={chat.config.roomKey}
         />
         <View style={{ paddingBottom: insets.bottom }}>
-          <Composer maxLength={chat.config.maxTextLength} onSend={chat.sendText} />
+          <Composer maxLength={chat.config.maxTextLength} onSend={chat.send} />
         </View>
       </KeyboardAvoidingView>
     </ThemedView>

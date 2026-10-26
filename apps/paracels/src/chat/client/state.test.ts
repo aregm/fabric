@@ -26,6 +26,7 @@ function outbox(id: string, state: OutboxItem['state'], created = TIME): OutboxI
     senderId: 'alice',
     clientCreatedAt: created,
     text: 'draft',
+    attachment: null,
     state,
     failureCode: state === 'failed' ? 'ack_timeout' : null,
     attempts: 1,

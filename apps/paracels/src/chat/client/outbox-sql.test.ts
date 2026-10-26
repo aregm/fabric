@@ -15,7 +15,7 @@ import {
 } from './outbox-sql.ts';
 
 function item(id: string, state: OutboxItem['state'] = 'waiting', created = '2026-10-26T05:00:00.000Z'): OutboxItem {
-  return { id, senderId: 'alice', clientCreatedAt: created, text: 'hi', state, failureCode: null, attempts: 0 };
+  return { id, senderId: 'alice', clientCreatedAt: created, text: 'hi', attachment: null, state, failureCode: null, attempts: 0 };
 }
 
 function openFile(t: { after: (fn: () => void) => void }, filePath: string): SqlConnection {
@@ -54,6 +54,17 @@ describe('sqlite outbox', () => {
     const filePath = join(mkdtempSync(join(tmpdir(), 'paracels-outbox-')), 'paracels-chat.db');
     const first = createSqlOutbox(openFile(t, filePath));
     first.put(item('keep', 'waiting', '2026-10-26T05:00:02.000Z'));
+    first.put({
+      ...item('file', 'waiting', '2026-10-26T05:00:03.000Z'),
+      attachment: {
+        id: '00000000-0000-4000-8000-000000000099',
+        uri: 'file:///outbox/a.txt',
+        fileName: 'a.txt',
+        mimeType: 'text/plain',
+        byteSize: 4,
+        sha256: 'ab'.repeat(32),
+      },
+    });
     first.put({ ...item('mid', 'sending', '2026-10-26T05:00:01.000Z'), attempts: 2, failureCode: 'ack_timeout' });
     first.put(item('gone'));
     first.remove('gone');
@@ -61,8 +72,10 @@ describe('sqlite outbox', () => {
     const second = createSqlOutbox(openFile(t, filePath));
     assert.deepEqual(
       second.list().map((entry) => entry.id),
-      ['mid', 'keep'],
+      ['mid', 'keep', 'file'],
     );
+    assert.equal(second.get('file')?.attachment?.fileName, 'a.txt');
+    assert.equal(second.get('file')?.attachment?.sha256, 'ab'.repeat(32));
     assert.equal(second.get('mid')?.state, 'waiting');
     assert.equal(second.get('mid')?.failureCode, null);
     assert.equal(second.get('mid')?.attempts, 2);
