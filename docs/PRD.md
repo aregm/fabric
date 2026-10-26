@@ -90,7 +90,7 @@ This specification uses only the requirements confirmed in the discovery answers
 6. Recovery preference: memorized passphrase, printed recovery key, trusted contact recovery, or some combination.
 7. Content-retention rules for email, conversations, web archives, and downloaded video/audio.
 8. Whether the eventual product is personal software, an open-source project, or a commercial product.
-9. The acceptable scope of automated actions: organize only, create tasks, draft replies, or send/modify external systems.
+9. The acceptable scope of automated actions: organize only, create tasks, draft replies, or send/modify external systems. Proposed answer, from the Agent Sandbox design: two profiles, Careful (read, draft and label; ask before any send; never delete, archive, spam or forward) and Flexible (send to allowed recipient sets, ask for strangers, attachments and lists; trash-only delete with a review period), with per-action overrides. See [docs/agent-sandbox.md](agent-sandbox.md).
 10. Google account type and initial calendar scope: personal versus Workspace, number of accounts, calendars that affect availability, and destination calendar for Fabric-created events.
 11. Default Google representation after agreement: no Google event, an opaque private `Busy` block, selected local details without attendees, or a native Google invitation that discloses attendees.
 12. Source of the authorized contact list—Fabric-native import, macOS Contacts, Google Contacts, or a combination—and duplicate/removed-contact behavior.
@@ -432,6 +432,8 @@ Replacing email and messaging should proceed in four trust stages:
 
 External deletion, sending, sharing, account changes, and financial/legal actions must never be enabled by a generic “autonomous” toggle.
 
+An agent profile places each action on one of these stages; a profile may not move sending, deleting, sharing, account changes or financial actions to stage 4 by default (see [docs/agent-sandbox.md](agent-sandbox.md)).
+
 ### 6.6 Inquiry workspace
 
 For `develop` work, the primary container is an evolving question rather than a folder or graph. It combines:
@@ -504,6 +506,11 @@ Priority: **P0** is the first usable kernel, **P1** completes the personal produ
 | AIA-006 | P1 | Three action tiers: auto, suggest, confirm | Destructive/external actions cannot be assigned to auto tier |
 | AIA-007 | P1 | Local evaluation set for tagging, entity resolution, links, summaries, and retrieval | Model/prompt upgrade is blocked when agreed quality regresses |
 | AIA-008 | P1 | Agent access through current MCP plus local typed API | Read/write scopes, purpose, expiry, and audit are enforced outside the model |
+| AIA-009 | P1 | Permission profiles bundle per-action modes (allow, ask, block) across a resource, with fine-grained overrides underneath | Switching profiles changes defaults without erasing custom overrides; a destructive action cannot be set to allow in a shipped profile |
+| AIA-010 | P1 | Incremental authorization: an agent requests a scoped grant at the moment a task needs it, and the user narrows scope and chooses a duration before granting | No grant exists without a purpose, a scope and an expiry; "until revoked" is an explicit choice |
+| AIA-011 | P1 | Recipient and attendee rules by set (contacts, named group, exact address, domain), with strangers always requiring approval | A send to an address outside every allowed set is held for approval |
+| AIA-012 | P1 | Every agent tool call is recorded with agent identity, tool, argument digest, grant, policy decision and result, in OpenTelemetry GenAI attribute names | The record exists before the external call is made; a missing record fails the call |
+| AIA-013 | P1 | Agent grants can be revoked at any time, individually or all at once, and revocation takes effect on the next call | A token minted under a revoked grant is refused |
 
 ### 7.5 Sharing and communication
 
