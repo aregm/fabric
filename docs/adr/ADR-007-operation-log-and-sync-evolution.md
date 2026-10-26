@@ -165,5 +165,5 @@ What this ADR does not decide, on purpose: how an envelope is encrypted and what
 2. [ ] Add the `operation_log` migration and `fabric_core::oplog` with the chain verifier (S0), with the property tests in item 4.
 3. [ ] Write the first merge matrix for the Phase 1 schema (item, revision, relation_assertion, artifact).
 4. [ ] Draft ADR-009 against this envelope: what is encrypted, what the relay sees, how `key_epoch` is assigned.
-5. [ ] Draft ADR-014: map the paracels outbox and cursor onto S1, and decide the relay's language and home.
+5. [x] Draft ADR-014: map the paracels outbox and cursor onto S1, and decide the relay's language and home. Drafted 2026-10-26.
 6. [ ] Link this ADR from §9.3 (Sync row), §10.4 and §14.3 of the architecture document once accepted.

@@ -1,6 +1,6 @@
 # Paracels Chat — A Dummy Chat Prototype
 
-**Status:** version 1.0, complete. Approved at gates G0 and G1 on 2026-10-22 and at gates G2 through G6 on 2026-10-26. You approved every proposed default except D28, where you chose the alternative (Q20). Phases 0 through 6 are done (results in section 17). Gate G6 closed the prototype (Q26); what comes next is ADR-014 in the architecture document.
+**Status:** version 1.0, complete. Approved at gates G0 and G1 on 2026-10-22 and at gates G2 through G6 on 2026-10-26. You approved every proposed default except D28, where you chose the alternative (Q20). Phases 0 through 6 are done (results in section 17). Gate G6 closed the prototype (Q26); what comes next is [ADR-014](adr/ADR-014-mobile-client-and-messaging-relay.md), which proposes how it graduates.
 
 **Prepared:** 2026-10-21
 

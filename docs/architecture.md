@@ -230,8 +230,11 @@ How the prototype relates to the invariants in §9.2:
 - **Invariant 8 (space):** every message carries a room ID, fixed to `main`; that is where a space ID will go.
 - **Encryption:** payloads are tagged (`plain/1`) and stored verbatim, and attachments are opaque blobs with a size and a SHA-256, so end-to-end encrypted payloads can replace them without a schema change.
 
-The relay is TypeScript on Node because the prototype uses Expo Router API routes. If the
-prototype graduates, ADR-014 (§19) decides whether the relay moves into the Rust core.
+The relay is TypeScript on Node because the prototype uses Expo Router API routes. Whether the
+prototype graduates, and whether the relay moves into the Rust core, is proposed in
+[ADR-014](adr/ADR-014-mobile-client-and-messaging-relay.md): the Expo app stays as the UI shell over
+the Rust core, the relay becomes a Rust binary grown from the calendar demo's relay, and a chat
+message becomes an operation in a shared space.
 
 ---
 
@@ -1028,7 +1031,7 @@ The rehearsal passes when each result opens its original evidence, search works 
 11. **ADR-011 Calendar authority and time model** — Fabric-native versus provider-authoritative events, recurrence/zone semantics, and provider bindings.
 12. **ADR-012 Fabric Rendezvous protocol** — identity pairing, MLS/HPKE profile, disclosure budget, transcript/state machine, metadata leakage, and recovery.
 13. **ADR-013 Calendar projection and commit saga** — Fabric-only/private-busy/native-invite modes, idempotency, holds, compensation, and reconciliation.
-14. **ADR-014 Mobile client and messaging relay** — whether the paracels chat prototype (§9.6: an Expo client and a Node relay) graduates, and whether the relay moves into the Rust core; it depends on ADR-007 and ADR-009.
+14. **ADR-014 Mobile client and messaging relay** — whether the paracels chat prototype (§9.6: an Expo client and a Node relay) graduates, and whether the relay moves into the Rust core; it depends on ADR-007 and ADR-009. Drafted: [ADR-014](adr/ADR-014-mobile-client-and-messaging-relay.md), proposed 2026-10-26.
 
 ---
 

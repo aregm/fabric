@@ -171,5 +171,5 @@ What this ADR leaves to others, on purpose: how two people first exchange and pi
 2. [ ] Review the proposed KDF labels and MLS exporter label with the security reviewer named for SHR-002.
 3. [ ] Pin OpenMLS and its cipher suite; record the audit status of the pinned release.
 4. [ ] Implement item 1 and item 2's `PrivateDevices` for ADR-007 stage S1; defer `MlsGroup` to stage S2.
-5. [ ] Draft ADR-012 against D3's credential shape, and ADR-014 against D4's relay message.
+5. [ ] Draft ADR-012 against D3's credential shape. ADR-014 was drafted against D4's relay message on 2026-10-26.
 6. [ ] Add the D6 table to the architecture document §14 once accepted, replacing the sentence that the leakage "must be documented".
