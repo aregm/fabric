@@ -657,6 +657,8 @@ Proposed tools:
 
 Each grant specifies vault/space, item types, predicates, sensitivity ceiling, read/write actions, purpose, expiry, rate/volume bounds, and whether human confirmation is required. The agent receives only the minimum retrieved fragments, not the whole vault.
 
+Grants are presented to the user as profiles (bundles of per-action modes) and as request cards that narrow scope and fix a duration at the moment of need. Modes are allow, ask and block; block is final. A grant records purpose, scope, duration and the approval that created it, and can be revoked individually. The same boundary can run without the vault, as a broker between a third-party agent and a provider; [the Agent Sandbox proposal](agent-sandbox.md) specifies that deployment.
+
 Calendar scopes are independent: `calendar:availability.compute`, `calendar:event.read`, `schedule:negotiate`, `calendar:hold.write`, `calendar:event.commit`, `calendar:event.cancel`, and `calendar:external_invite.send`. A commit capability binds negotiation, candidate, `membership_digest`, `event_template_digest`, projection fields, destination calendar, idempotency key, and expiry. The scheduler cannot widen those arguments. Natural-language parsing can fail safely into a draft; authoritative time arithmetic, recurrence, policy, state transitions, signatures, and provider writes are model-free.
 
 ### 12.4 Prompt-injection defenses
@@ -749,6 +751,7 @@ Any action that writes to an external system uses a transactional outbox: the lo
 | Replay, equivocation, or identity/key substitution during scheduling | Contact-list authorization, TOFU key pinning, signed deterministic envelopes, session/round/sequence/expiry, previous-state digests, replay cache, and a hard warning/block on unexpected key changes |
 | Partial cross-provider calendar commit | Idempotent per-owner writes, transactional outbox, prepare-and-saga state, retry/compensation, visible reconciliation |
 | Calendar-provider disclosure | Fabric-only or opaque private projection by default; exact field preview; explicit warning that E2EE to a peer does not hide fields stored with Google, Microsoft, Apple, or a CalDAV server |
+| Agent bypasses the broker | An agent with browser control or its own provider OAuth grant is outside the sandbox; the product states this limit, asks the user to grant provider access only to the broker, and never claims to bound such an agent |
 
 Application encryption protects data at rest while the vault is locked. It does not fully protect an unlocked vault from same-user malware, administrator/root compromise, keylogging, screen capture, injected code, crash dumps, or plaintext already supplied to a parser/model worker. Mitigations include OS sandboxing, no plaintext temporary files, exclusions from OS indexing/crash collection where possible, bounded worker lifetimes, automatic lock, and best-effort key zeroization; residual endpoint risk remains explicit.
 
@@ -1025,7 +1028,7 @@ The rehearsal passes when each result opens its original evidence, search works 
 5. **ADR-005 Search fusion and evaluation** — FTS/vector implementation, rank explanation, benchmark.
 6. **ADR-006 Connector sandbox and capability manifest** — process/WASM boundary and credential access.
 7. **ADR-007 Operation log and sync evolution** — single-user oplog, personal devices, shared CRDT spaces. Drafted: [ADR-007](adr/ADR-007-operation-log-and-sync-evolution.md), proposed 2026-10-26.
-8. **ADR-008 Agent/MCP permission model** — resource/tool surface, grants, consent, injection controls.
+8. **ADR-008 Agent/MCP permission model** — resource/tool surface, grants, consent, injection controls, permission profiles and modes, incremental authorization and duration, recipient sets, and the standalone broker deployment ([agent-sandbox.md](agent-sandbox.md)).
 9. **ADR-009 Sharing crypto and metadata model** — envelope encryption versus MLS, relay leakage, revocation. Drafted: [ADR-009](adr/ADR-009-sharing-crypto-and-metadata-model.md), proposed 2026-10-26.
 10. **ADR-010 Licensing/product posture** — personal, open-source, or commercial distribution.
 11. **ADR-011 Calendar authority and time model** — Fabric-native versus provider-authoritative events, recurrence/zone semantics, and provider bindings.
