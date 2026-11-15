@@ -28,6 +28,8 @@ const PROOF_ID: &str = "5e1f0c2a9b8d7e6f5e1f0c2a9b8d7e6f5e1f0c2a9b8d7e6f5e1f0c2a
 const MINUTE: i64 = 60 * 1_000;
 const HALF_HOUR: i64 = 30 * MINUTE;
 const DAY: i64 = 24 * 60 * MINUTE;
+// Long so that random ciphertext in the store file cannot contain it by chance.
+const NEGOTIATION: &str = "MARKER-NEGOTIATION";
 
 fn at(text: &str) -> i64 {
     parse_utc(text).expect("test times are valid")
@@ -97,7 +99,7 @@ fn read(start: &str, end: &str) -> Action {
 
 fn meeting(start: &str) -> Action {
     Action::AddMeeting {
-        negotiation: "n1".to_owned(),
+        negotiation: NEGOTIATION.to_owned(),
         start_ms: at(start),
         length_ms: HALF_HOUR,
     }
@@ -275,7 +277,7 @@ async fn add_meeting_writes_one_encrypted_event_to_this_calendar() {
         .filter(|event| event["title"] == "Meeting with Bob (Fabric)")
         .collect();
     assert_eq!(added.len(), 1);
-    assert_eq!(added[0]["added_by"]["negotiation"], "n1");
+    assert_eq!(added[0]["added_by"]["negotiation"], NEGOTIATION);
     assert_eq!(added[0]["added_by"]["proof"], PROOF_ID);
     assert_eq!(added[0]["start_ms"], at("2027-01-14T14:30Z"));
 
@@ -298,7 +300,7 @@ async fn add_meeting_writes_one_encrypted_event_to_this_calendar() {
     .unwrap();
     assert_eq!(reopened.events().len(), 7);
     let bytes = fs::read(&harness.store_path).unwrap();
-    for text in ["Meeting with Bob", "MARKER-TITLE", "MARKER-ID", "n1"] {
+    for text in ["Meeting with Bob", "MARKER-TITLE", "MARKER-ID", NEGOTIATION] {
         assert!(
             !bytes
                 .windows(text.len())
