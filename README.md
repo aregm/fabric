@@ -13,12 +13,33 @@ The scaffold begins as a small modular monolith:
 
 Google adapters, encrypted transport, persistence, and desktop crates should be added only when they contain real behavior.
 
+## Status and direction
+
+Fabric is now the trust layer: the agreement protocol (Rendezvous), the policy gate (Isabelle), per-action tokens, messaging and relay, sharing crypto, and the permission broker. The knowledge kernel (capture, knowledge and retrieval) is built by PIM, a separate product in its own repository. The 2026-11-03 plan to run Fabric on the iii engine is withdrawn.
+
+What exists on 2026-11-15:
+
+- the M0 agreement simulator (`fabric-core`, `fabric-cli`): done;
+- the Isabelle-gated calendar demo: built, with the macOS port on `main`; its gate DEMO-G3, the owner's run with Claude driving both agents, has not been run;
+- the paracels chat prototype: complete.
+
+What comes next, in order:
+
+1. Gate H0: hygiene, including this section.
+2. Gate DEMO-G3: the owner's run of the calendar demo. Recommended before the next step, not required.
+3. The Calendar Desktop plan, up to gate CD-G0, where its decisions are frozen. The plan governs the permission broker, which leads once hygiene is done, as the first product built on the policy gate and the tokens. The plan is on branch `codex/calendar-desktop-plan`. The Agent Sandbox proposal is its historical input. Mail follows later on the same broker.
+
+The order comes from the [roadmap](docs/roadmap.md), version 0.2. It is proposed and awaits the owner's approval.
+
 ## Product documentation
 
 - [Product requirements](docs/PRD.md) — problem statement, market research, product experience, requirements, roadmap, and evaluation.
 - [Technical architecture](docs/architecture.md) — platform architecture, data model, retrieval, agents, security, and implementation guidance.
 - [Calendar vertical](docs/calendar.md) — the Google Calendar-first product test, private scheduling protocol, consent model, and release gates.
 - [Paracels chat prototype](docs/paracels-chat.md) — a dummy chat in the paracels iOS app: decisions, design, protocol, and phased plan.
+- [Roadmap](docs/roadmap.md) — what Fabric is now, what exists, the order of work with a gate after each step, what is parked, and the open decisions. Version 0.2, proposed.
+- [Agent Sandbox proposal](docs/agent-sandbox.md) — a permission broker between AI agents and your accounts, draft version 0.2. The roadmap makes it historical input to the Calendar Desktop plan.
+- [Requirements trace](docs/requirements-trace.md) — every requirement id in the PRD and the calendar vertical, mapped to what the repository implements. A snapshot from 2026-10-26; the roadmap calls it stale.
 - [Architecture decision records](docs/adr/) — ADR-007 (operation log and sync evolution), ADR-009 (sharing crypto and metadata model) and ADR-014 (mobile client and messaging relay) are drafted; the rest are listed in the architecture document, section 19.
 
 ## Current executable slice
