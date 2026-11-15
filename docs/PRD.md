@@ -1,8 +1,8 @@
 # Personal Knowledge Fabric — Product Requirements Document
 
-**Status:** decision-ready baseline, version 1.2
+**Status:** decision-ready baseline, version 1.3
 
-**Prepared:** 2026-08-16
+**Prepared:** 2026-09-13
 
 **Scope:** problem statement, market research, product experience, requirements, roadmap, and evaluation
 **Related:** [Technical architecture](architecture.md) · [Calendar vertical](calendar.md)
@@ -47,7 +47,7 @@ The system succeeds when the user can:
 3. Retrieve the source or a grounded synthesis without remembering where it was filed.
 4. Share a selected subgraph without exposing the rest of the vault.
 5. Allow an agent to use a precisely scoped portion of the system, with citations and a complete audit trail.
-6. Ask another contact-listed Fabric user for a meeting, disclose only a bounded candidate set, approve exact options, and have both agents safely create the agreed event without exposing either calendar.
+6. Ask another contact-listed Fabric user for a meeting, transmit no calendar or free/busy map, disclose only a bounded candidate set and candidate-specific bits, approve exact options, and have both agents safely create the agreed event. Participants necessarily learn the proposed and final intervals; the coordinator learns the documented bounded responses.
 
 Capture volume, note count, link count, and graph density are not success metrics. Reuse, retrieval success, informed decisions, completed work, and trustworthy sharing are.
 
@@ -80,7 +80,7 @@ This specification uses only the requirements confirmed in the discovery answers
 | Scheduling contacts | Any entry in the user-selected Fabric contact list is authorized to initiate a bounded scheduling request; first-seen keys use TOFU and later key changes cannot be silent |
 | First Fabric application | A private agentic calendar and synchronization subsystem: two or more contact-listed users exchange only bounded candidate times and decisions over an E2EE channel, then commit the exact approved meeting |
 
-### 2.2 Decisions still required before installation or implementation
+### 2.2 Decisions still required before provider-connected or production implementation
 
 1. Exact Mac hardware, especially Apple Silicon generation and RAM.
 2. Email providers and number of accounts.
@@ -90,13 +90,45 @@ This specification uses only the requirements confirmed in the discovery answers
 6. Recovery preference: memorized passphrase, printed recovery key, trusted contact recovery, or some combination.
 7. Content-retention rules for email, conversations, web archives, and downloaded video/audio.
 8. Whether the eventual product is personal software, an open-source project, or a commercial product.
-9. The acceptable scope of automated actions: organize only, create tasks, draft replies, or send/modify external systems.
+9. The acceptable scope of automated actions: organize only, create tasks, draft replies, or send/modify external systems. Proposed answer, from the Agent Sandbox design: two profiles, Careful (read, draft and label; ask before any send; never delete, archive, spam or forward) and Flexible (send to allowed recipient sets, ask for strangers, attachments and lists; trash-only delete with a review period), with per-action overrides. See [docs/agent-sandbox.md](agent-sandbox.md).
 10. Google account type and initial calendar scope: personal versus Workspace, number of accounts, calendars that affect availability, and destination calendar for Fabric-created events.
 11. Default Google representation after agreement: no Google event, an opaque private `Busy` block, selected local details without attendees, or a native Google invitation that discloses attendees.
 12. Source of the authorized contact list—Fabric-native import, macOS Contacts, Google Contacts, or a combination—and duplicate/removed-contact behavior.
 13. Relay deployment and metadata posture: local development relay, self-hosted internet relay, or operated ciphertext relay; retention and push-delivery requirements remain open.
 
 The immediate setup in section 15 now treats macOS plus Google Calendar as primary. Other providers remain portability targets rather than hidden MVP dependencies.
+
+### 2.3 Current executable agreement slice (`fabric-schedule-sim/0`)
+
+The repository now includes a pre-production semantic simulator that deliberately
+precedes encrypted networking and provider integration. It is implementation
+evidence for the calendar protocol shape, not a claim that Phase 3 is complete.
+
+The slice has exactly two required fixture contacts, one round, at most three UTC
+candidates, synthetic local busy intervals, candidate-specific eligibility bits,
+explicit owner yes/no decisions, and the protocol-profile-fixed
+`first_unanimous_in_proposal_order` selection rule. It ends in `Agreed` or
+`NoMatch`. `Agreed` means two independent reducer instances derived the same
+exact unsigned in-memory agreement and stable comparison key; it does not mean
+a calendar event was written or that canonical wire bytes exist.
+
+The executable acceptance boundary is:
+
+- response types contain no calendar, free/busy grid, conflict reason, title,
+  provider ID, or adjacent availability; the CLI is a coordinator-sensitive
+  transcript that does expose the approved candidates and bounded response bits;
+- candidate and response vectors must match the exact negotiation, participant
+  set, option set, order, horizon, duration, projection, request opening, and
+  expiry;
+- a complete explicit response from each owner is required; while the live
+  in-memory session is retained, duplicate identical responses are idempotent
+  (including delayed retries), and conflicting replays or changed scopes fail
+  closed; durable replay protection is not implemented;
+- all Boolean eligibility/decision combinations select exactly the first
+  unanimously eligible and accepted candidate, otherwise `NoMatch`;
+- transport is in-process and unencrypted. E2EE, identity/key binding,
+  signatures, persistence, holds, Google writes, and recovery remain mandatory
+  later work and must never be inferred from this simulator.
 
 ---
 
@@ -400,6 +432,8 @@ Replacing email and messaging should proceed in four trust stages:
 
 External deletion, sending, sharing, account changes, and financial/legal actions must never be enabled by a generic “autonomous” toggle.
 
+An agent profile places each action on one of these stages; a profile may not move sending, deleting, sharing, account changes or financial actions to stage 4 by default (see [docs/agent-sandbox.md](agent-sandbox.md)).
+
 ### 6.6 Inquiry workspace
 
 For `develop` work, the primary container is an evolving question rather than a folder or graph. It combines:
@@ -472,6 +506,11 @@ Priority: **P0** is the first usable kernel, **P1** completes the personal produ
 | AIA-006 | P1 | Three action tiers: auto, suggest, confirm | Destructive/external actions cannot be assigned to auto tier |
 | AIA-007 | P1 | Local evaluation set for tagging, entity resolution, links, summaries, and retrieval | Model/prompt upgrade is blocked when agreed quality regresses |
 | AIA-008 | P1 | Agent access through current MCP plus local typed API | Read/write scopes, purpose, expiry, and audit are enforced outside the model |
+| AIA-009 | P1 | Permission profiles bundle per-action modes (allow, ask, block) across a resource, with fine-grained overrides underneath | Switching profiles changes defaults without erasing custom overrides; a destructive action cannot be set to allow in a shipped profile |
+| AIA-010 | P1 | Incremental authorization: an agent requests a scoped grant at the moment a task needs it, and the user narrows scope and chooses a duration before granting | No grant exists without a purpose, a scope and an expiry; "until revoked" is an explicit choice |
+| AIA-011 | P1 | Recipient and attendee rules by set (contacts, named group, exact address, domain), with strangers always requiring approval | A send to an address outside every allowed set is held for approval |
+| AIA-012 | P1 | Every agent tool call is recorded with agent identity, tool, argument digest, grant, policy decision and result, in OpenTelemetry GenAI attribute names | The record exists before the external call is made; a missing record fails the call |
+| AIA-013 | P1 | Agent grants can be revoked at any time, individually or all at once, and revocation takes effect on the next call | A token minted under a revoked grant is refused |
 
 ### 7.5 Sharing and communication
 
@@ -538,6 +577,25 @@ Model latency must be reported separately. “Instant UI” cannot honestly impl
 ---
 
 ## 16. Delivery roadmap
+
+### M0 — executable two-agent agreement semantics
+
+Goal: close the gap between the prose protocol and the diagnostic Rust scaffold
+without pretending to ship production private scheduling.
+
+Deliverables:
+
+- checked half-open UTC interval and private local-availability primitives;
+- bounded candidate, eligibility, mutual-option, decision, and agreement types;
+- deterministic one-round two-agent state machine with exact-scope validation;
+- CLI happy-path fixture and exhaustive Boolean selection test;
+- explicit output that says in-process, not E2EE, no provider writes, and not
+  scheduled.
+
+Exit gate: `demo-meeting` reaches `Agreed` on `c3`; independent Alice and Bob
+reducers hold an identical exact in-memory record; the full workspace
+verification suite passes. This milestone does not change Phase 3's production
+E2EE and safe-commit obligations.
 
 ### Phase 0 — one-week reality test
 

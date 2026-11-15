@@ -199,9 +199,13 @@ if ([string]::IsNullOrWhiteSpace($rustupVersionOutput) -or $rustupVersionOutput 
     throw "Expected project-local rustup $RustupVersion, received: $rustupVersionOutput"
 }
 
-$channel = Get-ToolchainChannel -ToolchainFile (Join-Path $Root "rust-toolchain.toml")
+# Keep the pinned rustup: toolchain installs would otherwise replace it with the latest release.
+Invoke-External -FilePath $Rustup -ArgumentList @("set", "auto-self-update", "disable")
+
+$channel =Get-ToolchainChannel -ToolchainFile (Join-Path $Root "rust-toolchain.toml")
 Invoke-External -FilePath $Rustup -ArgumentList @(
     "toolchain", "install", $channel,
+    "--no-self-update",
     "--profile", "minimal",
     "--component", "clippy",
     "--component", "rustfmt",

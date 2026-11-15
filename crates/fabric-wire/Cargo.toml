@@ -1,0 +1,18 @@
+[package]
+name = "fabric-wire"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+fabric-policy = { path = "../fabric-policy" }
+fabric-token = { path = "../fabric-token" }
+serde = { version = "1", features = ["derive"] }
+snow = { version = "0.10", default-features = false, features = ["use-blake2", "use-chacha20poly1305", "use-curve25519", "use-getrandom"] }
+
+[dev-dependencies]
+serde_json = "1"
+
+[lints]
+workspace = true

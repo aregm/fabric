@@ -1,0 +1,5 @@
+session Fabric_Policy = HOL +
+  description "Access rules for the Isabelle-gated calendar demo (docs/isabelle-calendar-demo.md, section 8)."
+  options [document = false]
+  theories
+    Fabric_Policy

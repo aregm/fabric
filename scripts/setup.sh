@@ -100,10 +100,14 @@ case "$rustup_version_output" in
     *) die "expected project-local rustup $rustup_version, received: $rustup_version_output" ;;
 esac
 
+# Keep the pinned rustup: toolchain installs would otherwise replace it with the latest release.
+"$rustup" set auto-self-update disable
+
 channel=$(awk -F '"' '/^[[:space:]]*channel[[:space:]]*=/ {print $2; exit}' "$ROOT/rust-toolchain.toml")
 [ -n "$channel" ] || die "could not read channel from rust-toolchain.toml"
 
 "$rustup" toolchain install "$channel" \
+    --no-self-update \
     --profile minimal \
     --component clippy \
     --component rustfmt \

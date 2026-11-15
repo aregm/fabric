@@ -1,14 +1,17 @@
 # Fabric
 
-Initial Rust workspace for the Personal Knowledge Fabric.
+Initial Rust workspace for the Personal Knowledge Fabric. The first executable
+vertical is a deterministic, in-memory two-agent meeting-agreement simulator.
 
 The scaffold begins as a small modular monolith:
 
-- apps/fabric-cli — diagnostic command-line application;
-- crates/fabric-core — shared domain library;
+- apps/fabric-cli — diagnostic CLI plus the `demo-meeting` executable fixture;
+- crates/fabric-core — shared domain library, including checked calendar intervals and Rendezvous agreement semantics;
+- apps/fabric-demo, crates/fabric-policy, crates/fabric-token, crates/fabric-wire and isabelle/ — the Isabelle-gated calendar demo below;
+- apps/paracels — an Expo (React Native) iOS app outside the Cargo workspace, where the chat prototype is being built;
 - scripts — isolated setup, command runner, and verification for Windows and macOS/Linux.
 
-Calendar, Google adapter, storage, protocol, and desktop crates should be added only when they contain real behavior.
+Google adapters, encrypted transport, persistence, and desktop crates should be added only when they contain real behavior.
 
 ## Product documentation
 
@@ -16,6 +19,122 @@ Calendar, Google adapter, storage, protocol, and desktop crates should be added 
 - [Technical architecture](docs/architecture.md) — platform architecture, data model, retrieval, agents, security, and implementation guidance.
 - [Calendar vertical](docs/calendar.md) — the Google Calendar-first product test, private scheduling protocol, consent model, and release gates.
 - [Calendar-guided system design](docs/system-design.md) — implementation boundaries, interfaces, failure histories, and delivery slices.
+- [Paracels chat prototype](docs/paracels-chat.md) — a dummy chat in the paracels iOS app: decisions, design, protocol, and phased plan.
+- [Architecture decision records](docs/adr/) — ADR-007 (operation log and sync evolution), ADR-009 (sharing crypto and metadata model) and ADR-014 (mobile client and messaging relay) are drafted; the rest are listed in the architecture document, section 19.
+
+## Current executable slice
+
+`fabric-schedule-sim/0` demonstrates the minimum honest agreement loop with two
+independent agents and synthetic private calendars:
+
+1. disclose one round of at most three exact UTC candidates;
+2. evaluate only those candidates against each agent's private local intervals;
+3. exchange candidate-specific eligibility bits, never calendar ranges or reasons;
+4. record explicit owner `Yes`/`No` decisions;
+5. select the first unanimously eligible and accepted candidate in proposal order;
+6. let two independent reducer instances derive the same exact unsigned in-memory
+   agreement and stable comparison key.
+
+macOS or Linux:
+
+    sh scripts/run.sh cargo run -p fabric-cli -- demo-meeting
+
+Windows:
+
+    powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run.ps1 cargo run -p fabric-cli -- demo-meeting
+
+The demo prints `result=agreed`, selects `c3`, and confirms that both agents hold
+the same agreement record. It also prints its trust boundary explicitly:
+`transport=in-process e2ee=false provider_writes=false` and `scheduled=false`.
+
+This is a deterministic semantics and data-minimization/type-shape simulator—not
+secure network scheduling or a participant-visibility model. Its stdout is a
+coordinator-sensitive debug transcript: it intentionally displays proposed
+times and bounded per-candidate bits and must not be treated as public-safe log
+output. The underlying event records and conflict reasons remain agent-local.
+Fixture IDs are bounded output-safe labels, not identity or authorization proof;
+never place PII or provider identifiers in them.
+
+It does not yet implement Google Calendar, a relay, MLS/TOFU, signatures,
+encrypted persistence, recurrence/DST, holds/revalidation, or the provider
+commit saga. Its result is **Agreed**, never **Scheduled**.
+
+## Isabelle-gated calendar demo (Windows and macOS)
+
+Two LLM agents, Alice's and Bob's, negotiate a meeting through an encrypted relay. Isabelle/HOL
+proves every action they plan against explicit rules, and a single-use token bound to the
+action's exact arguments gates every effect on a calendar or the messaging gateway. The
+[specification](docs/isabelle-calendar-demo.md) describes the design, the rules and the results.
+
+- isabelle/Fabric_Policy — the policy theory.
+- crates/fabric-policy — actions, contexts, the HOL renderer, and the policy gate on Isabelle's server.
+- crates/fabric-token — deterministic CBOR, COSE_Sign1 tokens, proof of possession, and keys in the OS credential store (Windows Credential Manager or the macOS login Keychain).
+- crates/fabric-wire — frames, signed messages, Noise IK sessions, and consent records.
+- apps/fabric-demo — the calendar service, relay, trusted host, agent runtime (Claude, Ollama or scripted), dashboard and launcher, in one binary.
+
+Set up once. The second script downloads Isabelle2025-2 (about 1 GB on Windows, 1.7 GB on macOS) into `.tooling/isabelle/`.
+
+Windows:
+
+    powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\setup.ps1
+    powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\setup-demo.ps1
+
+macOS:
+
+    sh scripts/setup.sh
+    sh scripts/setup-demo.sh
+
+Then copy `.env.example` to `.env` and fill in your Anthropic API key. For a local agent, install
+Ollama and pull a model.
+
+Run it, with Claude for both agents, or with a local model for Alice. Windows:
+
+    powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\demo.ps1
+    powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\demo.ps1 -Alice ollama:granite4.1:3b
+
+macOS:
+
+    sh scripts/demo.sh
+    sh scripts/demo.sh --alice ollama:granite4.1:3b
+
+It prints the dashboard URL. Open it, press **Start scenario**, and answer each mutual option in
+both columns. The rehearsal script has Bob say no to Tuesday and both say yes to Thursday. The
+agents then add the meeting to both calendars. The fault switches show Isabelle's denials and the
+token checks. Stop with Ctrl+C, or from another terminal:
+
+    powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\demo.ps1 -Command down
+    sh scripts/demo.sh down
+
+- The first run creates both people's keys in the OS credential store: Windows Credential Manager under `fabric-demo/alice/` and `fabric-demo/bob/`, or the macOS login Keychain under the service `fabric-demo`. `-Command reset-keys` (Windows) or `sh scripts/demo.sh reset-keys` (macOS) deletes them. On macOS, a rebuilt `fabric-demo` makes macOS ask once per key whether the new binary may use it; choose Always Allow, or reset the keys first.
+- Every run starts from the fixtures in `demo/fixtures/`. Logs and audit files go to `.local/demo/run/`.
+- With Claude, both owners' free/busy and the agents' messages go to Anthropic. A rehearsal run cost about $0.35.
+- A small local model usually stalls, for example by reading the calendar again instead of answering. Isabelle keeps it safe but cannot make it useful.
+- It is not production security: see section 15 of the specification.
+
+The tests that need Isabelle, the credential store, the API key or Ollama run only locally:
+
+    powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run.ps1 cargo test --workspace -- --ignored
+    sh scripts/run.sh cargo test --workspace -- --ignored
+
+On macOS, two of them (`calendar_command` and `messaging_commands`) read a Keychain item that another binary created, so macOS asks for permission; click Allow.
+
+## Paracels chat prototype (iOS)
+
+`apps/paracels` is an Expo (React Native) app for iOS that sits outside the Cargo workspace. The
+[chat specification](docs/paracels-chat.md) plans a dummy group chat in it, as a first step toward
+Fabric's messaging. Alice and Bob chat in one room from the iOS Simulator and an iPhone on the same
+Wi-Fi. Expo Router API routes and a small WebSocket server on this Mac log every sent message to
+SQLite and deliver it live, and unsent messages wait in an outbox on the phone.
+
+The prototype keeps seams for Fabric's encryption, policy and local-first storage but implements
+none of them: there is no TLS and no end-to-end encryption, and a shared room key is the only
+protection.
+
+Status: complete. All six phases are done and every gate, G0 through G6, is closed (2026-10-26).
+Whether the prototype graduates is ADR-014 in [docs/architecture.md](docs/architecture.md).
+Setup and run steps are in [apps/paracels/README.md](apps/paracels/README.md).
+It needs macOS with Xcode, plus Node.js and npm, which are host prerequisites: the setup scripts
+here install only Rust.
 
 ## Toolchain decision
 

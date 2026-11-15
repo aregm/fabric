@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Fabric policy demo</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<header class="run-bar">
+  <div class="brand">
+    <h1>Fabric policy demo</h1>
+    <p class="subtitle">LLM agents negotiate a meeting; Isabelle/HOL proves every action and a single-use token gates every effect.</p>
+  </div>
+  <div class="run-controls">
+    <div class="clock" title="Demo clock (UTC)"><span class="label">Demo clock</span> <span id="clock">—</span></div>
+    <div class="backends" id="backends"></div>
+    <button id="start" class="primary">Start scenario</button>
+    <button id="reset">Reset fixtures</button>
+    <span id="connection" class="pill">connecting…</span>
+  </div>
+</header>
+
+<main>
+  <section class="people" id="people"></section>
+
+  <section class="panels">
+    <article class="panel">
+      <h2>Relay</h2>
+      <p class="hint">Every frame the relay carried. It sees ciphertext only: mailbox, size and time.</p>
+      <div class="table-wrap"><table id="relay"><thead><tr><th>Time</th><th>To</th><th>Mailbox</th><th>Seq</th><th>Bytes</th></tr></thead><tbody></tbody></table></div>
+    </article>
+    <article class="panel">
+      <h2>Isabelle</h2>
+      <p class="hint">Checks run by both policy gates on the shared Isabelle server.</p>
+      <div id="isabelle" class="stats"></div>
+    </article>
+    <article class="panel wide">
+      <h2>Audit log</h2>
+      <div class="filters">
+        <label>Source <select id="filter-source"><option value="">all</option></select></label>
+        <label>Kind <select id="filter-kind"><option value="">all</option></select></label>
+      </div>
+      <div class="table-wrap tall"><table id="audit"><thead><tr><th>#</th><th>Source</th><th>Kind</th><th>Summary</th></tr></thead><tbody></tbody></table></div>
+    </article>
+  </section>
+</main>
+
+<dialog id="proof">
+  <form method="dialog" class="dialog-head"><h2 id="proof-title">Proof</h2><button value="close" aria-label="Close">×</button></form>
+  <div id="proof-body"></div>
+</dialog>
+
+<footer>
+  This dashboard observes both people for the demo (D24); in a real deployment each owner would see only their own console.
+  It makes no external requests. Not production security: see section 15 of the specification.
+</footer>
+<script src="/app.js"></script>
+</body>
+</html>

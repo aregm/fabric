@@ -1,7 +1,11 @@
 [workspace]
 members = [
     "apps/fabric-cli",
+    "apps/fabric-demo",
     "crates/fabric-core",
+    "crates/fabric-policy",
+    "crates/fabric-token",
+    "crates/fabric-wire",
 ]
 default-members = ["apps/fabric-cli"]
 resolver = "3"

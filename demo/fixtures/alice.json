@@ -1,0 +1,29 @@
+{
+  "format": "fabric-demo-fixtures-v1",
+  "person": "alice",
+  "events": [
+    {"id": "alice-01", "start": "2027-01-11T08:00Z", "minutes": 540, "title": "Working from home", "busy": false},
+    {"id": "alice-02", "start": "2027-01-11T09:00Z", "minutes": 180, "title": "Quarterly planning", "busy": true},
+    {"id": "alice-03", "start": "2027-01-11T12:00Z", "minutes": 60, "title": "Team lunch", "busy": true},
+    {"id": "alice-04", "start": "2027-01-11T13:00Z", "minutes": 240, "title": "Customer workshop: Northwind", "busy": true},
+
+    {"id": "alice-05", "start": "2027-01-12T09:00Z", "minutes": 90, "title": "Standup and sprint planning", "busy": true},
+    {"id": "alice-06", "start": "2027-01-12T10:30Z", "minutes": 90, "title": "Design review: billing", "busy": true},
+    {"id": "alice-07", "start": "2027-01-12T12:00Z", "minutes": 60, "title": "Lunch with Sam", "busy": true},
+    {"id": "alice-08", "start": "2027-01-12T13:00Z", "minutes": 60, "title": "One-on-one with my manager", "busy": true},
+    {"id": "alice-09", "start": "2027-01-12T14:30Z", "minutes": 150, "title": "Budget review", "busy": true},
+    {"id": "alice-10", "start": "2027-01-12T18:30Z", "minutes": 60, "title": "Dentist appointment", "busy": true},
+
+    {"id": "alice-11", "start": "2027-01-13T09:00Z", "minutes": 180, "title": "Hiring panel", "busy": true},
+    {"id": "alice-12", "start": "2027-01-13T12:00Z", "minutes": 60, "title": "Lunch", "busy": true},
+    {"id": "alice-13", "start": "2027-01-13T13:00Z", "minutes": 120, "title": "Vendor call: Contoso renewal", "busy": true},
+    {"id": "alice-14", "start": "2027-01-13T15:30Z", "minutes": 90, "title": "Roadmap sync", "busy": true},
+
+    {"id": "alice-15", "start": "2027-01-14T09:00Z", "minutes": 180, "title": "Architecture deep dive", "busy": true},
+    {"id": "alice-16", "start": "2027-01-14T12:00Z", "minutes": 60, "title": "Lunch", "busy": true},
+    {"id": "alice-17", "start": "2027-01-14T13:00Z", "minutes": 90, "title": "Customer escalation: Tailspin", "busy": true},
+    {"id": "alice-18", "start": "2027-01-14T15:00Z", "minutes": 120, "title": "Board meeting prep", "busy": true},
+
+    {"id": "alice-19", "start": "2027-01-15T09:00Z", "minutes": 480, "title": "Leadership offsite", "busy": true}
+  ]
+}

@@ -1,0 +1,15 @@
+# Phase 1 spikes for docs/isabelle-calendar-demo.md (gate G1). A standalone workspace,
+# so the main workspace stays dependency-free and CI does not build it.
+[package]
+name = "fabric-phase1-spikes"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[workspace]
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+# preserve_order keeps schema properties in the order written; constrained decoding follows it.
+serde_json = { version = "1", features = ["preserve_order"] }
+ureq = { version = "2", features = ["json"] }
