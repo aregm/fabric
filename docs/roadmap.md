@@ -1,11 +1,13 @@
 # Fabric Roadmap — Restored on 2026-11-15
 
-**Status:** proposed, version 0.2. It records five decisions you made on 2026-11-15 and restores the order of work for this repository. Approving it approves the order of work in section 4 and the parking in section 5. It does not approve the ownership table in section 3, the recommended outcomes in section 4.3, the decision defaults in section 7 or the baseline edits in section 10; each of those is put to you separately. Once approved, it takes precedence over section 16 of the PRD for the order of work, until the PRD itself is edited. Nothing in the PRD, the architecture document or the calendar specification has been edited.
+**Status:** approved at gate `H0` on 2026-11-15, version 0.3. It records five decisions you made on 2026-11-15 and restores the order of work for this repository. Approving it approved the order of work in section 4 and the parking in section 5. It does not approve the ownership table in section 3, the recommended outcomes in section 4.3, the decision defaults in section 7 or the baseline edits in section 10; each of those is put to you separately. Once approved, it takes precedence over section 16 of the PRD for the order of work, until the PRD itself is edited. Nothing in the PRD, the architecture document or the calendar specification has been edited.
 
 **Prepared:** 2026-11-15, from a full re-read of `main` at `4fb3330`, the unmerged branch `codex/calendar-desktop-plan` at `5b310df`, the 2026-11-03 plan "iii in Fabric", and the documents of the PIM repository. Section 11 says how the facts were checked.
 
+**Updated:** 2026-11-15, after gate `H0`, with `main` at `7d12cf5`.
+
 **Scope:** what Fabric is now, what exists, the order of work with a gate after each step, what is parked or has left this repository, and the decisions still open
-**Related:** [Product requirements](PRD.md) · [Technical architecture](architecture.md) · [Calendar vertical](calendar.md) · [Isabelle-gated calendar demo](isabelle-calendar-demo.md) · [Paracels chat prototype](paracels-chat.md) · [Agent Sandbox proposal](agent-sandbox.md) · [Requirements trace](requirements-trace.md) · [ADRs](adr/) · Calendar Desktop plan (`docs/plans/calendar-desktop-plan.md` on branch `codex/calendar-desktop-plan`)
+**Related:** [Product requirements](PRD.md) · [Technical architecture](architecture.md) · [Calendar vertical](calendar.md) · [Isabelle-gated calendar demo](isabelle-calendar-demo.md) · [Paracels chat prototype](paracels-chat.md) · [Agent Sandbox proposal](agent-sandbox.md) · [Requirements trace](requirements-trace.md) · [ADRs](adr/) · [Calendar Desktop plan](plans/calendar-desktop-plan.md)
 
 **Ids.** Several documents reuse the same numbers for gates, decisions and criteria. This document prefixes them by source:
 
@@ -26,7 +28,7 @@ Ids that are new in this document: `H0` (the hygiene gate), `HYG-` (hygiene item
 
 ## 1. What Fabric is now
 
-You decided five things on 2026-11-15. No file on `main` records decisions 1, 2, 3 or 5. Decision 4 confirms what the demo specification already says.
+You decided five things on 2026-11-15. Before gate `H0`, no file on `main` recorded decisions 1, 2, 3 or 5; the README and this roadmap now record them. Decision 4 confirms what the demo specification already says.
 
 | # | Decision | Effect on the roadmap |
 |---|---|---|
@@ -40,11 +42,12 @@ You decided five things on 2026-11-15. No file on `main` records decisions 1, 2,
 
 The PRD ordered the work as kernel, then policy and scoped agent access, then sync and sharing, then Rendezvous. Decision 1 removes the first step of that order. Fabric now starts from what it has built: a policy gate that proves each action, and a single-use token for each action.
 
+**Gate `H0` passed on 2026-11-15** (section 4.1): you approved this roadmap and the README change, pull request 9 was merged, and the Calendar Desktop plan was merged to `main`.
+
 **What you are asked to do, in order.**
 
-1. **Gate `H0`** (section 4.1): approve this roadmap and the README change; decide pull request 9; decide when the Calendar Desktop plan's branch merges.
-2. **Gate `DEMO-G3`** (section 4.2): one sitting at the machine, the preflight and then your run. Recommended before step 3, not required.
-3. **Gate `CD-G0`** (section 4.3): freeze the plan's policy matrix and defaults, answer the questions it dates at that gate, and settle the points this re-read adds. The baseline edits follow it (`BASE-1`, section 10).
+1. **Gate `DEMO-G3`** (section 4.2): one sitting at the machine, the preflight and then your run. Recommended before step 2, not required.
+2. **Gate `CD-G0`** (section 4.3): freeze the plan's policy matrix and defaults, answer the questions it dates at that gate, and settle the points this re-read adds. The baseline edits follow it (`BASE-1`, section 10).
 
 Outside the gates, three decisions have a deadline set by PIM, not by Fabric: `RD-1`, `RD-2` and `RD-15` (section 7).
 
@@ -57,12 +60,12 @@ Outside the gates, three decisions have a deadline set by PIM, not by Fabric: `R
 | Paracels chat prototype (`apps/paracels`) | Complete. `PCL-G0` and `PCL-G1` closed on 2026-10-22, `PCL-G2` to `PCL-G6` on 2026-10-26. No commit to the app since. | Whether it graduates (ADR-014). Criterion `PCL-A10` (VoiceOver) has no recorded result. |
 | ADR-007, ADR-009, ADR-014 | Proposed since 2026-10-26. No decision in them is approved and no code exists for any of them. | Each has gaps the others expose (section 8.3). |
 | Agent Sandbox proposal v0.2 | Draft. Its section 11 additions are in the PRD and the architecture. | Superseded as the lead by decision 5. Its decisions `SBX-D1` to `SBX-D13` were never confirmed. |
-| Calendar Desktop plan, with a build audit and `docs/system-design.md` | On branch `codex/calendar-desktop-plan`, pushed 2026-11-15, four commits ahead of `main`, no pull request. Planning documents only; the plan says implementation is not yet authorized. | `CD-G0`. Merging the branch (`HYG-4`). |
+| Calendar Desktop plan, with a build audit and `docs/system-design.md` | On `main` since 2026-11-15, through pull request 13: [the plan](plans/calendar-desktop-plan.md), [the build audit](plans/calendar-desktop-build-audit.md) and [the system design](system-design.md). Planning documents only; the plan says implementation is not yet authorized. | `CD-G0`. |
 | Requirements trace | On `main` since 2026-11-10. | Stale: written before the macOS port, before decision 1 and before decision 5. |
 
 **Health, measured today.** `scripts/verify.sh` passes: 93 tests, 0 failed, 11 ignored (8 on Linux, where the three credential-store tests are compiled out). The six Isabelle-gated tests pass on this Mac when run with `--ignored`. `apps/paracels` passes 111 of 111 tests, the typecheck and lint. CI is green on `main` on six runners.
 
-**What the checks do not cover.** CI runs only the Cargo workspace. It runs no Isabelle test, nothing in `apps/paracels`, and none of the 11 ignored tests. One demo test fails by chance (`HYG-1`).
+**What the checks do not cover.** CI runs only the Cargo workspace. It runs no Isabelle test, nothing in `apps/paracels`, and none of the 11 ignored tests. The demo test that failed by chance was fixed by pull request 12 (`HYG-1`).
 
 **Two local checkouts exist.** Isabelle is installed in the one this roadmap was prepared in. The plan's build audit ran in the other and correctly reports Isabelle missing there.
 
@@ -140,16 +143,18 @@ No step through `CD-G5` has an effort estimate: the plan gives none. For the Ren
 
 Only the hygiene needed now. The rest is in section 5.
 
-| Id | Work | Exit check |
-|---|---|---|
-| HYG-1 | Fix the test that fails CI by chance. A test in `apps/fabric-demo/tests/calendar.rs` searches an 800-byte encrypted file for four plaintext strings. One of them, `n1`, is two bytes, so it appears by chance about once in 80 jobs. It has failed CI twice, on two platforms; those are the only `verify` failures in the repository's history. | The test no longer searches for `n1` or any string shorter than 9 bytes (the shortest that remains is `MARKER-ID`); checked once by hand that the test still fails when the store is written unencrypted; CI is green. |
-| HYG-2 | Commit this roadmap on its own branch and open a pull request, as you chose. | The pull request holds only `docs/roadmap.md`. |
-| HYG-3 | Record the direction in `README.md`: a short "Status and direction" section, and links to `agent-sandbox.md`, `requirements-trace.md` and this file. Shown to you as a diff first. | Every file in `docs/` is reachable from the README, and it states decisions 1, 2, 3 and 5. |
-| HYG-4 | Settle the Calendar Desktop plan's branch: open its pull request, and merge it or hold it until `CD-G0`. Its README change adds three links and must be combined with `HYG-3`. | The branch is merged or has an open pull request with a stated reason to wait. |
-| HYG-5 | Decide Dependabot pull request 9 (node-forge 1.4.0 to 1.4.3 in `apps/paracels`). Its green checks tested nothing, because CI has no Node step. | The paracels tests pass locally on the branch, then merge; or close with a reason. |
-| HYG-6 | Restore the file modes of five PowerShell scripts in the working tree. A local change only; no content differs. | `git status` shows no modified file. |
+| Id | Work | Exit check | Status |
+|---|---|---|---|
+| HYG-1 | Fix the test that fails CI by chance. A test in `apps/fabric-demo/tests/calendar.rs` searches an 800-byte encrypted file for four plaintext strings. One of them, `n1`, is two bytes, so it appears by chance about once in 80 jobs. It has failed CI twice, on two platforms; those are the only `verify` failures in the repository's history. | The test no longer searches for `n1` or any string shorter than 9 bytes (the shortest that remains is `MARKER-ID`); checked once by hand that the test still fails when the store is written unencrypted; CI is green. | Done, pull request 12. |
+| HYG-2 | Commit this roadmap on its own branch and open a pull request, as you chose. | The pull request holds only `docs/roadmap.md`. | Done, pull request 10. |
+| HYG-3 | Record the direction in `README.md`: a short "Status and direction" section, and links to `agent-sandbox.md`, `requirements-trace.md` and this file. Shown to you as a diff first. | Every file in `docs/` is reachable from the README, and it states decisions 1, 2, 3 and 5. | Done, pull request 11. |
+| HYG-4 | Settle the Calendar Desktop plan's branch: open its pull request, and merge it or hold it until `CD-G0`. Its README change adds three links and must be combined with `HYG-3`. | The branch is merged or has an open pull request with a stated reason to wait. | Done, merged as pull request 13. |
+| HYG-5 | Decide Dependabot pull request 9 (node-forge 1.4.0 to 1.4.3 in `apps/paracels`). Its green checks tested nothing, because CI has no Node step. | The paracels tests pass locally on the branch, then merge; or close with a reason. | Done, pull request 9, merged after a local run on the branch: 111 of 111 tests and lint pass, and the typecheck passes once the generated `expo-env.d.ts` is present; `npm audit --omit=dev` went from 11 to 10 vulnerabilities. |
+| HYG-6 | Restore the file modes of five PowerShell scripts in the working tree. A local change only; no content differs. | `git status` shows no modified file. | Done, locally; nothing to commit. |
 
 **Gate `H0`:** the exit checks above are met, the roadmap and the README change are merged to `main`, and you approve both.
+
+Gate `H0` passed on 2026-11-15. Each of pull requests 9 to 13 had 12 of 12 CI checks green before it was merged. `HYG-7` and `HYG-8` belong to `DEMO-G3` and are not done.
 
 ### 4.2 Second: close the demo, gate DEMO-G3
 
@@ -172,7 +177,7 @@ Nothing under `apps/fabric-demo/src` changes before your run. There is one state
 | Id | Finding | What `CD-G0` should record |
 |---|---|---|
 | RD-5 | `agent-sandbox.md` v0.2 still reads as an open proposal. Its section 11 additions, which you approved and applied on 2026-10-26, put AIA-009 to AIA-013 into the PRD, while the decisions they rest on (`SBX-D1` to `SBX-D13`) were never confirmed. | Its status becomes "historical input to the Calendar Desktop plan". The mail material in it (mail profiles, recipient sets, the send approval card) is carried to the later mail vertical. AIA-009 to AIA-013 are checked against the plan and corrected in the PRD (section 10). |
-| RD-6 | `docs/system-design.md`, on the same branch, is a "Proposed implementation baseline" from August. Its first-release non-goals exclude native invitations and general agents, which `CD-C07` and `CD-C04` now require. Its working assumptions give one Google account, one write-only pilot calendar and opaque `Busy` events, which `CD-C12`, `CD-C13` and `CD-C07` replace. The calendar specification's CAL-010 keeps provider invitations out of private mode by default. | The status of `system-design.md`, and how its slices A to G and the calendar specification's C0 to C5 map to the plan's work packages. The plan treats invitations as an explicit compatibility mode; its proposed matrix asks every time under one profile and lets the other allow an approved recipient set. The calendar specification needs the frozen rule recorded. |
+| RD-6 | [`docs/system-design.md`](system-design.md), merged with the plan, is a "Proposed implementation baseline" from August. Its first-release non-goals exclude native invitations and general agents, which `CD-C07` and `CD-C04` now require. Its working assumptions give one Google account, one write-only pilot calendar and opaque `Busy` events, which `CD-C12`, `CD-C13` and `CD-C07` replace. The calendar specification's CAL-010 keeps provider invitations out of private mode by default. | The status of `system-design.md`, and how its slices A to G and the calendar specification's C0 to C5 map to the plan's work packages. The plan treats invitations as an explicit compatibility mode; its proposed matrix asks every time under one profile and lets the other allow an approved recipient set. The calendar specification needs the frozen rule recorded. |
 | RD-7 | `DEMO-D28` keeps Isabelle tests out of CI, and CI runs none today. `CD-C05` makes the prover release-critical, and the plan requires a dedicated live-proof job or a release run that proves the corpus. | Whether `DEMO-D28` is reversed for the broker's theory (a CI job) or kept (a release run), and where it runs. |
 | RD-8 | The pinned Isabelle2025-2 has been superseded by Isabelle2026 and is served from one archived URL that has already moved once. The macOS archive is 1.7 GB and unsigned. | With `CD-Q09`: a second source for the pinned archive now; whether the broker moves to Isabelle2026 before `CD-G1`. |
 | RD-9 | `fabric-token` and `fabric-wire` both depend on `fabric-policy`, which holds the demo's calendar negotiation model. Any new crate that uses the CBOR and COSE code therefore links that model. The coupling is narrow: the CBOR and COSE modules do not import the policy crate. | Whether `CD-W01` first moves the codec into a crate of its own, or accepts the dependency. |
@@ -237,12 +242,12 @@ Nothing below starts until you choose it. The Needs column lists what must be se
 | The plan proves each agent request at least twice, and once more before a read result is released. At half a second to a second each, agent reads may feel slow. | `CD-G1c` | `RD-10`. Measured in `CD-W03` before any screen is built. |
 | Four agent clients are release gates, and three are products outside your control whose MCP configuration can change. | `CD-G2c`, `CD-G4` | The plan tests the exact installed clients and pins the MCP SDK and the negotiated protocol version. Which client versions to support is open (`CD-Q10`). |
 | Real calendar data reaches cloud models through the agents, and text inside events can steer an agent. | `CD-G2`, `CD-G4` | The broker bounds what a steered agent may do; the plan shows a destination notice per agent. The residual risk follows from `CD-C03` and `CD-C04`; you are asked to accept it at `CD-G0`. |
-| One owner decides everything, and PIM's repair plan and rewrite wait on the same person. | Every gate | `H0`, `DEMO-G3` and `CD-G0` each ask for one sitting. The plan's later gates rest on evidence a reviewer accepts first. |
+| One owner decides everything, and PIM's repair plan and rewrite wait on the same person. | Every gate | `H0` is passed; `DEMO-G3` and `CD-G0` each ask for one sitting. The plan's later gates rest on evidence a reviewer accepts first. |
 | CI cannot see a broken rule: no Isabelle job exists. | Any change to `fabric-policy`, `fabric-token` or a theory | Until `RD-7` is settled, the six Isabelle tests are run by hand on every such change. |
 
 ## 7. Decisions you still have to make
 
-Decisions taken inside a gate are in section 4: the README text, the plan's branch and pull request 9 at `H0`; the model-id exception at `DEMO-G3`; `RD-5` to `RD-11` at `CD-G0` or, for `RD-7` and `RD-8`, before `CD-G1c`. `RD-3`, `RD-4` and `RD-12` are answered with `BASE-1`; they are in the table below with the rest. Defaults are recommendations from the evidence.
+Decisions taken inside a gate are in section 4: the README text, the plan's branch and pull request 9 were settled at `H0`; the model-id exception at `DEMO-G3`; `RD-5` to `RD-11` at `CD-G0` or, for `RD-7` and `RD-8`, before `CD-G1c`. `RD-3`, `RD-4` and `RD-12` are answered with `BASE-1`; they are in the table below with the rest. Defaults are recommendations from the evidence.
 
 | Id | Question | Needed before | Suggested default |
 |---|---|---|---|
@@ -287,7 +292,7 @@ The deterministic logic the calendar specification asks for exists in `fabric-co
 
 ### 8.4 In documents and CI
 
-- `README.md` omits two documents, still calls M0 the current slice, and describes paracels as both being built and complete.
+- `README.md` still calls M0 the current slice, and describes paracels as both being built and complete.
 - `architecture.md` section 9.5 says the repository precedes storage, transport and cryptography. It never names the demo crates, which are most of the Rust code. Its stack table names Tauri 2 as the desktop shell; the plan recommends SwiftUI over a Rust broker, pending `CD-Q01`.
 - CI has no dependency check. `actions/checkout` is pinned by tag, not by hash.
 
