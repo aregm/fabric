@@ -36,6 +36,9 @@ The order comes from the [roadmap](docs/roadmap.md), version 0.2. It is proposed
 - [Product requirements](docs/PRD.md) — problem statement, market research, product experience, requirements, roadmap, and evaluation.
 - [Technical architecture](docs/architecture.md) — platform architecture, data model, retrieval, agents, security, and implementation guidance.
 - [Calendar vertical](docs/calendar.md) — the Google Calendar-first product test, private scheduling protocol, consent model, and release gates.
+- [Calendar-guided system design](docs/system-design.md) — implementation boundaries, interfaces, failure histories, and delivery slices.
+- [Calendar desktop implementation plan](docs/plans/calendar-desktop-plan.md) — standalone native-GUI and real Google broker plan, agent work packages, live-proof requirements, and release gates.
+- [Desktop planning build audit](docs/plans/calendar-desktop-build-audit.md) — current macOS build evidence, repository integration, and unverified live dependencies.
 - [Paracels chat prototype](docs/paracels-chat.md) — a dummy chat in the paracels iOS app: decisions, design, protocol, and phased plan.
 - [Roadmap](docs/roadmap.md) — what Fabric is now, what exists, the order of work with a gate after each step, what is parked, and the open decisions. Version 0.2, proposed.
 - [Agent Sandbox proposal](docs/agent-sandbox.md) — a permission broker between AI agents and your accounts, draft version 0.2. The roadmap makes it historical input to the Calendar Desktop plan.
