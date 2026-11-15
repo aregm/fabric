@@ -19,6 +19,8 @@ Google adapters, encrypted transport, persistence, and desktop crates should be 
 - [Technical architecture](docs/architecture.md) — platform architecture, data model, retrieval, agents, security, and implementation guidance.
 - [Calendar vertical](docs/calendar.md) — the Google Calendar-first product test, private scheduling protocol, consent model, and release gates.
 - [Calendar-guided system design](docs/system-design.md) — implementation boundaries, interfaces, failure histories, and delivery slices.
+- [Calendar desktop implementation plan](docs/plans/calendar-desktop-plan.md) — standalone native-GUI and real Google broker plan, agent work packages, live-proof requirements, and release gates.
+- [Desktop planning build audit](docs/plans/calendar-desktop-build-audit.md) — current macOS build evidence, repository integration, and unverified live dependencies.
 - [Paracels chat prototype](docs/paracels-chat.md) — a dummy chat in the paracels iOS app: decisions, design, protocol, and phased plan.
 - [Architecture decision records](docs/adr/) — ADR-007 (operation log and sync evolution), ADR-009 (sharing crypto and metadata model) and ADR-014 (mobile client and messaging relay) are drafted; the rest are listed in the architecture document, section 19.
 
