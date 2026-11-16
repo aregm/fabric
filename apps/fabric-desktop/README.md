@@ -1,8 +1,8 @@
 # Fabric Calendar, the desktop application
 
-Work packages CD-W02 and CD-W04 of the [Calendar Desktop plan](../../docs/plans/calendar-desktop-plan.md): the Tauri shell and the round trip to a Rust broker child (CD-W02, gate CD-G1b), and the real broker behind it: the encrypted store, the authority core and the owner channel (CD-W04, gate CD-G2a).
+Work packages CD-W02, CD-W04 and CD-W08 of the [Calendar Desktop plan](../../docs/plans/calendar-desktop-plan.md): the Tauri shell and the round trip to a Rust broker child (CD-W02, gate CD-G1b), the real broker behind it: the encrypted store, the authority core and the owner channel (CD-W04, gate CD-G2a), and the screens of the owner's interface (CD-W08, gate CD-G3a).
 
-The broker ([`apps/fabric-broker`](../fabric-broker)) keeps its state in an encrypted store and survives a restart. It has no rule prover yet (the Isabelle wiring follows CD-W03), no Google access (CD-W05) and no agent channel (CD-W06), so nothing an agent asks is ever carried out: an approved request ends "undecided". A test build can run a synthetic agent so that a person sees requests; it runs only when asked for from a terminal, with a scratch data directory and the test key (see "The synthetic demonstration"). The page says so at the top.
+The broker ([`apps/fabric-broker`](../fabric-broker)) keeps its state in an encrypted store and survives a restart. It has no rule prover yet (the Isabelle wiring follows CD-W03), no Google access (CD-W05) and no agent channel (CD-W06), so nothing an agent asks is ever carried out: an approved request ends "undecided". A test build can run a synthetic agent so that a person sees requests; it runs only when asked for from a terminal, with a scratch data directory and the test key (see "The synthetic demonstration"). The strip at the top of the page says that the rule checker is not running.
 
 ## The three parts
 
@@ -29,6 +29,24 @@ broker child (Rust, apps/fabric-broker)
 
 npm packages, all for development and pinned: `@tauri-apps/cli`, `typescript`, `@types/node`. The page loads no package at run time.
 
+## The screens
+
+The page has five screens (CD-W08) and, above them, a strip that says what needs the owner now: the broker stopped, a store that cannot be opened with the broker's reason, the rule checker not running, an account that needs a new sign-in, and how many requests wait for a decision.
+
+| Screen | What it does | Owner methods |
+|---|---|---|
+| Review agent actions | The open requests and those that ended while the window was open, each with its state. The approval card. A blocked request with its failing rule, the broker's explanation and its proof. The details of a request: the decision, the proofs, the authorization, the attempts, the calendar's event. The permissions the owner gave, each with "Take back the permission". The agents, with pause and resume of one or of all. | `decide_request`, `get_request_details`, `get_proof`, `revoke_grant`, `pause_agent` |
+| Agent permissions | The profiles (Careful, Flexible and custom ones) and the ten rows of the profile shown. Puts a profile in force. Saves a custom profile; when the save would permit more than before, shows the rows the broker lists and asks the owner to confirm them. | `save_profile` |
+| Contacts | Groups of exact addresses and domains: new, change, delete. | `save_group` |
+| Calendar preferences | The time zone, working hours, protected times, uninterrupted time, time between events and the calendars used for warnings. They are only stored; the warnings are CD-W09. | `save_preferences` |
+| Status | The connection with "Check connection", the store, the rule checker, the accounts and their calendars as the broker reports them, and the activity. | `hello` |
+
+The page decides nothing about permissions and keeps no state of the broker: after `hello`, `get_snapshot` and `subscribe` it shows what the snapshot and the notices carry. Every command carries a command id and the revision it was written against. A form whose stored version changed while the owner was editing keeps the owner's text, shows the stored values beside it, and can be saved only after the owner pressed "I have seen the current version"; a `conflict` answer leads to the same. A command that got no answer is sent again with the same command id.
+
+Not built, because the broker or the contract has no command for it yet: connecting a Google account (`connect_google`, CD-W05), choosing calendars and naming the Agent Drafts calendar, connecting and enrolling an agent and the local task entry (CD-W06, CD-W07), narrowing a request on the approval card, importing from Google contacts, listing requests that ended before the window opened, cancelling a request, resolving an unknown outcome by hand, and deleting a custom profile.
+
+In `ui/src` each screen has a model without the DOM and a view (`review`, `profiles`, `groups`, `preferences`). `model.ts` is the core: the connection, the snapshot, the notices and the commands. `nav.ts`, `status.ts` and `shell.ts` are the frame around the screens, and `text.ts` holds the words about requests. The tests in `test/` drive the models against a fake host and judge every frame, sent or fed, with the contract's own checker.
+
 ## Build and check
 
 ```sh
@@ -50,6 +68,17 @@ npm run harness -- --broker ../../target/debug/fabric-broker
 ```
 
 The harness always starts the broker with the test key and the synthetic agent, in a new temporary data directory that it removes when it stops. It never opens the real store.
+
+The harness has switches for states that are hard to reach by hand:
+
+```sh
+curl -X POST http://127.0.0.1:4317/harness/kill-broker     # the broker dies; the page shows "The broker stopped."
+curl -X POST http://127.0.0.1:4317/harness/hold-store      # while no broker runs: another process holds the store's lock
+curl -X POST http://127.0.0.1:4317/harness/release-store   # that process ends
+npm run harness -- --broker harness/replay-broker.ts --port 4319
+```
+
+With the store held, "Restart broker" in the page starts a broker that cannot open its store, and the strip shows the broker's reason and "Read the current state again"; after the release the broker opens the store at the next request that comes five seconds or more after its last try. The last line runs a stand-in in place of the broker. It replays the contract's fixtures and changes nothing, to look at what this broker cannot show yet: a blocked request with its proof, a request that was carried out, a failure, several agents, an account that needs a new sign-in. It is for looking at the page and never evidence for a gate.
 
 With `FABRIC_DESKTOP_TRACE=1` the host writes one line per relayed frame to stderr: the method, the id, the sequence and the size, never the content.
 
@@ -98,9 +127,9 @@ Outside the bundle the host keeps `~/Library/Application Support/ai.paracels.fab
 
 ## What a person has to check
 
-`scripts/verify-desktop.sh --packaged` cannot press a key in the application's window, so these checks need a person at the Mac. They are part of gate CD-G1b and are not done until the owner has run them.
+`scripts/verify-desktop.sh --packaged` cannot press a key in the application's window, so these checks need a person at the Mac. They are part of gates CD-G1b and CD-G3a and are not done until the owner has run them. The steps of parts A, B and E were walked by keyboard in a browser with the same broker behind the page (the harness, "Build and check"); the packaged window uses another web engine, and VoiceOver was not run.
 
-Prepare. Parts A, B and D need requests, so they run the synthetic demonstration in a scratch directory; part C also checks the real store.
+Prepare. Parts A, B, D and E need requests, so they run the synthetic demonstration in a scratch directory; part C also checks the real store.
 
 ```sh
 sh scripts/build-desktop.sh --configuration debug
@@ -117,27 +146,29 @@ fabric_demo
 
 "Open the application" below means `fabric_demo` in that Terminal window; quit with Command+Q.
 
-On macOS the Tab key reaches buttons and radio buttons only when **System Settings, Keyboard, Keyboard navigation** is on. This is the rule for every Mac application, and a person who works by keyboard has it on. Turn it on for part A. Without it, Option+Tab does the same in the webview.
+On macOS the Tab key reaches buttons and radio buttons only when **System Settings, Keyboard, Keyboard navigation** is on. This is the rule for every Mac application, and a person who works by keyboard has it on. Turn it on for parts A and E. Without it, Option+Tab does the same in the webview.
 
-### A. Keyboard only
+### A. Keyboard only: the requests
 
 Do not touch the mouse or the trackpad after the window is in front.
 
-1. Wait about two seconds. The Requests section shows "Create an event, from Synthetic agent (test build)" as "Waiting for your decision", with the approval card. The synthetic classifier answers at once, so "Received, checking" may be on the page only briefly. Under it a line says how many milliseconds after receipt the request was on the page. Expected: at most 500 ms.
-2. Press Tab. Focus goes to "Check connection" with a visible outline. Press Space. "Last check" shows a round-trip time. This is the echo.
+1. Wait about two seconds. The strip at the top says "The rule checker is not running." and "1 request waits for your decision." The screen "Review agent actions" lists "Create an event, from Synthetic agent (test build)" as "Waiting for your decision", with the approval card. The synthetic classifier answers at once, so "Received, checking" may be on the page only briefly. A line under the state says how many milliseconds after receipt the request was on the page. Expected: at most 500 ms.
+2. Press Tab six times: the five screens of the navigation, then "Review the waiting requests" in the strip, each with a visible outline. Press Return. Expected: focus is on the request's heading.
 3. Press Tab. Focus enters the card at "How long this approval lasts", on "Only this request". Press the Down arrow twice and the Up arrow once. The choice moves; nothing is sent.
-4. Press Tab twice. Focus is on "Deny", then on "Allow". Press Escape. Expected: the state still says "Waiting for your decision".
-5. With focus on "Allow", press Return. Expected: the card closes with "You allowed this. It lasts: until this agent's current session ends." (or the duration you chose), focus is on the card's heading, the state changes to "Fabric checks it once more before it is done" and then to "Not done: Fabric could not prove that it is allowed". The last one is correct here: this build runs no rule prover.
-6. One or two seconds later a second request arrives, another "Create an event". When its card is there, Tab to "Deny" and press Space. Expected: "You denied this."
-7. Shift+Tab back to "Check connection". Every step back shows the focus outline.
+4. Press Tab three times. Focus is on "Show the proof", then on "Deny", then on "Allow". Press Escape. Expected: the state still says "Waiting for your decision".
+5. With focus on "Allow", press Return. Expected: the card closes with "You allowed this. The permission lasts until this agent's current session ends." (or the sentence of the duration you chose), focus is on the request's heading, and the state changes to "Fabric checks it once more before it is done" and then to "Not done: Fabric could not prove that it is allowed". The last one is correct here: this build runs no rule prover. Under "Permissions you gave" the permission is listed as "In force."
+6. Press Tab until focus is on "Take back the permission" of that permission, and press Return. Expected: the permission stays on the page as "Ended while this window was open.", with "You took it back." in its last line, and focus is on its heading.
+7. One or two seconds after the first request ended a second request arrived, another "Create an event". Press Shift+Tab back to its card, to "Deny", and press Space. Expected: "You denied this."
+8. Press Tab until focus is on "Pause Synthetic agent (test build)" under "Agents", and press Return. Expected: the agent's state says "Paused.", and the button now reads "Resume" and still has the focus. Press Return again. Expected: "Connected."
+9. Go to "Status" in the navigation and press Return. Expected: only the Status screen is shown and focus is on its heading. Press Tab to "Check connection" and press Space. "Last check" shows a round-trip time. This is the echo.
 
 ### B. The broker dies and is restarted
 
 1. Quit, run `SCRATCH="$(mktemp -d)"` for a fresh directory, and open the application again. Wait for the first card. Choose "Until I take it back" in it; do not decide.
 2. In Terminal: `pkill -KILL -x fabric-broker`.
-3. Expected in the window: a banner "The broker stopped." with the detail "killed by signal 9", a "Restart broker" button, and the card's two buttons disabled with the text that the request is read again after the restart. "Until I take it back" is still chosen.
+3. Expected in the window: the strip says "The broker stopped." with "Details: killed by signal 9" and a "Restart broker" button, and the card's two buttons are disabled with the text that the request is read again after the restart. "Until I take it back" is still chosen.
 4. Wait ten seconds. Expected: nothing restarts by itself. `pgrep -x fabric-broker` prints nothing.
-5. Tab to "Restart broker" and press Return. Expected: the banner goes away. The same request is back from the store, still waiting for your decision; the card is usable again after the page reads it once more, with "Until I take it back" still chosen, and "Allow" works. The synthetic agent of the new run proposes its own requests after that; the restarted broker does not make the old request again.
+5. Tab to "Restart broker" and press Return. Expected: that entry of the strip goes away. The same request is back from the store, still waiting for your decision; the card is usable again after the page reads it once more, with "Until I take it back" still chosen, and "Allow" works. The synthetic agent of the new run proposes its own requests after that; the restarted broker does not make the old request again.
 6. Quit and open the application again with the same `$SCRATCH`. Expected: the decision of step 5 is still there (the request is no longer listed as waiting), and no request is listed twice.
 
 ### C. A second launch and Quit
@@ -150,20 +181,42 @@ Do not touch the mouse or the trackpad after the window is in front.
      "$HOME/Desktop/Fabric test folder/Fabric Calendar.app/Contents/MacOS/fabric-desktop"
    ```
 
-   Expected: a second window with the banner "Fabric Calendar is already open." and no restart button. `pgrep -x fabric-broker` prints one process id. Close the second window.
+   Expected: a second window whose strip says "Fabric Calendar is already open." and has no restart button. `pgrep -x fabric-broker` prints one process id. Close the second window.
 2. Press Command+Q in the first window. Expected: `pgrep -x fabric-broker` prints nothing within two seconds.
-3. Open the copied application from Finder, without the variables: this is the product's store. Expected: on the first launch macOS asks whether Fabric Calendar may use its Keychain item; allow it. The page shows the store as ready, the prover as unavailable, and no agent, account or request. `ls -l "$HOME/Library/Application Support/ai.paracels.fabric.calendar/broker"` lists `broker.db` and `broker.lock`, owner-only. Quit.
+3. Open the copied application from Finder, without the variables: this is the product's store. Expected: on the first launch macOS asks whether Fabric Calendar may use its Keychain item; allow it. The strip says "The rule checker is not running." and nothing else; the Status screen says "Running and up to date", the store "Open." and "No account is connected."; no request, permission or agent is listed. `ls -l "$HOME/Library/Application Support/ai.paracels.fabric.calendar/broker"` lists `broker.db` and `broker.lock`, owner-only. Quit.
 
 ### D. VoiceOver
 
 Turn VoiceOver on with Command+F5. Open the application as in "Prepare" (`fabric_demo`, with a fresh `$SCRATCH`).
 
-1. Press VO+U (VO is Control+Option), choose Headings. Expected: "Fabric Calendar" at level 1; "Broker", "Requests" and "Activity" at level 2; one level 3 heading per request, named after what the agent wants and who asks.
+1. Press VO+U (VO is Control+Option), choose Headings. Expected: "Fabric Calendar" at level 1; "Review agent actions" at level 2; "Requests", "Permissions you gave" and "Agents" at level 3; at level 4 one heading per request, named after what the agent wants and who asks, and one per agent. Choose Landmarks. Expected: a banner, the navigation "Screens", the region "Needs your attention", main, and the region "Review agent actions".
 2. Do nothing for four seconds after opening. Expected: VoiceOver says "A request needs your decision: Create an event, from Synthetic agent (test build)." without the VoiceOver cursor moving.
-3. Move to the request's heading and read on with VO+Right arrow. Expected order: the state; the line about milliseconds; then the card: Who asks; Where its data goes; In the agent's own words (not checked by Fabric); What it wants to do; Account; Calendar; Title; Starts; Ends; Place; Description; Who is notified; the group "How long this approval lasts" with three radio buttons and which one is selected; Why you are asked, with the rule; This card expires; "Deny, button"; "Allow, button". Each value is read after its term.
-4. On "Allow" press VO+Space. Expected: VoiceOver says "You allowed this. …" and the cursor is on the card's heading, not lost at the top of the window.
+3. Move to the request's heading and read on with VO+Right arrow. Expected order: the state; the line about milliseconds; then the card: Who asks; Where its data goes; In the agent's own words (not checked by Fabric); What it wants to do; Account; Calendar; Title; Starts; Ends; Place; Description; Who is notified; the group "How long this approval lasts" with three radio buttons and which one is selected, and the sentence about a permission that lasts longer; Why you are asked, with the rule; This card expires; the proof's id; "Show the proof" with the proof's id, a collapsed button; "Deny, button"; "Allow, button"; "Details of Create an event, from Synthetic agent (test build)", a collapsed button. Each value is read after its term.
+4. On "Allow" press VO+Space. Expected: VoiceOver says "You allowed this, for this one request." and the cursor is on the request's heading, not lost at the top of the window.
 5. Run `pkill -KILL -x fabric-broker` in Terminal and return to the window. Expected: VoiceOver says "The broker stopped. Nothing can be decided until you restart it." Move to "Deny" in an open card: VoiceOver says it is dimmed and reads the text beside it that explains why.
 6. Move to "Restart broker" and press VO+Space. Expected: "The broker is running." and, when the card is usable again, "You can decide again: …".
 7. Press Escape with the VoiceOver cursor on "Allow" of an open card. Expected: "Nothing was decided. The request is still waiting for you."
+8. Open "Agent permissions" from the navigation. Expected: VoiceOver reads the heading "Agent permissions". The group "Profile shown below" has the radio buttons "Careful, built in, in force" and "Flexible, built in". Each of the eight rows is a group named after what it covers, with the radio buttons Allow, Ask and Block and one sentence that says what the chosen one means; "Delete events" and "Delete a calendar or change who it is shared with" have no buttons and say why.
+9. Choose "Ask" in the first row, move to "Save as a custom profile" and press VO+Space while the name is empty. Expected: VoiceOver says "Give the profile a name." and the cursor is in the field "Name of the new profile".
 
 Write down what VoiceOver said where it differs from these lines, and the macOS version.
+
+### E. Keyboard only: the other screens
+
+Open the application as in "Prepare", with a fresh `$SCRATCH`. Do not touch the mouse or the trackpad.
+
+1. Open "Agent permissions". Expected: "Careful" is chosen in "Profile shown below" and tagged "built in" and "in force"; "Put Careful in force" is dimmed with "Careful is in force already." beside it.
+2. Press the Right arrow in the profile list. Expected: the rows show Flexible. Tab to "Put Flexible in force" and press Return. Expected: Flexible is tagged "in force". Choose Careful again and put it in force.
+3. With Careful shown, Tab to the row "Read the details of events" and press the Left arrow: "Allow". Expected: under the row "Now in Careful: Ask"; Careful is tagged "unsaved changes"; a field "Name of the new profile" is there, after the rows. Type a name. Tab to "Save as a custom profile" and press Return. Expected: a box "This profile permits more than before:" with "Read the details of events: from Ask to Allow"; focus is on its heading. Tab to "Confirm and save" and press Return. Expected: the new profile is in the list, chosen, tagged "custom, version 1"; Careful is still "in force".
+4. Open "Contacts". Tab to "New group" and press Return. Expected: focus is on the heading "New group". Type a name; in "Addresses, one per line" type `Ana.B@Example.COM` and, on a second line, `not an address`. Expected: "Line 2 is not an address: not an address" under the field, and the same beside the dimmed save button. Remove the second line, Tab to "Save the new group" and press Return. Expected: the group is listed with "1 address and 0 domains." and focus is on its heading.
+5. Tab to "Edit the group" of that group and press Return. Expected: the address reads `Ana.B@example.com`: its part before the @ as typed, its domain in lower case. Tab to "Discard changes" and press Return. Tab to "Delete the group" and press Return. Expected: the question "Delete …? Permissions that name it end.", with focus on "Keep it". Tab to "Yes, delete the group" and press Return. Expected: "No group yet."
+6. Open "Calendar preferences". Expected on a first run: the time zone is empty, "Set my working hours", "Keep a block of free time" and "Leave time between events" are off, there is no protected time, and "Save preferences" is dimmed with "Nothing has changed." Tab to "Use this computer's zone" and press Return. Tab to "Set my working hours" and press Space. Expected: no day is chosen and both times are empty, and the save button's text names what is missing. Choose days with Space, type the two times, Tab to "Save preferences" and press Return. Quit and open the application again with the same `$SCRATCH`. Expected: the values are still there.
+7. A store that cannot be opened. Quit. In a second Terminal window start the broker of the bundle by hand on the same store; it waits for input and holds the store's lock:
+
+   ```sh
+   SCRATCH=<the same directory>
+   FABRIC_BROKER_DATA_DIR="$SCRATCH/broker" FABRIC_BROKER_KEY_SOURCE=test \
+     "$HOME/Desktop/Fabric test folder/Fabric Calendar.app/Contents/MacOS/fabric-broker"
+   ```
+
+   Open the application in the first window. Expected: the strip says "The broker cannot open its store." with the broker's reason ("Another Fabric Calendar broker is using the store. …") and a button "Read the current state again"; no screen can save anything, and each save button says why. Press Control+D in the second window, wait five seconds, Tab to "Read the current state again" and press Return. Expected: the entry goes away and the screens show the stored state.
