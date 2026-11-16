@@ -47,6 +47,7 @@ export interface Entry {
   details: RequestDetails | null; // the last get_request_details answer, the content of the card
   detailsRun: number;
   reading: boolean;
+  detailsOpen: boolean; // the owner has the details open: they are read, and read again when the request changes
   changed: boolean; // the digest differs from the card read before; the owner must acknowledge
   duration: DurationKind; // the owner's choice, kept across a disconnect
   durationChosen: boolean;
@@ -240,11 +241,25 @@ export class Model {
     return true;
   }
 
+  // "session" is not taken while the request's agent has no live session (the broker would refuse
+  // it); the views render again, so that a radio the owner pressed shows the choice that holds.
   chooseDuration(requestId: string, kind: DurationKind): void {
     const e = this.requests.get(requestId);
     if (e === undefined || this.cardStatus(e).kind === "closed") return;
-    e.duration = kind;
-    e.durationChosen = true;
+    if (kind !== "session" || this.sessionAvailable(e)) {
+      e.duration = kind;
+      e.durationChosen = true;
+    }
+    this.deps.changed();
+  }
+
+  // Opens or closes a request's details. Open details are read when missing, of an earlier run or of
+  // an older revision, also for a request that is no longer waiting (the broker keeps it).
+  openDetails(requestId: string, open: boolean): void {
+    const e = this.requests.get(requestId);
+    if (e === undefined || e.detailsOpen === open) return;
+    e.detailsOpen = open;
+    if (this.ready && this.needsRead(e)) this.readDetails(e);
     this.deps.changed();
   }
 
@@ -269,7 +284,7 @@ export class Model {
     const r = e.details.request;
     const base = { request_id: r.request_id, request_digest: r.request_digest, expected_revision: r.revision };
     const params: ParamsDecideRequest = decision === "approve"
-      ? { ...base, decision, selected: null, duration: { kind: e.duration } }
+      ? { ...base, decision, selected: null, duration: { kind: this.duration(e) } }
       : { ...base, decision, selected: null, duration: null };
     const command = { id: "", inFlight: true };
     e.command = command;
@@ -318,6 +333,17 @@ export class Model {
       return { kind: "changed", text: "This request changed since you last saw it. The card now shows the new version. Read it before you decide." };
     }
     return { kind: "ready" };
+  }
+
+  // Whether the request's agent has a live session to tie a "session" permission to.
+  sessionAvailable(e: Entry): boolean {
+    return (this.agents.get(e.request.agent_id)?.session ?? null) !== null;
+  }
+
+  // The duration a decision sends: the owner's choice, but "session" falls back to "one_request"
+  // while the agent has no live session. The choice itself is kept.
+  duration(e: Entry): DurationKind {
+    return e.duration === "session" && !this.sessionAvailable(e) ? "one_request" : e.duration;
   }
 
   decisionText(e: Entry): string | null {
@@ -486,6 +512,8 @@ export class Model {
       if (!listed.has(e.request.request_id) && !TERMINAL[e.request.status.state]) e.available = false;
     }
     for (const r of s.requests) this.applyRequest(r);
+    // Open details of a request the snapshot does not list (one that ended) are read in this run too.
+    for (const e of this.requests.values()) if (this.needsRead(e)) this.readDetails(e);
   }
 
   private applyHealth(h: Health): void {
@@ -509,7 +537,7 @@ export class Model {
     if (e === undefined) {
       e = {
         request: r, requestRun: this.run, available: true, checkingDelayMs: null, details: null, detailsRun: -1,
-        reading: false, changed: false, duration: "one_request", durationChosen: false, command: null, approval: null,
+        reading: false, detailsOpen: false, changed: false, duration: "one_request", durationChosen: false, command: null, approval: null,
         note: null,
       };
       this.requests.set(r.request_id, e);
@@ -536,10 +564,12 @@ export class Model {
     for (const e of ended.slice(0, ended.length - ENDED_REQUEST_LIMIT)) this.requests.delete(e.request.request_id);
   }
 
-  // A pending request is read (again) when this run has no card for its current revision and digest.
+  // A request is read (again) when this run has no details of its current revision and digest, and it
+  // is pending (for its card) or the owner has its details open.
   private needsRead(e: Entry): boolean {
     const d = e.details?.request;
-    return e.request.status.state === "pending_approval" && !e.reading && e.available
+    const wanted = (e.request.status.state === "pending_approval" && e.available) || e.detailsOpen;
+    return wanted && !e.reading
       && (e.detailsRun !== this.run || d?.revision !== e.request.revision || d?.request_digest !== e.request.request_digest);
   }
 
@@ -553,6 +583,7 @@ export class Model {
       e.details = d;
       e.detailsRun = this.run;
       if (d.request.revision >= e.request.revision) e.request = d.request;
+      if (TERMINAL[e.request.status.state]) e.available = true; // it ended; the broker lists only open ones
       e.approval = d.approval; // the broker is the authority on whether it is decided
       if (this.needsRead(e)) return this.readDetails(e); // a newer revision arrived meanwhile
       if (d.card === null || d.request.status.state !== "pending_approval") return;

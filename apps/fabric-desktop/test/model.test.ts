@@ -507,3 +507,57 @@ test("the rule checker's state is announced when it changes after the first snap
   connect(host, 2, snapshot(0));
   assert.deepEqual(announced, ["The broker is running."], "a new run's first snapshot says nothing about the rule checker");
 });
+
+// ---- Details and the session duration (CD-W08 Review) ----
+
+test("openDetails reads a request that is not pending, also one the next snapshot does not list; not while not ready", () => {
+  const { host, model } = live();
+  const fixed = fixture("accept-owner-response-get-request-details-applied-create.json").result;
+  const applied = { ...fixed, request: { ...fixed.request, revision: 10, status: { state: "reconciled" } } }; // it ended
+  host.notice(1, { kind: "request", request: applied.request });
+  const reads = () => host.methods().filter((m) => m === "get_request_details").length;
+  assert.equal(reads(), 0, "a request that ended is not read for a card");
+  model.openDetails("request-25", true);
+  assert.deepEqual(host.last("get_request_details").params, { request_id: "request-25", redaction: "full" });
+  assert.equal(entry(model, "request-25").detailsOpen, true);
+  host.reply("get_request_details", applied);
+  assert.equal(entry(model, "request-25").details?.attempts.length, 2);
+  model.openDetails("request-25", true);
+  assert.equal(reads(), 1, "the details of this run and revision are not read again");
+  // A new run: the snapshot does not list the request; its open details are read in the new run.
+  host.state({ name: "disconnected", reason: "exited", detail: "exit code 1" });
+  model.openDetails("request-25", false);
+  model.openDetails("request-25", true);
+  assert.equal(reads(), 1, "not while the broker is not running");
+  model.restart();
+  connect(host, 2, snapshot(0));
+  assert.equal(reads(), 2);
+  host.reply("get_request_details", applied);
+  assert.equal(entry(model, "request-25").detailsRun, 2);
+  assert.equal(entry(model, "request-25").available, true);
+});
+
+test("without a live session of the agent, the session duration is not taken and a chosen one falls back", () => {
+  const { host, model, changes } = live();
+  const away = { ...AGENT, revision: 2, session: null };
+  host.notice(1, { kind: "agent", agent: away });
+  const pending = request("pending_approval", 4);
+  host.notice(2, { kind: "request", request: pending });
+  const d = details(pending);
+  host.reply("get_request_details", { ...d, card: d.card === null ? null : { ...d.card, proposed_duration: { kind: "session" } } });
+  const e = entry(model);
+  assert.equal(model.sessionAvailable(e), false);
+  assert.equal(e.duration, "session", "the proposed duration is kept");
+  assert.equal(model.duration(e), "one_request", "but what is shown and sent falls back");
+  const before = changes();
+  model.chooseDuration("spike-request-1", "session");
+  assert.equal(e.durationChosen, false, "the choice is ignored");
+  assert.ok(changes() > before, "the views render again, so the radio is put back");
+  model.decide("spike-request-1", "approve");
+  assert.deepEqual(host.last("decide_request").params.duration, { kind: "one_request" });
+  host.error("decide_request", "internal");
+  host.notice(3, { kind: "agent", agent: { ...AGENT, revision: 3 } });
+  assert.equal(model.duration(e), "session", "with a live session again, the proposed duration holds");
+  model.chooseDuration("spike-request-1", "until_revoked");
+  assert.equal(model.duration(e), "until_revoked");
+});
