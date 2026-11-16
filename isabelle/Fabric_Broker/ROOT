@@ -3,4 +3,3 @@ session Fabric_Broker = HOL +
   options [document = false]
   theories
     Fabric_Broker
-    Broker_Examples

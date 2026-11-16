@@ -1,5 +1,5 @@
 theory Broker_Examples
-  imports Fabric_Broker
+  imports "Fabric_Broker.Fabric_Broker"
 begin
 
 section \<open>Worked cases of the broker's rules\<close>
