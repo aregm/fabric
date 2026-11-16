@@ -12,6 +12,12 @@
 // stops). It never opens the real store and never touches the Keychain. The broker must be a
 // debug build: a release build refuses the test key.
 //
+// When the harness itself runs with FABRIC_BROKER_ISABELLE_HOME, FABRIC_BROKER_ISABELLE_USER_HOME
+// and FABRIC_BROKER_RULES_DIR set, it passes the three to the broker, which then proves requests
+// with Isabelle and carries the approved ones out on its practice calendar (practice data in
+// memory; apps/fabric-desktop/README.md, "The practice run"). All three or none: with one or two
+// it starts nothing. The broker checks the paths itself.
+//
 // A switch for a manual check of a store that cannot be opened: `POST /harness/hold-store`, allowed
 // only while no broker of the harness runs, starts a second broker process on the same data
 // directory (test key, no synthetic agent, its stdin kept open and its stdout discarded) that
@@ -19,9 +25,10 @@
 // answers `store_unavailable`. `POST /harness/release-store` ends that process (end of input,
 // then a kill after 2 s). Stopping the harness ends it too.
 //
-// To look at what the real broker cannot show yet (a blocked request with its proof, a request that
-// was carried out), `--broker harness/replay-broker.ts` runs a stand-in that replays the
-// contract's fixtures and changes nothing; the held-store switch has no meaning with it.
+// To look at what the real broker cannot show yet, or shows only in the practice run (a blocked
+// request with its proof, a request that was carried out), `--broker harness/replay-broker.ts`
+// runs a stand-in that replays the contract's fixtures and changes nothing; the held-store switch
+// has no meaning with it.
 //
 //   node harness/serve.ts --broker <path to fabric-broker> [--port 4317]
 import { spawn } from "node:child_process";
@@ -45,13 +52,25 @@ const PORT = Number(values.port);
 const HERE = fileURLToPath(new URL(".", import.meta.url));
 const DIST = join(HERE, "..", "dist");
 const TYPES: Record<string, string> = { ".html": "text/html", ".css": "text/css", ".js": "text/javascript" };
+// The broker's prover variables (apps/fabric-broker/src/config.rs), passed through as they are set.
+const PROVER_NAMES = ["FABRIC_BROKER_ISABELLE_HOME", "FABRIC_BROKER_ISABELLE_USER_HOME", "FABRIC_BROKER_RULES_DIR"];
+const prover = PROVER_NAMES.filter((name) => process.env[name] !== undefined);
+if (prover.length !== 0 && prover.length !== PROVER_NAMES.length) {
+  console.error(`harness: the rule prover needs ${PROVER_NAMES.join(", ")} together, or none`);
+  process.exit(64);
+}
 // One scratch directory per harness run (mode 0700); the broker's store is its child "broker".
 const SCRATCH = mkdtempSync(join(tmpdir(), "fabric-harness-"));
-const BROKER_ENV = {
+const BROKER_ENV: Record<string, string> = {
   FABRIC_BROKER_DATA_DIR: join(SCRATCH, "broker"),
   FABRIC_BROKER_KEY_SOURCE: "test",
   FABRIC_BROKER_SYNTHETIC_AGENT: "1",
 };
+for (const name of prover) BROKER_ENV[name] = process.env[name]!;
+// As the relay does (apps/fabric-desktop/relay/src/config.rs): on Unix a fixed PATH, never the
+// harness's own, because Isabelle's scripts call system tools such as /usr/sbin/sysctl by name.
+if (process.platform !== "win32") BROKER_ENV.PATH = "/usr/bin:/bin:/usr/sbin:/sbin";
+if (prover.length !== 0) console.log("harness: the broker gets the rule prover's three paths");
 
 type State =
   | { name: "connected" }
@@ -76,7 +95,8 @@ function startBroker(): void {
   run += 1;
   const thisRun = run;
   // A stand-in written in TypeScript (harness/replay-broker.ts) is run by this Node: the broker's
-  // environment has no PATH, so a script could not find one itself.
+  // environment has at most the fixed system PATH (on Unix), which need not hold a Node, so a script
+  // could not find one itself.
   const script = BROKER.endsWith(".ts");
   const c = spawn(script ? process.execPath : BROKER, script ? [BROKER] : [], { stdio: ["pipe", "pipe", "inherit"], env: BROKER_ENV });
   child = c;

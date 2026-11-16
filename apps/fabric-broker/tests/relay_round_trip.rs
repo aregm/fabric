@@ -9,6 +9,8 @@
 //! and adds the broker's three variables: a new data directory of its own under the system's
 //! temporary directory, the public test key, and the synthetic agent. No broker here opens a
 //! store with the Keychain.
+//!
+//! "PW" numbers, such as PW p43, refer to `docs/plans/calendar-desktop-prover-wiring-design.md`.
 
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
@@ -98,8 +100,16 @@ impl Relay {
     }
 
     fn start_at(program: &Path) -> Relay {
+        Relay::start_with(program, Vec::new())
+    }
+
+    /// A session with the broker's three variables and `more`, which the relay must pass too.
+    fn start_with(program: &Path, more: Vec<(OsString, OsString)>) -> Relay {
         let dir = TempDir::new("fabric relay round trip");
-        let config = BrokerConfig::check(program, ENVIRONMENT_ALLOWLIST, environment(&dir.data()))
+        let expected = 3 + more.len();
+        let mut host = environment(&dir.data());
+        host.extend(more);
+        let config = BrokerConfig::check(program, ENVIRONMENT_ALLOWLIST, host)
             .unwrap_or_else(|e| panic!("the broker configuration is refused: {e}"));
         let names: Vec<&OsString> = config.environment().iter().map(|(n, _)| n).collect();
         assert!(
@@ -107,8 +117,8 @@ impl Relay {
                 .iter()
                 .filter(|n| n.as_encoded_bytes().starts_with(b"FABRIC_BROKER_"))
                 .count()
-                == 3,
-            "the broker gets its three variables and no other: {names:?}"
+                == expected,
+            "the broker gets its {expected} variables and no other: {names:?}"
         );
         let (sender, events) = mpsc::channel();
         let spawning = spawn_lock();
@@ -578,4 +588,63 @@ fn a_broker_in_a_directory_with_spaces() {
     echo(&mut relay);
     relay.session.stop(QUIT_DRAIN);
     assert_eq!(relay.ending(PROMPT), Ending::Stopped { killed: false });
+}
+
+/// A directory laid out as the three Isabelle variables need it: `bin/isabelle` a script that
+/// exits 1 at once, an empty user home, and the repository's rule theory. No Isabelle runs from
+/// it, so the prover of a broker given these paths fails to start.
+struct FakeIsabelle {
+    dir: TempDir,
+}
+
+impl FakeIsabelle {
+    fn new() -> FakeIsabelle {
+        let dir = TempDir::new("fake isabelle");
+        let bin = dir.0.join("isabelle").join("bin");
+        std::fs::create_dir_all(&bin).unwrap();
+        std::fs::create_dir_all(dir.0.join("user")).unwrap();
+        let program = bin.join("isabelle");
+        std::fs::write(&program, b"#!/bin/sh\nexit 1\n").unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt as _;
+            std::fs::set_permissions(&program, std::fs::Permissions::from_mode(0o755)).unwrap();
+        }
+        FakeIsabelle { dir }
+    }
+
+    /// The three variables with this layout's paths.
+    fn variables(&self) -> Vec<(OsString, OsString)> {
+        let rules = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../isabelle");
+        vec![
+            (
+                OsString::from("FABRIC_BROKER_ISABELLE_HOME"),
+                self.dir.0.join("isabelle").into_os_string(),
+            ),
+            (
+                OsString::from("FABRIC_BROKER_ISABELLE_USER_HOME"),
+                self.dir.0.join("user").into_os_string(),
+            ),
+            (
+                OsString::from("FABRIC_BROKER_RULES_DIR"),
+                rules.into_os_string(),
+            ),
+        ]
+    }
+}
+
+/// PW p43: the relay passes the three Isabelle variables to the broker: with them and the
+/// synthetic agent, the broker names a practice build, which it does only when it read all
+/// three.
+#[test]
+fn the_relay_passes_the_three_isabelle_names() {
+    let isabelle = FakeIsabelle::new();
+    let mut relay = Relay::start_with(&broker_path(), isabelle.variables());
+    let OwnerResult::Hello(result) = relay.result(&hello()) else {
+        panic!("not a hello result")
+    };
+    assert_eq!(
+        result.broker.build.as_str(),
+        format!("{} CD-W04 synthetic practice", env!("CARGO_PKG_VERSION"))
+    );
 }
