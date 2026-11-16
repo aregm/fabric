@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>Fabric Calendar</title>
+<link rel="stylesheet" href="styles.css">
+<script type="module" src="main.js"></script>
+</head>
+<body>
+<header>
+  <h1>Fabric Calendar</h1>
+  <p class="spike"><strong>Test build (CD-W02).</strong> The broker in this build is a stand-in. It keeps nothing on disk, checks no rules, never connects to Google, and makes up its requests. Nothing you do here changes a real calendar.</p>
+</header>
+<main>
+  <section id="broker" aria-labelledby="broker-heading">
+    <h2 id="broker-heading" tabindex="-1">Broker</h2>
+    <div id="banner" class="banner" hidden>
+      <p id="banner-title" class="banner-title"></p>
+      <p id="banner-text"></p>
+      <p id="banner-detail" class="detail"></p>
+      <div id="restart-row" class="actions">
+        <button type="button" id="restart" aria-describedby="restart-note">Restart broker</button>
+        <p id="restart-note" class="note"></p>
+      </div>
+    </div>
+    <dl class="facts">
+      <dt>Connection</dt><dd id="connection">Connecting to the broker…</dd>
+      <dt>Broker</dt><dd id="broker-name">Not known yet</dd>
+      <dt>Schema version</dt><dd id="schema-version">Not known yet</dd>
+      <dt>Last check</dt><dd id="last-check">None yet</dd>
+    </dl>
+    <p id="problem" class="problem" hidden></p>
+    <div class="actions">
+      <button type="button" id="check" aria-describedby="check-note">Check connection</button>
+      <p id="check-note" class="note"></p>
+    </div>
+  </section>
+  <section id="requests-section" aria-labelledby="requests-heading">
+    <h2 id="requests-heading">Requests</h2>
+    <p id="requests-empty">No agent has asked for anything yet.</p>
+    <div id="requests"></div>
+  </section>
+  <section id="activity-section" aria-labelledby="activity-heading">
+    <h2 id="activity-heading">Activity</h2>
+    <p>What the broker has reported, newest first.</p>
+    <p id="activity-empty">Nothing yet.</p>
+    <ul id="activity"></ul>
+  </section>
+  <div id="announcer" role="status" aria-live="polite" class="visually-hidden"></div>
+</main>
+</body>
+</html>

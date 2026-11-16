@@ -25,6 +25,21 @@ jobs:
           node-version: 26
       - run: sh scripts/verify-contracts.sh --typecheck
 
+  # The Tauri application builds only on macOS and needs Node, so it is not part of the Cargo
+  # workspace that the jobs above check on three runners (gate CD-G0, G0-CI-NATIVE).
+  desktop:
+    name: desktop (macos-26)
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v6
+      - run: sh scripts/setup.sh --skip-verify
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 26
+      - run: sh scripts/verify-desktop.sh
+      - run: sh scripts/build-desktop.sh --configuration debug
+      - run: sh scripts/verify-desktop.sh --packaged
+
   windows:
     name: ${{ matrix.runner }}
     strategy:

@@ -357,6 +357,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "fabric-broker"
+version = "0.1.0"
+dependencies = [
+ "fabric-desktop-contracts",
+ "fabric-desktop-relay",
+ "serde_json",
+]
+
+[[package]]
 name = "fabric-cli"
 version = "0.1.0"
 dependencies = [
@@ -392,6 +401,13 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2",
+]
+
+[[package]]
+name = "fabric-desktop-relay"
+version = "0.1.0"
+dependencies = [
+ "fabric-desktop-contracts",
 ]
 
 [[package]]

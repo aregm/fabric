@@ -1,0 +1,20 @@
+[package]
+name = "fabric-broker"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+fabric-desktop-contracts = { path = "../../crates/fabric-desktop-contracts" }
+serde_json = "1"
+
+[dev-dependencies]
+fabric-desktop-relay = { path = "../fabric-desktop/relay" }
+
+[lints]
+workspace = true
+
+[[bin]]
+name = "fabric-broker"
+path = "src/main.rs"

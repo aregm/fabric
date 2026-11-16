@@ -1,13 +1,18 @@
 [workspace]
 members = [
+    "apps/fabric-broker",
     "apps/fabric-cli",
     "apps/fabric-demo",
+    "apps/fabric-desktop/relay",
     "crates/fabric-core",
     "crates/fabric-desktop-contracts",
     "crates/fabric-policy",
     "crates/fabric-token",
     "crates/fabric-wire",
 ]
+# The Tauri host builds only on macOS and needs Node, so it is its own Cargo workspace
+# (scripts/verify-desktop.sh and scripts/build-desktop.sh build it).
+exclude = ["apps/fabric-desktop/src-tauri"]
 default-members = ["apps/fabric-cli"]
 resolver = "3"
 

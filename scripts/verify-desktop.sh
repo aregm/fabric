@@ -1,0 +1,205 @@
+#!/usr/bin/env sh
+# Checks the desktop application (work package CD-W02).
+#
+#   sh scripts/verify-desktop.sh              the sources
+#   sh scripts/verify-desktop.sh --packaged   the bundle that scripts/build-desktop.sh made
+#
+# scripts/verify.sh already checks the broker (apps/fabric-broker) and the host's relay
+# (apps/fabric-desktop/relay) on every platform, because they are members of the Cargo workspace.
+# This script checks what that one cannot: the webview's TypeScript, and the Tauri host, which is
+# its own Cargo workspace, needs Node and builds only on macOS.
+#
+# Without a flag it installs the pinned npm development packages, typechecks the TypeScript, runs
+# its tests, builds the webview files, and on macOS formats, lints and tests the Tauri host.
+#
+# With --packaged it copies the bundle to a directory whose path contains spaces and, from there:
+#   1. runs the broker's process tests and the relay round trip (echo, progress, approval) against
+#      the broker inside the bundle;
+#   2. starts the application and reads the host's trace: the webview's hello, snapshot and
+#      subscribe are answered and the first six notices arrive in order (echo and progress);
+#   3. starts the application a second time: the second one reports a conflict and starts no broker;
+#   4. kills the broker: the host reports the disconnect and starts no new broker by itself;
+#   5. kills the host: the broker does not outlive it.
+# It opens the application's window on this Mac for a few seconds. It cannot press a key in the
+# webview, so the approval in the webview, the restart button, Quit and VoiceOver are checked by a
+# person (apps/fabric-desktop/README.md has the steps). The application must not be running.
+set -eu
+
+die() {
+    echo "error: $*" >&2
+    exit 1
+}
+
+mode=sources
+for argument in "$@"; do
+    case "$argument" in
+        --packaged) mode=packaged ;;
+        *) die "usage: sh scripts/verify-desktop.sh [--packaged]" ;;
+    esac
+done
+
+ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd -P)
+RUN="$ROOT/scripts/run.sh"
+DESKTOP="$ROOT/apps/fabric-desktop"
+HOST_MANIFEST="$DESKTOP/src-tauri/Cargo.toml"
+TARGET_TRIPLE=aarch64-apple-darwin
+
+command -v node >/dev/null 2>&1 || die "node was not found; install Node 22.18 or later."
+node -e '
+const [major, minor] = process.versions.node.split(".").map(Number);
+if (major < 22 || (major === 22 && minor < 18)) {
+    console.error("error: Node " + process.versions.node + " cannot run TypeScript files directly; install Node 22.18 or later.");
+    process.exit(1);
+}'
+
+sources() {
+    command -v npm >/dev/null 2>&1 || die "npm was not found; it comes with Node."
+
+    echo "[1/5] The npm development packages"
+    (cd "$DESKTOP" && npm ci --no-audit --no-fund)
+
+    echo "[2/5] The TypeScript typecheck"
+    (cd "$DESKTOP" && npm run --silent typecheck)
+
+    echo "[3/5] The TypeScript tests"
+    (cd "$DESKTOP" && npm test --silent)
+
+    echo "[4/5] The webview files"
+    (cd "$DESKTOP" && npm run --silent build)
+
+    echo "[5/5] The Tauri host"
+    if [ "$(uname -s)" != "Darwin" ]; then
+        echo "skipped: the Tauri host builds only on macOS."
+        return
+    fi
+    # The host's build step looks for the broker it will bundle, so the broker is built first.
+    sh "$RUN" cargo build --locked -p fabric-broker
+    mkdir -p "$DESKTOP/src-tauri/binaries"
+    cp "$ROOT/target/debug/fabric-broker" "$DESKTOP/src-tauri/binaries/fabric-broker-$TARGET_TRIPLE"
+    sh "$RUN" cargo fmt --manifest-path "$HOST_MANIFEST" -- --check
+    sh "$RUN" cargo clippy --manifest-path "$HOST_MANIFEST" --all-targets --locked -- -D warnings
+    sh "$RUN" cargo test --manifest-path "$HOST_MANIFEST" --all-targets --locked
+}
+
+# Waits until a line matching the pattern is in the file, for at most the given number of seconds.
+wait_for() {
+    file=$1
+    pattern=$2
+    seconds=$3
+    tries=$((seconds * 5))
+    while [ "$tries" -gt 0 ]; do
+        if grep -Eq -- "$pattern" "$file" 2>/dev/null; then
+            return 0
+        fi
+        sleep 0.2
+        tries=$((tries - 1))
+    done
+    echo "error: no line matching '$pattern' within $seconds s in the trace:" >&2
+    sed 's/^/    /' "$file" >&2 || true
+    return 1
+}
+
+# The process ids of every running copy of the given executable. `comm` is the executable's
+# path without its arguments, so the awk process, whose arguments hold the path, is not counted.
+running() {
+    ps -axo pid=,comm= | awk -v path="$1" 'index($0, path) { print $1 }'
+}
+
+packaged() {
+    [ "$(uname -s)" = "Darwin" ] || die "the bundle exists only on macOS."
+    APP="$ROOT/target/debug/bundle/macos/Fabric Calendar.app"
+    [ -d "$APP" ] || die "there is no bundle; run sh scripts/build-desktop.sh --configuration debug first."
+
+    WORK=$(mktemp -d)
+    host_pid=
+    second_pid=
+    cleanup() {
+        for pid in $host_pid $second_pid; do
+            kill -KILL "$pid" 2>/dev/null || true
+        done
+        rm -rf "$WORK"
+    }
+    trap cleanup EXIT INT TERM
+
+    SPACED="$WORK/a path with spaces"
+    mkdir -p "$SPACED"
+    cp -R "$APP" "$SPACED/"
+    COPY="$SPACED/Fabric Calendar.app"
+    HOST="$COPY/Contents/MacOS/fabric-desktop"
+    BROKER="$COPY/Contents/MacOS/fabric-broker"
+    codesign --verify --deep --strict "$COPY" || die "the copied bundle's signature does not verify."
+    echo "The bundle under test: $COPY"
+
+    echo "[1/5] The packaged broker: its process tests and the relay round trip"
+    FABRIC_BROKER_UNDER_TEST="$BROKER" sh "$RUN" cargo test --locked -p fabric-broker --tests
+
+    echo "[2/5] The application: echo and progress through the webview"
+    FABRIC_DESKTOP_TRACE=1 "$HOST" 2>"$WORK/first.trace" &
+    host_pid=$!
+    wait_for "$WORK/first.trace" ' state run=[0-9]+ (connected|conflict|configuration_error)' 30
+    if grep -q ' conflict' "$WORK/first.trace"; then
+        die "Fabric Calendar is already running on this Mac; quit it and run this again."
+    fi
+    wait_for "$WORK/first.trace" ' state run=1 connected pid=[0-9]+ ' 1
+    wait_for "$WORK/first.trace" ' <- response hello id=[^ ]+ result ' 30
+    wait_for "$WORK/first.trace" ' <- response get_snapshot id=[^ ]+ result ' 10
+    wait_for "$WORK/first.trace" ' <- response subscribe id=[^ ]+ result ' 10
+    wait_for "$WORK/first.trace" ' <- notice sequence=6 change=request ' 20
+    sequences=$(sed -n 's/.* <- notice sequence=\([0-9]*\) .*/\1/p' "$WORK/first.trace" | head -n 6 | tr '\n' ' ')
+    [ "$sequences" = "1 2 3 4 5 6 " ] || die "the notices did not arrive in order: $sequences"
+    if grep -q ' refused ' "$WORK/first.trace"; then
+        die "the host refused a frame that the webview built."
+    fi
+    broker_pid=$(sed -n 's/.* state run=1 connected pid=\([0-9]*\) .*/\1/p' "$WORK/first.trace" | head -n 1)
+    [ "$(running "$BROKER" | tr '\n' ' ')" = "$broker_pid " ] || die "expected exactly one broker, with pid $broker_pid."
+    echo "ok: hello, snapshot and subscribe were answered and notices 1 to 6 arrived; the broker is pid $broker_pid"
+
+    echo "[3/5] A second launch"
+    FABRIC_DESKTOP_TRACE=1 "$HOST" 2>"$WORK/second.trace" &
+    second_pid=$!
+    wait_for "$WORK/second.trace" ' state run=0 conflict' 30
+    sleep 1
+    [ "$(running "$BROKER" | tr '\n' ' ')" = "$broker_pid " ] || die "the second launch started a broker."
+    kill -KILL "$second_pid" 2>/dev/null || true
+    wait "$second_pid" 2>/dev/null || true
+    second_pid=
+    echo "ok: the second launch reported a conflict and started no broker"
+
+    echo "[4/5] The broker dies"
+    kill -KILL "$broker_pid"
+    wait_for "$WORK/first.trace" ' state run=1 disconnected reason=exited ' 10
+    sleep 3
+    [ -z "$(running "$BROKER")" ] || die "a broker is running again; the restart must be the owner's action."
+    echo "ok: the host reported the disconnect and started no broker by itself"
+    kill -KILL "$host_pid" 2>/dev/null || true
+    wait "$host_pid" 2>/dev/null || true
+    host_pid=
+
+    echo "[5/5] The host dies"
+    FABRIC_DESKTOP_TRACE=1 "$HOST" 2>"$WORK/third.trace" &
+    host_pid=$!
+    wait_for "$WORK/third.trace" ' state run=1 connected pid=[0-9]+ ' 30
+    broker_pid=$(sed -n 's/.* state run=1 connected pid=\([0-9]*\) .*/\1/p' "$WORK/third.trace" | head -n 1)
+    kill -KILL "$host_pid"
+    wait "$host_pid" 2>/dev/null || true
+    host_pid=
+    tries=25
+    while [ -n "$(running "$BROKER")" ] && [ "$tries" -gt 0 ]; do
+        sleep 0.2
+        tries=$((tries - 1))
+    done
+    [ -z "$(running "$BROKER")" ] || die "broker $broker_pid outlived the host."
+    echo "ok: the broker ended when the host was killed"
+
+    echo "The trace of the first launch:"
+    sed 's/^/    /' "$WORK/first.trace"
+    echo "The packaged application passed. Still to be checked by a person: the approval in the"
+    echo "webview, the restart button, Quit and VoiceOver (apps/fabric-desktop/README.md)."
+}
+
+case "$mode" in
+    sources) sources ;;
+    packaged) packaged ;;
+esac
+
+echo "All desktop checks of this mode passed."
