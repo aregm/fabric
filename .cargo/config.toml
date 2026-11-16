@@ -1,6 +1,12 @@
 [build]
 target-dir = "target"
 
+[env]
+# Temporary tables and sorter spill stay in memory: SQLCipher does not encrypt temp files, so
+# file temp storage would leak plaintext (CD-W04 design 3.1). libsqlite3-sys passes these
+# tokens to the C compiler unchanged; the store also sets `PRAGMA temp_store = MEMORY`.
+LIBSQLITE3_FLAGS = "-USQLITE_TEMP_STORE -DSQLITE_TEMP_STORE=3"
+
 [alias]
 check-all = "check --workspace --all-targets --all-features --locked"
 test-all = "test --workspace --all-targets --all-features --locked"

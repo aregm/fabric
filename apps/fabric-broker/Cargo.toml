@@ -6,7 +6,9 @@ rust-version.workspace = true
 publish.workspace = true
 
 [dependencies]
+fabric-broker-core = { path = "../../crates/fabric-broker-core" }
 fabric-desktop-contracts = { path = "../../crates/fabric-desktop-contracts" }
+fabric-storage = { path = "../../crates/fabric-storage" }
 serde_json = "1"
 
 [dev-dependencies]
