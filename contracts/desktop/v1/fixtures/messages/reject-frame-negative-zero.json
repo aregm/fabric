@@ -1,0 +1,10 @@
+{
+  "description": "A frame containing the number -0.",
+  "schema": "agent-channel.schema.json#/$defs/agent_request",
+  "text": "{\"x\":-0,\"id\":\"call-1\",\"method\":\"fabric_calendar_list\",\"params\":{},\"protocol\":\"fabric-desktop/1\"}",
+  "expect": {
+    "verdict": "reject",
+    "layer": "frame",
+    "error": "malformed_frame"
+  }
+}

@@ -1,0 +1,18 @@
+{
+  "description": "A terminal failure status.",
+  "schema": "agent-channel.schema.json#/$defs/request_status",
+  "value": {
+    "request_id": "request-26",
+    "updated_at": "2026-11-20T16:10:03.900Z",
+    "status": {
+      "state": "terminal_failure",
+      "failure_code": "provider_rejected"
+    }
+  },
+  "expect": {
+    "verdict": "accept",
+    "canonical": "{\"request_id\":\"request-26\",\"status\":{\"failure_code\":\"provider_rejected\",\"state\":\"terminal_failure\"},\"updated_at\":\"2026-11-20T16:10:03.900Z\"}",
+    "command_digest": null,
+    "action_digest": null
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "description": "Text that is not JSON at all.",
+  "schema": "owner-channel.schema.json#/$defs/owner_request",
+  "text": "hello broker",
+  "expect": {
+    "verdict": "reject",
+    "layer": "frame",
+    "error": "malformed_frame"
+  }
+}

@@ -1,0 +1,22 @@
+{
+  "description": "save_profile puts a custom profile in force.",
+  "schema": "owner-channel.schema.json#/$defs/owner_request",
+  "value": {
+    "protocol": "fabric-desktop/1",
+    "id": "command-4",
+    "method": "save_profile",
+    "params": {
+      "expected_revision": 7,
+      "change": {
+        "kind": "activate",
+        "profile_id": "custom-assistant"
+      }
+    }
+  },
+  "expect": {
+    "verdict": "accept",
+    "canonical": "{\"id\":\"command-4\",\"method\":\"save_profile\",\"params\":{\"change\":{\"kind\":\"activate\",\"profile_id\":\"custom-assistant\"},\"expected_revision\":7},\"protocol\":\"fabric-desktop/1\"}",
+    "command_digest": "sha256:099963e02df7df20bd996dcdf1d752588975387ea2e166d7cbe66d28ae26d94e",
+    "action_digest": null
+  }
+}

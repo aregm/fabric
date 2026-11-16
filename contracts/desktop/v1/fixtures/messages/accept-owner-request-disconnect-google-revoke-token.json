@@ -1,0 +1,20 @@
+{
+  "description": "Disconnect an account and also revoke Fabric's token at Google.",
+  "schema": "owner-channel.schema.json#/$defs/owner_request",
+  "value": {
+    "protocol": "fabric-desktop/1",
+    "id": "command-51",
+    "method": "disconnect_google",
+    "params": {
+      "account_id": "acct-2",
+      "expected_revision": 9,
+      "revoke_provider_token": true
+    }
+  },
+  "expect": {
+    "verdict": "accept",
+    "canonical": "{\"id\":\"command-51\",\"method\":\"disconnect_google\",\"params\":{\"account_id\":\"acct-2\",\"expected_revision\":9,\"revoke_provider_token\":true},\"protocol\":\"fabric-desktop/1\"}",
+    "command_digest": "sha256:12ed2714a71f570b98e299bb1c0c8cbd1b48f715cf8802c79b0460f1858d0641",
+    "action_digest": null
+  }
+}

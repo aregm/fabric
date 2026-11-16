@@ -1,0 +1,14 @@
+{
+  "description": "An agent response with neither result nor error.",
+  "schema": "agent-channel.schema.json#/$defs/agent_response",
+  "value": {
+    "protocol": "fabric-desktop/1",
+    "id": "call-14",
+    "method": "fabric_request_status"
+  },
+  "expect": {
+    "verdict": "reject",
+    "layer": "schema",
+    "error": "invalid_params"
+  }
+}

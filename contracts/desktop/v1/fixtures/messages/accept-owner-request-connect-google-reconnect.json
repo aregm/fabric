@@ -1,0 +1,18 @@
+{
+  "description": "connect_google naming acct-2 reconnects an account that needs reauthentication.",
+  "schema": "owner-channel.schema.json#/$defs/owner_request",
+  "value": {
+    "protocol": "fabric-desktop/1",
+    "id": "command-2",
+    "method": "connect_google",
+    "params": {
+      "account_id": "acct-2"
+    }
+  },
+  "expect": {
+    "verdict": "accept",
+    "canonical": "{\"id\":\"command-2\",\"method\":\"connect_google\",\"params\":{\"account_id\":\"acct-2\"},\"protocol\":\"fabric-desktop/1\"}",
+    "command_digest": "sha256:4cf23a9dcab48683053cf6f67ef578ea59f80dc48ef55c434d327c1ef095247d",
+    "action_digest": null
+  }
+}

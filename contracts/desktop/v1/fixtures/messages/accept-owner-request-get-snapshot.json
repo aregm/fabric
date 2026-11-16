@@ -1,0 +1,16 @@
+{
+  "description": "The host asks for the current snapshot; get_snapshot takes an empty params object.",
+  "schema": "owner-channel.schema.json#/$defs/owner_request",
+  "value": {
+    "protocol": "fabric-desktop/1",
+    "id": "snapshot-1",
+    "method": "get_snapshot",
+    "params": {}
+  },
+  "expect": {
+    "verdict": "accept",
+    "canonical": "{\"id\":\"snapshot-1\",\"method\":\"get_snapshot\",\"params\":{},\"protocol\":\"fabric-desktop/1\"}",
+    "command_digest": null,
+    "action_digest": null
+  }
+}

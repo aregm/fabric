@@ -1,0 +1,16 @@
+{
+  "description": "A notice with sequence 0.",
+  "schema": "owner-channel.schema.json#/$defs/owner_notice",
+  "value": {
+    "protocol": "fabric-desktop/1",
+    "sequence": 0,
+    "change": {
+      "kind": "snapshot_required"
+    }
+  },
+  "expect": {
+    "verdict": "reject",
+    "layer": "schema",
+    "error": "invalid_params"
+  }
+}

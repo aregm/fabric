@@ -1,0 +1,25 @@
+{
+  "description": "connect_google answers with the new account awaiting consent, no address and no calendars yet.",
+  "schema": "owner-channel.schema.json#/$defs/owner_response",
+  "value": {
+    "protocol": "fabric-desktop/1",
+    "id": "command-1",
+    "method": "connect_google",
+    "result": {
+      "commit_sequence": 1288,
+      "account": {
+        "account_id": "acct-3",
+        "revision": 1,
+        "state": "awaiting_consent",
+        "email": null,
+        "calendars": []
+      }
+    }
+  },
+  "expect": {
+    "verdict": "accept",
+    "canonical": "{\"id\":\"command-1\",\"method\":\"connect_google\",\"protocol\":\"fabric-desktop/1\",\"result\":{\"account\":{\"account_id\":\"acct-3\",\"calendars\":[],\"email\":null,\"revision\":1,\"state\":\"awaiting_consent\"},\"commit_sequence\":1288}}",
+    "command_digest": null,
+    "action_digest": null
+  }
+}

@@ -1,0 +1,18 @@
+{
+  "description": "Subscribe to every change from cursor 0.",
+  "schema": "owner-channel.schema.json#/$defs/owner_request",
+  "value": {
+    "protocol": "fabric-desktop/1",
+    "id": "subscribe-1",
+    "method": "subscribe",
+    "params": {
+      "cursor": 0
+    }
+  },
+  "expect": {
+    "verdict": "accept",
+    "canonical": "{\"id\":\"subscribe-1\",\"method\":\"subscribe\",\"params\":{\"cursor\":0},\"protocol\":\"fabric-desktop/1\"}",
+    "command_digest": null,
+    "action_digest": null
+  }
+}

@@ -1,0 +1,24 @@
+{
+  "description": "An agent asks for the owner method decide_request.",
+  "schema": "agent-channel.schema.json#/$defs/agent_request",
+  "value": {
+    "protocol": "fabric-desktop/1",
+    "id": "call-30",
+    "method": "decide_request",
+    "params": {
+      "request_id": "request-17",
+      "request_digest": "sha256:9448c124de44cd137bb4a3c63df81e9a3a0ae40af06db3642c413320c1d76053",
+      "expected_revision": 3,
+      "decision": "approve",
+      "selected": null,
+      "duration": {
+        "kind": "one_request"
+      }
+    }
+  },
+  "expect": {
+    "verdict": "reject",
+    "layer": "schema",
+    "error": "unknown_method"
+  }
+}

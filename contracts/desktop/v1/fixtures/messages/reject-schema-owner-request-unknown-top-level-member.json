@@ -1,0 +1,16 @@
+{
+  "description": "A get_snapshot frame with an unknown top-level member.",
+  "schema": "owner-channel.schema.json#/$defs/owner_request",
+  "value": {
+    "protocol": "fabric-desktop/1",
+    "id": "snapshot-1",
+    "method": "get_snapshot",
+    "params": {},
+    "trace": "abc"
+  },
+  "expect": {
+    "verdict": "reject",
+    "layer": "schema",
+    "error": "invalid_params"
+  }
+}

@@ -1,0 +1,19 @@
+{
+  "description": "Ask for the details of a request without event content.",
+  "schema": "owner-channel.schema.json#/$defs/owner_request",
+  "value": {
+    "protocol": "fabric-desktop/1",
+    "id": "details-1",
+    "method": "get_request_details",
+    "params": {
+      "request_id": "request-21",
+      "redaction": "redacted"
+    }
+  },
+  "expect": {
+    "verdict": "accept",
+    "canonical": "{\"id\":\"details-1\",\"method\":\"get_request_details\",\"params\":{\"redaction\":\"redacted\",\"request_id\":\"request-21\"},\"protocol\":\"fabric-desktop/1\"}",
+    "command_digest": null,
+    "action_digest": null
+  }
+}

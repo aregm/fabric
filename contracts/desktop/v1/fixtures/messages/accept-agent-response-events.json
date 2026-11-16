@@ -1,0 +1,102 @@
+{
+  "description": "An events result with a timed event, an all-day event and one occurrence of a recurring event; ungranted fields are null and granted empty ones are empty strings.",
+  "schema": "agent-channel.schema.json#/$defs/agent_response",
+  "value": {
+    "protocol": "fabric-desktop/1",
+    "id": "call-3",
+    "method": "fabric_calendar_read",
+    "result": {
+      "request": {
+        "request_id": "request-29",
+        "updated_at": "2026-11-20T16:22:00.300Z",
+        "status": {
+          "state": "reconciled"
+        }
+      },
+      "result": {
+        "kind": "events",
+        "observed_at": "2026-11-20T16:22:00.200Z",
+        "events": [
+          {
+            "event_id": "evt-7f3a9c",
+            "revision": "3181161784712000",
+            "calendar_id": "cal-primary",
+            "fabric_created": false,
+            "occurrence": null,
+            "time": {
+              "kind": "timed",
+              "start": {
+                "date_time": "2026-11-20T10:00:00-06:00",
+                "zone": "America/Chicago"
+              },
+              "end": {
+                "date_time": "2026-11-20T11:00:00-06:00",
+                "zone": "America/Chicago"
+              }
+            },
+            "title": "1:1",
+            "location": "",
+            "description": null,
+            "attendees": null,
+            "organizer": null,
+            "own_response": null
+          },
+          {
+            "event_id": "evt-holiday-1",
+            "revision": "3181160000000000",
+            "calendar_id": "cal-primary",
+            "fabric_created": false,
+            "occurrence": null,
+            "time": {
+              "kind": "all_day",
+              "start_date": "2026-11-26",
+              "end_date": "2026-11-27"
+            },
+            "title": "Thanksgiving",
+            "location": "",
+            "description": null,
+            "attendees": null,
+            "organizer": null,
+            "own_response": null
+          },
+          {
+            "event_id": "evt-standup_20261120T150000Z",
+            "revision": "3181161700000000",
+            "calendar_id": "cal-primary",
+            "fabric_created": false,
+            "occurrence": {
+              "instance_id": "evt-standup_20261120T150000Z",
+              "original_start_time": {
+                "date_time": "2026-11-20T10:00:00-06:00",
+                "zone": "America/Chicago"
+              }
+            },
+            "time": {
+              "kind": "timed",
+              "start": {
+                "date_time": "2026-11-20T10:00:00-06:00",
+                "zone": "America/Chicago"
+              },
+              "end": {
+                "date_time": "2026-11-20T10:15:00-06:00",
+                "zone": "America/Chicago"
+              }
+            },
+            "title": "",
+            "location": "",
+            "description": null,
+            "attendees": null,
+            "organizer": null,
+            "own_response": null
+          }
+        ]
+      }
+    }
+  },
+  "expect": {
+    "verdict": "accept",
+    "canonical": "{\"id\":\"call-3\",\"method\":\"fabric_calendar_read\",\"protocol\":\"fabric-desktop/1\",\"result\":{\"request\":{\"request_id\":\"request-29\",\"status\":{\"state\":\"reconciled\"},\"updated_at\":\"2026-11-20T16:22:00.300Z\"},\"result\":{\"events\":[{\"attendees\":null,\"calendar_id\":\"cal-primary\",\"description\":null,\"event_id\":\"evt-7f3a9c\",\"fabric_created\":false,\"location\":\"\",\"occurrence\":null,\"organizer\":null,\"own_response\":null,\"revision\":\"3181161784712000\",\"time\":{\"end\":{\"date_time\":\"2026-11-20T11:00:00-06:00\",\"zone\":\"America/Chicago\"},\"kind\":\"timed\",\"start\":{\"date_time\":\"2026-11-20T10:00:00-06:00\",\"zone\":\"America/Chicago\"}},\"title\":\"1:1\"},{\"attendees\":null,\"calendar_id\":\"cal-primary\",\"description\":null,\"event_id\":\"evt-holiday-1\",\"fabric_created\":false,\"location\":\"\",\"occurrence\":null,\"organizer\":null,\"own_response\":null,\"revision\":\"3181160000000000\",\"time\":{\"end_date\":\"2026-11-27\",\"kind\":\"all_day\",\"start_date\":\"2026-11-26\"},\"title\":\"Thanksgiving\"},{\"attendees\":null,\"calendar_id\":\"cal-primary\",\"description\":null,\"event_id\":\"evt-standup_20261120T150000Z\",\"fabric_created\":false,\"location\":\"\",\"occurrence\":{\"instance_id\":\"evt-standup_20261120T150000Z\",\"original_start_time\":{\"date_time\":\"2026-11-20T10:00:00-06:00\",\"zone\":\"America/Chicago\"}},\"organizer\":null,\"own_response\":null,\"revision\":\"3181161700000000\",\"time\":{\"end\":{\"date_time\":\"2026-11-20T10:15:00-06:00\",\"zone\":\"America/Chicago\"},\"kind\":\"timed\",\"start\":{\"date_time\":\"2026-11-20T10:00:00-06:00\",\"zone\":\"America/Chicago\"}},\"title\":\"\"}],\"kind\":\"events\",\"observed_at\":\"2026-11-20T16:22:00.200Z\"}}}",
+    "command_digest": null,
+    "action_digest": null
+  }
+}

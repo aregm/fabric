@@ -1,0 +1,23 @@
+{
+  "description": "not_found for a request id the agent does not own.",
+  "schema": "agent-channel.schema.json#/$defs/agent_response",
+  "value": {
+    "protocol": "fabric-desktop/1",
+    "id": "call-26",
+    "method": "fabric_request_status",
+    "error": {
+      "code": "not_found",
+      "message": "There is no request request-99 for this agent.",
+      "retryable": false,
+      "recovery": "none",
+      "correlation_id": "corr-0001",
+      "detail": null
+    }
+  },
+  "expect": {
+    "verdict": "accept",
+    "canonical": "{\"error\":{\"code\":\"not_found\",\"correlation_id\":\"corr-0001\",\"detail\":null,\"message\":\"There is no request request-99 for this agent.\",\"recovery\":\"none\",\"retryable\":false},\"id\":\"call-26\",\"method\":\"fabric_request_status\",\"protocol\":\"fabric-desktop/1\"}",
+    "command_digest": null,
+    "action_digest": null
+  }
+}

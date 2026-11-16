@@ -1,0 +1,395 @@
+{
+  "description": "A snapshot in which built-in Careful has one row changed.",
+  "schema": "owner-channel.schema.json#/$defs/owner_response",
+  "value": {
+    "protocol": "fabric-desktop/1",
+    "id": "snapshot-1",
+    "method": "get_snapshot",
+    "result": {
+      "cursor": 1287,
+      "health": {
+        "prover": "ready",
+        "store": "ready"
+      },
+      "profiles": {
+        "revision": 7,
+        "active_profile_id": "careful",
+        "items": [
+          {
+            "kind": "built_in",
+            "profile_id": "careful",
+            "name": "Careful",
+            "version": 1,
+            "rows": {
+              "list_and_availability": "allow",
+              "read_event_details": "allow",
+              "create_in_agent_drafts": "allow",
+              "create_in_existing_calendar": "ask",
+              "edit_fabric_created_event": "ask",
+              "edit_preexisting_event": "ask",
+              "send_or_change_invitations": "ask",
+              "respond_to_invitation": "ask",
+              "delete_event": "ask",
+              "delete_calendar_or_change_sharing": "block"
+            }
+          },
+          {
+            "kind": "built_in",
+            "profile_id": "flexible",
+            "name": "Flexible",
+            "version": 1,
+            "rows": {
+              "list_and_availability": "allow",
+              "read_event_details": "allow",
+              "create_in_agent_drafts": "allow",
+              "create_in_existing_calendar": "allow",
+              "edit_fabric_created_event": "allow",
+              "edit_preexisting_event": "ask",
+              "send_or_change_invitations": "allow",
+              "respond_to_invitation": "ask",
+              "delete_event": "ask",
+              "delete_calendar_or_change_sharing": "block"
+            }
+          },
+          {
+            "kind": "custom",
+            "profile_id": "custom-assistant",
+            "name": "Assistant hours",
+            "version": 2,
+            "rows": {
+              "list_and_availability": "allow",
+              "read_event_details": "allow",
+              "create_in_agent_drafts": "allow",
+              "create_in_existing_calendar": "allow",
+              "edit_fabric_created_event": "allow",
+              "edit_preexisting_event": "allow",
+              "send_or_change_invitations": "allow",
+              "respond_to_invitation": "allow",
+              "delete_event": "ask",
+              "delete_calendar_or_change_sharing": "block"
+            }
+          }
+        ]
+      },
+      "accounts": [
+        {
+          "account_id": "acct-1",
+          "revision": 4,
+          "state": "connected",
+          "email": "owner@example.com",
+          "calendars": [
+            {
+              "calendar_id": "cal-primary",
+              "name": "Owner",
+              "access": "owner",
+              "selected": true,
+              "agent_drafts": false
+            },
+            {
+              "calendar_id": "cal-drafts",
+              "name": "Agent Drafts",
+              "access": "owner",
+              "selected": true,
+              "agent_drafts": true
+            },
+            {
+              "calendar_id": "cal-team-shared",
+              "name": "Team schedule",
+              "access": "writer",
+              "selected": true,
+              "agent_drafts": false
+            }
+          ]
+        },
+        {
+          "account_id": "acct-2",
+          "revision": 9,
+          "state": "reauthentication_required",
+          "email": "owner.work@example.org",
+          "calendars": [
+            {
+              "calendar_id": "cal-work-primary",
+              "name": "Work",
+              "access": "owner",
+              "selected": true,
+              "agent_drafts": false
+            },
+            {
+              "calendar_id": "cal-family-shared",
+              "name": "Family",
+              "access": "writer",
+              "selected": false,
+              "agent_drafts": false
+            },
+            {
+              "calendar_id": "cal-holidays",
+              "name": "Holidays",
+              "access": "reader",
+              "selected": false,
+              "agent_drafts": false
+            }
+          ]
+        }
+      ],
+      "agents": [
+        {
+          "agent_id": "agent-claude-desktop",
+          "revision": 3,
+          "registered_name": "Claude Desktop",
+          "destination": {
+            "kind": "cloud",
+            "processor": "Anthropic"
+          },
+          "paused": false,
+          "session": null,
+          "last_tool_call_at": "2026-11-20T09:41:00.000Z"
+        },
+        {
+          "agent_id": "agent-claude-code",
+          "revision": 5,
+          "registered_name": "Claude Code",
+          "destination": {
+            "kind": "cloud",
+            "processor": "Anthropic"
+          },
+          "paused": false,
+          "session": {
+            "session_id": "session-claude-code-7",
+            "started_at": "2026-11-20T14:00:00.000Z",
+            "last_active_at": "2026-11-20T15:12:41.503Z"
+          },
+          "last_tool_call_at": "2026-11-20T15:12:41.503Z"
+        },
+        {
+          "agent_id": "agent-codex-desktop",
+          "revision": 2,
+          "registered_name": "Codex Desktop",
+          "destination": {
+            "kind": "cloud",
+            "processor": "OpenAI"
+          },
+          "paused": true,
+          "session": null,
+          "last_tool_call_at": null
+        },
+        {
+          "agent_id": "agent-ollama",
+          "revision": 1,
+          "registered_name": "Fabric local assistant",
+          "destination": {
+            "kind": "local",
+            "endpoint": "Embedded Ollama runtime on this Mac"
+          },
+          "paused": false,
+          "session": null,
+          "last_tool_call_at": null
+        }
+      ],
+      "recipient_sets": [
+        {
+          "recipient_set_id": "rset-team",
+          "revision": 2,
+          "source": {
+            "kind": "local"
+          },
+          "definition": {
+            "name": "Team",
+            "members": [
+              "ally@example.net",
+              "sam.lee@example.org"
+            ],
+            "domains": [
+              "example.com"
+            ]
+          }
+        },
+        {
+          "recipient_set_id": "rset-people-family",
+          "revision": 1,
+          "source": {
+            "kind": "google_people",
+            "account_id": "acct-1",
+            "imported_at": "2026-11-20T08:30:00.000Z"
+          },
+          "definition": {
+            "name": "Family (Google contacts)",
+            "members": [
+              "parent@example.net",
+              "sibling@example.net"
+            ],
+            "domains": []
+          }
+        }
+      ],
+      "preferences": {
+        "revision": 0,
+        "settings": {
+          "zone": null,
+          "workday": null,
+          "protected_times": [],
+          "uninterrupted": null,
+          "buffer": null,
+          "warning_calendars": []
+        }
+      },
+      "requests": [
+        {
+          "request_id": "request-17",
+          "revision": 3,
+          "agent_id": "agent-claude-desktop",
+          "tool": "fabric_calendar_propose_invitation",
+          "account_id": "acct-1",
+          "received_at": "2026-11-20T15:00:00.000Z",
+          "updated_at": "2026-11-20T15:00:01.250Z",
+          "request_digest": "sha256:9448c124de44cd137bb4a3c63df81e9a3a0ae40af06db3642c413320c1d76053",
+          "status": {
+            "state": "pending_approval",
+            "approval_expires_at": "2026-11-21T15:00:00.000Z"
+          }
+        },
+        {
+          "request_id": "request-18",
+          "revision": 2,
+          "agent_id": "agent-claude-code",
+          "tool": "fabric_calendar_read",
+          "account_id": "acct-1",
+          "received_at": "2026-11-20T15:12:41.503Z",
+          "updated_at": "2026-11-20T15:12:41.640Z",
+          "request_digest": "sha256:7a4b17e48cacba5ae9e25209e7bd593aa0cf0d0e01a657848666a8ea138d4707",
+          "status": {
+            "state": "proving_classification"
+          }
+        }
+      ],
+      "grants": [
+        {
+          "grant_id": "grant-4",
+          "revision": 1,
+          "agent_id": "agent-claude-desktop",
+          "purpose": "Add a planning block to the drafts calendar.",
+          "tools": [
+            "fabric_calendar_propose_create"
+          ],
+          "scope": {
+            "calendars": [
+              {
+                "account_id": "acct-1",
+                "calendar_id": "cal-drafts"
+              }
+            ],
+            "window": null,
+            "fields": null,
+            "recipients": null,
+            "send_updates": null
+          },
+          "term": {
+            "kind": "one_request",
+            "action_digest": "sha256:893536beccfafc5e41cb8a289ea49ebe680a4a5d5074a0f4987c5cc6d2547018"
+          },
+          "origin": {
+            "request_id": "request-19",
+            "approval_digest": "sha256:902819aeacc9eefb1a3ab249f04765d76ca09734f204f7971813eb766cac163e"
+          },
+          "policy": {
+            "profile_id": "careful",
+            "version": 1
+          },
+          "revocation_epoch": 0,
+          "created_at": "2026-11-20T15:20:00.000Z",
+          "ended": null
+        },
+        {
+          "grant_id": "grant-5",
+          "revision": 1,
+          "agent_id": "agent-claude-code",
+          "purpose": "Check this week's meetings while planning the release.",
+          "tools": [
+            "fabric_calendar_read",
+            "fabric_request_result"
+          ],
+          "scope": {
+            "calendars": [
+              {
+                "account_id": "acct-1",
+                "calendar_id": "cal-primary"
+              }
+            ],
+            "window": {
+              "start": "2026-11-20T06:00:00.000Z",
+              "end": "2026-11-21T06:00:00.000Z"
+            },
+            "fields": [
+              "time",
+              "title"
+            ],
+            "recipients": null,
+            "send_updates": null
+          },
+          "term": {
+            "kind": "session",
+            "session_id": "session-claude-code-7"
+          },
+          "origin": {
+            "request_id": "request-15",
+            "approval_digest": "sha256:9ffdeaab4d3c5b25375e3861c0880d5f2fa9c737c6cc785c27db75f789c76c07"
+          },
+          "policy": {
+            "profile_id": "careful",
+            "version": 1
+          },
+          "revocation_epoch": 0,
+          "created_at": "2026-11-20T14:05:00.000Z",
+          "ended": null
+        },
+        {
+          "grant_id": "grant-6",
+          "revision": 2,
+          "agent_id": "agent-claude-desktop",
+          "purpose": "Invite the team to planning meetings.",
+          "tools": [
+            "fabric_calendar_propose_invitation",
+            "fabric_calendar_propose_update"
+          ],
+          "scope": {
+            "calendars": [
+              {
+                "account_id": "acct-1",
+                "calendar_id": "cal-team-shared"
+              }
+            ],
+            "window": null,
+            "fields": null,
+            "recipients": {
+              "kind": "recipient_sets",
+              "recipient_set_ids": [
+                "rset-team",
+                "rset-people-family"
+              ]
+            },
+            "send_updates": "all"
+          },
+          "term": {
+            "kind": "until_revoked",
+            "expires_at": null
+          },
+          "origin": {
+            "request_id": "request-9",
+            "approval_digest": "sha256:6844fb7a9f058ccb36f804ec122a9fb35a94db83a04f3b66c857e08cb98e7147"
+          },
+          "policy": {
+            "profile_id": "custom-assistant",
+            "version": 2
+          },
+          "revocation_epoch": 1,
+          "created_at": "2026-11-18T17:00:00.000Z",
+          "ended": null
+        }
+      ]
+    }
+  },
+  "expect": {
+    "verdict": "reject",
+    "layer": "schema",
+    "error": "invalid_params"
+  }
+}

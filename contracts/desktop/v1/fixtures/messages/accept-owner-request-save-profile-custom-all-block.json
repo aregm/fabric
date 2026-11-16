@@ -1,0 +1,38 @@
+{
+  "description": "A custom profile with every free row block; delete_event stays ask and calendar sharing stays block.",
+  "schema": "owner-channel.schema.json#/$defs/owner_request",
+  "value": {
+    "protocol": "fabric-desktop/1",
+    "id": "command-8",
+    "method": "save_profile",
+    "params": {
+      "expected_revision": 8,
+      "change": {
+        "kind": "save_custom",
+        "profile": {
+          "profile_id": null,
+          "name": "Lockdown",
+          "rows": {
+            "list_and_availability": "block",
+            "read_event_details": "block",
+            "create_in_agent_drafts": "block",
+            "create_in_existing_calendar": "block",
+            "edit_fabric_created_event": "block",
+            "edit_preexisting_event": "block",
+            "send_or_change_invitations": "block",
+            "respond_to_invitation": "block",
+            "delete_event": "ask",
+            "delete_calendar_or_change_sharing": "block"
+          }
+        },
+        "acknowledged_expansion": null
+      }
+    }
+  },
+  "expect": {
+    "verdict": "accept",
+    "canonical": "{\"id\":\"command-8\",\"method\":\"save_profile\",\"params\":{\"change\":{\"acknowledged_expansion\":null,\"kind\":\"save_custom\",\"profile\":{\"name\":\"Lockdown\",\"profile_id\":null,\"rows\":{\"create_in_agent_drafts\":\"block\",\"create_in_existing_calendar\":\"block\",\"delete_calendar_or_change_sharing\":\"block\",\"delete_event\":\"ask\",\"edit_fabric_created_event\":\"block\",\"edit_preexisting_event\":\"block\",\"list_and_availability\":\"block\",\"read_event_details\":\"block\",\"respond_to_invitation\":\"block\",\"send_or_change_invitations\":\"block\"}}},\"expected_revision\":8},\"protocol\":\"fabric-desktop/1\"}",
+    "command_digest": "sha256:fdd329b357d60235a387229d9586a2cdd031ba65430cfa3d41bb1b16a28d79f8",
+    "action_digest": null
+  }
+}

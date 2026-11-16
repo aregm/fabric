@@ -1,0 +1,51 @@
+{
+  "description": "A session grant without session_id.",
+  "schema": "owner-channel.schema.json#/$defs/grant",
+  "value": {
+    "grant_id": "grant-5",
+    "revision": 1,
+    "agent_id": "agent-claude-code",
+    "purpose": "Check this week's meetings while planning the release.",
+    "tools": [
+      "fabric_calendar_read",
+      "fabric_request_result"
+    ],
+    "scope": {
+      "calendars": [
+        {
+          "account_id": "acct-1",
+          "calendar_id": "cal-primary"
+        }
+      ],
+      "window": {
+        "start": "2026-11-20T06:00:00.000Z",
+        "end": "2026-11-21T06:00:00.000Z"
+      },
+      "fields": [
+        "time",
+        "title"
+      ],
+      "recipients": null,
+      "send_updates": null
+    },
+    "term": {
+      "kind": "session"
+    },
+    "origin": {
+      "request_id": "request-15",
+      "approval_digest": "sha256:9ffdeaab4d3c5b25375e3861c0880d5f2fa9c737c6cc785c27db75f789c76c07"
+    },
+    "policy": {
+      "profile_id": "careful",
+      "version": 1
+    },
+    "revocation_epoch": 0,
+    "created_at": "2026-11-20T14:05:00.000Z",
+    "ended": null
+  },
+  "expect": {
+    "verdict": "reject",
+    "layer": "schema",
+    "error": "invalid_params"
+  }
+}

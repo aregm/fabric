@@ -1,0 +1,26 @@
+{
+  "description": "Propose an empty attendee list, which removes every attendee.",
+  "schema": "agent-channel.schema.json#/$defs/agent_request",
+  "value": {
+    "protocol": "fabric-desktop/1",
+    "id": "call-10",
+    "method": "fabric_calendar_propose_invitation",
+    "params": {
+      "account_id": "acct-1",
+      "calendar_id": "cal-team-shared",
+      "event": {
+        "event_id": "evt-fabric-0042",
+        "revision": "3181161799000000"
+      },
+      "attendees": [],
+      "send_updates": "none",
+      "task": "Remove everyone from the hold."
+    }
+  },
+  "expect": {
+    "verdict": "accept",
+    "canonical": "{\"id\":\"call-10\",\"method\":\"fabric_calendar_propose_invitation\",\"params\":{\"account_id\":\"acct-1\",\"attendees\":[],\"calendar_id\":\"cal-team-shared\",\"event\":{\"event_id\":\"evt-fabric-0042\",\"revision\":\"3181161799000000\"},\"send_updates\":\"none\",\"task\":\"Remove everyone from the hold.\"},\"protocol\":\"fabric-desktop/1\"}",
+    "command_digest": null,
+    "action_digest": "sha256:5a00149ea43cc88400227821412614e41377c5b12c269d6af74096ddd24e7cc8"
+  }
+}

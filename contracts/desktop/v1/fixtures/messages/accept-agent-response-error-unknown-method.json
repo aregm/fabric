@@ -1,0 +1,23 @@
+{
+  "description": "unknown_method for a tool that does not exist.",
+  "schema": "agent-channel.schema.json#/$defs/agent_response",
+  "value": {
+    "protocol": "fabric-desktop/1",
+    "id": "call-23",
+    "method": "fabric_calendar_delete_calendar",
+    "error": {
+      "code": "unknown_method",
+      "message": "There is no such tool.",
+      "retryable": false,
+      "recovery": "report_problem",
+      "correlation_id": "corr-0001",
+      "detail": null
+    }
+  },
+  "expect": {
+    "verdict": "accept",
+    "canonical": "{\"error\":{\"code\":\"unknown_method\",\"correlation_id\":\"corr-0001\",\"detail\":null,\"message\":\"There is no such tool.\",\"recovery\":\"report_problem\",\"retryable\":false},\"id\":\"call-23\",\"method\":\"fabric_calendar_delete_calendar\",\"protocol\":\"fabric-desktop/1\"}",
+    "command_digest": null,
+    "action_digest": null
+  }
+}

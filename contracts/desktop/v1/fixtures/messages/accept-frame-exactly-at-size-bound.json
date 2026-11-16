@@ -1,0 +1,16 @@
+{
+  "description": "A valid get_snapshot frame padded with trailing spaces to exactly 1,048,576 bytes.",
+  "schema": "owner-channel.schema.json#/$defs/owner_request",
+  "generate": {
+    "prefix": "{\"id\":\"snapshot-1\",\"method\":\"get_snapshot\",\"params\":{},\"protocol\":\"fabric-desktop/1\"}",
+    "fill": " ",
+    "count": 1048491,
+    "suffix": ""
+  },
+  "expect": {
+    "verdict": "accept",
+    "canonical": "{\"id\":\"snapshot-1\",\"method\":\"get_snapshot\",\"params\":{},\"protocol\":\"fabric-desktop/1\"}",
+    "command_digest": null,
+    "action_digest": null
+  }
+}

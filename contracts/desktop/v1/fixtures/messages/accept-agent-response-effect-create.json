@@ -1,0 +1,31 @@
+{
+  "description": "The effect of an applied create: the event as the provider now has it.",
+  "schema": "agent-channel.schema.json#/$defs/agent_response",
+  "value": {
+    "protocol": "fabric-desktop/1",
+    "id": "call-6",
+    "method": "fabric_calendar_propose_create",
+    "result": {
+      "request": {
+        "request_id": "request-25",
+        "updated_at": "2026-11-20T16:05:03.100Z",
+        "status": {
+          "state": "applied"
+        }
+      },
+      "result": {
+        "kind": "effect",
+        "event": {
+          "event_id": "evt-fabric-0051",
+          "revision": "3181162000000000"
+        }
+      }
+    }
+  },
+  "expect": {
+    "verdict": "accept",
+    "canonical": "{\"id\":\"call-6\",\"method\":\"fabric_calendar_propose_create\",\"protocol\":\"fabric-desktop/1\",\"result\":{\"request\":{\"request_id\":\"request-25\",\"status\":{\"state\":\"applied\"},\"updated_at\":\"2026-11-20T16:05:03.100Z\"},\"result\":{\"event\":{\"event_id\":\"evt-fabric-0051\",\"revision\":\"3181162000000000\"},\"kind\":\"effect\"}}}",
+    "command_digest": null,
+    "action_digest": null
+  }
+}

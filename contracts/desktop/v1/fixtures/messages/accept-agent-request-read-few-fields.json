@@ -1,0 +1,30 @@
+{
+  "description": "Read events naming only time and title.",
+  "schema": "agent-channel.schema.json#/$defs/agent_request",
+  "value": {
+    "protocol": "fabric-desktop/1",
+    "id": "call-3",
+    "method": "fabric_calendar_read",
+    "params": {
+      "account_id": "acct-1",
+      "calendar_ids": [
+        "cal-primary"
+      ],
+      "window": {
+        "start": "2026-11-20T06:00:00.000Z",
+        "end": "2026-11-21T06:00:00.000Z"
+      },
+      "fields": [
+        "time",
+        "title"
+      ],
+      "task": "See what is on Friday."
+    }
+  },
+  "expect": {
+    "verdict": "accept",
+    "canonical": "{\"id\":\"call-3\",\"method\":\"fabric_calendar_read\",\"params\":{\"account_id\":\"acct-1\",\"calendar_ids\":[\"cal-primary\"],\"fields\":[\"time\",\"title\"],\"task\":\"See what is on Friday.\",\"window\":{\"end\":\"2026-11-21T06:00:00.000Z\",\"start\":\"2026-11-20T06:00:00.000Z\"}},\"protocol\":\"fabric-desktop/1\"}",
+    "command_digest": null,
+    "action_digest": "sha256:4043b069e2417e4c36be382f6dabd3c2d40fcf3e031506b6a123e55eb57a997c"
+  }
+}

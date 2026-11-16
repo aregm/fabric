@@ -1,0 +1,10 @@
+{
+  "description": "A valid notice followed by text that is not whitespace.",
+  "schema": "owner-channel.schema.json#/$defs/owner_notice",
+  "text": "{\"change\":{\"kind\":\"snapshot_required\"},\"protocol\":\"fabric-desktop/1\",\"sequence\":1318} x",
+  "expect": {
+    "verdict": "reject",
+    "layer": "frame",
+    "error": "malformed_frame"
+  }
+}

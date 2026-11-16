@@ -1,0 +1,32 @@
+{
+  "description": "Propose renaming an event: only the title changes.",
+  "schema": "agent-channel.schema.json#/$defs/agent_request",
+  "value": {
+    "protocol": "fabric-desktop/1",
+    "id": "call-8",
+    "method": "fabric_calendar_propose_update",
+    "params": {
+      "account_id": "acct-1",
+      "calendar_id": "cal-primary",
+      "event": {
+        "event_id": "evt-fabric-0042",
+        "revision": "3181161799000000"
+      },
+      "changes": {
+        "title": "Design review",
+        "start": null,
+        "end": null,
+        "description": null,
+        "location": null
+      },
+      "send_updates": "none",
+      "task": "Rename the event."
+    }
+  },
+  "expect": {
+    "verdict": "accept",
+    "canonical": "{\"id\":\"call-8\",\"method\":\"fabric_calendar_propose_update\",\"params\":{\"account_id\":\"acct-1\",\"calendar_id\":\"cal-primary\",\"changes\":{\"description\":null,\"end\":null,\"location\":null,\"start\":null,\"title\":\"Design review\"},\"event\":{\"event_id\":\"evt-fabric-0042\",\"revision\":\"3181161799000000\"},\"send_updates\":\"none\",\"task\":\"Rename the event.\"},\"protocol\":\"fabric-desktop/1\"}",
+    "command_digest": null,
+    "action_digest": "sha256:25e541c20c404635ceccb416d26753550547fb6b89fa366eb2b858ef61c76753"
+  }
+}

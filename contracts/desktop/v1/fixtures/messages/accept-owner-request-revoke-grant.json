@@ -1,0 +1,19 @@
+{
+  "description": "Revoke an until-revoked grant.",
+  "schema": "owner-channel.schema.json#/$defs/owner_request",
+  "value": {
+    "protocol": "fabric-desktop/1",
+    "id": "command-50",
+    "method": "revoke_grant",
+    "params": {
+      "grant_id": "grant-6",
+      "expected_revision": 2
+    }
+  },
+  "expect": {
+    "verdict": "accept",
+    "canonical": "{\"id\":\"command-50\",\"method\":\"revoke_grant\",\"params\":{\"expected_revision\":2,\"grant_id\":\"grant-6\"},\"protocol\":\"fabric-desktop/1\"}",
+    "command_digest": "sha256:54af0891038b9aab74322c5ba7208c0697658168a55b4bedcf6d019bef12dbb8",
+    "action_digest": null
+  }
+}

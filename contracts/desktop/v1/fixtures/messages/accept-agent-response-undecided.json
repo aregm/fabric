@@ -1,0 +1,25 @@
+{
+  "description": "The prover could not decide.",
+  "schema": "agent-channel.schema.json#/$defs/agent_response",
+  "value": {
+    "protocol": "fabric-desktop/1",
+    "id": "call-12",
+    "method": "fabric_calendar_propose_response",
+    "result": {
+      "request": {
+        "request_id": "request-30",
+        "updated_at": "2026-11-20T17:00:30.000Z",
+        "status": {
+          "state": "undecided"
+        }
+      },
+      "result": null
+    }
+  },
+  "expect": {
+    "verdict": "accept",
+    "canonical": "{\"id\":\"call-12\",\"method\":\"fabric_calendar_propose_response\",\"protocol\":\"fabric-desktop/1\",\"result\":{\"request\":{\"request_id\":\"request-30\",\"status\":{\"state\":\"undecided\"},\"updated_at\":\"2026-11-20T17:00:30.000Z\"},\"result\":null}}",
+    "command_digest": null,
+    "action_digest": null
+  }
+}

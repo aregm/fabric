@@ -1,0 +1,33 @@
+{
+  "description": "Propose an event in an existing calendar in Europe/Berlin, with a non-ASCII title, a description and a location.",
+  "schema": "agent-channel.schema.json#/$defs/agent_request",
+  "value": {
+    "protocol": "fabric-desktop/1",
+    "id": "call-6",
+    "method": "fabric_calendar_propose_create",
+    "params": {
+      "account_id": "acct-1",
+      "calendar_id": "cal-team-shared",
+      "event": {
+        "title": "Caf\u00e9 sync \u2014 \u00fcbersicht \u6c34",
+        "start": {
+          "date_time": "2026-11-20T17:00:00+01:00",
+          "zone": "Europe/Berlin"
+        },
+        "end": {
+          "date_time": "2026-11-20T18:00:00+01:00",
+          "zone": "Europe/Berlin"
+        },
+        "description": "Agenda: roadmap, hiring.",
+        "location": "Caf\u00e9 am Markt"
+      },
+      "task": "Block time to plan next week."
+    }
+  },
+  "expect": {
+    "verdict": "accept",
+    "canonical": "{\"id\":\"call-6\",\"method\":\"fabric_calendar_propose_create\",\"params\":{\"account_id\":\"acct-1\",\"calendar_id\":\"cal-team-shared\",\"event\":{\"description\":\"Agenda: roadmap, hiring.\",\"end\":{\"date_time\":\"2026-11-20T18:00:00+01:00\",\"zone\":\"Europe/Berlin\"},\"location\":\"Caf\u00e9 am Markt\",\"start\":{\"date_time\":\"2026-11-20T17:00:00+01:00\",\"zone\":\"Europe/Berlin\"},\"title\":\"Caf\u00e9 sync \u2014 \u00fcbersicht \u6c34\"},\"task\":\"Block time to plan next week.\"},\"protocol\":\"fabric-desktop/1\"}",
+    "command_digest": null,
+    "action_digest": "sha256:946e82ab16496e11e80d3aeed145f2a5f020670e8d9dccca207ebd59851b766d"
+  }
+}

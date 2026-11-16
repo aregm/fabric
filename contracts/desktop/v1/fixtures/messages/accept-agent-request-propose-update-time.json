@@ -1,0 +1,38 @@
+{
+  "description": "Propose moving an event: only start and end change.",
+  "schema": "agent-channel.schema.json#/$defs/agent_request",
+  "value": {
+    "protocol": "fabric-desktop/1",
+    "id": "call-7",
+    "method": "fabric_calendar_propose_update",
+    "params": {
+      "account_id": "acct-1",
+      "calendar_id": "cal-primary",
+      "event": {
+        "event_id": "evt-7f3a9c",
+        "revision": "3181161784712000"
+      },
+      "changes": {
+        "title": null,
+        "start": {
+          "date_time": "2026-11-20T10:30:00-06:00",
+          "zone": "America/Chicago"
+        },
+        "end": {
+          "date_time": "2026-11-20T11:00:00-06:00",
+          "zone": "America/Chicago"
+        },
+        "description": null,
+        "location": null
+      },
+      "send_updates": "all",
+      "task": "Move the review."
+    }
+  },
+  "expect": {
+    "verdict": "accept",
+    "canonical": "{\"id\":\"call-7\",\"method\":\"fabric_calendar_propose_update\",\"params\":{\"account_id\":\"acct-1\",\"calendar_id\":\"cal-primary\",\"changes\":{\"description\":null,\"end\":{\"date_time\":\"2026-11-20T11:00:00-06:00\",\"zone\":\"America/Chicago\"},\"location\":null,\"start\":{\"date_time\":\"2026-11-20T10:30:00-06:00\",\"zone\":\"America/Chicago\"},\"title\":null},\"event\":{\"event_id\":\"evt-7f3a9c\",\"revision\":\"3181161784712000\"},\"send_updates\":\"all\",\"task\":\"Move the review.\"},\"protocol\":\"fabric-desktop/1\"}",
+    "command_digest": null,
+    "action_digest": "sha256:f2251bbdc46ecf96db68da8c0a5397c7a2ed4eecb175a764ac93320fb0aaf3d0"
+  }
+}

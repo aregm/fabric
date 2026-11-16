@@ -1,0 +1,34 @@
+{
+  "description": "A classification proof report with outcome need_approval.",
+  "schema": "owner-channel.schema.json#/$defs/owner_response",
+  "value": {
+    "protocol": "fabric-desktop/1",
+    "id": "proof-q-1",
+    "method": "get_proof",
+    "result": {
+      "proof_id": "proof-21-classification",
+      "request_id": "request-21",
+      "purpose": "classification",
+      "outcome": "need_approval",
+      "failing_rule": "strangers_always_ask",
+      "rule_verdicts": [
+        {
+          "rule": "strangers_always_ask",
+          "verdict": "fails"
+        }
+      ],
+      "isabelle_version": "Isabelle2025",
+      "theory_hash": "sha256:9d92e8fccd34bad0570cb6e6be7649c4a7765a523e26f438a219413be90f4edf",
+      "context_digest": "sha256:aca6644a45ad87c0084151e6c70587fcaf39be5b0fc475a4640aed4f7fbf9550",
+      "action_digest": "sha256:44c082d6119f48b181e64e8e7d3c52613fe71e5ce0eed121375193b21ae4c1a7",
+      "started_at": "2026-11-20T15:40:00.200Z",
+      "elapsed_ms": 310
+    }
+  },
+  "expect": {
+    "verdict": "accept",
+    "canonical": "{\"id\":\"proof-q-1\",\"method\":\"get_proof\",\"protocol\":\"fabric-desktop/1\",\"result\":{\"action_digest\":\"sha256:44c082d6119f48b181e64e8e7d3c52613fe71e5ce0eed121375193b21ae4c1a7\",\"context_digest\":\"sha256:aca6644a45ad87c0084151e6c70587fcaf39be5b0fc475a4640aed4f7fbf9550\",\"elapsed_ms\":310,\"failing_rule\":\"strangers_always_ask\",\"isabelle_version\":\"Isabelle2025\",\"outcome\":\"need_approval\",\"proof_id\":\"proof-21-classification\",\"purpose\":\"classification\",\"request_id\":\"request-21\",\"rule_verdicts\":[{\"rule\":\"strangers_always_ask\",\"verdict\":\"fails\"}],\"started_at\":\"2026-11-20T15:40:00.200Z\",\"theory_hash\":\"sha256:9d92e8fccd34bad0570cb6e6be7649c4a7765a523e26f438a219413be90f4edf\"}}",
+    "command_digest": null,
+    "action_digest": null
+  }
+}

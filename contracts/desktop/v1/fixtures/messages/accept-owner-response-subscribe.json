@@ -1,0 +1,18 @@
+{
+  "description": "subscribe answers with the cursor it streams from.",
+  "schema": "owner-channel.schema.json#/$defs/owner_response",
+  "value": {
+    "protocol": "fabric-desktop/1",
+    "id": "subscribe-2",
+    "method": "subscribe",
+    "result": {
+      "cursor": 1287
+    }
+  },
+  "expect": {
+    "verdict": "accept",
+    "canonical": "{\"id\":\"subscribe-2\",\"method\":\"subscribe\",\"protocol\":\"fabric-desktop/1\",\"result\":{\"cursor\":1287}}",
+    "command_digest": null,
+    "action_digest": null
+  }
+}

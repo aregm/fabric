@@ -1,0 +1,26 @@
+{
+  "description": "An owner request summary blocked with a denial that has no rule.",
+  "schema": "owner-channel.schema.json#/$defs/request",
+  "value": {
+    "request_id": "request-22",
+    "revision": 2,
+    "agent_id": "agent-codex-desktop",
+    "tool": "fabric_calendar_propose_update",
+    "account_id": "acct-1",
+    "received_at": "2026-11-20T15:30:00.000Z",
+    "updated_at": "2026-11-20T15:30:00.412Z",
+    "request_digest": "sha256:14efd6150ad30365f023f88300d6b1b3ed85c0a5de31a86388c233dd6cce8456",
+    "status": {
+      "state": "blocked",
+      "denial": {
+        "explanation": "No agent may change who can see a calendar; this is blocked in every profile.",
+        "proof_id": "proof-22-classification"
+      }
+    }
+  },
+  "expect": {
+    "verdict": "reject",
+    "layer": "schema",
+    "error": "invalid_params"
+  }
+}

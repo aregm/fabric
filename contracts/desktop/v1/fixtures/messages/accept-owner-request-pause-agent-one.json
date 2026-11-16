@@ -1,0 +1,23 @@
+{
+  "description": "Pause one agent.",
+  "schema": "owner-channel.schema.json#/$defs/owner_request",
+  "value": {
+    "protocol": "fabric-desktop/1",
+    "id": "command-47",
+    "method": "pause_agent",
+    "params": {
+      "target": {
+        "kind": "agent",
+        "agent_id": "agent-claude-code",
+        "expected_revision": 5
+      },
+      "paused": true
+    }
+  },
+  "expect": {
+    "verdict": "accept",
+    "canonical": "{\"id\":\"command-47\",\"method\":\"pause_agent\",\"params\":{\"paused\":true,\"target\":{\"agent_id\":\"agent-claude-code\",\"expected_revision\":5,\"kind\":\"agent\"}},\"protocol\":\"fabric-desktop/1\"}",
+    "command_digest": "sha256:84013f6456dfbc25360f171ef786a6ff895f0158e0ca5f72ce6b9e178afaae22",
+    "action_digest": null
+  }
+}

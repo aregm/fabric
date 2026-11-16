@@ -1,0 +1,28 @@
+{
+  "description": "The effect of an applied delete: the event is null.",
+  "schema": "agent-channel.schema.json#/$defs/agent_response",
+  "value": {
+    "protocol": "fabric-desktop/1",
+    "id": "call-13",
+    "method": "fabric_calendar_propose_delete",
+    "result": {
+      "request": {
+        "request_id": "request-32",
+        "updated_at": "2026-11-20T17:10:00.000Z",
+        "status": {
+          "state": "applied"
+        }
+      },
+      "result": {
+        "kind": "effect",
+        "event": null
+      }
+    }
+  },
+  "expect": {
+    "verdict": "accept",
+    "canonical": "{\"id\":\"call-13\",\"method\":\"fabric_calendar_propose_delete\",\"protocol\":\"fabric-desktop/1\",\"result\":{\"request\":{\"request_id\":\"request-32\",\"status\":{\"state\":\"applied\"},\"updated_at\":\"2026-11-20T17:10:00.000Z\"},\"result\":{\"event\":null,\"kind\":\"effect\"}}}",
+    "command_digest": null,
+    "action_digest": null
+  }
+}

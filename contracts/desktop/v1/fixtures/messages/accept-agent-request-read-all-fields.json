@@ -1,0 +1,36 @@
+{
+  "description": "Read events naming all seven fields.",
+  "schema": "agent-channel.schema.json#/$defs/agent_request",
+  "value": {
+    "protocol": "fabric-desktop/1",
+    "id": "call-4",
+    "method": "fabric_calendar_read",
+    "params": {
+      "account_id": "acct-1",
+      "calendar_ids": [
+        "cal-primary",
+        "cal-team-shared"
+      ],
+      "window": {
+        "start": "2026-11-20T06:00:00.000Z",
+        "end": "2026-11-21T06:00:00.000Z"
+      },
+      "fields": [
+        "time",
+        "title",
+        "location",
+        "description",
+        "attendees",
+        "organizer",
+        "own_response"
+      ],
+      "task": "See what is on Friday."
+    }
+  },
+  "expect": {
+    "verdict": "accept",
+    "canonical": "{\"id\":\"call-4\",\"method\":\"fabric_calendar_read\",\"params\":{\"account_id\":\"acct-1\",\"calendar_ids\":[\"cal-primary\",\"cal-team-shared\"],\"fields\":[\"time\",\"title\",\"location\",\"description\",\"attendees\",\"organizer\",\"own_response\"],\"task\":\"See what is on Friday.\",\"window\":{\"end\":\"2026-11-21T06:00:00.000Z\",\"start\":\"2026-11-20T06:00:00.000Z\"}},\"protocol\":\"fabric-desktop/1\"}",
+    "command_digest": null,
+    "action_digest": "sha256:f2ee36f741811293958e866714bd290cd7fc973caa2a44c0015c0a232f556f22"
+  }
+}

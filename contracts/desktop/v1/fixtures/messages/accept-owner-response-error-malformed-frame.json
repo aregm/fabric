@@ -1,0 +1,23 @@
+{
+  "description": "The answer to an unreadable frame: id and method are null.",
+  "schema": "owner-channel.schema.json#/$defs/owner_response",
+  "value": {
+    "protocol": "fabric-desktop/1",
+    "id": null,
+    "method": null,
+    "error": {
+      "code": "malformed_frame",
+      "message": "The broker could not read this frame.",
+      "retryable": false,
+      "recovery": "report_problem",
+      "correlation_id": "corr-0001",
+      "detail": null
+    }
+  },
+  "expect": {
+    "verdict": "accept",
+    "canonical": "{\"error\":{\"code\":\"malformed_frame\",\"correlation_id\":\"corr-0001\",\"detail\":null,\"message\":\"The broker could not read this frame.\",\"recovery\":\"report_problem\",\"retryable\":false},\"id\":null,\"method\":null,\"protocol\":\"fabric-desktop/1\"}",
+    "command_digest": null,
+    "action_digest": null
+  }
+}

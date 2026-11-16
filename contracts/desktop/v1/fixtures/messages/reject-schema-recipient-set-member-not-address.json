@@ -1,0 +1,30 @@
+{
+  "description": "A recipient set definition with a member that is not an address.",
+  "schema": "owner-channel.schema.json#/$defs/owner_request",
+  "value": {
+    "protocol": "fabric-desktop/1",
+    "id": "command-11",
+    "method": "save_group",
+    "params": {
+      "expected_revision": 0,
+      "change": {
+        "kind": "save",
+        "recipient_set_id": null,
+        "definition": {
+          "name": "Contractors",
+          "members": [
+            "not-an-address"
+          ],
+          "domains": [
+            "example.org"
+          ]
+        }
+      }
+    }
+  },
+  "expect": {
+    "verdict": "reject",
+    "layer": "schema",
+    "error": "invalid_params"
+  }
+}

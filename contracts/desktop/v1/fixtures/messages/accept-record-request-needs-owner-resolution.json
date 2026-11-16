@@ -1,0 +1,23 @@
+{
+  "description": "A request the owner must resolve by hand.",
+  "schema": "owner-channel.schema.json#/$defs/request",
+  "value": {
+    "request_id": "request-34",
+    "revision": 11,
+    "agent_id": "agent-claude-desktop",
+    "tool": "fabric_calendar_propose_delete",
+    "account_id": "acct-1",
+    "received_at": "2026-11-20T17:30:00.000Z",
+    "updated_at": "2026-11-20T17:31:10.000Z",
+    "request_digest": "sha256:8ed222ccddc084575d47a25c48d8d093ea359a9459918246c1682a88be7ed324",
+    "status": {
+      "state": "needs_owner_resolution"
+    }
+  },
+  "expect": {
+    "verdict": "accept",
+    "canonical": "{\"account_id\":\"acct-1\",\"agent_id\":\"agent-claude-desktop\",\"received_at\":\"2026-11-20T17:30:00.000Z\",\"request_digest\":\"sha256:8ed222ccddc084575d47a25c48d8d093ea359a9459918246c1682a88be7ed324\",\"request_id\":\"request-34\",\"revision\":11,\"status\":{\"state\":\"needs_owner_resolution\"},\"tool\":\"fabric_calendar_propose_delete\",\"updated_at\":\"2026-11-20T17:31:10.000Z\"}",
+    "command_digest": null,
+    "action_digest": null
+  }
+}

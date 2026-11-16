@@ -1,0 +1,18 @@
+{
+  "description": "Ask for the result of a request; this is itself an action.",
+  "schema": "agent-channel.schema.json#/$defs/agent_request",
+  "value": {
+    "protocol": "fabric-desktop/1",
+    "id": "call-15",
+    "method": "fabric_request_result",
+    "params": {
+      "request_id": "request-25"
+    }
+  },
+  "expect": {
+    "verdict": "accept",
+    "canonical": "{\"id\":\"call-15\",\"method\":\"fabric_request_result\",\"params\":{\"request_id\":\"request-25\"},\"protocol\":\"fabric-desktop/1\"}",
+    "command_digest": null,
+    "action_digest": "sha256:775b7135d689673b79a43670ee1b80ba84db346da29c041764695a92ac69ce13"
+  }
+}

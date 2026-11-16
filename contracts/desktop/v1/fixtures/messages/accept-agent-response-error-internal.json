@@ -1,0 +1,23 @@
+{
+  "description": "internal on the agent channel.",
+  "schema": "agent-channel.schema.json#/$defs/agent_response",
+  "value": {
+    "protocol": "fabric-desktop/1",
+    "id": "call-27",
+    "method": "fabric_request_result",
+    "error": {
+      "code": "internal",
+      "message": "Something went wrong in the broker.",
+      "retryable": false,
+      "recovery": "report_problem",
+      "correlation_id": "corr-0001",
+      "detail": null
+    }
+  },
+  "expect": {
+    "verdict": "accept",
+    "canonical": "{\"error\":{\"code\":\"internal\",\"correlation_id\":\"corr-0001\",\"detail\":null,\"message\":\"Something went wrong in the broker.\",\"recovery\":\"report_problem\",\"retryable\":false},\"id\":\"call-27\",\"method\":\"fabric_request_result\",\"protocol\":\"fabric-desktop/1\"}",
+    "command_digest": null,
+    "action_digest": null
+  }
+}

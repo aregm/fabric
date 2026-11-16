@@ -1,0 +1,15 @@
+{
+  "description": "An owner request of another protocol, fabric-mobile/1.",
+  "schema": "owner-channel.schema.json#/$defs/owner_request",
+  "value": {
+    "protocol": "fabric-mobile/1",
+    "id": "snapshot-1",
+    "method": "get_snapshot",
+    "params": {}
+  },
+  "expect": {
+    "verdict": "reject",
+    "layer": "protocol",
+    "error": "unsupported_protocol"
+  }
+}

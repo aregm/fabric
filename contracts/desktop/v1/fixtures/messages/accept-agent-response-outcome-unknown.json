@@ -1,0 +1,25 @@
+{
+  "description": "The outcome at the provider is not known yet.",
+  "schema": "agent-channel.schema.json#/$defs/agent_response",
+  "value": {
+    "protocol": "fabric-desktop/1",
+    "id": "call-14",
+    "method": "fabric_request_status",
+    "result": {
+      "request": {
+        "request_id": "request-33",
+        "updated_at": "2026-11-20T17:20:00.000Z",
+        "status": {
+          "state": "outcome_unknown"
+        }
+      },
+      "result": null
+    }
+  },
+  "expect": {
+    "verdict": "accept",
+    "canonical": "{\"id\":\"call-14\",\"method\":\"fabric_request_status\",\"protocol\":\"fabric-desktop/1\",\"result\":{\"request\":{\"request_id\":\"request-33\",\"status\":{\"state\":\"outcome_unknown\"},\"updated_at\":\"2026-11-20T17:20:00.000Z\"},\"result\":null}}",
+    "command_digest": null,
+    "action_digest": null
+  }
+}

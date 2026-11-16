@@ -1,0 +1,76 @@
+{
+  "description": "save_preferences with zone, workday, protected times, uninterrupted time, buffer and warning calendars set.",
+  "schema": "owner-channel.schema.json#/$defs/owner_request",
+  "value": {
+    "protocol": "fabric-desktop/1",
+    "id": "command-10",
+    "method": "save_preferences",
+    "params": {
+      "expected_revision": 0,
+      "settings": {
+        "zone": "America/Chicago",
+        "workday": {
+          "days": [
+            "monday",
+            "tuesday",
+            "wednesday",
+            "thursday",
+            "friday"
+          ],
+          "start": "09:00",
+          "end": "17:30"
+        },
+        "protected_times": [
+          {
+            "enabled": true,
+            "range": {
+              "days": [
+                "monday",
+                "wednesday",
+                "friday"
+              ],
+              "start": "12:00",
+              "end": "13:00"
+            }
+          },
+          {
+            "enabled": false,
+            "range": {
+              "days": [
+                "saturday",
+                "sunday"
+              ],
+              "start": "00:00",
+              "end": "23:59"
+            }
+          }
+        ],
+        "uninterrupted": {
+          "enabled": true,
+          "minimum_minutes": 120,
+          "part_of_day": "morning"
+        },
+        "buffer": {
+          "enabled": true,
+          "minutes": 10
+        },
+        "warning_calendars": [
+          {
+            "account_id": "acct-1",
+            "calendar_id": "cal-primary"
+          },
+          {
+            "account_id": "acct-2",
+            "calendar_id": "cal-work-primary"
+          }
+        ]
+      }
+    }
+  },
+  "expect": {
+    "verdict": "accept",
+    "canonical": "{\"id\":\"command-10\",\"method\":\"save_preferences\",\"params\":{\"expected_revision\":0,\"settings\":{\"buffer\":{\"enabled\":true,\"minutes\":10},\"protected_times\":[{\"enabled\":true,\"range\":{\"days\":[\"monday\",\"wednesday\",\"friday\"],\"end\":\"13:00\",\"start\":\"12:00\"}},{\"enabled\":false,\"range\":{\"days\":[\"saturday\",\"sunday\"],\"end\":\"23:59\",\"start\":\"00:00\"}}],\"uninterrupted\":{\"enabled\":true,\"minimum_minutes\":120,\"part_of_day\":\"morning\"},\"warning_calendars\":[{\"account_id\":\"acct-1\",\"calendar_id\":\"cal-primary\"},{\"account_id\":\"acct-2\",\"calendar_id\":\"cal-work-primary\"}],\"workday\":{\"days\":[\"monday\",\"tuesday\",\"wednesday\",\"thursday\",\"friday\"],\"end\":\"17:30\",\"start\":\"09:00\"},\"zone\":\"America/Chicago\"}},\"protocol\":\"fabric-desktop/1\"}",
+    "command_digest": "sha256:461913b5ff67d8d099b8c5b8be33c7f211771c2d3f179d566635f061d2e3e01c",
+    "action_digest": null
+  }
+}

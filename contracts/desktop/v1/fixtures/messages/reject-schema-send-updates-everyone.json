@@ -1,0 +1,28 @@
+{
+  "description": "send_updates everyone.",
+  "schema": "agent-channel.schema.json#/$defs/agent_request",
+  "value": {
+    "protocol": "fabric-desktop/1",
+    "id": "call-9",
+    "method": "fabric_calendar_propose_invitation",
+    "params": {
+      "account_id": "acct-1",
+      "calendar_id": "cal-team-shared",
+      "event": {
+        "event_id": "evt-fabric-0042",
+        "revision": "3181161799000000"
+      },
+      "attendees": [
+        "ally@example.net",
+        "stranger@example.org"
+      ],
+      "send_updates": "everyone",
+      "task": "Invite the team to the planning meeting."
+    }
+  },
+  "expect": {
+    "verdict": "reject",
+    "layer": "schema",
+    "error": "invalid_params"
+  }
+}

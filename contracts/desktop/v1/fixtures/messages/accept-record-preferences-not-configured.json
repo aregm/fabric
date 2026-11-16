@@ -1,0 +1,21 @@
+{
+  "description": "Preferences, not configured.",
+  "schema": "owner-channel.schema.json#/$defs/preferences",
+  "value": {
+    "revision": 0,
+    "settings": {
+      "zone": null,
+      "workday": null,
+      "protected_times": [],
+      "uninterrupted": null,
+      "buffer": null,
+      "warning_calendars": []
+    }
+  },
+  "expect": {
+    "verdict": "accept",
+    "canonical": "{\"revision\":0,\"settings\":{\"buffer\":null,\"protected_times\":[],\"uninterrupted\":null,\"warning_calendars\":[],\"workday\":null,\"zone\":null}}",
+    "command_digest": null,
+    "action_digest": null
+  }
+}

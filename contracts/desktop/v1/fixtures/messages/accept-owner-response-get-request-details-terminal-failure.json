@@ -1,0 +1,87 @@
+{
+  "description": "Details of a request in terminal_failure, with its failure code and explanation.",
+  "schema": "owner-channel.schema.json#/$defs/owner_response",
+  "value": {
+    "protocol": "fabric-desktop/1",
+    "id": "details-5",
+    "method": "get_request_details",
+    "result": {
+      "request": {
+        "request_id": "request-26",
+        "revision": 8,
+        "agent_id": "agent-claude-desktop",
+        "tool": "fabric_calendar_propose_update",
+        "account_id": "acct-1",
+        "received_at": "2026-11-20T16:10:00.000Z",
+        "updated_at": "2026-11-20T16:10:03.900Z",
+        "request_digest": "sha256:6a66cd1c0aca0bafd49fcd63aedbc2b46632b5d180f6a843a787fc20664cf138",
+        "status": {
+          "state": "terminal_failure",
+          "failure": {
+            "code": "revision_conflict",
+            "explanation": "The event changed at Google after the agent read it, so the update was not applied."
+          }
+        }
+      },
+      "redaction": "redacted",
+      "private": null,
+      "card": null,
+      "approval": {
+        "decision": "approve",
+        "command_id": "command-61",
+        "decided_at": "2026-11-20T16:10:01.000Z",
+        "approval_digest": "sha256:51e076b553417480e037f12c7fa53602ead37c791ee6fe9b76711ba323b7cd19",
+        "scope": {
+          "calendars": [
+            {
+              "account_id": "acct-1",
+              "calendar_id": "cal-primary"
+            }
+          ],
+          "window": null,
+          "fields": null,
+          "recipients": null,
+          "send_updates": null
+        },
+        "duration": {
+          "kind": "session"
+        },
+        "effective_request_digest": "sha256:6a66cd1c0aca0bafd49fcd63aedbc2b46632b5d180f6a843a787fc20664cf138",
+        "grant_id": "grant-9"
+      },
+      "proof_ids": [
+        "proof-26-classification",
+        "proof-26-permit-1"
+      ],
+      "authorization": {
+        "profile": "fabric-broker-authorization/1",
+        "authorization_id": "authz-26-1",
+        "request_id": "request-26",
+        "agent_id": "agent-claude-desktop",
+        "action_digest": "sha256:060f0cc399ba19c15004f3be6a9a883a5b98ca4bf95b9d3c1f75e6d1c12039ae",
+        "proof_id": "proof-26-permit-1",
+        "grant_id": "grant-9",
+        "issued_at": "2026-11-20T16:10:02.000Z",
+        "expires_at": "2026-11-20T16:11:02.000Z",
+        "lifetime_seconds": 60,
+        "consumed_at": "2026-11-20T16:10:02.100Z"
+      },
+      "attempts": [
+        {
+          "number": 1,
+          "proof_id": "proof-26-permit-1",
+          "started_at": "2026-11-20T16:10:02.000Z",
+          "finished_at": "2026-11-20T16:10:03.900Z",
+          "outcome": "terminal_failure"
+        }
+      ],
+      "provider_event": null
+    }
+  },
+  "expect": {
+    "verdict": "accept",
+    "canonical": "{\"id\":\"details-5\",\"method\":\"get_request_details\",\"protocol\":\"fabric-desktop/1\",\"result\":{\"approval\":{\"approval_digest\":\"sha256:51e076b553417480e037f12c7fa53602ead37c791ee6fe9b76711ba323b7cd19\",\"command_id\":\"command-61\",\"decided_at\":\"2026-11-20T16:10:01.000Z\",\"decision\":\"approve\",\"duration\":{\"kind\":\"session\"},\"effective_request_digest\":\"sha256:6a66cd1c0aca0bafd49fcd63aedbc2b46632b5d180f6a843a787fc20664cf138\",\"grant_id\":\"grant-9\",\"scope\":{\"calendars\":[{\"account_id\":\"acct-1\",\"calendar_id\":\"cal-primary\"}],\"fields\":null,\"recipients\":null,\"send_updates\":null,\"window\":null}},\"attempts\":[{\"finished_at\":\"2026-11-20T16:10:03.900Z\",\"number\":1,\"outcome\":\"terminal_failure\",\"proof_id\":\"proof-26-permit-1\",\"started_at\":\"2026-11-20T16:10:02.000Z\"}],\"authorization\":{\"action_digest\":\"sha256:060f0cc399ba19c15004f3be6a9a883a5b98ca4bf95b9d3c1f75e6d1c12039ae\",\"agent_id\":\"agent-claude-desktop\",\"authorization_id\":\"authz-26-1\",\"consumed_at\":\"2026-11-20T16:10:02.100Z\",\"expires_at\":\"2026-11-20T16:11:02.000Z\",\"grant_id\":\"grant-9\",\"issued_at\":\"2026-11-20T16:10:02.000Z\",\"lifetime_seconds\":60,\"profile\":\"fabric-broker-authorization/1\",\"proof_id\":\"proof-26-permit-1\",\"request_id\":\"request-26\"},\"card\":null,\"private\":null,\"proof_ids\":[\"proof-26-classification\",\"proof-26-permit-1\"],\"provider_event\":null,\"redaction\":\"redacted\",\"request\":{\"account_id\":\"acct-1\",\"agent_id\":\"agent-claude-desktop\",\"received_at\":\"2026-11-20T16:10:00.000Z\",\"request_digest\":\"sha256:6a66cd1c0aca0bafd49fcd63aedbc2b46632b5d180f6a843a787fc20664cf138\",\"request_id\":\"request-26\",\"revision\":8,\"status\":{\"failure\":{\"code\":\"revision_conflict\",\"explanation\":\"The event changed at Google after the agent read it, so the update was not applied.\"},\"state\":\"terminal_failure\"},\"tool\":\"fabric_calendar_propose_update\",\"updated_at\":\"2026-11-20T16:10:03.900Z\"}}}",
+    "command_digest": null,
+    "action_digest": null
+  }
+}

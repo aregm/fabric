@@ -1,0 +1,42 @@
+{
+  "description": "Approve a read for the session with fewer calendars, a shorter window and fewer fields than asked.",
+  "schema": "owner-channel.schema.json#/$defs/owner_request",
+  "value": {
+    "protocol": "fabric-desktop/1",
+    "id": "command-43",
+    "method": "decide_request",
+    "params": {
+      "request_id": "request-18",
+      "request_digest": "sha256:7a4b17e48cacba5ae9e25209e7bd593aa0cf0d0e01a657848666a8ea138d4707",
+      "expected_revision": 2,
+      "decision": "approve",
+      "selected": {
+        "calendars": [
+          {
+            "account_id": "acct-1",
+            "calendar_id": "cal-primary"
+          }
+        ],
+        "window": {
+          "start": "2026-11-20T06:00:00.000Z",
+          "end": "2026-11-21T06:00:00.000Z"
+        },
+        "fields": [
+          "time",
+          "title"
+        ],
+        "recipients": null,
+        "send_updates": null
+      },
+      "duration": {
+        "kind": "session"
+      }
+    }
+  },
+  "expect": {
+    "verdict": "accept",
+    "canonical": "{\"id\":\"command-43\",\"method\":\"decide_request\",\"params\":{\"decision\":\"approve\",\"duration\":{\"kind\":\"session\"},\"expected_revision\":2,\"request_digest\":\"sha256:7a4b17e48cacba5ae9e25209e7bd593aa0cf0d0e01a657848666a8ea138d4707\",\"request_id\":\"request-18\",\"selected\":{\"calendars\":[{\"account_id\":\"acct-1\",\"calendar_id\":\"cal-primary\"}],\"fields\":[\"time\",\"title\"],\"recipients\":null,\"send_updates\":null,\"window\":{\"end\":\"2026-11-21T06:00:00.000Z\",\"start\":\"2026-11-20T06:00:00.000Z\"}}},\"protocol\":\"fabric-desktop/1\"}",
+    "command_digest": "sha256:72dcc60776038ac4e2730d1b4a736ca5991e257b42142049d9316fac2f3a6d6d",
+    "action_digest": null
+  }
+}

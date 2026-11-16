@@ -1,0 +1,31 @@
+{
+  "description": "A create action.",
+  "schema": "agent-channel.schema.json#/$defs/action",
+  "value": {
+    "tool": "fabric_calendar_propose_create",
+    "arguments": {
+      "account_id": "acct-1",
+      "calendar_id": "cal-drafts",
+      "event": {
+        "title": "Planning block",
+        "start": {
+          "date_time": "2026-11-20T10:00:00-06:00",
+          "zone": "America/Chicago"
+        },
+        "end": {
+          "date_time": "2026-11-20T11:00:00-06:00",
+          "zone": "America/Chicago"
+        },
+        "description": null,
+        "location": null
+      },
+      "task": "Block time to plan next week."
+    }
+  },
+  "expect": {
+    "verdict": "accept",
+    "canonical": "{\"arguments\":{\"account_id\":\"acct-1\",\"calendar_id\":\"cal-drafts\",\"event\":{\"description\":null,\"end\":{\"date_time\":\"2026-11-20T11:00:00-06:00\",\"zone\":\"America/Chicago\"},\"location\":null,\"start\":{\"date_time\":\"2026-11-20T10:00:00-06:00\",\"zone\":\"America/Chicago\"},\"title\":\"Planning block\"},\"task\":\"Block time to plan next week.\"},\"tool\":\"fabric_calendar_propose_create\"}",
+    "command_digest": null,
+    "action_digest": null
+  }
+}

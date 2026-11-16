@@ -1,0 +1,31 @@
+{
+  "description": "save_group creates a local recipient set: null id and expected revision 0.",
+  "schema": "owner-channel.schema.json#/$defs/owner_request",
+  "value": {
+    "protocol": "fabric-desktop/1",
+    "id": "command-11",
+    "method": "save_group",
+    "params": {
+      "expected_revision": 0,
+      "change": {
+        "kind": "save",
+        "recipient_set_id": null,
+        "definition": {
+          "name": "Contractors",
+          "members": [
+            "pat@example.net"
+          ],
+          "domains": [
+            "example.org"
+          ]
+        }
+      }
+    }
+  },
+  "expect": {
+    "verdict": "accept",
+    "canonical": "{\"id\":\"command-11\",\"method\":\"save_group\",\"params\":{\"change\":{\"definition\":{\"domains\":[\"example.org\"],\"members\":[\"pat@example.net\"],\"name\":\"Contractors\"},\"kind\":\"save\",\"recipient_set_id\":null},\"expected_revision\":0},\"protocol\":\"fabric-desktop/1\"}",
+    "command_digest": "sha256:6655c693b9894bcbca46cea52b9da0278c993be9a95b2558c4377c877bb2fa72",
+    "action_digest": null
+  }
+}

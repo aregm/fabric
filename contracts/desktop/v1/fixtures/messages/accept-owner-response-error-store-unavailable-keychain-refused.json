@@ -1,0 +1,25 @@
+{
+  "description": "store_unavailable because the keychain refused.",
+  "schema": "owner-channel.schema.json#/$defs/owner_response",
+  "value": {
+    "protocol": "fabric-desktop/1",
+    "id": "snapshot-5",
+    "method": "get_snapshot",
+    "error": {
+      "code": "store_unavailable",
+      "message": "The keychain refused the store key.",
+      "retryable": true,
+      "recovery": "unlock_store",
+      "correlation_id": "corr-0001",
+      "detail": {
+        "reason": "keychain_refused"
+      }
+    }
+  },
+  "expect": {
+    "verdict": "accept",
+    "canonical": "{\"error\":{\"code\":\"store_unavailable\",\"correlation_id\":\"corr-0001\",\"detail\":{\"reason\":\"keychain_refused\"},\"message\":\"The keychain refused the store key.\",\"recovery\":\"unlock_store\",\"retryable\":true},\"id\":\"snapshot-5\",\"method\":\"get_snapshot\",\"protocol\":\"fabric-desktop/1\"}",
+    "command_digest": null,
+    "action_digest": null
+  }
+}

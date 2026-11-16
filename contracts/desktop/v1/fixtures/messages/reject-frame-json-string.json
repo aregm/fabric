@@ -1,0 +1,10 @@
+{
+  "description": "A JSON string instead of an object.",
+  "schema": "agent-channel.schema.json#/$defs/agent_request",
+  "value": "fabric_calendar_list",
+  "expect": {
+    "verdict": "reject",
+    "layer": "frame",
+    "error": "malformed_frame"
+  }
+}

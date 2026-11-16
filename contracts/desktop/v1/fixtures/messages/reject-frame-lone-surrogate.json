@@ -1,0 +1,10 @@
+{
+  "description": "A valid hello frame whose client name contains an unpaired surrogate escape.",
+  "schema": "owner-channel.schema.json#/$defs/owner_request",
+  "text": "{\"id\":\"hello-1\",\"method\":\"hello\",\"params\":{\"client\":{\"build\":\"0.1.0-dev+20261115\",\"name\":\"Fabric \\ud800Calendar\"},\"schema_version\":1},\"protocol\":\"fabric-desktop/1\"}",
+  "expect": {
+    "verdict": "reject",
+    "layer": "frame",
+    "error": "malformed_frame"
+  }
+}

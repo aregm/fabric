@@ -1,0 +1,18 @@
+{
+  "description": "connect_google with a null account id starts the consent flow for a new account.",
+  "schema": "owner-channel.schema.json#/$defs/owner_request",
+  "value": {
+    "protocol": "fabric-desktop/1",
+    "id": "command-1",
+    "method": "connect_google",
+    "params": {
+      "account_id": null
+    }
+  },
+  "expect": {
+    "verdict": "accept",
+    "canonical": "{\"id\":\"command-1\",\"method\":\"connect_google\",\"params\":{\"account_id\":null},\"protocol\":\"fabric-desktop/1\"}",
+    "command_digest": "sha256:6825abc31dc9c99c8857724268492a44e0c794ad58c471c7e6711bf0eb894434",
+    "action_digest": null
+  }
+}

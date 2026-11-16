@@ -1,0 +1,12 @@
+{
+  "description": "A record entry whose value is an array is refused at the frame layer too.",
+  "schema": "owner-channel.schema.json#/$defs/profile",
+  "value": [
+    "careful"
+  ],
+  "expect": {
+    "verdict": "reject",
+    "layer": "frame",
+    "error": "malformed_frame"
+  }
+}

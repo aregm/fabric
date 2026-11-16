@@ -1,0 +1,10 @@
+{
+  "description": "A valid decide_request whose expected_revision is written 3e0.",
+  "schema": "owner-channel.schema.json#/$defs/owner_request",
+  "text": "{\"id\":\"command-42\",\"method\":\"decide_request\",\"params\":{\"decision\":\"approve\",\"duration\":{\"kind\":\"one_request\"},\"expected_revision\":3e0,\"request_digest\":\"sha256:9448c124de44cd137bb4a3c63df81e9a3a0ae40af06db3642c413320c1d76053\",\"request_id\":\"request-17\",\"selected\":null},\"protocol\":\"fabric-desktop/1\"}",
+  "expect": {
+    "verdict": "reject",
+    "layer": "frame",
+    "error": "malformed_frame"
+  }
+}

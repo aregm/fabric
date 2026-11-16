@@ -1,0 +1,23 @@
+{
+  "description": "unknown_method repeats the unknown method name.",
+  "schema": "owner-channel.schema.json#/$defs/owner_response",
+  "value": {
+    "protocol": "fabric-desktop/1",
+    "id": "x-1",
+    "method": "approve_all",
+    "error": {
+      "code": "unknown_method",
+      "message": "approve_all is not a method of the owner channel.",
+      "retryable": false,
+      "recovery": "report_problem",
+      "correlation_id": "corr-0001",
+      "detail": null
+    }
+  },
+  "expect": {
+    "verdict": "accept",
+    "canonical": "{\"error\":{\"code\":\"unknown_method\",\"correlation_id\":\"corr-0001\",\"detail\":null,\"message\":\"approve_all is not a method of the owner channel.\",\"recovery\":\"report_problem\",\"retryable\":false},\"id\":\"x-1\",\"method\":\"approve_all\",\"protocol\":\"fabric-desktop/1\"}",
+    "command_digest": null,
+    "action_digest": null
+  }
+}

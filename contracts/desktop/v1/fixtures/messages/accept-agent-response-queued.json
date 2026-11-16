@@ -1,0 +1,25 @@
+{
+  "description": "A status answer for a queued request.",
+  "schema": "agent-channel.schema.json#/$defs/agent_response",
+  "value": {
+    "protocol": "fabric-desktop/1",
+    "id": "call-14",
+    "method": "fabric_request_status",
+    "result": {
+      "request": {
+        "request_id": "request-25",
+        "updated_at": "2026-11-20T16:05:01.900Z",
+        "status": {
+          "state": "queued"
+        }
+      },
+      "result": null
+    }
+  },
+  "expect": {
+    "verdict": "accept",
+    "canonical": "{\"id\":\"call-14\",\"method\":\"fabric_request_status\",\"protocol\":\"fabric-desktop/1\",\"result\":{\"request\":{\"request_id\":\"request-25\",\"status\":{\"state\":\"queued\"},\"updated_at\":\"2026-11-20T16:05:01.900Z\"},\"result\":null}}",
+    "command_digest": null,
+    "action_digest": null
+  }
+}

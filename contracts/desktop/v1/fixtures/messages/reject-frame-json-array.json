@@ -1,0 +1,23 @@
+{
+  "description": "A JSON array holding a valid frame instead of an object.",
+  "schema": "owner-channel.schema.json#/$defs/owner_request",
+  "value": [
+    {
+      "protocol": "fabric-desktop/1",
+      "id": "hello-1",
+      "method": "hello",
+      "params": {
+        "client": {
+          "name": "Fabric Calendar",
+          "build": "0.1.0-dev+20261115"
+        },
+        "schema_version": 1
+      }
+    }
+  ],
+  "expect": {
+    "verdict": "reject",
+    "layer": "frame",
+    "error": "malformed_frame"
+  }
+}

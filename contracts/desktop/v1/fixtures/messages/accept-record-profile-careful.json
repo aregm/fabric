@@ -1,0 +1,28 @@
+{
+  "description": "The built-in profile Careful exactly as the schema fixes it.",
+  "schema": "owner-channel.schema.json#/$defs/profile",
+  "value": {
+    "kind": "built_in",
+    "profile_id": "careful",
+    "name": "Careful",
+    "version": 1,
+    "rows": {
+      "list_and_availability": "allow",
+      "read_event_details": "ask",
+      "create_in_agent_drafts": "allow",
+      "create_in_existing_calendar": "ask",
+      "edit_fabric_created_event": "ask",
+      "edit_preexisting_event": "ask",
+      "send_or_change_invitations": "ask",
+      "respond_to_invitation": "ask",
+      "delete_event": "ask",
+      "delete_calendar_or_change_sharing": "block"
+    }
+  },
+  "expect": {
+    "verdict": "accept",
+    "canonical": "{\"kind\":\"built_in\",\"name\":\"Careful\",\"profile_id\":\"careful\",\"rows\":{\"create_in_agent_drafts\":\"allow\",\"create_in_existing_calendar\":\"ask\",\"delete_calendar_or_change_sharing\":\"block\",\"delete_event\":\"ask\",\"edit_fabric_created_event\":\"ask\",\"edit_preexisting_event\":\"ask\",\"list_and_availability\":\"allow\",\"read_event_details\":\"ask\",\"respond_to_invitation\":\"ask\",\"send_or_change_invitations\":\"ask\"},\"version\":1}",
+    "command_digest": null,
+    "action_digest": null
+  }
+}

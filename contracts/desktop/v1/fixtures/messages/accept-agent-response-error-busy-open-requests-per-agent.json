@@ -1,0 +1,27 @@
+{
+  "description": "busy naming open_requests_per_agent with its CD-G0 maximum.",
+  "schema": "agent-channel.schema.json#/$defs/agent_response",
+  "value": {
+    "protocol": "fabric-desktop/1",
+    "id": "call-20",
+    "method": "fabric_calendar_propose_create",
+    "error": {
+      "code": "busy",
+      "message": "Too many requests; try again later.",
+      "retryable": true,
+      "recovery": "retry_later",
+      "correlation_id": "corr-0001",
+      "detail": {
+        "limit": "open_requests_per_agent",
+        "maximum": 25,
+        "retry_after_ms": 4000
+      }
+    }
+  },
+  "expect": {
+    "verdict": "accept",
+    "canonical": "{\"error\":{\"code\":\"busy\",\"correlation_id\":\"corr-0001\",\"detail\":{\"limit\":\"open_requests_per_agent\",\"maximum\":25,\"retry_after_ms\":4000},\"message\":\"Too many requests; try again later.\",\"recovery\":\"retry_later\",\"retryable\":true},\"id\":\"call-20\",\"method\":\"fabric_calendar_propose_create\",\"protocol\":\"fabric-desktop/1\"}",
+    "command_digest": null,
+    "action_digest": null
+  }
+}

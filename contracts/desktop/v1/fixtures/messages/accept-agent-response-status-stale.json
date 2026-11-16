@@ -1,0 +1,25 @@
+{
+  "description": "A status answer for a request in state stale.",
+  "schema": "agent-channel.schema.json#/$defs/agent_response",
+  "value": {
+    "protocol": "fabric-desktop/1",
+    "id": "call-14",
+    "method": "fabric_request_status",
+    "result": {
+      "request": {
+        "request_id": "request-17",
+        "updated_at": "2026-11-20T15:05:00.000Z",
+        "status": {
+          "state": "stale"
+        }
+      },
+      "result": null
+    }
+  },
+  "expect": {
+    "verdict": "accept",
+    "canonical": "{\"id\":\"call-14\",\"method\":\"fabric_request_status\",\"protocol\":\"fabric-desktop/1\",\"result\":{\"request\":{\"request_id\":\"request-17\",\"status\":{\"state\":\"stale\"},\"updated_at\":\"2026-11-20T15:05:00.000Z\"},\"result\":null}}",
+    "command_digest": null,
+    "action_digest": null
+  }
+}

@@ -1,0 +1,23 @@
+{
+  "description": "snapshot_required for a cursor older than the kept history.",
+  "schema": "owner-channel.schema.json#/$defs/owner_response",
+  "value": {
+    "protocol": "fabric-desktop/1",
+    "id": "subscribe-1",
+    "method": "subscribe",
+    "error": {
+      "code": "snapshot_required",
+      "message": "The cursor is too old. Take a fresh snapshot.",
+      "retryable": false,
+      "recovery": "refresh_snapshot",
+      "correlation_id": "corr-0001",
+      "detail": null
+    }
+  },
+  "expect": {
+    "verdict": "accept",
+    "canonical": "{\"error\":{\"code\":\"snapshot_required\",\"correlation_id\":\"corr-0001\",\"detail\":null,\"message\":\"The cursor is too old. Take a fresh snapshot.\",\"recovery\":\"refresh_snapshot\",\"retryable\":false},\"id\":\"subscribe-1\",\"method\":\"subscribe\",\"protocol\":\"fabric-desktop/1\"}",
+    "command_digest": null,
+    "action_digest": null
+  }
+}

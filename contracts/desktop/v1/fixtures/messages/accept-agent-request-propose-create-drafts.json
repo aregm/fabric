@@ -1,0 +1,33 @@
+{
+  "description": "Propose an event in the Agent Drafts calendar with no description and no location.",
+  "schema": "agent-channel.schema.json#/$defs/agent_request",
+  "value": {
+    "protocol": "fabric-desktop/1",
+    "id": "call-5",
+    "method": "fabric_calendar_propose_create",
+    "params": {
+      "account_id": "acct-1",
+      "calendar_id": "cal-drafts",
+      "event": {
+        "title": "Planning block",
+        "start": {
+          "date_time": "2026-11-20T10:00:00-06:00",
+          "zone": "America/Chicago"
+        },
+        "end": {
+          "date_time": "2026-11-20T11:00:00-06:00",
+          "zone": "America/Chicago"
+        },
+        "description": null,
+        "location": null
+      },
+      "task": "Block time to plan next week."
+    }
+  },
+  "expect": {
+    "verdict": "accept",
+    "canonical": "{\"id\":\"call-5\",\"method\":\"fabric_calendar_propose_create\",\"params\":{\"account_id\":\"acct-1\",\"calendar_id\":\"cal-drafts\",\"event\":{\"description\":null,\"end\":{\"date_time\":\"2026-11-20T11:00:00-06:00\",\"zone\":\"America/Chicago\"},\"location\":null,\"start\":{\"date_time\":\"2026-11-20T10:00:00-06:00\",\"zone\":\"America/Chicago\"},\"title\":\"Planning block\"},\"task\":\"Block time to plan next week.\"},\"protocol\":\"fabric-desktop/1\"}",
+    "command_digest": null,
+    "action_digest": "sha256:ca58d65efd78defbf5ea1831a1e0ad0b5627e0d407580bbb3496e4f06df3a9a1"
+  }
+}

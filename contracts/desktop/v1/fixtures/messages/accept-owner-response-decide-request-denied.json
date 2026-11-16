@@ -1,0 +1,41 @@
+{
+  "description": "decide_request answers a denial: the request is denied and scope, duration, effective digest and grant are null.",
+  "schema": "owner-channel.schema.json#/$defs/owner_response",
+  "value": {
+    "protocol": "fabric-desktop/1",
+    "id": "command-46",
+    "method": "decide_request",
+    "result": {
+      "commit_sequence": 1294,
+      "request": {
+        "request_id": "request-17",
+        "revision": 4,
+        "agent_id": "agent-claude-desktop",
+        "tool": "fabric_calendar_propose_invitation",
+        "account_id": "acct-1",
+        "received_at": "2026-11-20T15:00:00.000Z",
+        "updated_at": "2026-11-20T15:05:00.000Z",
+        "request_digest": "sha256:9448c124de44cd137bb4a3c63df81e9a3a0ae40af06db3642c413320c1d76053",
+        "status": {
+          "state": "denied"
+        }
+      },
+      "approval": {
+        "decision": "deny",
+        "command_id": "command-46",
+        "decided_at": "2026-11-20T15:05:00.000Z",
+        "approval_digest": "sha256:2750a5830d01d4a88545c883bd066f9af7b097434c2e0ce3af5951c15c613803",
+        "scope": null,
+        "duration": null,
+        "effective_request_digest": null,
+        "grant_id": null
+      }
+    }
+  },
+  "expect": {
+    "verdict": "accept",
+    "canonical": "{\"id\":\"command-46\",\"method\":\"decide_request\",\"protocol\":\"fabric-desktop/1\",\"result\":{\"approval\":{\"approval_digest\":\"sha256:2750a5830d01d4a88545c883bd066f9af7b097434c2e0ce3af5951c15c613803\",\"command_id\":\"command-46\",\"decided_at\":\"2026-11-20T15:05:00.000Z\",\"decision\":\"deny\",\"duration\":null,\"effective_request_digest\":null,\"grant_id\":null,\"scope\":null},\"commit_sequence\":1294,\"request\":{\"account_id\":\"acct-1\",\"agent_id\":\"agent-claude-desktop\",\"received_at\":\"2026-11-20T15:00:00.000Z\",\"request_digest\":\"sha256:9448c124de44cd137bb4a3c63df81e9a3a0ae40af06db3642c413320c1d76053\",\"request_id\":\"request-17\",\"revision\":4,\"status\":{\"state\":\"denied\"},\"tool\":\"fabric_calendar_propose_invitation\",\"updated_at\":\"2026-11-20T15:05:00.000Z\"}}}",
+    "command_digest": null,
+    "action_digest": null
+  }
+}

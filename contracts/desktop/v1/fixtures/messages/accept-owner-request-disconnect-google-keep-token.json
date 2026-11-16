@@ -1,0 +1,20 @@
+{
+  "description": "Disconnect an account without revoking the provider token.",
+  "schema": "owner-channel.schema.json#/$defs/owner_request",
+  "value": {
+    "protocol": "fabric-desktop/1",
+    "id": "command-52",
+    "method": "disconnect_google",
+    "params": {
+      "account_id": "acct-2",
+      "expected_revision": 9,
+      "revoke_provider_token": false
+    }
+  },
+  "expect": {
+    "verdict": "accept",
+    "canonical": "{\"id\":\"command-52\",\"method\":\"disconnect_google\",\"params\":{\"account_id\":\"acct-2\",\"expected_revision\":9,\"revoke_provider_token\":false},\"protocol\":\"fabric-desktop/1\"}",
+    "command_digest": "sha256:1a5e0cb95125176a0a7bb12dbd7e9c3774d55fc40494998cd082e64b33051d8e",
+    "action_digest": null
+  }
+}

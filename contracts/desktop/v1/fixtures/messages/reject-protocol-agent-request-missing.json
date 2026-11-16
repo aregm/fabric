@@ -1,0 +1,14 @@
+{
+  "description": "An agent request with no protocol member.",
+  "schema": "agent-channel.schema.json#/$defs/agent_request",
+  "value": {
+    "id": "call-1",
+    "method": "fabric_calendar_list",
+    "params": {}
+  },
+  "expect": {
+    "verdict": "reject",
+    "layer": "protocol",
+    "error": "unsupported_protocol"
+  }
+}

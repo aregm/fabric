@@ -1,0 +1,23 @@
+{
+  "description": "Resume one agent with paused false.",
+  "schema": "owner-channel.schema.json#/$defs/owner_request",
+  "value": {
+    "protocol": "fabric-desktop/1",
+    "id": "command-49",
+    "method": "pause_agent",
+    "params": {
+      "target": {
+        "kind": "agent",
+        "agent_id": "agent-codex-desktop",
+        "expected_revision": 2
+      },
+      "paused": false
+    }
+  },
+  "expect": {
+    "verdict": "accept",
+    "canonical": "{\"id\":\"command-49\",\"method\":\"pause_agent\",\"params\":{\"paused\":false,\"target\":{\"agent_id\":\"agent-codex-desktop\",\"expected_revision\":2,\"kind\":\"agent\"}},\"protocol\":\"fabric-desktop/1\"}",
+    "command_digest": "sha256:f56e2b5574707c90f9062cee5a0ee0ed4085fd21e03e80baf50b32678e81e9d9",
+    "action_digest": null
+  }
+}

@@ -1,0 +1,38 @@
+{
+  "description": "The confirmed retry of the same save as a new command carrying the digest of the expansion the owner was shown.",
+  "schema": "owner-channel.schema.json#/$defs/owner_request",
+  "value": {
+    "protocol": "fabric-desktop/1",
+    "id": "command-6",
+    "method": "save_profile",
+    "params": {
+      "expected_revision": 7,
+      "change": {
+        "kind": "save_custom",
+        "profile": {
+          "profile_id": null,
+          "name": "Assistant hours",
+          "rows": {
+            "list_and_availability": "allow",
+            "read_event_details": "allow",
+            "create_in_agent_drafts": "allow",
+            "create_in_existing_calendar": "allow",
+            "edit_fabric_created_event": "allow",
+            "edit_preexisting_event": "allow",
+            "send_or_change_invitations": "allow",
+            "respond_to_invitation": "allow",
+            "delete_event": "ask",
+            "delete_calendar_or_change_sharing": "block"
+          }
+        },
+        "acknowledged_expansion": "sha256:adb707febbe6adbb34101558819c19d81e389dc6eab34ae51f6cdc29273b1d8e"
+      }
+    }
+  },
+  "expect": {
+    "verdict": "accept",
+    "canonical": "{\"id\":\"command-6\",\"method\":\"save_profile\",\"params\":{\"change\":{\"acknowledged_expansion\":\"sha256:adb707febbe6adbb34101558819c19d81e389dc6eab34ae51f6cdc29273b1d8e\",\"kind\":\"save_custom\",\"profile\":{\"name\":\"Assistant hours\",\"profile_id\":null,\"rows\":{\"create_in_agent_drafts\":\"allow\",\"create_in_existing_calendar\":\"allow\",\"delete_calendar_or_change_sharing\":\"block\",\"delete_event\":\"ask\",\"edit_fabric_created_event\":\"allow\",\"edit_preexisting_event\":\"allow\",\"list_and_availability\":\"allow\",\"read_event_details\":\"allow\",\"respond_to_invitation\":\"allow\",\"send_or_change_invitations\":\"allow\"}}},\"expected_revision\":7},\"protocol\":\"fabric-desktop/1\"}",
+    "command_digest": "sha256:675bbd8b01fe4d93e83ce2c404d75ea19c53cc0d682df210f33c6aa6127e2130",
+    "action_digest": null
+  }
+}

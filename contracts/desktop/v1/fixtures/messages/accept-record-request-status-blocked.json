@@ -1,0 +1,21 @@
+{
+  "description": "A blocked status with the agent denial.",
+  "schema": "agent-channel.schema.json#/$defs/request_status",
+  "value": {
+    "request_id": "request-22",
+    "updated_at": "2026-11-20T15:30:00.412Z",
+    "status": {
+      "state": "blocked",
+      "denial": {
+        "rule": "recurring_mutation_unsupported",
+        "explanation": "Version 1 does not change recurring events; only a reply to one occurrence is supported."
+      }
+    }
+  },
+  "expect": {
+    "verdict": "accept",
+    "canonical": "{\"request_id\":\"request-22\",\"status\":{\"denial\":{\"explanation\":\"Version 1 does not change recurring events; only a reply to one occurrence is supported.\",\"rule\":\"recurring_mutation_unsupported\"},\"state\":\"blocked\"},\"updated_at\":\"2026-11-20T15:30:00.412Z\"}",
+    "command_digest": null,
+    "action_digest": null
+  }
+}

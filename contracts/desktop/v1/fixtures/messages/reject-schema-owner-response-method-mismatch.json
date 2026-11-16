@@ -1,0 +1,17 @@
+{
+  "description": "A subscribe result labelled as a get_proof response.",
+  "schema": "owner-channel.schema.json#/$defs/owner_response",
+  "value": {
+    "protocol": "fabric-desktop/1",
+    "id": "subscribe-2",
+    "method": "get_proof",
+    "result": {
+      "cursor": 1287
+    }
+  },
+  "expect": {
+    "verdict": "reject",
+    "layer": "schema",
+    "error": "invalid_params"
+  }
+}

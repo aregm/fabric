@@ -1,0 +1,33 @@
+{
+  "description": "Propose declining one occurrence of a recurring invitation by instance id, original start time and revision.",
+  "schema": "agent-channel.schema.json#/$defs/agent_request",
+  "value": {
+    "protocol": "fabric-desktop/1",
+    "id": "call-12",
+    "method": "fabric_calendar_propose_response",
+    "params": {
+      "account_id": "acct-1",
+      "calendar_id": "cal-primary",
+      "target": {
+        "kind": "occurrence",
+        "occurrence": {
+          "instance_id": "evt-standup_20261120T150000Z",
+          "original_start_time": {
+            "date_time": "2026-11-20T10:00:00-06:00",
+            "zone": "America/Chicago"
+          },
+          "revision": "3181161700000000"
+        }
+      },
+      "response": "declined",
+      "send_updates": "external_only",
+      "task": "Decline Friday's stand-up only."
+    }
+  },
+  "expect": {
+    "verdict": "accept",
+    "canonical": "{\"id\":\"call-12\",\"method\":\"fabric_calendar_propose_response\",\"params\":{\"account_id\":\"acct-1\",\"calendar_id\":\"cal-primary\",\"response\":\"declined\",\"send_updates\":\"external_only\",\"target\":{\"kind\":\"occurrence\",\"occurrence\":{\"instance_id\":\"evt-standup_20261120T150000Z\",\"original_start_time\":{\"date_time\":\"2026-11-20T10:00:00-06:00\",\"zone\":\"America/Chicago\"},\"revision\":\"3181161700000000\"}},\"task\":\"Decline Friday's stand-up only.\"},\"protocol\":\"fabric-desktop/1\"}",
+    "command_digest": null,
+    "action_digest": "sha256:1510bbfae39b13082614c80e7fd7421abc16b5e7e47044f8a391f8ec33050bfb"
+  }
+}

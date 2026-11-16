@@ -1,0 +1,41 @@
+{
+  "description": "Approve an invitation with the exact recipients narrowed to one address.",
+  "schema": "owner-channel.schema.json#/$defs/owner_request",
+  "value": {
+    "protocol": "fabric-desktop/1",
+    "id": "command-45",
+    "method": "decide_request",
+    "params": {
+      "request_id": "request-21",
+      "request_digest": "sha256:9911dcca0cc270f88cbd3b82afc1ffe5c0dc4f41b2c3efc9398967d0c6740a56",
+      "expected_revision": 2,
+      "decision": "approve",
+      "selected": {
+        "calendars": [
+          {
+            "account_id": "acct-1",
+            "calendar_id": "cal-team-shared"
+          }
+        ],
+        "window": null,
+        "fields": null,
+        "recipients": {
+          "kind": "exact",
+          "addresses": [
+            "ally@example.net"
+          ]
+        },
+        "send_updates": "all"
+      },
+      "duration": {
+        "kind": "one_request"
+      }
+    }
+  },
+  "expect": {
+    "verdict": "accept",
+    "canonical": "{\"id\":\"command-45\",\"method\":\"decide_request\",\"params\":{\"decision\":\"approve\",\"duration\":{\"kind\":\"one_request\"},\"expected_revision\":2,\"request_digest\":\"sha256:9911dcca0cc270f88cbd3b82afc1ffe5c0dc4f41b2c3efc9398967d0c6740a56\",\"request_id\":\"request-21\",\"selected\":{\"calendars\":[{\"account_id\":\"acct-1\",\"calendar_id\":\"cal-team-shared\"}],\"fields\":null,\"recipients\":{\"addresses\":[\"ally@example.net\"],\"kind\":\"exact\"},\"send_updates\":\"all\",\"window\":null}},\"protocol\":\"fabric-desktop/1\"}",
+    "command_digest": "sha256:e83f91b2647ab25b177588fb9454431748cda889ccb4ce17a7e743e73f639f7c",
+    "action_digest": null
+  }
+}

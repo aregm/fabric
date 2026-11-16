@@ -1,0 +1,25 @@
+{
+  "description": "conflict carries the current revision.",
+  "schema": "owner-channel.schema.json#/$defs/owner_response",
+  "value": {
+    "protocol": "fabric-desktop/1",
+    "id": "command-3",
+    "method": "save_profile",
+    "error": {
+      "code": "conflict",
+      "message": "The profiles changed since this was written.",
+      "retryable": false,
+      "recovery": "refresh_snapshot",
+      "correlation_id": "corr-0001",
+      "detail": {
+        "current_revision": 8
+      }
+    }
+  },
+  "expect": {
+    "verdict": "accept",
+    "canonical": "{\"error\":{\"code\":\"conflict\",\"correlation_id\":\"corr-0001\",\"detail\":{\"current_revision\":8},\"message\":\"The profiles changed since this was written.\",\"recovery\":\"refresh_snapshot\",\"retryable\":false},\"id\":\"command-3\",\"method\":\"save_profile\",\"protocol\":\"fabric-desktop/1\"}",
+    "command_digest": null,
+    "action_digest": null
+  }
+}

@@ -1,0 +1,11 @@
+{
+  "description": "Spaces, a tab and a carriage return between tokens are ignored.",
+  "schema": "owner-channel.schema.json#/$defs/owner_request",
+  "text": "{ \"protocol\" : \"fabric-desktop/1\" ,\t\"id\" : \"query-7\" , \"method\" : \"get_snapshot\" ,\r \"params\" : { } }",
+  "expect": {
+    "verdict": "accept",
+    "canonical": "{\"id\":\"query-7\",\"method\":\"get_snapshot\",\"params\":{},\"protocol\":\"fabric-desktop/1\"}",
+    "command_digest": null,
+    "action_digest": null
+  }
+}

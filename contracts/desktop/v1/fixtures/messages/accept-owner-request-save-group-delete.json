@@ -1,0 +1,22 @@
+{
+  "description": "save_group deletes a recipient set; nothing changes at Google.",
+  "schema": "owner-channel.schema.json#/$defs/owner_request",
+  "value": {
+    "protocol": "fabric-desktop/1",
+    "id": "command-13",
+    "method": "save_group",
+    "params": {
+      "expected_revision": 3,
+      "change": {
+        "kind": "delete",
+        "recipient_set_id": "rset-team"
+      }
+    }
+  },
+  "expect": {
+    "verdict": "accept",
+    "canonical": "{\"id\":\"command-13\",\"method\":\"save_group\",\"params\":{\"change\":{\"kind\":\"delete\",\"recipient_set_id\":\"rset-team\"},\"expected_revision\":3},\"protocol\":\"fabric-desktop/1\"}",
+    "command_digest": "sha256:eaf39ba2ec31604099f39758836008dcc1ae52bf949fc9a1b748042cd0467436",
+    "action_digest": null
+  }
+}

@@ -1,0 +1,23 @@
+{
+  "description": "not_permitted for a caller that is not an enrolled agent.",
+  "schema": "agent-channel.schema.json#/$defs/agent_response",
+  "value": {
+    "protocol": "fabric-desktop/1",
+    "id": "call-21",
+    "method": "fabric_calendar_read",
+    "error": {
+      "code": "not_permitted",
+      "message": "This agent is not enrolled.",
+      "retryable": false,
+      "recovery": "none",
+      "correlation_id": "corr-0001",
+      "detail": null
+    }
+  },
+  "expect": {
+    "verdict": "accept",
+    "canonical": "{\"error\":{\"code\":\"not_permitted\",\"correlation_id\":\"corr-0001\",\"detail\":null,\"message\":\"This agent is not enrolled.\",\"recovery\":\"none\",\"retryable\":false},\"id\":\"call-21\",\"method\":\"fabric_calendar_read\",\"protocol\":\"fabric-desktop/1\"}",
+    "command_digest": null,
+    "action_digest": null
+  }
+}

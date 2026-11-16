@@ -1,0 +1,25 @@
+{
+  "description": "A Google People recipient set without account_id.",
+  "schema": "owner-channel.schema.json#/$defs/recipient_set",
+  "value": {
+    "recipient_set_id": "rset-people-family",
+    "revision": 1,
+    "source": {
+      "kind": "google_people",
+      "imported_at": "2026-11-20T08:30:00.000Z"
+    },
+    "definition": {
+      "name": "Family (Google contacts)",
+      "members": [
+        "parent@example.net",
+        "sibling@example.net"
+      ],
+      "domains": []
+    }
+  },
+  "expect": {
+    "verdict": "reject",
+    "layer": "schema",
+    "error": "invalid_params"
+  }
+}

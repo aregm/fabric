@@ -1,0 +1,25 @@
+{
+  "description": "A request still being classified.",
+  "schema": "agent-channel.schema.json#/$defs/agent_response",
+  "value": {
+    "protocol": "fabric-desktop/1",
+    "id": "call-4",
+    "method": "fabric_calendar_read",
+    "result": {
+      "request": {
+        "request_id": "request-18",
+        "updated_at": "2026-11-20T15:12:41.640Z",
+        "status": {
+          "state": "proving_classification"
+        }
+      },
+      "result": null
+    }
+  },
+  "expect": {
+    "verdict": "accept",
+    "canonical": "{\"id\":\"call-4\",\"method\":\"fabric_calendar_read\",\"protocol\":\"fabric-desktop/1\",\"result\":{\"request\":{\"request_id\":\"request-18\",\"status\":{\"state\":\"proving_classification\"},\"updated_at\":\"2026-11-20T15:12:41.640Z\"},\"result\":null}}",
+    "command_digest": null,
+    "action_digest": null
+  }
+}

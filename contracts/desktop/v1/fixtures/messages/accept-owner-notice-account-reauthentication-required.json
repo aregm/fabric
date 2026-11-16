@@ -1,0 +1,46 @@
+{
+  "description": "An account change: the account needs reauthentication.",
+  "schema": "owner-channel.schema.json#/$defs/owner_notice",
+  "value": {
+    "protocol": "fabric-desktop/1",
+    "sequence": 1303,
+    "change": {
+      "kind": "account",
+      "account": {
+        "account_id": "acct-2",
+        "revision": 9,
+        "state": "reauthentication_required",
+        "email": "owner.work@example.org",
+        "calendars": [
+          {
+            "calendar_id": "cal-work-primary",
+            "name": "Work",
+            "access": "owner",
+            "selected": true,
+            "agent_drafts": false
+          },
+          {
+            "calendar_id": "cal-family-shared",
+            "name": "Family",
+            "access": "writer",
+            "selected": false,
+            "agent_drafts": false
+          },
+          {
+            "calendar_id": "cal-holidays",
+            "name": "Holidays",
+            "access": "reader",
+            "selected": false,
+            "agent_drafts": false
+          }
+        ]
+      }
+    }
+  },
+  "expect": {
+    "verdict": "accept",
+    "canonical": "{\"change\":{\"account\":{\"account_id\":\"acct-2\",\"calendars\":[{\"access\":\"owner\",\"agent_drafts\":false,\"calendar_id\":\"cal-work-primary\",\"name\":\"Work\",\"selected\":true},{\"access\":\"writer\",\"agent_drafts\":false,\"calendar_id\":\"cal-family-shared\",\"name\":\"Family\",\"selected\":false},{\"access\":\"reader\",\"agent_drafts\":false,\"calendar_id\":\"cal-holidays\",\"name\":\"Holidays\",\"selected\":false}],\"email\":\"owner.work@example.org\",\"revision\":9,\"state\":\"reauthentication_required\"},\"kind\":\"account\"},\"protocol\":\"fabric-desktop/1\",\"sequence\":1303}",
+    "command_digest": null,
+    "action_digest": null
+  }
+}

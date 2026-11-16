@@ -1,0 +1,16 @@
+{
+  "description": "fabric_calendar_list takes no arguments.",
+  "schema": "agent-channel.schema.json#/$defs/agent_request",
+  "value": {
+    "protocol": "fabric-desktop/1",
+    "id": "call-1",
+    "method": "fabric_calendar_list",
+    "params": {}
+  },
+  "expect": {
+    "verdict": "accept",
+    "canonical": "{\"id\":\"call-1\",\"method\":\"fabric_calendar_list\",\"params\":{},\"protocol\":\"fabric-desktop/1\"}",
+    "command_digest": null,
+    "action_digest": "sha256:15c9dd9a79c4090614e8d2827e7d61a941867ec8915f6270d02243a9530f3b1b"
+  }
+}

@@ -1,0 +1,25 @@
+{
+  "description": "invalid_params with a pointer.",
+  "schema": "agent-channel.schema.json#/$defs/agent_response",
+  "value": {
+    "protocol": "fabric-desktop/1",
+    "id": "call-24",
+    "method": "fabric_calendar_propose_create",
+    "error": {
+      "code": "invalid_params",
+      "message": "The event time needs a zone.",
+      "retryable": false,
+      "recovery": "report_problem",
+      "correlation_id": "corr-0001",
+      "detail": {
+        "pointer": "/params/event/start/zone"
+      }
+    }
+  },
+  "expect": {
+    "verdict": "accept",
+    "canonical": "{\"error\":{\"code\":\"invalid_params\",\"correlation_id\":\"corr-0001\",\"detail\":{\"pointer\":\"/params/event/start/zone\"},\"message\":\"The event time needs a zone.\",\"recovery\":\"report_problem\",\"retryable\":false},\"id\":\"call-24\",\"method\":\"fabric_calendar_propose_create\",\"protocol\":\"fabric-desktop/1\"}",
+    "command_digest": null,
+    "action_digest": null
+  }
+}

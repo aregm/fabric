@@ -1,0 +1,24 @@
+{
+  "description": "An account change: the owner denied consent.",
+  "schema": "owner-channel.schema.json#/$defs/owner_notice",
+  "value": {
+    "protocol": "fabric-desktop/1",
+    "sequence": 1301,
+    "change": {
+      "kind": "account",
+      "account": {
+        "account_id": "acct-3",
+        "revision": 2,
+        "state": "consent_denied",
+        "email": null,
+        "calendars": []
+      }
+    }
+  },
+  "expect": {
+    "verdict": "accept",
+    "canonical": "{\"change\":{\"account\":{\"account_id\":\"acct-3\",\"calendars\":[],\"email\":null,\"revision\":2,\"state\":\"consent_denied\"},\"kind\":\"account\"},\"protocol\":\"fabric-desktop/1\",\"sequence\":1301}",
+    "command_digest": null,
+    "action_digest": null
+  }
+}

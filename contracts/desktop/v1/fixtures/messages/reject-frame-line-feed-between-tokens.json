@@ -1,0 +1,10 @@
+{
+  "description": "A frame is one line: a line feed between tokens is refused.",
+  "schema": "owner-channel.schema.json#/$defs/owner_request",
+  "text": "{\"protocol\":\"fabric-desktop/1\",\n\"id\":\"query-7\",\"method\":\"get_snapshot\",\"params\":{}}",
+  "expect": {
+    "verdict": "reject",
+    "layer": "frame",
+    "error": "malformed_frame"
+  }
+}

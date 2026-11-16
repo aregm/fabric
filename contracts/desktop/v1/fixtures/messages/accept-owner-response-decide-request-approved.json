@@ -1,0 +1,60 @@
+{
+  "description": "decide_request answers an approval: the request is approved and the approval carries its scope, duration, effective request digest and grant.",
+  "schema": "owner-channel.schema.json#/$defs/owner_response",
+  "value": {
+    "protocol": "fabric-desktop/1",
+    "id": "command-42",
+    "method": "decide_request",
+    "result": {
+      "commit_sequence": 1293,
+      "request": {
+        "request_id": "request-17",
+        "revision": 4,
+        "agent_id": "agent-claude-desktop",
+        "tool": "fabric_calendar_propose_invitation",
+        "account_id": "acct-1",
+        "received_at": "2026-11-20T15:00:00.000Z",
+        "updated_at": "2026-11-20T15:04:10.000Z",
+        "request_digest": "sha256:9448c124de44cd137bb4a3c63df81e9a3a0ae40af06db3642c413320c1d76053",
+        "status": {
+          "state": "approved"
+        }
+      },
+      "approval": {
+        "decision": "approve",
+        "command_id": "command-42",
+        "decided_at": "2026-11-20T15:04:10.000Z",
+        "approval_digest": "sha256:a2601a6e6d40145bd70e410d7e0c160a0b7b255d663ec0d0f757c67a1f2a97ab",
+        "scope": {
+          "calendars": [
+            {
+              "account_id": "acct-1",
+              "calendar_id": "cal-team-shared"
+            }
+          ],
+          "window": null,
+          "fields": null,
+          "recipients": {
+            "kind": "exact",
+            "addresses": [
+              "ally@example.net",
+              "stranger@example.org"
+            ]
+          },
+          "send_updates": "all"
+        },
+        "duration": {
+          "kind": "one_request"
+        },
+        "effective_request_digest": "sha256:9448c124de44cd137bb4a3c63df81e9a3a0ae40af06db3642c413320c1d76053",
+        "grant_id": "grant-7"
+      }
+    }
+  },
+  "expect": {
+    "verdict": "accept",
+    "canonical": "{\"id\":\"command-42\",\"method\":\"decide_request\",\"protocol\":\"fabric-desktop/1\",\"result\":{\"approval\":{\"approval_digest\":\"sha256:a2601a6e6d40145bd70e410d7e0c160a0b7b255d663ec0d0f757c67a1f2a97ab\",\"command_id\":\"command-42\",\"decided_at\":\"2026-11-20T15:04:10.000Z\",\"decision\":\"approve\",\"duration\":{\"kind\":\"one_request\"},\"effective_request_digest\":\"sha256:9448c124de44cd137bb4a3c63df81e9a3a0ae40af06db3642c413320c1d76053\",\"grant_id\":\"grant-7\",\"scope\":{\"calendars\":[{\"account_id\":\"acct-1\",\"calendar_id\":\"cal-team-shared\"}],\"fields\":null,\"recipients\":{\"addresses\":[\"ally@example.net\",\"stranger@example.org\"],\"kind\":\"exact\"},\"send_updates\":\"all\",\"window\":null}},\"commit_sequence\":1293,\"request\":{\"account_id\":\"acct-1\",\"agent_id\":\"agent-claude-desktop\",\"received_at\":\"2026-11-20T15:00:00.000Z\",\"request_digest\":\"sha256:9448c124de44cd137bb4a3c63df81e9a3a0ae40af06db3642c413320c1d76053\",\"request_id\":\"request-17\",\"revision\":4,\"status\":{\"state\":\"approved\"},\"tool\":\"fabric_calendar_propose_invitation\",\"updated_at\":\"2026-11-20T15:04:10.000Z\"}}}",
+    "command_digest": null,
+    "action_digest": null
+  }
+}

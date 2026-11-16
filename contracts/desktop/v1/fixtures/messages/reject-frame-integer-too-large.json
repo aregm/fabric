@@ -1,0 +1,10 @@
+{
+  "description": "A subscribe whose cursor is one more than the largest exact integer.",
+  "schema": "owner-channel.schema.json#/$defs/owner_request",
+  "text": "{\"id\":\"subscribe-1\",\"method\":\"subscribe\",\"params\":{\"cursor\":9007199254740992},\"protocol\":\"fabric-desktop/1\"}",
+  "expect": {
+    "verdict": "reject",
+    "layer": "frame",
+    "error": "malformed_frame"
+  }
+}

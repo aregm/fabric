@@ -1,0 +1,15 @@
+{
+  "description": "An owner request for approve_all, which is not a method.",
+  "schema": "owner-channel.schema.json#/$defs/owner_request",
+  "value": {
+    "protocol": "fabric-desktop/1",
+    "id": "x-1",
+    "method": "approve_all",
+    "params": {}
+  },
+  "expect": {
+    "verdict": "reject",
+    "layer": "schema",
+    "error": "unknown_method"
+  }
+}

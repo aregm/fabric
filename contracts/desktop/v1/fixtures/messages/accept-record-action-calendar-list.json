@@ -1,0 +1,14 @@
+{
+  "description": "Listing calendars is an action with empty arguments.",
+  "schema": "agent-channel.schema.json#/$defs/action",
+  "value": {
+    "tool": "fabric_calendar_list",
+    "arguments": {}
+  },
+  "expect": {
+    "verdict": "accept",
+    "canonical": "{\"arguments\":{},\"tool\":\"fabric_calendar_list\"}",
+    "command_digest": null,
+    "action_digest": null
+  }
+}

@@ -1,0 +1,24 @@
+{
+  "description": "An agent response of protocol fabric-desktop/2.",
+  "schema": "agent-channel.schema.json#/$defs/agent_response",
+  "value": {
+    "protocol": "fabric-desktop/2",
+    "id": "call-14",
+    "method": "fabric_request_status",
+    "result": {
+      "request": {
+        "request_id": "request-17",
+        "updated_at": "2026-11-20T15:00:01.250Z",
+        "status": {
+          "state": "denied"
+        }
+      },
+      "result": null
+    }
+  },
+  "expect": {
+    "verdict": "reject",
+    "layer": "protocol",
+    "error": "unsupported_protocol"
+  }
+}

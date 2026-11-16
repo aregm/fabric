@@ -1,0 +1,24 @@
+{
+  "description": "conflict in an agent response.",
+  "schema": "agent-channel.schema.json#/$defs/agent_response",
+  "value": {
+    "protocol": "fabric-desktop/1",
+    "id": "call-20",
+    "method": "fabric_calendar_propose_create",
+    "error": {
+      "code": "conflict",
+      "message": "The revision changed.",
+      "retryable": false,
+      "recovery": "refresh_snapshot",
+      "correlation_id": "corr-0001",
+      "detail": {
+        "current_revision": 4
+      }
+    }
+  },
+  "expect": {
+    "verdict": "reject",
+    "layer": "schema",
+    "error": "invalid_params"
+  }
+}
