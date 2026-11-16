@@ -154,7 +154,8 @@ datatype duration = One_request string bool | Session string | Until_revoked
 text \<open>
   A grant of the agent whose action is checked. g_window, g_fields, g_recipients and
   g_send_updates are the parts of its scope that apply to reads, to invitations and to changes
-  that notify; a part that is absent covers nothing.
+  that notify; a part that is absent covers nothing. The broker gives every grant its own
+  g_id: no two grants of a context share one, and the gate refuses a context where they do.
 \<close>
 
 record grant =
@@ -199,10 +200,12 @@ datatype actor = Agent string | System
 text \<open>
   ctx_session is the agent's current session and when it was last active. ctx_digest is the
   action digest of the action being checked; for a disclosure it is the digest of the action
-  whose result is disclosed. ctx_relied names the grant that an allowed or approved request
-  rests on, once it has one. ctx_pending_effects are the changes the broker has handed to
-  Google and not yet seen applied. The two epochs rise with every pause and every revocation,
-  so a proof belongs to one state of both.
+  whose result is disclosed. ctx_relied names the grants that an allowed or approved request
+  rests on: the grants an earlier check of the same request proved to authorize it, or the
+  grant the owner's approval created. It is empty for the first check of a request.
+  ctx_pending_effects are the changes the broker has handed to Google and not yet seen
+  applied. The two epochs rise with every pause and every revocation, so a proof belongs to
+  one state of both.
 \<close>
 
 record broker_context =
@@ -218,7 +221,7 @@ record broker_context =
   ctx_recipient_sets :: "recipient_set list"
   ctx_event :: "event option"
   ctx_digest :: string
-  ctx_relied :: "string option"
+  ctx_relied :: "string list"
   ctx_result_held :: bool
   ctx_pending_effects :: "(string \<times> string \<times> chars) list"
   ctx_pause_epoch :: nat
@@ -473,6 +476,20 @@ definition row_authorized :: "broker_context \<Rightarrow> action \<Rightarrow> 
      (\<exists>g \<in> set (ctx_grants c).
         live c g \<and> (exact c g \<or> (standing g \<and> standing_serves c a r \<and> scope_covers c g r a)))"
 
+text \<open>
+  Whether one grant authorizes an action: it is live and it serves at least one of the action's
+  rows. A check proves this, or its negation, for every grant of the agent, so the broker
+  learns from the proof which grants a permitted action rests on and never has to work that
+  out itself.
+\<close>
+
+definition authorizes :: "broker_context \<Rightarrow> action \<Rightarrow> grant \<Rightarrow> bool" where
+  "authorizes c a g \<longleftrightarrow>
+     live c g \<and> rows c a \<noteq> [] \<and>
+     (exact c g \<or>
+      (standing g \<and>
+       (\<exists>r \<in> set (rows c a). standing_serves c (subject a) r \<and> scope_covers c g r (subject a))))"
+
 text \<open>A recipient is approved when the recipient rule of some live grant names it.\<close>
 
 definition approved_recipient :: "broker_context \<Rightarrow> recipient \<Rightarrow> bool" where
@@ -557,7 +574,7 @@ fun applies :: "rule \<Rightarrow> broker_context \<Rightarrow> action \<Rightar
 | "applies Event_supported c a = (named_event a \<noteq> None)"
 | "applies Fabric_created c a = (case a of Delete_event _ _ _ _ _ \<Rightarrow> True | _ \<Rightarrow> False)"
 | "applies Invitation_target c a = (case a of Respond _ _ _ _ _ \<Rightarrow> True | _ \<Rightarrow> False)"
-| "applies Relied_grant_live c a = (ctx_relied c \<noteq> None)"
+| "applies Relied_grant_live c a = (ctx_relied c \<noteq> [])"
 | "applies Result_held c a = (case a of Disclose _ \<Rightarrow> True | _ \<Rightarrow> False)"
 | "applies Warnings_owner_only c a = (case a of Disclose_warning \<Rightarrow> True | _ \<Rightarrow> False)"
 | "applies System_authority c a = is_system a"
@@ -585,9 +602,7 @@ fun satisfied :: "rule \<Rightarrow> broker_context \<Rightarrow> action \<Right
 | "satisfied Invitation_target c a =
      (case ctx_event c of Some e \<Rightarrow> invitation_target e a | None \<Rightarrow> False)"
 | "satisfied Relied_grant_live c a =
-     (case ctx_relied c of
-        Some i \<Rightarrow> (\<exists>g \<in> set (ctx_grants c). g_id g = i \<and> live c g)
-      | None \<Rightarrow> True)"
+     (\<forall>i \<in> set (ctx_relied c). \<exists>g \<in> set (ctx_grants c). g_id g = i \<and> live c g)"
 | "satisfied Result_held c a =
      (ctx_result_held c \<and> (case a of Disclose b \<Rightarrow> is_read b \<or> is_change b | _ \<Rightarrow> True))"
 | "satisfied Warnings_owner_only c a = False"
@@ -617,7 +632,7 @@ lemmas broker_simps =
   selected_def writable_def drafts_def in_drafts_def fabric_created_def attendees_def
   session_live_def live_def exact_def standing_def covers_calendars_def covers_window_def
   covers_fields_def in_rule_def covers_recipients_def standing_serves_def row_authorized_def
-  approved_recipient_def careful_def flexible_def
+  authorizes_def approved_recipient_def careful_def flexible_def
 
 subsection \<open>What the rules guarantee\<close>
 
@@ -720,6 +735,48 @@ next
 qed
 
 text \<open>
+  The same, with the grant named: a permitted read or change has a grant that authorizes it,
+  and a grant that authorizes is live. So the grants a check proves to authorize are the ones
+  the permit rests on.
+\<close>
+
+lemma an_authorized_row_has_an_authorizing_grant:
+  assumes "r \<in> set (rows c a)" and "row_authorized c (subject a) r"
+  shows "\<exists>g \<in> set (ctx_grants c). authorizes c a g"
+  using assms by (auto simp add: row_authorized_def authorizes_def)
+
+lemma permit_rests_on_an_authorizing_grant:
+  assumes "outcome c a = Permit" and "\<not> is_system a" and "rows c a \<noteq> []"
+  shows "\<exists>g \<in> set (ctx_grants c). authorizes c a g"
+proof (cases "Row_invite \<in> set (rows c a)")
+  case True
+  have "holds Invitation_authority c a"
+    using assms(1) by (simp add: permit_iff approval_rules_def)
+  then have "row_authorized c (subject a) Row_invite"
+    using True by (simp add: holds_def)
+  then show ?thesis
+    using True by (rule an_authorized_row_has_an_authorizing_grant[rotated])
+next
+  case False
+  obtain r where r: "r \<in> set (rows c a)"
+    using assms(3) by (cases "rows c a") auto
+  have "holds Authority c a"
+    using assms(1) by (simp add: permit_iff approval_rules_def)
+  then have "row_authorized c (subject a) r"
+    using assms(2) r False by (auto simp add: holds_def)
+  then show ?thesis
+    using r by (rule an_authorized_row_has_an_authorizing_grant[rotated])
+qed
+
+lemma an_authorizing_grant_is_live: "authorizes c a g \<Longrightarrow> live c g"
+  by (simp add: authorizes_def)
+
+lemma no_grant_authorizes_an_action_without_rows:
+  assumes "rows c a = []"
+  shows "\<not> authorizes c a g"
+  using assms by (simp add: authorizes_def)
+
+text \<open>
   Deleting an event (CD-Q05a): only an event Fabric created, and only with the owner's
   approval of exactly this deletion. No standing grant and no profile permits it.
 \<close>
@@ -808,14 +865,19 @@ lemma a_change_names_the_current_revision:
   by (auto simp add: permit_iff block_rules_def holds_def split: option.splits)
 
 text \<open>
-  Revocation and expiry: once the grant a request rests on is no longer live, the request is
+  Revocation and expiry: once any grant a request rests on is no longer live, the request is
   blocked, even if another grant would cover the action.
 \<close>
 
 lemma a_request_does_not_outlive_its_grant:
-  assumes "ctx_relied c = Some i" and "\<forall>g \<in> set (ctx_grants c). g_id g = i \<longrightarrow> \<not> live c g"
+  assumes "i \<in> set (ctx_relied c)" and "\<forall>g \<in> set (ctx_grants c). g_id g = i \<longrightarrow> \<not> live c g"
   shows "outcome c a = Block"
-  using assms by (auto simp add: block_iff block_rules_def holds_def)
+proof -
+  have "\<not> holds Relied_grant_live c a"
+    using assms by (auto simp add: holds_def)
+  then show ?thesis
+    by (auto simp add: block_iff block_rules_def)
+qed
 
 lemma an_ended_grant_is_not_live: "g_ended g \<Longrightarrow> \<not> live c g"
   by (simp add: live_def)

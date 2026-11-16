@@ -36,7 +36,7 @@ definition base :: broker_context where
      \<lparr>ctx_actor = Agent ''agent-1'', ctx_paused = False, ctx_now = 1000,
       ctx_session = Some (''session-1'', 0), ctx_profile = careful, ctx_connected = [''acct-1''],
       ctx_calendars = cals, ctx_warning_calendars = [], ctx_grants = [], ctx_recipient_sets = [],
-      ctx_event = None, ctx_digest = ''d-this'', ctx_relied = None, ctx_result_held = False,
+      ctx_event = None, ctx_digest = ''d-this'', ctx_relied = [], ctx_result_held = False,
       ctx_pending_effects = [], ctx_pause_epoch = 0, ctx_revocation_epoch = 0\<rparr>"
 
 text \<open>The owner's approval of exactly the action being checked, not yet used.\<close>
@@ -99,7 +99,8 @@ lemma availability_without_a_grant_asks:
   by (simp_all add: broker_simps example_defs first_failing_def)
 
 definition availability_grant :: "grant" where
-  "availability_grant = standing_grant\<lparr>g_tools := [Tool_list, Tool_availability],
+  "availability_grant = standing_grant\<lparr>g_id := ''g-availability'',
+     g_tools := [Tool_list, Tool_availability],
      g_calendars := [(''acct-1'', ''primary'')], g_window := Some (0, 1000)\<rparr>"
 
 lemma availability_inside_a_grant_is_permitted:
@@ -123,7 +124,8 @@ lemma an_availability_grant_does_not_cover_event_details:
   by (simp add: broker_simps example_defs availability_grant_def)
 
 definition read_grant :: "grant" where
-  "read_grant = standing_grant\<lparr>g_tools := [Tool_read], g_duration := Session ''session-1'',
+  "read_grant = standing_grant\<lparr>g_id := ''g-read'', g_tools := [Tool_read],
+     g_duration := Session ''session-1'',
      g_calendars := [(''acct-1'', ''primary'')], g_window := Some (0, 1000),
      g_fields := [Field_time, Field_title]\<rparr>"
 
@@ -163,11 +165,11 @@ text \<open>
 \<close>
 
 lemma a_request_is_blocked_when_its_grant_is_revoked_or_expires:
-  "outcome (base\<lparr>ctx_grants := [read_grant\<lparr>g_ended := True\<rparr>], ctx_relied := Some ''g-standing''\<rparr>)
+  "outcome (base\<lparr>ctx_grants := [read_grant\<lparr>g_ended := True\<rparr>], ctx_relied := [''g-read'']\<rparr>)
      (Read_events ''acct-1'' [''primary''] 10 20 [Field_title]) = Block"
-  "first_failing (base\<lparr>ctx_grants := [read_grant\<lparr>g_ended := True\<rparr>], ctx_relied := Some ''g-standing''\<rparr>)
+  "first_failing (base\<lparr>ctx_grants := [read_grant\<lparr>g_ended := True\<rparr>], ctx_relied := [''g-read'']\<rparr>)
      (Read_events ''acct-1'' [''primary''] 10 20 [Field_title]) = Some Relied_grant_live"
-  "outcome (base\<lparr>ctx_grants := [read_grant], ctx_relied := Some ''g-standing'', ctx_now := 1800000\<rparr>)
+  "outcome (base\<lparr>ctx_grants := [read_grant], ctx_relied := [''g-read''], ctx_now := 1800000\<rparr>)
      (Read_events ''acct-1'' [''primary''] 10 20 [Field_title]) = Block"
   by (simp_all add: broker_simps example_defs read_grant_def first_failing_def)
 
@@ -183,7 +185,7 @@ lemma a_blocked_row_is_blocked_inside_a_grant:
 subsection \<open>Creating (CD-M03, CD-M04)\<close>
 
 definition create_grant :: "grant" where
-  "create_grant = standing_grant\<lparr>g_tools := [Tool_create],
+  "create_grant = standing_grant\<lparr>g_id := ''g-create'', g_tools := [Tool_create],
      g_calendars := [(''acct-1'', ''drafts''), (''acct-1'', ''team'')]\<rparr>"
 
 lemma creating_in_agent_drafts_is_allowed_in_a_grant:
@@ -525,5 +527,62 @@ lemma the_brokers_own_reads:
   "first_failing base (System_refresh ''acct-1'' ''primary'') = Some Actor"
   "first_failing system (Create_event ''acct-1'' ''team'') = Some Actor"
   by (simp_all add: broker_simps example_defs system_def first_failing_def)
+
+subsection \<open>Which grants a permitted action rests on\<close>
+
+text \<open>
+  A check also proves, for every grant of the agent, whether it authorizes the action. The
+  broker takes the grants a request rests on from that proof, and names them again in the
+  fresh proof before the change is sent.
+\<close>
+
+definition both_edit_grants :: broker_context where
+  "both_edit_grants = base\<lparr>ctx_profile := flexible, ctx_grants := [edit_grant, invite_grant],
+     ctx_recipient_sets := [team], ctx_event := Some (own_event\<lparr>ev_attendees := [bob]\<rparr>)\<rparr>"
+
+lemma an_edit_that_reaches_attendees_rests_on_two_grants:
+  "authorizes both_edit_grants edit_own edit_grant"
+  "authorizes both_edit_grants edit_own invite_grant"
+  "outcome both_edit_grants edit_own = Permit"
+  by (simp_all add: broker_simps example_defs edit_grant_def invite_grant_def edit_own_def
+      both_edit_grants_def)
+
+lemma only_the_grants_that_cover_the_action_authorize_it:
+  "\<not> authorizes (base\<lparr>ctx_grants := [availability_grant, read_grant]\<rparr>) the_read availability_grant"
+  "authorizes (base\<lparr>ctx_grants := [availability_grant, read_grant]\<rparr>) the_read read_grant"
+  "\<not> authorizes (base\<lparr>ctx_grants := [create_grant]\<rparr>) (Create_event ''acct-1'' ''team'') create_grant"
+  "authorizes (base\<lparr>ctx_grants := [create_grant], ctx_profile := flexible\<rparr>)
+     (Create_event ''acct-1'' ''team'') create_grant"
+  by (simp_all add: broker_simps example_defs availability_grant_def read_grant_def the_read_def
+      create_grant_def)
+
+lemma the_owners_approval_authorizes_until_it_is_used:
+  "authorizes (base\<lparr>ctx_grants := [approval], ctx_event := Some own_event\<rparr>) delete_own approval"
+  "\<not> authorizes (base\<lparr>ctx_event := Some own_event\<rparr>) delete_own
+     (approval\<lparr>g_duration := One_request ''d-this'' True\<rparr>)"
+  "\<not> authorizes (base\<lparr>ctx_event := Some own_event\<rparr>) delete_own
+     (approval\<lparr>g_duration := One_request ''d-other'' False\<rparr>)"
+  by (simp_all add: broker_simps example_defs delete_own_def)
+
+text \<open>The outcome of a change is released without a grant, so no grant authorizes that release.\<close>
+
+lemma releasing_the_outcome_of_a_change_rests_on_no_grant:
+  "\<not> authorizes (base\<lparr>ctx_grants := [approval], ctx_result_held := True\<rparr>)
+     (Disclose (Create_event ''acct-1'' ''team'')) approval"
+  by (simp add: broker_simps example_defs)
+
+text \<open>
+  A request that rests on two grants is blocked as soon as one of them ends, and the rule says
+  why.
+\<close>
+
+lemma a_request_resting_on_two_grants_is_blocked_when_one_ends:
+  "outcome (both_edit_grants\<lparr>ctx_relied := [''g-edit'', ''g-invite'']\<rparr>) edit_own = Permit"
+  "outcome (both_edit_grants\<lparr>ctx_grants := [edit_grant, invite_grant\<lparr>g_ended := True\<rparr>],
+       ctx_relied := [''g-edit'', ''g-invite'']\<rparr>) edit_own = Block"
+  "first_failing (both_edit_grants\<lparr>ctx_grants := [edit_grant, invite_grant\<lparr>g_ended := True\<rparr>],
+       ctx_relied := [''g-edit'', ''g-invite'']\<rparr>) edit_own = Some Relied_grant_live"
+  by (simp_all add: broker_simps example_defs edit_grant_def invite_grant_def edit_own_def
+      both_edit_grants_def first_failing_def)
 
 end
