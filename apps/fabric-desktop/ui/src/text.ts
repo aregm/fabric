@@ -14,7 +14,7 @@ export const STATE_TEXT: Record<RequestState, string> = {
   proving_classification: "Received, checking",
   allowed: "Allowed by your settings; Fabric checks it once more before it is done",
   pending_approval: "Waiting for your decision",
-  blocked: "Blocked by your settings",
+  blocked: "Blocked by a rule",
   undecided: "Not done: Fabric could not prove that it is allowed",
   approved: "You allowed it; Fabric checks it once more before it is done",
   denied: "You denied it",

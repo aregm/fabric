@@ -105,6 +105,19 @@ export class ReviewModel {
     };
   }
 
+  // Why the card asks, and while it is open when it expires; a closed card says why the owner was asked.
+  whyFacts(e: Entry): Fact[] {
+    const card = e.details?.card ?? null;
+    if (card === null) return [];
+    const closed = this.model.cardStatus(e).kind === "closed";
+    const why: Fact = { term: closed ? "Why you were asked" : "Why you are asked", values: [card.insufficiency.explanation, `Rule: ${card.insufficiency.rule}`] };
+    if (closed) return [why];
+    return [why, {
+      term: "This card expires",
+      values: [`${formatInstant(card.expires_at, this.model.zone)}. If nobody decides by then, nothing is done.`],
+    }];
+  }
+
   toggleDetails(requestId: string): void {
     const e = this.model.requests.get(requestId);
     if (e !== undefined) this.model.openDetails(requestId, !e.detailsOpen);

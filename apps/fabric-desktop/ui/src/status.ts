@@ -114,6 +114,6 @@ export function proverText(m: Model): string {
 export function calendarLine(c: Calendar): string {
   const parts = [`${c.name}: ${ACCESS_TEXT[c.access]}`];
   if (c.selected) parts.push("agents may use it");
-  if (c.agent_drafts) parts.push("Agent Drafts");
+  if (c.agent_drafts) parts.push("this is the Agent Drafts calendar");
   return parts.join("; ");
 }

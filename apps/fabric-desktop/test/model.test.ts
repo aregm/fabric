@@ -352,7 +352,7 @@ test("each kind of notice updates its state", () => {
   assert.equal(model.requests.get("request-22")?.request.status.state, "blocked");
   assert.deepEqual(model.health, { prover: "unavailable", store: "ready" });
   assert.deepEqual(announced, [PROVER_STOPPED]);
-  assert.match(model.activity.at(-2)?.text ?? "", /Blocked by your settings \(rule [a-z_]+\)$/);
+  assert.match(model.activity.at(-2)?.text ?? "", /Blocked by a rule \(rule [a-z_]+\)$/);
   assert.equal(model.activity.at(-1)?.text, "Rule checker: Not running. Store: Open");
 });
 
@@ -600,4 +600,16 @@ test("the decision is said in one whole sentence per duration", () => {
     const status = model.cardStatus(entry(model));
     assert.equal(status.kind === "closed" ? status.text : null, sentences[kind]);
   }
+});
+
+test("'Received, checking' is not measured for a request first seen in a snapshot, nor when the clocks disagree", () => {
+  const { host, model, clock } = setup();
+  clock.now = RECEIVED_MS + 60_000;
+  connect(host, 1, snapshot(0, [request("validating", 2)]));
+  assert.equal(entry(model).checkingDelayMs, null, "from a snapshot: received long before this page saw it");
+  host.notice(1, { kind: "request", request: request("proving_classification", 3) });
+  assert.equal(entry(model).checkingDelayMs, null, "the text was first shown by the snapshot, not by this notice");
+  clock.now = RECEIVED_MS - 250; // this computer's clock is behind the broker's
+  host.notice(2, { kind: "request", request: request("received", 1, DIGEST_A, "ahead") });
+  assert.equal(entry(model, "ahead").checkingDelayMs, null, "a negative difference records nothing");
 });

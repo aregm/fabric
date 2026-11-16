@@ -9,7 +9,7 @@ import { ReviewModel, requestTitle } from "./review.ts";
 import type { DetailsParts } from "./review.ts";
 import {
   DURATION_NOTE, DURATION_TEXT, ENDED_REQUESTS_NOTE, PAUSE_NOTE, REVOKE_NOTE, SESSION_UNAVAILABLE, STATE_TEXT, cardFacts,
-  formatInstant, grantTitle,
+  grantTitle,
 } from "./text.ts";
 import type { Fact } from "./text.ts";
 
@@ -280,10 +280,7 @@ export class ReviewView {
     if (status.kind === "none" || e.details === null || e.details.card === null) return;
     const card = e.details.card;
     setFacts(dom.facts, cardFacts(e.details, m.names));
-    setFacts(dom.why, [
-      { term: "Why you are asked", values: [card.insufficiency.explanation, `Rule: ${card.insufficiency.rule}`] },
-      { term: "This card expires", values: [`${formatInstant(card.expires_at, m.zone)}. If nobody decides by then, nothing is done.`] },
-    ]);
+    setFacts(dom.why, this.review.whyFacts(e));
     this.updateProof(dom.whyProof, `${e.request.request_id}:why`, card.insufficiency.proof_id, dom.heading);
     const open = status.kind !== "closed";
     show(dom.fieldset, open, dom.heading);

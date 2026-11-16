@@ -420,7 +420,7 @@ export class Model {
       case "recipient_set_deleted": this.recipientSets.delete(c.recipient_set_id); break;
       case "grant": this.applyGrant(c.grant); break;
       case "health": this.applyHealth(c.health); break;
-      case "request": this.applyRequest(c.request); break;
+      case "request": this.applyRequest(c.request, true); break;
     }
     this.log(n.sequence, changeText(c, this.names));
   }
@@ -514,7 +514,7 @@ export class Model {
     for (const e of this.requests.values()) {
       if (!listed.has(e.request.request_id) && !TERMINAL[e.request.status.state]) e.available = false;
     }
-    for (const r of s.requests) this.applyRequest(r);
+    for (const r of s.requests) this.applyRequest(r, false);
     // Open details of a request the snapshot does not list (one that ended) are read in this run too.
     for (const e of this.requests.values()) if (this.needsRead(e)) this.readDetails(e);
   }
@@ -535,8 +535,13 @@ export class Model {
     for (const x of ended.slice(0, ended.length - ENDED_GRANT_LIMIT)) this.grants.delete(x.grant_id);
   }
 
-  private applyRequest(r: Request): void {
+  // `live`: the request came in a notice while the page is live, not from a snapshot.
+  private applyRequest(r: Request, live: boolean): void {
     let e = this.requests.get(r.request_id);
+    const checking = CHECKING_STATES.includes(r.status.state);
+    // "Received, checking" is first shown now, unless the same reception was already shown as checking.
+    const firstShown = checking && !(e !== undefined && e.request.received_at === r.received_at
+      && CHECKING_STATES.includes(e.request.status.state));
     if (e === undefined) {
       e = {
         request: r, requestRun: this.run, available: true, checkingDelayMs: null, details: null, detailsRun: -1,
@@ -552,8 +557,11 @@ export class Model {
       e.available = true;
     }
     if (r.status.state === "pending_approval") e.approval = null; // pending again: an earlier decision no longer holds
-    if (e.checkingDelayMs === null && CHECKING_STATES.includes(r.status.state)) {
-      e.checkingDelayMs = this.deps.now() - Date.parse(r.received_at);
+    // Measured only when the text first appears for a request that came in a notice; a request first
+    // seen in a snapshot was received earlier, and a negative difference means the clocks disagree.
+    if (firstShown && e.checkingDelayMs === null && live) {
+      const delay = this.deps.now() - Date.parse(r.received_at);
+      if (delay >= 0) e.checkingDelayMs = delay;
     }
     if (this.needsRead(e)) this.readDetails(e);
     if (TERMINAL[r.status.state]) this.dropEndedRequests();

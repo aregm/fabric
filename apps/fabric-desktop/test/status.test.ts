@@ -112,7 +112,7 @@ test("the items come in the order of the design: broker, sync, store, rule check
 
 test("a calendar line names its access and its flags", () => {
   assert.equal(calendarLine({ calendar_id: "c", name: "Agent Drafts", access: "owner", selected: true, agent_drafts: true }),
-    "Agent Drafts: you own it; agents may use it; Agent Drafts");
+    "Agent Drafts: you own it; agents may use it; this is the Agent Drafts calendar");
   assert.equal(calendarLine({ calendar_id: "c", name: "Holidays", access: "reader", selected: false, agent_drafts: false }),
     "Holidays: you can see its events");
 });

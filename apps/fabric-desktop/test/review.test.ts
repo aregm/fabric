@@ -299,3 +299,22 @@ test("every command and query of the screen sends a valid owner request", async 
   ]));
   assertRequestsValid(host);
 });
+
+test("an open card says why you are asked and when it expires; a closed one why you were asked, without the expiry", () => {
+  const { host, model, review } = live();
+  const e = entry(model, "request-17");
+  assert.deepEqual(review.whyFacts(e).map((f) => f.term), ["Why you are asked", "This card expires"]);
+  model.decide("request-17", "deny");
+  const denied = { ...e.request, revision: e.request.revision + 1, status: { state: "denied" } };
+  host.reply("decide_request", {
+    commit_sequence: 1, request: denied,
+    approval: {
+      decision: "deny", command_id: host.last("decide_request").id, decided_at: e.request.updated_at,
+      approval_digest: e.request.request_digest, scope: null, duration: null, effective_request_digest: null, grant_id: null,
+    },
+  });
+  assert.equal(model.cardStatus(e).kind, "closed");
+  const why = review.whyFacts(e);
+  assert.deepEqual(why.map((f) => f.term), ["Why you were asked"]);
+  assert.equal(why[0]?.values[1], "Rule: spike_no_rule_theory");
+});
