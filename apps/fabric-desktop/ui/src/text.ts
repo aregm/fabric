@@ -315,7 +315,8 @@ export const PAUSE_NOTE = "A paused agent can do nothing. Resuming does not brin
 export const NO_PROOF = "The broker has no proof report under this id.";
 
 export const GRANT_END_TEXT: Record<GrantEndReason, string> = {
-  consumed: "It was used for the one request it was given for.",
+  // The broker gives this reason whether or not the request was carried out (CD-W04 design, CCR-8).
+  consumed: "The one request it was given for has ended.",
   revoked_by_owner: "You took it back.",
   account_disconnected: "The Google account was disconnected.",
   authority_reduced: "Something it depended on changed, for example a group it names gained someone, so it no longer holds.",
