@@ -21,15 +21,15 @@ What exists on 2026-11-15:
 
 - the M0 agreement simulator (`fabric-core`, `fabric-cli`): done;
 - the Isabelle-gated calendar demo: built, with the macOS port on `main`; its gate DEMO-G3, the owner's run with Claude driving both agents, has not been run;
-- the paracels chat prototype: complete.
+- the paracels chat prototype: complete;
+- gate H0, hygiene: passed on 2026-11-15.
 
 What comes next, in order:
 
-1. Gate H0: hygiene, including this section.
-2. Gate DEMO-G3: the owner's run of the calendar demo. Recommended before the next step, not required.
-3. The Calendar Desktop plan, up to gate CD-G0, where its decisions are frozen. The plan governs the permission broker, which leads once hygiene is done, as the first product built on the policy gate and the tokens. The plan is on branch `codex/calendar-desktop-plan`. The Agent Sandbox proposal is its historical input. Mail follows later on the same broker.
+1. Gate DEMO-G3: the owner's run of the calendar demo. Recommended before the next step, not required.
+2. The Calendar Desktop plan, up to gate CD-G0, where its decisions are frozen. The plan governs the permission broker, which leads now that hygiene is done, as the first product built on the policy gate and the tokens. The plan is [docs/plans/calendar-desktop-plan.md](docs/plans/calendar-desktop-plan.md). The Agent Sandbox proposal is its historical input. Mail follows later on the same broker.
 
-The order comes from the [roadmap](docs/roadmap.md), version 0.2. It is proposed and awaits the owner's approval.
+The order comes from the [roadmap](docs/roadmap.md), version 0.3. It was approved at gate H0 on 2026-11-15.
 
 ## Product documentation
 
@@ -40,7 +40,7 @@ The order comes from the [roadmap](docs/roadmap.md), version 0.2. It is proposed
 - [Calendar desktop implementation plan](docs/plans/calendar-desktop-plan.md) — standalone native-GUI and real Google broker plan, agent work packages, live-proof requirements, and release gates.
 - [Desktop planning build audit](docs/plans/calendar-desktop-build-audit.md) — current macOS build evidence, repository integration, and unverified live dependencies.
 - [Paracels chat prototype](docs/paracels-chat.md) — a dummy chat in the paracels iOS app: decisions, design, protocol, and phased plan.
-- [Roadmap](docs/roadmap.md) — what Fabric is now, what exists, the order of work with a gate after each step, what is parked, and the open decisions. Version 0.2, proposed.
+- [Roadmap](docs/roadmap.md) — what Fabric is now, what exists, the order of work with a gate after each step, what is parked, and the open decisions. Version 0.3, approved at gate H0.
 - [Agent Sandbox proposal](docs/agent-sandbox.md) — a permission broker between AI agents and your accounts, draft version 0.2. The roadmap makes it historical input to the Calendar Desktop plan.
 - [Requirements trace](docs/requirements-trace.md) — every requirement id in the PRD and the calendar vertical, mapped to what the repository implements. A snapshot from 2026-10-26; the roadmap calls it stale.
 - [Architecture decision records](docs/adr/) — ADR-007 (operation log and sync evolution), ADR-009 (sharing crypto and metadata model) and ADR-014 (mobile client and messaging relay) are drafted; the rest are listed in the architecture document, section 19.
