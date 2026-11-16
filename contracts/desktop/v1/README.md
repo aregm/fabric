@@ -10,6 +10,7 @@ Schema version 1, written on 2026-11-15. One session writes this directory; othe
 | `data/` | Contract data: versions, the limits frozen at CD-G0, the request lifecycle, the policy matrix, the tool catalog, the owner methods |
 | `fixtures/` | Golden and negative fixtures that the Rust and TypeScript sides both check |
 | `typescript/` | The TypeScript types and the fixture check |
+| `reference/` | A Python reference reading of the contract, which computed the fixtures' expectations |
 | `../../../crates/fabric-desktop-contracts/` | The Rust transport types, the canonical encoding and the digests |
 
 The schemas and data files are the contract. This README states the rules that a schema cannot.
@@ -159,7 +160,7 @@ It is the internal authorization type that plan section 8 allows. The CBOR token
 
 ## 13. Fixtures and the contract suite
 
-Both languages read the same files in `fixtures/`, compute every result themselves, and compare it with the expectation in the file.
+Both languages read the same files in `fixtures/`, compute every result themselves, and compare it with the expectation in the file. The expectations were computed by `reference/reference.py`, a third reading of this README in Python that shares no code with either side.
 
 | File | Form | What is checked |
 |---|---|---|
@@ -185,7 +186,9 @@ message    <file name>    reject <layer> <error>
 mutant     <id>           accept | reject <layer> <error>
 ```
 
-`scripts/verify-contracts.sh` runs both sides, compares the two reports byte for byte, then does the same for the mutants that the Rust side derives from the accepted messages: at every node of every accepted message, a member removed, an unknown member added, the value replaced by values of other types and by its neighbours, an object written as an array. The Rust verdict comes from the serde types and the TypeScript verdict from the schemas, so any place where the two describe different languages fails the suite.
+To add a fixture, write it with `"canonical"` and the digests null, or with the layer and error it must be refused with, and run `python3 contracts/desktop/v1/reference/reference.py bless`. It fills in what an accepted fixture expects and reports any fixture that is not judged as written.
+
+`scripts/verify-contracts.sh` runs both sides, compares the two reports byte for byte, then does the same for the mutants that the Rust side derives from the accepted messages: at every node of every accepted message, a member removed, an unknown member added, the value replaced by values of other types and by its neighbours, an object written as an array. The Rust verdict comes from the serde types and the TypeScript verdict from the schemas, so any place where the two describe different languages fails the suite. When Python 3 is installed the suite also runs the reference, whose report and verdicts must equal the Rust ones.
 
 ## 14. Choices made where the plan was open
 

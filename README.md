@@ -231,7 +231,7 @@ macOS or Linux:
 
 Verification runs formatting, check, Clippy with warnings denied, tests, and documentation for the entire locked workspace.
 
-The desktop contract has its own cross-language suite. It needs Node 22.18 or later, runs the Rust and the TypeScript side against the same fixtures, and fails on any disagreement:
+The desktop contract has its own cross-language suite. It needs Node 22.18 or later, runs the Rust and the TypeScript side against the same fixtures, and fails on any disagreement. When Python 3 is installed it also runs a reference written apart from both:
 
     sh scripts/verify-contracts.sh
 
