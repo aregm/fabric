@@ -1,6 +1,6 @@
 # Fabric Policy Demo — Isabelle-Gated Calendar Agents
 
-**Status:** approved on 2026-10-18; version 1.9 records gates G1 and G2, the choices of Phases 3–8, the Phase 9 results, and the macOS port of 2026-10-26 (section 16). Phases 0–9 are done; gate G3, your own run, is next.
+**Status:** approved on 2026-10-18; version 1.10 records gates G1 and G2, the choices of Phases 3–8, the Phase 9 results, the macOS port of 2026-10-26 (section 16), and corrections of 2026-11-15 to lines that the port had made stale. Phases 0–9 are done; gate G3, your own run, is next.
 
 **Prepared:** 2026-10-18
 
@@ -94,7 +94,7 @@ Your answers left the gaps below. You approved every proposed default on 2026-10
 | D18 | **Both owners file a request** naming the other person: duration, window, and a free-text preference. Bob's request is his pre-authorization to negotiate with Alice. Alice coordinates. | Only Alice files a request; Bob's side uses a standing configuration. |
 | D19 | **Inbound messages need no token.** The gateway delivers decrypted inbound messages to its own agent; only actions the agent starts need tokens. | Make "receive" a tokenized action too. |
 | D20 | **Calendar store:** one CBOR file per person, encrypted with XChaCha20-Poly1305, with the key in the OS credential store (Windows Credential Manager; since 2026-10-26 also the macOS login Keychain). This avoids building SQLCipher and OpenSSL on Windows. | SQLite with SQLCipher. |
-| D21 | **Same-user limit.** Every process runs under your Windows user. The demo's isolation is the API and token boundary, not an operating-system sandbox. | Run agents under a separate Windows account or in an AppContainer. Out of scope unless you want it. |
+| D21 | **Same-user limit.** Every process runs under your own user account, on Windows and on macOS. The demo's isolation is the API and token boundary, not an operating-system sandbox. | Run agents under a separate Windows account or in an AppContainer. Out of scope unless you want it. |
 
 ### 3.4 Runtime and engineering
 
@@ -106,7 +106,7 @@ Your answers left the gaps below. You approved every proposed default on 2026-10
 | D25 | **Models.** Both agents: `claude-opus-5-5` with adaptive thinking, `effort: "medium"` set explicitly, and server-side refusal fallbacks enabled (`fallbacks: "default"`), which re-run a declined request on another Claude model; confirmed at G1. A local run names its Ollama model in the run config; Phase 1 measured `granite4.1:3b`, `qwen3:4b` and `qwen3.5:4b`. | Name other models, or turn fallbacks off. |
 | D26 | **Parameters** as listed in section 8.3. | Change any value. |
 | D27 | **New dependencies.** The workspace has no third-party crates today. The demo adds them only to new crates; `fabric-core` stays dependency-free. Every version is pinned in `Cargo.lock`. | — |
-| D28 | **Tests and CI.** Tests that need Isabelle or an LLM run locally and are skipped in CI. Everything else, including the existing six-host CI, stays green. The demo itself is supported on Windows only. No stand-in prover is used anywhere. | Add Isabelle to CI, which means a large download on six runners. |
+| D28 | **Tests and CI.** Tests that need Isabelle or an LLM run locally and are skipped in CI. Everything else, including the existing six-host CI, stays green. The demo itself is supported on Windows and macOS only. No stand-in prover is used anywhere. | Add Isabelle to CI, which means a large download on six runners. |
 | D29 | **Isabelle install** into `.tooling/isabelle/` by a new setup script, like the Rust toolchain. If the Isabelle site publishes no checksum, the script pins the SHA-256 of the first download you approve. | You install Isabelle anywhere and the demo reads its path from config. |
 
 ## 4. System overview
@@ -254,7 +254,7 @@ Phase 4 settled the details. `fabric-demo calendar --config <file>` runs the ser
 
 ### 5.5 Isabelle server (shared)
 
-- Isabelle2025-2 for Windows, the current release (January 2026). On Windows, Isabelle's command-line tools run through its bundled Cygwin.
+- Isabelle2025-2 for Windows, the release the demo is pinned to (January 2026). On Windows, Isabelle's command-line tools run through its bundled Cygwin.
 - `scripts/setup-demo.ps1` installs it into `.tooling/isabelle/` (D29), and `scripts/isabelle.ps1` runs its tools. Both set `USER_HOME`, so Isabelle's per-user directory, including session heaps, stays in `.tooling/isabelle/home` instead of your Windows profile.
 - Sessions start with `headless_consolidate_delay=0.1`; the 2.0 s default adds about a second to every check (G1). On Windows, `session_stop` always reports return code 130, so the launcher treats that as normal and always sends `shutdown` afterwards; otherwise the server keeps running.
 - The launcher starts `isabelle server -n fabric-demo`, reads the address and password from the server's first output line, and passes them privately to the two policy gates.
@@ -485,7 +485,7 @@ The schema lists properties in a fixed order: `kind` first in every action, and 
 - Cost: Phase 1 measured 3,000–3,900 input and 400–1,000 output tokens per turn, about 3 cents. With both agents on Claude, a happy-path run is roughly 8–10 turns, about 30 cents.
 - Phase 6:
   - The backend sends the turn input as pretty-printed JSON in one user message.
-  - HTTPS is Windows' Schannel, through reqwest's `native-tls` feature, on Windows only. rustls would need aws-lc-rs or ring, both C and assembly builds, which risk the Windows ARM64 CI runner. Schannel is part of Windows.
+  - HTTPS is reqwest's `native-tls` feature, on Windows and macOS only: Windows' Schannel on Windows, and Security.framework on macOS (section 16). rustls would need aws-lc-rs or ring, both C and assembly builds, which risk the Windows ARM64 CI runner. Schannel is part of Windows.
   - A first-turn smoke test returned three valid plans in 5.7 s, with 3,420 input and 435 output tokens.
 - **Plans to actions.** The runtime fills in the active negotiation ID and gives each proposed candidate the ID `c<round>-<position>`. A plan with no actions means "wait". A plan whose time is unreadable is skipped, and the error goes back to the planner.
 
@@ -807,7 +807,7 @@ Results:
   - A4: across every kind of agent request and refusal, no response body, header or audit record contains a title or event ID. This holds for marker fixtures and for the demo fixtures.
 - One test runs locally only: it starts the real `fabric-demo calendar` command twice. The second start decrypts the store with the key from Credential Manager (under the test prefix, deleted afterwards), and the added meeting is still there.
 
-### Phase 5 — Messaging (done 2026-10-19; you asked on 2026-10-19 for the remaining gates to be approved automatically)
+### Phase 5 — Messaging (done 2026-10-19; you asked on 2026-10-19 for the remaining gates to be approved automatically; this did not cover gate G3, your own run, which is still open)
 
 | Task | Work | Size | Needs |
 |---|---|---|---|
@@ -935,7 +935,7 @@ Results:
   - Bob's two Claude calls cost about $0.05.
 - **Live spend in Phase 9:** about $0.40 in all.
 - The transcripts, with each agent's turn inputs, plans and verdicts, are in `.local/rehearsal/`, which git ignores.
-- **Not verified: CI.** The branch has no upstream and was not pushed, so GitHub Actions has not run on it.
+- **CI.** At Phase 9 the branch had no upstream and was not pushed, so GitHub Actions had not run on it. It runs now: the last five runs of the `verify` workflow passed, the latest on `main` at `fb3a774`. CI runs only the Cargo workspace, so no Isabelle test and none of the ignored tests.
 
 ## 20. Out of scope
 
@@ -943,6 +943,6 @@ Results:
 - Contact lists, TOFU, MLS, and owner time-policy rules (working hours, buffers, notice, daily limits).
 - The full consent rule group (once-only, own-calendar), unless you choose it in D12.
 - Three or more participants.
-- macOS and Linux support for the demo itself.
+- Linux support for the demo itself.
 - Operating-system sandboxing of agents (D21).
 - Production key management and an independent security review.
