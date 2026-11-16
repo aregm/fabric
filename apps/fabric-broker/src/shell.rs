@@ -80,8 +80,9 @@ pub enum ProverChoice {
     /// The synthetic classifier of a synthetic run without Isabelle.
     #[cfg(debug_assertions)]
     Classifier,
-    /// The Isabelle prover, started once the store is open.
-    Isabelle(crate::prover::ProverOptions),
+    /// The Isabelle prover, started once the store is open. Boxed: its paths make it far larger
+    /// than the other variants, and on Windows large enough for clippy to refuse the enum.
+    Isabelle(Box<crate::prover::ProverOptions>),
 }
 
 /// Everything the shell attaches.
@@ -114,7 +115,7 @@ impl Plan {
     pub fn of(config: &Config, now_ms: u64) -> Plan {
         let prover = match &config.isabelle {
             Some(isabelle) => {
-                ProverChoice::Isabelle(ProverOptions::new(isabelle, &config.data_dir))
+                ProverChoice::Isabelle(Box::new(ProverOptions::new(isabelle, &config.data_dir)))
             }
             #[cfg(debug_assertions)]
             None if config.synthetic_agent => ProverChoice::Classifier,
@@ -250,8 +251,8 @@ enum ProverSlot {
     /// The synthetic classifier's worker.
     #[cfg(debug_assertions)]
     Classifier(Sender<ProofJob>),
-    /// The Isabelle prover, waiting for the store to open.
-    Waiting(ProverOptions),
+    /// The Isabelle prover, waiting for the store to open; boxed as in `ProverChoice`.
+    Waiting(Box<ProverOptions>),
     /// The Isabelle worker.
     Isabelle(IsabelleProver),
 }
@@ -356,7 +357,7 @@ impl<W: Write> Shell<W> {
             && let ProverSlot::Waiting(options) =
                 std::mem::replace(&mut self.prover, ProverSlot::None)
         {
-            self.prover = ProverSlot::Isabelle(spawn_isabelle(options, self.events.clone()));
+            self.prover = ProverSlot::Isabelle(spawn_isabelle(*options, self.events.clone()));
         }
         for job in jobs {
             match job {
@@ -839,7 +840,7 @@ mod tests {
         // No wait after the first failure: down for the rest of the run.
         options.restart_waits = Vec::new();
         let plan = Plan {
-            prover: ProverChoice::Isabelle(options),
+            prover: ProverChoice::Isabelle(Box::new(options)),
             work_dir: config.data_dir.join("prover"),
             practice: None,
             agent: Some(crate::synthetic::SyntheticAgent::new()),
@@ -928,7 +929,7 @@ mod tests {
         let isabelle = nowhere(&dir.0);
         let plans = [
             ProverChoice::None,
-            ProverChoice::Isabelle(ProverOptions::new(&isabelle, &dir.data())),
+            ProverChoice::Isabelle(Box::new(ProverOptions::new(&isabelle, &dir.data()))),
         ];
         for prover in plans {
             let (sender, events) = mpsc::sync_channel(QUEUED_EVENTS);

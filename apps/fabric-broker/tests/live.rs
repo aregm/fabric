@@ -302,7 +302,7 @@ impl Live {
         assert_eq!(server, server_name(&config.data_dir));
         let calendar = PracticeCalendar::new(now_ms(), faults);
         let plan = Plan {
-            prover: ProverChoice::Isabelle(options),
+            prover: ProverChoice::Isabelle(Box::new(options)),
             work_dir: config.data_dir.join("prover"),
             practice: Some(calendar.clone()),
             agent: Some(SyntheticAgent::practice(calendar.clone())),
