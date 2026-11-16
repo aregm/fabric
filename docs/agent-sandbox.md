@@ -1,6 +1,6 @@
 # Agent Sandbox — A Permission Broker Between AI Agents and Your Accounts
 
-**Status:** draft proposal, version 0.2. Section 11's additions to the PRD and the architecture document were approved and applied on 2026-10-26. Section 2 lists what it takes from the Design Document; section 3 lists the decisions D1 to D13 that still need your confirmation (gate G0).
+**Status:** Historical input to the Calendar Desktop plan since 2026-11-15 (CD-G0). D1 to D13 were never confirmed and are superseded; the plan's C01 to C13 govern. Mail material moves to the later mail vertical.
 
 **Prepared:** 2026-10-26, from "Design Document.docx" (Sandbox for AI Agents, 2026-10-25, not in the repository)
 

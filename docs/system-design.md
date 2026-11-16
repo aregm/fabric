@@ -1,6 +1,6 @@
 # Fabric System Design — Calendar-Guided Architecture
 
-Status: Proposed implementation baseline  
+Status: Superseded as implementation baseline on 2026-11-15 (CD-G0) by the Calendar Desktop plan; kept as design background.  
 Scope: local-first encrypted macOS desktop, Apple Silicon first  
 Guiding vertical: Google Calendar  
 Companion documents: [PRD](PRD.md), [technical background](architecture.md), [calendar specification](calendar.md)

@@ -1,10 +1,10 @@
 # Fabric Calendar Desktop — Standalone Implementation Plan
 
-Prepared: 2026-11-15. Status: planning deliverable; application implementation has not been authorized in this task. Owner/product decider: Areg Melik-Adamyan. Intended readers: independent software agents, implementers, reviewers, and release engineers.
+Prepared: 2026-11-15. Status: planning deliverable; application implementation was not authorized in the planning task. G0 decisions were recorded on 2026-11-15 (section 15.1); G0 authorizes all work packages up to G5 under the conditions stated there. Owner/product decider: Areg Melik-Adamyan. Intended readers: independent software agents, implementers, reviewers, and release engineers.
 
-Repository: https://github.com/aregm/fabric. Audited upstream baseline: `4fb3330` (main). Integration baseline including preserved local architecture: `54dd653`. Clone the repository and check out the delivered plan branch, `codex/calendar-desktop-plan`, then record its exact commit in the implementation evidence. A local checkout currently exists at `/Users/intel/Documents/ChatGPT/fabric`; implementations on other machines must derive their own checkout path.
+Repository: https://github.com/aregm/fabric. Audited upstream baseline: `4fb3330` (main). Integration baseline including preserved local architecture: `54dd653`. Clone the repository and check out the delivered plan branch, `codex/calendar-desktop-plan`, then record its exact commit in the implementation evidence. When this plan was prepared, a local checkout existed at `/Users/intel/Documents/ChatGPT/fabric`; implementations on other machines must derive their own checkout path. Since G0 (2026-11-15) the plan branch is merged unchanged into `main`, and implementation starts from the `main` commit that records the G0 decisions.
 
-This document contains the requirements, source interpretation, proposed architecture, interfaces, work sequence, verification gates, and agent handoff instructions. Implementation must not depend on access to the originating conversation or private Google Doc. The portable export is `fabric-calendar-desktop-plan-2026-11-15.zip`, containing `IMPLEMENTATION_PLAN.md`, `BUILD_AUDIT.md`, `README.md`, `manifest.json`, `SHA256SUMS`, and `reference-mockups/`. The manifest identifies the exact plan commit, source revision and image-to-screen mapping; SHA256SUMS covers every other packet file. Visual references stay in that local packet; the normative behaviors are restated here so the repository plan is usable on its own.
+This document contains the requirements, source interpretation, architecture (chosen at G0), interfaces, work sequence, verification gates, and agent handoff instructions. Implementation must not depend on access to the originating conversation or private Google Doc. The portable export is `fabric-calendar-desktop-plan-2026-11-15.zip`, containing `IMPLEMENTATION_PLAN.md`, `BUILD_AUDIT.md`, `README.md`, `manifest.json`, `SHA256SUMS`, and `reference-mockups/`. The manifest identifies the exact plan commit, source revision and image-to-screen mapping; SHA256SUMS covers every other packet file. Visual references stay in that local packet; the normative behaviors are restated here so the repository plan is usable on its own.
 
 ## 1. Outcome and confirmed scope
 
@@ -32,7 +32,7 @@ Selected OS target: macOS 15.0 and newer on arm64. This is a target chosen under
 
 An action is an agent-requested read, disclosure, or provider mutation. Broker-initiated provider refresh, reconciliation, and setup mutations also need explicitly modeled, proven system authority. UI rendering, broker health reads, and editing an unsaved local form do not grant provider authority.
 
-The first release excludes Gmail operations, peer-to-peer Rendezvous, mobile changes, multi-device sync, a general knowledge vault, autonomous rule learning, person/fact-level disclosure classification, undoing sent invitations, recurring-event mutations, travel-route lookup, and a Mac App Store submission. Unsupported provider event types must be rejected explicitly. These are scope proposals to freeze at G0, not assertions that the source document forbids them.
+The first release excludes Gmail operations, peer-to-peer Rendezvous, mobile changes, multi-device sync, a general knowledge vault, autonomous rule learning, person/fact-level disclosure classification, undoing sent invitations, recurring-event mutations other than a reply to one occurrence of a recurring invitation, travel-route lookup, and a Mac App Store submission. Unsupported provider event types must be rejected explicitly; version 1 mutates only the default event type. G0 froze this list on 2026-11-15 (CD-Q05e), as amended by CD-Q05b; it is not an assertion that the source document forbids these items. G0 also brought deletion of Fabric-created events (always Ask) and Google People import into version 1 (section 15.1).
 
 ## 2. Source analysis and precedence
 
@@ -56,13 +56,13 @@ The calendar images are more specific than the early prose. Careful confines aut
 
 | Conflict | Resolution for this plan |
 |---|---|
-| `agent-sandbox.md` D11 proposes a web dashboard and excludes a native app | The new request calls for a desktop app; this plan recommends a native shell. The older proposal remains historical and must be updated when G0 accepts this plan. |
+| `agent-sandbox.md` D11 proposes a web dashboard and excludes a native app | The new request calls for a desktop app; G0 chose a Tauri desktop application (CD-Q01a). The older proposal is historical input since 2026-11-15 (RD-5). |
 | Sandbox D2 proposes Rust runtime evaluation; demo requires Isabelle | C05 controls: retain live proofs, including proof failure and timeout states. |
 | Earlier system design assumes opaque Busy events in a pilot calendar | C07 requires a separate explicit provider-invitation mode and existing-calendar edits. Do not claim the private Rendezvous disclosure contract for Google invitations. |
-| Broad Flexible mockup can look like automatic deletion of any event; baseline limits destructive automatic actions | Proposed matrix below keeps destructive actions at Ask/Block and defaults existing-event changes to Ask. Freeze the exact defaults at G0. |
+| Broad Flexible mockup can look like automatic deletion of any event; baseline limits destructive automatic actions | The matrix below keeps destructive actions at Ask/Block (event deletion only for Fabric-created events, Ask in every profile) and defaults existing-event changes to Ask in both built-in profiles. G0 froze the defaults on 2026-11-15. |
 | Older mockups may imply indefinitely approved contacts | A contact group is a selector, not a grant. Every authorization has an explicit duration and is separately revocable. |
 | Prose calls smart warnings a nice-to-have | C06 makes time and fixed-buffer warnings required. Map-derived travel estimates remain deferred. |
-| Source uses Flexible/Careful, Relaxed/Vigilant, Muse/Instinct/Sandbox | Use Careful/Flexible in the proposed UI. Use registered agent names rather than fictional agent brands. Final product naming is an open release input. |
+| Source uses Flexible/Careful, Relaxed/Vigilant, Muse/Instinct/Sandbox | Use Careful/Flexible in the UI (frozen at G0, G0-NAMES). Use registered agent names rather than fictional agent brands. The product name is Fabric Calendar (G0, Q07). |
 
 Precedence: confirmed decisions C01–C13; explicit safety invariants and accepted requirements; this plan's accepted G0 decisions; source illustrations; historical proposals. Recommendations remain recommendations until accepted. Never resolve a conflict by silently broadening a permission.
 
@@ -80,11 +80,11 @@ The current workspace builds; it already includes a Rust calendar simulator, a s
 | `apps/fabric-demo/src/calendar/store.rs` | Encryption/key-management example | Whole-file CBOR fixture store, not durable grants/sync/effect storage |
 | `apps/fabric-demo/src/dashboard.rs` and `demo/dashboard` | Behavior examples and request flow | Replace rendering with the desktop UI contract |
 | `apps/fabric-demo/src/audit.rs` | Record vocabulary only | Logging can be disabled and I/O errors are swallowed. The new broker must fail closed when pre-call audit persistence fails. |
-| `apps/paracels` | Prior examples of idempotent outbox behavior | Separate mobile prototype; no new desktop TypeScript dependency |
+| `apps/paracels` | Prior examples of idempotent outbox behavior | Separate mobile prototype; the desktop does not depend on it |
 
 Do not claim expiry equals revocation, signature verification equals policy approval, an in-memory nonce cache equals crash-safe idempotency, or an encrypted fixture file equals a canonical database.
 
-Observed local environment: `sphynx`, arm64, macOS 27.0.1, Xcode 27.1, Swift 6.4, project Rust/Cargo 1.97.1. Claude Code 2.1.318, Codex CLI 0.169.0-alpha.11.1, and Ollama client 0.40.8 are present. Ollama did not report a running server; no model availability was established. Isabelle is not installed locally. Client versions are observations, not required release versions.
+Observed local environment when this plan was prepared: `sphynx`, arm64, macOS 27.0.1, Xcode 27.1, Swift 6.4, project Rust/Cargo 1.97.1. Claude Code 2.1.318, Codex CLI 0.169.0-alpha.11.1, and Ollama client 0.40.8 are present. Ollama did not report a running server; no model availability was established. Isabelle was not installed in the checkout where this plan was prepared; on 2026-11-15 DEMO-G3 ran Isabelle on this Mac in another checkout. Client versions are observations, not required release versions.
 
 The integrated Rust check passed: formatting, check, Clippy, tests, docs; 93 passed, 0 failed, 11 ignored. Ignored live tests were not validated. See the companion build audit for commands and limits. A successful Cargo build does not establish working Google, desktop, or live-proof integration.
 
@@ -98,18 +98,19 @@ Purpose: let the owner control real calendar access by multiple agents. Operand:
 
 | Option | TypeScript added | Benefits | Cost and reason for choice |
 |---|---:|---|---|
-| SwiftUI application + Rust broker via IPC | Zero | Native macOS forms, accessibility and menus; keeps Rust policy/provider authority | Two language toolchains and a versioned IPC contract. Recommended for this macOS-only release, subject to spike G1. |
-| Tauri + static HTML/CSS + small vanilla TypeScript | Small | Familiar mockup layout; Rust backend; existing dashboard behavior examples | Webview and JS bridge, frontend build and capability configuration. Fallback if native integration fails or exact web-layout reuse becomes a stronger requirement. |
+| SwiftUI application + Rust broker via IPC | Zero | Native macOS forms, accessibility and menus; keeps Rust policy/provider authority | Two language toolchains and a versioned IPC contract. This plan's original recommendation; not taken at G0 (CD-Q01a). |
+| Tauri + static HTML/CSS + small vanilla TypeScript | Small | Familiar mockup layout; Rust backend; existing dashboard behavior examples | Webview and JS bridge, frontend build and capability configuration. Chosen at G0 on 2026-11-15 (CD-Q01a). |
 | Rust egui application | Zero | One implementation language and direct Rust reuse | Must separately demonstrate accessibility and form fidelity. Suitable for diagnostics; not selected for this permission-oriented desktop UI. |
 | Existing browser dashboard | Existing JavaScript | Least initial implementation | Does not satisfy the requested desktop application. |
 
-Recommendation: SwiftUI controls, Swift view state and Codable transport types, Rust application services, and no new JavaScript/TypeScript. Preserve the existing TypeScript mobile prototype. Use IPC rather than Rust FFI; the workspace currently forbids unsafe Rust, and IPC avoids introducing an ABI or unsafe-code exception.
+Decision (G0, CD-Q01a): a Tauri application. The owner interface is static HTML and CSS with a small vanilla TypeScript layer in the system webview, with no component framework; Rust application services run in a separate broker process. The TypeScript added is small, not zero; C10 (minimize TypeScript) is honoured by choosing static HTML and vanilla TypeScript without a framework. Preserve the existing TypeScript mobile prototype. Use IPC rather than Rust FFI; the workspace currently forbids unsafe Rust, and IPC avoids introducing an ABI or unsafe-code exception. The plan's original recommendation (SwiftUI controls, Swift view state and Codable transport types, no new JavaScript/TypeScript) is recorded and was not taken; neither form uses FFI.
 
 ### 4.3 Process and authority boundaries
 
 ```mermaid
 flowchart LR
-    UI["SwiftUI owner interface"] -->|"Private owner pipe"| B["Rust broker"]
+    UI["Owner interface (webview)"] -->|"Allowlisted commands"| H["Tauri host (Rust)"]
+    H -->|"Private owner pipe, fabric-desktop/1"| B["Rust broker"]
     CD["Claude Desktop / Claude Code"] -->|"MCP stdio"| M["Rust MCP bridge"]
     CX["Codex desktop"] -->|"MCP stdio"| M
     M -->|"Agent-only local channel"| B
@@ -120,7 +121,7 @@ flowchart LR
     G --> API["Google Calendar API"]
 ```
 
-The SwiftUI app launches one bundled broker using inherited stdin/stdout pipes. No GUI command goes through the agent tool surface. The broker owns one encrypted database and single-writer application service. Owner pipe lifetime defines the UI connection, not the entire scope of every grant. Launch children with an explicit environment allowlist; never inherit Google credentials, owner-channel handles or unrelated host secrets into an agent/bridge.
+The Tauri host (Rust) launches one bundled broker as a child using private inherited stdin/stdout pipes and relays the versioned `fabric-desktop/1` JSON contract. The webview reaches only the Tauri host, through a minimal allowlisted command set. The host and the webview hold no Google credentials and no database, and make no policy decision. No GUI command goes through the agent tool surface. The broker owns one encrypted database and single-writer application service. Owner pipe lifetime defines the UI connection, not the entire scope of every grant. Launch children with an explicit environment allowlist; never inherit Google credentials, owner-channel handles or unrelated host secrets into an agent/bridge.
 
 External clients launch a small Rust MCP bridge through stdio. The bridge joins an already running broker over a local Unix-domain socket in a private per-user runtime directory. Enrollment starts with the bridge generating a private key in its dedicated Keychain namespace and a public enrollment ID/key. The owner approves that public identity on the private owner channel; the broker binds the agent record and allowed tool scope to that key. Configuration contains only the public enrollment ID and executable location. The bridge proves key possession on connection; no bearer secret is printed, embedded in MCP configuration, or supplied in arguments. Define code-signing/Keychain access behavior for the distributed bridge in G1. It never receives an owner capability. The socket is mode 0600 in a mode 0700 directory, with peer and capability checks. Same-user hostile software is a stated residual threat; a socket mode is not an OS sandbox.
 
@@ -133,6 +134,7 @@ Quit the app: stop accepting new proposals, end session grants, shut down worker
 | Module | Authoritative responsibility | Forbidden dependencies |
 |---|---|---|
 | Desktop UI | presentation, navigation, local form editing, accessible approval display | Direct Google/Keychain/DB access; policy decisions |
+| Tauri host | launches the broker child over private pipes, relays the `fabric-desktop/1` contract, exposes a minimal allowlisted command set to the webview | Google credentials, database, policy decisions |
 | Application service | request transitions, grants, profiles, identity, revocation, pause, ordering | Model-selected authority |
 | Formal policy | actual permission decision over trusted immutable context; signed/tokened evidence from real proof | Network API calls, model outputs treated as facts |
 | Google adapter | OAuth, endpoint validation, scopes, provider translation, revision conditions | Grant minting or UI consent |
@@ -145,7 +147,7 @@ Quit the app: stop accepting new proposals, end session grants, shut down worker
 
 | ID | Requirement | Evidence required |
 |---|---|---|
-| R01 | Native desktop app installs and launches on another supported arm64 Mac | Clean-machine signed/notarized bundle launch and recorded OS version |
+| R01 | Desktop app installs and launches on another supported arm64 Mac | Clean-machine signed/notarized bundle launch and recorded OS version |
 | R02 | One Calendar permission surface works identically for all four client paths | Live integration matrix for Claude Desktop, Claude Code, Codex desktop, embedded Ollama |
 | R03 | Connect personal Google accounts through app-owned OAuth | Consent denial, partial grant, refresh, revocation, reconnect, selected account/calendar tests |
 | R03a | Connect multiple accounts simultaneously, including writable shared calendars | Account/calendar identity isolation, account-specific scopes, ACL downgrade, and explicit destination tests |
@@ -161,13 +163,13 @@ Quit the app: stop accepting new proposals, end session grants, shut down worker
 | R13 | Secrets and sensitive calendar content are protected locally | Encrypted DB/WAL/temp-file test, Keychain access, redacted logs and exports |
 | R14 | Users know when approved data goes to a cloud agent | Per-agent destination notice; Ollama local endpoint shown and remote endpoints explicit |
 
-Proposed quality targets to freeze at G0: UI acknowledgement within 100 ms excluding proof/network; policy progress visible within 500 ms; proof timeout 30 seconds per action; bounded queue of 100 pending agent requests with explicit busy responses; provider timeout 30 seconds; at most three transient retries with jitter within a two-minute retry budget. These are proposed limits, not measured performance promises. Revoke acknowledgement must commit locally before success is displayed; it must not wait behind a long-running proof.
+Quality targets frozen at G0 (2026-11-15): owner actions acknowledged within 100 ms, excluding proof and network. Within 500 ms a "received, checking" state is visible; the verdict follows when the proofs finish, and a denial keeps its failing rule on screen (DEF-7). Proof timeout 30 seconds per Isabelle check, counted from the check's start; W03 re-measures and reopens this if a mean check exceeds 1.5 s. At most 100 open requests in total and 25 per agent; 15 requests per minute and 5 open approval cards per agent; past a limit, a retryable busy answer; these limits are re-set after W03 measures the theory. Provider timeout 30 seconds per Google call; at most three transient retries with backoff; the 120 s retry budget wins; a fresh proof per retry; no blind resend of a notification. These are limits, not measured performance promises. Revoke acknowledgement must commit locally before success is displayed; it must not wait behind a long-running proof.
 
 ## 6. GUI specification derived from the mockups
 
 ### S01 — Setup and account connection
 
-Show the three parties and explain the broker's role in plain language. Offer Careful and Flexible, with an explicit description and detailed-settings link. Proposed default is Careful; G0 freezes it. Selecting a profile does not connect Google or create a grant. Explain that Google may grant broader API access than Fabric allows each agent.
+Show the three parties and explain the broker's role in plain language. Offer Careful and Flexible, with an explicit description and detailed-settings link. Careful is preselected (frozen at G0). Selecting a profile does not connect Google or create a grant. Explain that Google may grant broader API access than Fabric allows each agent.
 
 Connect Google opens the system browser. Show verified account identity, provider permission result, selected calendars, and read/write scope. Provide Add account and separate connection/revocation controls for each connected personal account. Distinguish owner calendars from writable shared calendars. Every request and approval names its account and calendar explicitly; an ambiguous task asks the owner to choose, never silently uses `primary`. Connecting an account and authorizing an agent are separate steps. Do not promise that every Google calendar is writable.
 
@@ -189,7 +191,7 @@ On stale/changed request, disable approval and require refreshed review. Double-
 
 ### S04 — Contacts and recipient sets
 
-The source shows groups, members, optional domains, and per-group invitation behavior. For the Calendar-first proposal, implement manually curated local groups and exact addresses, plus an explicit domain selector. Google People import is a later optional adapter. Group deletion affects the permission selector, not the Google contact itself.
+The source shows groups, members, optional domains, and per-group invitation behavior. Implement manually curated local groups and exact addresses, plus an explicit domain selector. G0 (CD-Q06) requires Google People import in version 1: an extra Google scope and its verification, a new adapter, and a later Google work package. Local groups and exact or domain recipient sets remain, and import adds a source for them (interpretation 2 in section 15.1). Group deletion affects the permission selector, not the Google contact itself.
 
 For mixed groups, evaluate every recipient; one recipient needing approval makes the whole invitation request Ask. A group membership change does not retroactively broaden an existing exact-recipient approval. Show the expansion before approving a domain-wide rule. Domain matching uses normalized exact domain equality; no substring matches. Full address normalization must preserve local-part distinctions and not invent Gmail alias equivalence.
 
@@ -227,36 +229,42 @@ For embedded Ollama, provide a small task composer, chosen local model, progress
 
 Each screen must handle loading, empty, offline, locked database, Keychain refusal, prover unavailable, provider authentication required, conflicting settings revision, and broker disconnected. Forms preserve unsaved local state across a recoverable broker disconnect; approvals must be revalidated. Native notifications may open the app but cannot approve an action.
 
-## 7. Proposed policy matrix and duration semantics
+## 7. Policy matrix and duration semantics
 
-The following defaults are a recommendation to accept at G0. They preserve safe defaults while allowing C07 through explicit approval. Google ACLs and API scopes are necessary but never sufficient authority.
+G0 froze the following defaults on 2026-11-15 (section 15.1). They preserve safe defaults while allowing C07 through explicit approval. Google ACLs and API scopes are necessary but never sufficient authority.
 
 | Operation | Careful | Flexible | Hard constraints |
 |---|---|---|---|
 | List selected calendars / availability | Allow within an explicit broker read grant | Same | Calendar allowlist, date bounds, field minimization |
-| Read event details | Ask for required fields/window | Allow only in an explicitly accepted read grant | No hidden description/attendee disclosure |
+| Read event details | Ask; the owner approves a grant limited to the requested fields and date window, and reads inside it run for the grant's duration | Allow only in an explicitly accepted read grant | No hidden description/attendee disclosure |
 | Create owner-only event in Agent Drafts | Allow in grant | Allow in grant | Calendar ID plus local creation record |
 | Create in selected existing calendar | Ask | Allow only with an explicit user-created scoped grant | Must be writable; attendee side effects checked separately |
 | Edit Fabric-created event | Ask outside drafts | Allow in accepted scoped grant if no new recipients | Ownership tracked locally; revision precondition |
 | Edit pre-existing event | Ask | Ask | C07 is satisfied through a real approval, not unrestricted edits |
 | Send/change invitations | Ask | Ask by default; may Allow an explicitly approved recipient set/grant | New recipients, changed message/time/notification scope require valid authority |
-| Respond to an invitation | Ask | Ask | Bind event revision and exact response |
-| Delete event | Ask, feature disabled until G0 accepts scope | Same | No assumption of Google trash/undo guarantees |
+| Respond to an invitation | Ask | Ask | Bind event revision and exact response; a reply to one occurrence of a recurring invitation also binds instance id and originalStartTime |
+| Delete event | Ask; enabled only for events Fabric created | Same | Ask in every profile, custom included; `events.delete` with If-Match and bound `sendUpdates`; no assumption of Google trash/undo guarantees |
 | Delete calendar or modify ACL/sharing | Block | Block | No agent tool or general API proxy exposes it |
 
 Priority: paused/revoked/expired/unsupported → Block; explicit prohibition → Block; insufficient capability or required human approval → Ask; otherwise prove permission and Allow. A read profile alone never implies sending rights. A warning cannot convert Block to Allow or Allow to Block.
 
-Durations:
+Custom profiles (G0): a named custom profile may set any row up to Allow, and so may go wider than Flexible, except the blocked rows. "Edit pre-existing event" and "Respond to an invitation" are Ask in both built-in profiles and are not locked; a custom profile may set them to Allow, and saving such a profile shows the expansion first. "Delete event" stays Ask in every profile, and "Delete calendar or modify ACL/sharing" stays Block in every profile.
+
+Work package W03 must state how the "Edit Fabric-created event" row combines with the "Send/change invitations" row, so that a change of time for existing attendees is caught, with negative cases.
+
+Durations (G0: one request, one session, until revoked, for every grant kind):
 
 - **This request only:** bind one immutable action digest and one logical effect/read result, consumed durably. A retry of the same request returns its existing lifecycle, not another grant.
-- **This session:** bind to the registered agent session and current broker run; end on explicit disconnect/end-session, app quit, broker restart, or configured idle expiration. UI connection hiccups do not create a new unlimited session.
+- **This session:** bind to the registered agent session and current broker run; end on explicit disconnect/end-session, app quit, broker restart, or idle expiration after 30 minutes. UI connection hiccups do not create a new unlimited session.
 - **Until revoked:** explicit persistent choice, `expires_at = null` with a visible duration label; revoked by owner, account disconnect, relevant authority reduction, or agent removal. Do not describe it as a finite expiry.
+
+Separately from grant durations, an exact-action authorization lives 60 s, with a fresh proof per retry, and an unanswered approval card expires after 24 hours (G0).
 
 For a broader grant, record purpose, resources, actions, data fields, temporal range, recipient rule, notification rules, issuer, session/account binding, creation approval, policy version, revision, and revocation epoch. Any expansion requires owner acceptance. A safer profile change or revocation can narrow existing authority immediately.
 
 ## 8. Live-proof and authorization contract
 
-Extend the theory with separate namespaced broker actions; preserve the demo's negotiation protocol. New action families cover calendar enumeration, availability read, event read/create/update, invitation mutation/response, cached-result disclosure, warning disclosure, system refresh/reconciliation reads, and any accepted deletion scope. Formal context includes broker-derived identity, grants, selected account/calendar, current profile, pause/revocation epochs, ownership evidence, exact recipients/fields, original event revision, time, purpose, and approval digest. Re-evaluate actual time and grant/approval expiry at the dispatch boundary; a proof produced before expiry is not authority to dispatch after expiry.
+Write the broker's rules as a separate theory and session, `isabelle/Fabric_Broker`, with separate namespaced broker actions; leave the demo's `Fabric_Policy` untouched and preserve its negotiation protocol (G0). New action families cover calendar enumeration, availability read, event read/create/update, invitation mutation/response, cached-result disclosure, warning disclosure, system refresh/reconciliation reads, and any accepted deletion scope. Formal context includes broker-derived identity, grants, selected account/calendar, current profile, pause/revocation epochs, ownership evidence, exact recipients/fields, original event revision, time, purpose, and approval digest. Re-evaluate actual time and grant/approval expiry at the dispatch boundary; a proof produced before expiry is not authority to dispatch after expiry.
 
 For every action, prove permission or a failing condition using the real Isabelle server. Model three distinct outcomes in the broker theory: Permit, NeedApproval, and Block, plus operational Undecided. A proved missing-consent condition may produce NeedApproval and an approval card; it is not permission to execute. Only a fresh live Permit after the immutable consent exists may queue or dispatch a provider call or disclose data. An incomplete proof is Undecided and fails closed. Record actual proof ID, Isabelle version, theory hash, exact context/action digest, rule verdicts, and timings. Model statements are proposals, never facts supplied to Isabelle.
 
@@ -267,7 +275,7 @@ Before dispatch, with per-account serialized authority transitions:
 3. Check typed inputs and compute warnings independently.
 4. Run live proof over that immutable context and exact action outside the authority/dispatch lock. NeedApproval goes to the owner and cannot execute; after consent, obtain a new context and proof.
 5. Recheck pause/revocation/policy/approval/provider revisions after the proof. If relevant facts changed, discard proof and re-prove or return stale.
-6. Commit a short-lived, exact-action authorization and durable effect reservation.
+6. Commit a short-lived (60 s, section 7), exact-action authorization and durable effect reservation.
 7. Immediately before provider dispatch, verify authorization, current epochs, and provider preconditions; record dispatch intent durably.
 8. Call Google, persist outcome, and reconcile observed state.
 
@@ -314,11 +322,11 @@ Illustrative approval message (values are synthetic, not credentials):
 }
 ```
 
-Finalize real JSON Schemas, canonical hashing rules, timestamps, identifiers, and golden fixtures in W01 before parallel implementation. Swift Codable and Rust serde types must pass the same fixtures; no policy is duplicated in Swift.
+Finalize real JSON Schemas, canonical hashing rules, timestamps, identifiers, and golden fixtures in W01 before parallel implementation. TypeScript and Rust serde types must pass the same fixtures; no policy is duplicated in TypeScript or in the Tauri host.
 
 ### 9.2 Agent channel
 
-MCP tools expose only bounded actions: `fabric_calendar_list`, `fabric_calendar_availability`, `fabric_calendar_read`, `fabric_calendar_propose_create`, `fabric_calendar_propose_update`, `fabric_calendar_propose_invitation`, `fabric_calendar_propose_response`, `fabric_request_status`, `fabric_request_result`, and accepted optional delete. Agent identifiers come from enrollment, not a supplied display name. No tool exposes Google HTTP passthrough, arbitrary URLs, approval, grant creation, or profile editing.
+MCP tools expose only bounded actions: `fabric_calendar_list`, `fabric_calendar_availability`, `fabric_calendar_read`, `fabric_calendar_propose_create`, `fabric_calendar_propose_update`, `fabric_calendar_propose_invitation`, `fabric_calendar_propose_response`, `fabric_request_status`, `fabric_request_result`, and a delete proposal limited to Fabric-created events (accepted at G0, CD-Q05a). Agent identifiers come from enrollment, not a supplied display name. No tool exposes Google HTTP passthrough, arbitrary URLs, approval, grant creation, or profile editing.
 
 An initial Ask returns `pending_approval` plus stable `request_id`; status polling observes the same action. Do not keep an MCP request open indefinitely while a person decides. Allow returns the proven filtered read result or the effect lifecycle. Block returns a bounded explanation. Cancellation before dispatch stops the operation; after dispatch it triggers reconciliation, not a false rollback.
 
@@ -361,15 +369,15 @@ Freeze scopes after a spike on personal accounts. Candidate minimums:
 | Existing owner-calendar event writes | `calendar.events.owned` if sufficient for accepted calendars |
 | Writable shared-calendar events (required by C13) | `calendar.events`, after confirming behavior in the scope spike |
 
-All scopes above use the prefix `https://www.googleapis.com/auth/`. Do not request the blanket `calendar` or ACL scope. Scope selection is coarser than per-calendar/per-agent rules; the broker enforces those restrictions on every call. Request only the scopes necessary for the chosen release behavior. Do not add People/Gmail permissions to implement the manual contact-group UI.
+All scopes above use the prefix `https://www.googleapis.com/auth/`. Do not request the blanket `calendar` or ACL scope. Scope selection is coarser than per-calendar/per-agent rules; the broker enforces those restrictions on every call. Request only the scopes necessary for the chosen release behavior. Do not add Gmail permissions. The manual contact-group UI needs no People permission; Google People import, required in version 1 by G0 (CD-Q06), adds a People scope and its verification.
 
-Operations map to bounded calendar list/freeBusy/events get/list/insert/update or patch and response updates. Keep caller-selected account/calendar IDs resolved against local authorized records and current provider access roles. Shared-calendar write access never implies ownership or permission to modify sharing. ACL downgrade must stop writes and stale approvals. Never accept an arbitrary Google API URL from an agent.
+Operations map to bounded calendar list/freeBusy/events get/list/insert/update or patch, response updates, and `events.delete` for Fabric-created events. Keep caller-selected account/calendar IDs resolved against local authorized records and current provider access roles. Shared-calendar write access never implies ownership or permission to modify sharing. ACL downgrade must stop writes and stale approvals. Never accept an arbitrary Google API URL from an agent.
 
 ### 10.3 Temporal and mutation rules
 
-Preserve provider IDs, etags, raw encrypted evidence, original time zones, all-day local dates, cancellations, and recurrence metadata. For availability and warnings, use provider-expanded occurrences over a bounded window or a tested domain recurrence engine; do not treat recurrence masters as individual events. First-release recurring mutations are rejected with a clear explanation. Single-event all-day edits require date semantics, not an arbitrary midnight UTC conversion.
+Preserve provider IDs, etags, raw encrypted evidence, original time zones, all-day local dates, cancellations, and recurrence metadata. For availability and warnings, use provider-expanded occurrences over a bounded window or a tested domain recurrence engine; do not treat recurrence masters as individual events. First-release recurring mutations are rejected with a clear explanation, except a reply to one occurrence of a recurring invitation (G0, CD-Q05b), which binds instance id, originalStartTime and revision; creating series and series or instance edits stay rejected. Version 1 creates and edits timed events only, each with an explicit IANA zone (G0, CD-Q05c); all-day events are read with date semantics, not an arbitrary midnight UTC conversion.
 
-Existing-event updates must bind a before-image and etag, preserve untouched fields, and use conditional modification. A stale etag produces a new preview/approval, not an overwrite. Distinguish owner-organized events, received invitations, and read-only subscribed events.
+Existing-event updates must bind a before-image and etag, preserve untouched fields, and use conditional modification. Deleting a Fabric-created event uses `events.delete` with If-Match and `sendUpdates` bound to the approval, and is reconciled by reading the event back, to be confirmed in the W05 spike (G0, CD-Q05a). A stale etag produces a new preview/approval, not an overwrite. Distinguish owner-organized events, received invitations, and read-only subscribed events.
 
 An invitation is an explicit compatibility mode: Google and recipients receive the approved event details and attendee information. Bind `sendUpdates`, attendee changes, description/location/conference fields and notification behavior to the approval. Do not market this as private peer scheduling. Setting `sendUpdates=none` alone is not a universal guarantee against external email; avoid claiming otherwise. A response operation may itself notify an organizer; show that consequence.
 
@@ -402,7 +410,7 @@ Startup verifies schema and durable history integrity, expires old sessions, rec
 
 ## 12. Distribution and operations
 
-Package a signed arm64 `.app` targeting macOS 15.0+, Rust broker/bridge executables, schema/assets, theory version, and a validated Isabelle runtime strategy. Developer ID signing, hardened runtime, notarization, and stapling are release gates. Build and sign nested components in the appropriate order; verify on a clean second Mac and the minimum supported macOS. DMG or ZIP distribution is recommended; Mac App Store work is deferred.
+Package a signed arm64 `.app` targeting macOS 15.0+, Rust broker/bridge executables, schema/assets, theory version, and a validated Isabelle runtime strategy. Developer ID signing, hardened runtime, notarization, and stapling are release gates. Build and sign nested components in the appropriate order; verify on a clean second Mac and the minimum supported macOS. Distribution is a stapled DMG (frozen at G0, CD-W00f); Mac App Store work is deferred.
 
 Isabelle is a release-critical dependency. The existing macOS setup downloads roughly 1.7 GB and assumes repository-local paths. G1 must compare bundling a validated redistributable runtime against an explicit verified first-run installation; examine licenses, signing, JVM/PolyML executables, size, session build/cache paths, offline start, and upgrade behavior. Upstream's Isabelle2025-2 macOS distribution is not developer-signed/notarized; do not assume that nesting or downloading it makes the final product distributable. A manual external-runtime installation may be an explicitly accepted onboarding alternative, with its own Gatekeeper verification. Do not ship an app that points to the developer's `.tooling` directory. Prover absence blocks agent actions with actionable setup, never a permissive fallback. Select and document the runtime strategy before the GUI release is accepted.
 
@@ -416,9 +424,9 @@ Each package produces a focused commit/PR, artifact list, commands and results, 
 
 | Package | Owner role | Depends on | Work / deliverable | Gate |
 |---|---|---|---|---|
-| W00 | Architect + product owner | None | Freeze proposed matrix/defaults, release operations, supported OS/account count, distribution identity, open decisions | G0: decisions recorded in this plan/ADRs |
-| W01 | Contract engineer | W00 | JSON Schemas, Rust/Swift fixture agreement, canonical digests, error/status grammar, request state transitions, tool catalog | G1a: cross-language contract suite |
-| W02 | Desktop engineer | W01 | SwiftUI app and Rust child echo/progress/approval round trip, crash/relaunch, packaging spike | G1b: native + keyboard/VoiceOver evidence |
+| W00 | Architect + product owner | None | Freeze proposed matrix/defaults, release operations, supported OS/account count, distribution identity, open decisions | G0: decisions recorded in this plan/ADRs. Done 2026-11-15 (section 15.1) |
+| W01 | Contract engineer | W00 | JSON Schemas, Rust/TypeScript golden fixture agreement, canonical digests, error/status grammar, request state transitions, tool catalog | G1a: cross-language contract suite |
+| W02 | Desktop engineer | W01 | Tauri shell and Rust child round trip (echo, progress, approval), crash and relaunch, packaging spike | G1b: packaged app round trip plus keyboard and VoiceOver evidence in the webview |
 | W03 | Formal-methods engineer | W00/W01 | Broker action theory, trusted context, real proof reports, negative cases, timeout/revocation races | G1c: real Isabelle permission and denial; no fake prover |
 | W04 | Storage/authority engineer | W01 | Encrypted store, grants, pause/revoke, owner-only channel, durable audit/effect state and migration | G2a: audit failure/replay/restart tests |
 | W05 | Provider engineer | W01/W03/W04 | Google project runbook, OAuth/Keychain, scopes, selected reads and conditional writes, recovery | G2b: real test-account Google spike |
@@ -431,10 +439,30 @@ Each package produces a focused commit/PR, artifact list, commands and results, 
 
 Sequence: W00/W01 first. W02/W03/W04 may then run in parallel against frozen contracts. Provider, agent and warning work follows their declared dependencies. Do not allow parallel agents to modify shared token formats or the policy theory without one designated contract owner.
 
+G0 authorizes all work packages up to G5 (section 15.1); this sequence, the single contract owner, the independent reviewer and the owner's approval at each gate in order still apply. One branch and pull request per work package.
+
+Mapping of earlier implementation slices (G0, RD-6). [`docs/system-design.md`](../system-design.md) is superseded as implementation baseline since 2026-11-15 and kept as design background; its single-process section 14 conflicts with the broker over IPC. The calendar slices C0 to C5 are those of [`docs/calendar.md`](../calendar.md).
+
+| Earlier slice | Work package(s) | Note |
+|---|---|---|
+| System design A, deterministic calendar kernel | W09, W05 (part) | |
+| System design B, encrypted canonical store | W04 | |
+| System design C, Google observation | W05 | Sync deferred |
+| System design D, local decision experience | W08 | Approval part only; no candidates |
+| System design E, safe Google commit | W04, W05, W10 | On existing calendars, not a Busy pilot |
+| System design F, Rendezvous laboratory | None | Parked |
+| System design G, two-peer calendar commit | None | Parked |
+| Calendar C0, standards/Google spike | W05, W09 spikes | |
+| Calendar C1, personal calendar | W02, W04, W08 in part | No agenda UI, no replica |
+| Calendar C2, two-agent Rendezvous | None | Parked |
+| Calendar C3, safe commit | W04, W05 | Single-owner effects |
+| Calendar C4, small groups/platform expansion | None | Parked |
+| Calendar C5, bounded autonomy | None | Parked |
+
 Proposed layout (create only when behavior is implemented):
 
 ```text
-apps/fabric-desktop/              SwiftUI app, tests and release project
+apps/fabric-desktop/              Tauri app, tests and release project
 apps/fabric-broker/               Rust executable composition/lifecycle
 crates/fabric-desktop-contracts/  schemas or Rust transport types
 crates/fabric-broker/             application services, grants and request reducer
@@ -444,7 +472,7 @@ crates/fabric-storage/            encrypted repository and effects
 isabelle/Fabric_Broker/           broker theory and corpus
 contracts/desktop/v1/             JSON Schemas and golden fixtures
 scripts/build-desktop.sh          proposed build/bundle entrypoint
-scripts/verify-desktop.sh         proposed native/integration check entrypoint
+scripts/verify-desktop.sh         proposed app/integration check entrypoint
 ```
 
 Avoid creating empty crates solely to match the tree. Existing `fabric-policy`, `fabric-token` and demo callers must retain their documented behavior; new namespaces isolate new semantics.
@@ -459,7 +487,7 @@ sh scripts/run.sh cargo run --locked -p fabric-cli -- demo-meeting
 sh scripts/isabelle.sh version
 ```
 
-The last command currently reports Isabelle missing. `sh scripts/setup-demo.sh` is the existing macOS bootstrap but downloads a large runtime; the future broker packaging must be independently tested. Live tests are opt-in and may change Keychain entries or call paid model APIs; run only the relevant named tests with test identities, never blindly run every ignored test on a personal account.
+When this plan was prepared, the last command reported Isabelle missing in that checkout. `sh scripts/setup-demo.sh` is the existing macOS bootstrap but downloads a large runtime; the future broker packaging must be independently tested. Live tests are opt-in and may change Keychain entries or call paid model APIs; run only the relevant named tests with test identities, never blindly run every ignored test on a personal account.
 
 Proposed new commands (must be implemented by W02/W11; they do not exist today):
 
@@ -471,7 +499,7 @@ sh scripts/verify-desktop.sh --google-test-account
 sh scripts/build-desktop.sh --configuration release --sign --notarize
 ```
 
-Freeze actual flags with the scripts; never claim the above commands ran before they exist. The native project must support `xcodebuild` build/test without hidden GUI project edits. CI checks the Rust workspace and macOS native build/fixtures. A dedicated live-proof job or release run installs the pinned Isabelle runtime and actually proves the corpus; standard Rust tests alone cannot close G1c or G4.
+Freeze actual flags with the scripts; never claim the above commands ran before they exist. The Tauri project must build and test from the command line without hidden GUI project edits; there is no Xcode project. CI checks the Rust workspace on all three runners, with macOS parts behind cfg, and, once W02 creates the project, builds the Tauri app (Rust and Node) on the macos-26 runner. Until RD-7 is decided (before W03 starts), Isabelle stays out of CI: the release run installs the pinned Isabelle runtime and actually proves the corpus, and policy changes are proved by hand; standard Rust tests alone cannot close G1c or G4.
 
 Required scenarios:
 
@@ -500,7 +528,7 @@ Required scenarios:
 
 Each client gate must show a real availability read, a denied request, a pending approval, an approved create, an edit to an existing test event, a controlled invitation to an owned test recipient, and pause/revocation. Show actual provider outcome and proof evidence, not screenshots alone. Use disposable accounts/calendars/recipients for live acceptance. Do not send invitations to unrelated people to demonstrate the app.
 
-Falsification conditions: reopen native-shell selection if packaged IPC/lifecycle/accessibility fails; reopen Google scope design if accepted restrictions cannot be enforced; block release if local audit can fail open; block release if a client cannot use the tool surface; block release if Isabelle runtime cannot legally and reliably run on a recipient Mac; block release if ambiguous notification outcomes lead to blind resend.
+Falsification conditions: reopen the desktop-shell selection (Tauri, G0) if packaged IPC/lifecycle/accessibility fails; reopen Google scope design if accepted restrictions cannot be enforced; block release if local audit can fail open; block release if a client cannot use the tool surface; block release if Isabelle runtime cannot legally and reliably run on a recipient Mac; block release if ambiguous notification outcomes lead to blind resend.
 
 ## 15. Open decisions and release inputs
 
@@ -508,28 +536,96 @@ These are deliberately unresolved, not assumptions implementers may fill silentl
 
 | ID | Question / input | Needed by |
 |---|---|---|
-| Q01 | Accept SwiftUI + Rust IPC recommendation and proposed policy/default matrix? | G0, before implementation baseline |
+| Q01 | Accept SwiftUI + Rust IPC recommendation and proposed policy/default matrix? Answered at G0 (2026-11-15): Tauri form, not the SwiftUI recommendation; matrix as in section 7. See section 15.1. | G0, before implementation baseline |
 | Q02 | Validate selected macOS 15.0+ arm64 baseline against native/prover dependencies; actual minimum-version tests still needed | G1 native and prover packaging |
-| Q05 | Include event deletion and recurring/all-day mutations in v1? Proposed scope includes single non-recurring event edits and invitations; destructive/recurring scope needs explicit acceptance. | W00/W03 |
-| Q06 | Accept manually curated contacts/groups and exact/domain recipient sets, or require Google People import? | W01/W08 |
-| Q07 | Product/app name, reverse-DNS bundle ID, Apple Developer team/Developer ID certificates, and distribution owner | W02 identity, W11 signing |
+| Q05 | Include event deletion and recurring/all-day mutations in v1? Proposed scope includes single non-recurring event edits and invitations; destructive/recurring scope needs explicit acceptance. Answered at G0 (2026-11-15): deletion of Fabric-created events (always Ask), replies to one occurrence of a recurring invitation, timed events only; see section 15.1. | W00/W03 |
+| Q06 | Accept manually curated contacts/groups and exact/domain recipient sets, or require Google People import? Answered at G0 (2026-11-15): People import required in version 1; see section 15.1. | W01/W08 |
+| Q07 | Product/app name, reverse-DNS bundle ID, Apple Developer team/Developer ID certificates, and distribution owner. Partly answered at G0 (2026-11-15): product name Fabric Calendar; distribution owner the owner as an individual; an Apple Developer Program team exists; bundle-id prefix open, due before W02; see section 15.1. | W02 identity, W11 signing |
 | Q08 | Google project owner, consent branding/domain/privacy policy/support contact, verification audience | W05 setup; external distribution before G5 |
-| Q09 | Bundled versus explicitly installed pinned Isabelle runtime; redistributed component licenses/signing and cache location | G1 packaging |
+| Q09 | Bundled versus explicitly installed pinned Isabelle runtime; redistributed component licenses/signing and cache location. Dates set at G0: RD-8, a private byte-exact copy of the pinned Isabelle2025-2 archive before W03 starts, with a fallback URL in the setup script, the broker's Isabelle version chosen at G1 with Q09, no public mirror until the bundled licences are reviewed; RD-7, Isabelle in CI decided before W03 starts, release only until then. | G1 packaging |
 | Q10 | Ollama model/hardware budget and client versions to support; installed models have not been inspected | W07/G2d |
-| Q11 | Exact duration/timeout/rate-limit defaults, audit retention/export policy and warning workday defaults | W00/W01; do not invent user work hours |
+| Q11 | Exact duration/timeout/rate-limit defaults, audit retention/export policy and warning workday defaults. Answered at G0 (2026-11-15); see section 15.1. | W00/W01; do not invent user work hours |
 
 Unresolved release identity/certificates may be supplied during development; they do not prevent pure contracts or fixture work after G0 authorizes implementation. Google setup and live tests need owner interaction. The plan does not authorize an implementation agent to publish credentials, send real invitations, register paid services, or release binaries without the applicable project authority and explicit in-product consent.
 
+### 15.1 G0 decision record (2026-11-15)
+
+The owner gave these decisions on 2026-11-15, group by group, closing W00 (gate CD-G0 in the roadmap). The ids are those of the G0 decision brief: CD-Qnn refers to this plan's Qnn, CD-M01 to CD-M10 are the rows of the section 7 matrix in order (CD-M09, event deletion, was merged into CD-Q05a), CD-W00a to CD-W00f are W00's items, G0-* are further points of this gate, and RD-* are points of the roadmap. "Not the recommended default" marks the eleven answers that differ from the brief's recommended default. CD-M05 keeps this plan's own wording, which the brief had proposed to narrow; RD-9 follows the session lead's recommendation, not the brief's. The CD-G0 permission-model decisions are also recorded in ADR-108 (Proposed).
+
+| ID | Question | Owner's choice | What it changes |
+|---|---|---|---|
+| CD-Q01a | Desktop form | Tauri: static HTML and CSS, small vanilla TypeScript, no framework. Not the recommended default | Sections 4.2, 4.3, 4.4, 9.1, 13, 14 and 16; SwiftUI is the original recommendation, not taken |
+| CD-Q01a, broker | Broker process | Separate broker process; the Tauri host launches it as a child over private pipes and relays the versioned JSON contract | Section 4.3 diagram and process text |
+| CD-Q01a, frontend | Frontend | Static HTML, CSS and small TypeScript, no framework | Section 4.2 decision text |
+| G0-THY | Broker rules theory | Separate theory and session, `isabelle/Fabric_Broker` | W03 leaves the demo's `Fabric_Policy` untouched |
+| G0-RISK | Residual risk of cloud agents | Accept, with a destination notice per agent | R14 stands as written |
+| CD-M01 | List calendars, availability | Allow in grant / Allow in grant | None; as proposed |
+| CD-M02 | Read event details | Careful: a grant bound to the requested fields and date window, reads inside it run for the grant's duration; Flexible: allow inside an accepted grant. Not the recommended default | Section 7 Careful cell |
+| CD-M03 | Create in Agent Drafts | Allow in grant / Allow in grant | None; as proposed |
+| CD-M04 | Create in a selected existing calendar | Ask / Allow in a user-created grant naming the calendars | None; as proposed |
+| CD-M05 | Edit Fabric-created event | As the plan words it: Flexible allows inside an accepted scoped grant if no new recipients. Not the recommended default | W03 must state how this row combines with the invitation row, with negative cases (section 7) |
+| CD-M06 | Edit pre-existing event | Ask / Ask, not locked | A custom profile may set Allow (G0-CUSTOM) |
+| CD-M07 | Send or change invitations | Careful asks; Flexible asks by default and allows only for an approved recipient set | None; as proposed |
+| CD-M08 | Respond to an invitation | Ask / Ask, not locked | A custom profile may set Allow (G0-CUSTOM) |
+| CD-M10 | Delete calendar, change sharing | Block in every profile | None; as proposed |
+| G0-INVITE | Invitations | A compatibility mode outside CAL-010's private scheduling | `docs/calendar.md` wording follows in BASE-1 |
+| G0-CUSTOM | Reach of custom profiles | Any row up to Allow, except the blocked rows; custom may set Allow on CD-M06 and CD-M08; saving shows the expansion first. Not the recommended default | Section 7 custom-profile paragraph; with CD-Q05a, see interpretation 1 |
+| CD-M-DUR | Grant durations | One request, one session, until revoked, for every grant kind; session idle timeout 30 minutes (the owner's value) | Section 7 durations |
+| CD-M-PROFILE | Profile preselected at setup | Careful | S01 |
+| G0-WARNDISC | Warnings disclosed to agents | Owner-only in v1 | None; S06 stands |
+| G0-NAMES | Profile and agent names | Careful and Flexible frozen; agents shown by registered names | Section 2.3 |
+| CD-Q05a | Event deletion | Fabric-created events only, always Ask, in every profile. Not the recommended default | DeleteEvent action in W03; `events.delete` with If-Match and bound `sendUpdates` in W05; reconcile by reading back, to confirm in the W05 spike |
+| CD-Q05b | Recurring events | Replies to one occurrence; no creating series, no series or instance edits. Not the recommended default | Instance identity (instance id, originalStartTime, revision) in the theory; amends the exclusion list (sections 1, 10.3) |
+| CD-Q05c | All-day events and time zones | Timed events only, explicit IANA zone | Section 10.3 |
+| CD-Q05d | Editable fields | Narrow list | None; as proposed |
+| CD-Q05e | Exclusion list and event types | Frozen, default event type only, except as amended by CD-Q05b | Section 1 |
+| CD-Q05f | Agent Drafts calendar | The owner creates it in Google and selects it | None; no calendar-creation scope |
+| CD-Q11f | Authorization and approval lifetime | 60 s authorization, a fresh proof per retry; an unanswered approval card expires after 24 hours | Section 7 |
+| RD-10, CD-Q11b, CD-Q11c | Proof latency targets | Reworded: within 500 ms a "received, checking" state is visible; the verdict follows; a denial keeps its failing rule on screen (DEF-7); 30 s per Isabelle check from its start; W03 reopens this if a mean check exceeds 1.5 s | Section 5 targets |
+| CD-Q11d, CD-Q11g | Queue and rate limits | 100 open requests in total and 25 per agent; 15 requests per minute and 5 open approval cards per agent; retryable busy answer; re-set after W03 measures | Section 5 targets |
+| CD-Q11a | Owner action acknowledgement | Within 100 ms, excluding proof and network | Section 5 targets |
+| CD-Q11e | Provider timeout and retries | 30 s per Google call, at most three transient retries with backoff, the 120 s budget wins, a fresh proof per retry, no blind resend of a notification | Section 5 targets |
+| CD-Q11h | Audit retention and export | Kept until the owner deletes it; redacted export by default; records needed to reconcile a pending effect are never deleted | Audit retention and export rules |
+| CD-Q11i | Warning defaults | Workday, protected time and buffers ship empty ("Not configured"); the owner sets his own hours | S06 ships no default hours |
+| CD-W00a | OS and hardware | macOS 15.0 or later on Apple Silicon | None; section 1 stands |
+| CD-W00b | Accounts | No cap in code; acceptance uses two accounts, each with an owned and a writable shared calendar | Live acceptance uses two accounts |
+| CD-W00c | Distribution identity timing | Name, bundle-id prefix and distribution owner now; Apple Developer team at W02; certificates at release | Q07 (see below) |
+| CD-W00d | Independent reviewer | The other model family: a fresh Codex session reviews Claude's work and the reverse; the reviewer may not edit code or tests; live checks are re-run with the owner at the Mac | Evidence acceptance for G1 to G5 |
+| CD-W00e | Baseline and authorization | Everything to CD-G5; implementation starts from the `main` commit that records these decisions, one branch and pull request per work package. Not the recommended default | All work packages authorized; see interpretation 3 |
+| CD-W00f | Release operations | Section 12 as written, with a stapled DMG | Section 12 |
+| G0-DEF | Demo lessons | DEF-1, DEF-2, DEF-4 and DEF-7 become broker acceptance tests | Tests in W02, W04 or W08 |
+| RD-18 | ADR numbering | Renumber: add 100 to Fabric's own ADRs (ADR-107, 108, 109, 111, 112, 113, 114; next free 115); Fabric repository only. Not the recommended default | ADR ids in this plan are the new ones; permission-model decisions also go into a new ADR-108 (Proposed) |
+| RD-5 | `docs/agent-sandbox.md` | Historical input since 2026-11-15; D1 to D13 superseded, C01 to C13 govern; AIA-009 to AIA-013 corrected in BASE-1 | Section 2.3 |
+| RD-6 | `docs/system-design.md` | Superseded as implementation baseline; kept as design background; mapping table in section 13 | Section 13 mapping table |
+| RD-11 | Demo freeze | Frozen at annotated tag `demo-g3-2026-11-15` on 7a54a5c, pushed; DEF-1 to DEF-7 stay unfixed | Demo semantics stay as the regression contract |
+| RD-9 | CBOR/COSE codec split | Split later, when a crate that must not link policy code needs it. Not the recommended default | No codec move in W01 |
+| G0-CI-PLATFORM | New crates on all runners | Platform-neutral core on all three runners; macOS parts behind cfg | Section 14 |
+| G0-CI-NATIVE | App build in CI | A macos-26 job builds the Tauri app once W02 creates the project | Section 14 |
+| RD-7 | Isabelle in CI | Decision due before W03 starts; release only until then. Not the recommended default | Section 14; Q09 |
+| RD-8 | Isabelle second source and version | Private byte-exact copy of the pinned Isabelle2025-2 archive before W03 starts, with a fallback URL in the setup script; version chosen at G1 with Q09; no public mirror until the bundled licences are reviewed | Q09 |
+| CD-Q06 | Contacts | Require People import in version 1. Not the recommended default | S04, section 10.2; an extra Google scope and its verification, a new adapter, a later Google work package; see interpretation 2 |
+| Q07 | Product identity | Product name Fabric Calendar; an Apple Developer Program team exists and can be used; distribution owner: the owner, as an individual, under his own Apple Developer membership; bundle-id prefix on a domain the owner owns, value open | Section 2.3; Q07 partly answered |
+
+Open value: the bundle-id prefix is on a domain the owner owns; the value has not been supplied yet. It is due before the shell work package (W02).
+
+Interpretations, stated for the owner to confirm when he reads the diff:
+
+1. Event deletion asks in every profile, custom ones included, because the answer chosen was "Fabric-created only, always ask". So a custom profile can raise every row to Allow except: delete event (Ask), delete calendar and change sharing (Block).
+2. With People import required, local groups and exact or domain recipient sets remain, and import adds a source for them.
+3. "Everything to CD-G5" authorizes all work packages, but the plan's dependency order, the single contract owner for schemas, token format and rule theory, the independent reviewer, and the owner's approval at each gate in order all still apply.
+
+Authorization: CD-G0 authorizes all work packages up to CD-G5 (W01 to W11), with the conditions in interpretation 3. Implementation starts from the `main` commit that records these decisions, one branch and pull request per work package.
+
 ## 16. Copyable handoff instruction for an implementation agent
 
-> Implement Fabric Calendar Desktop from this plan in https://github.com/aregm/fabric on the delivered `codex/calendar-desktop-plan` branch or its accepted successor. First record the exact commit and read this complete plan, the companion build audit, applicable AGENTS.md files, and the architecture skill if available. Preserve user changes. Confirm G0 decisions and your assigned work package before modifying implementation. Use SwiftUI plus the Rust broker if the recommendation is accepted; add zero TypeScript to the desktop. Support real personal Google Calendar reads, existing-calendar edits and invitations, with live Isabelle proofs for every action, explicit scoped consent, durable audit/recovery, and advisory global time/buffer warnings. All of Claude Desktop MCP, Claude Code MCP, Codex desktop, and embedded Ollama must pass release acceptance. Keep provider credentials and owner commands out of agent adapters. Work only in the declared package scope, implement the shared contract fixtures, and preserve demo semantics. Report changed files, actual build/test commands and results, proof/provider evidence where applicable, unresolved choices, and limitations. Never substitute mocks for a live release gate, broaden authority to make a test pass, or assume an unrecorded product decision. The current task delivered a plan only; begin implementation only when assigned and authorized.
+> Implement Fabric Calendar Desktop from this plan in https://github.com/aregm/fabric starting from the `main` commit that records the G0 decisions. First record the exact commit and read this complete plan, the companion build audit, applicable AGENTS.md files, and the architecture skill if available. Preserve user changes. Read the G0 decision record (section 15.1) and confirm your assigned work package before modifying implementation. Build the Tauri application chosen at G0: static HTML and CSS with a small vanilla TypeScript layer and no component framework, a Tauri host that launches the Rust broker as a child over private pipes, and no FFI. Support real personal Google Calendar reads, existing-calendar edits and invitations, with live Isabelle proofs for every action, explicit scoped consent, durable audit/recovery, and advisory global time/buffer warnings. All of Claude Desktop MCP, Claude Code MCP, Codex desktop, and embedded Ollama must pass release acceptance. Keep provider credentials and owner commands out of agent adapters. Work only in the declared package scope, implement the shared contract fixtures, and preserve demo semantics. Report changed files, actual build/test commands and results, proof/provider evidence where applicable, unresolved choices, and limitations. Never substitute mocks for a live release gate, broaden authority to make a test pass, or assume an unrecorded product decision. G0 authorizes all work packages up to G5 under the conditions in section 15.1; begin implementation only when assigned a package, on one branch and pull request per package.
 
 ## 17. Technical references
 
 These links support API/framework mechanics. The behavior above is self-contained; implementations should recheck the specific pinned SDK/client versions.
 
-- [Apple SwiftUI](https://developer.apple.com/documentation/swiftui): native declarative views and controls.
-- [Tauri frontend configuration](https://v2.tauri.app/start/frontend/): alternative web-frontend form.
+- [Apple SwiftUI](https://developer.apple.com/documentation/swiftui): native declarative views and controls; the plan's original recommendation, not taken at G0.
+- [Tauri frontend configuration](https://v2.tauri.app/start/frontend/): the web-frontend form chosen at G0.
 - [egui upstream](https://github.com/emilk/egui): alternative Rust GUI form.
 - [Google desktop OAuth](https://developers.google.com/identity/protocols/oauth2/native-app): public clients, PKCE, browser/redirect and installed-app authorization limits.
 - [Google token lifecycle](https://developers.google.com/identity/protocols/oauth2#expiration): token expiration/revocation and testing-mode considerations.
