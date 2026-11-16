@@ -13,9 +13,11 @@ use std::path::Path;
 #[cfg(unix)]
 use common::open;
 use common::{T0, TempDir, agent_row, apply_all, hex, new_store, raw, seed_agent, seed_meta};
+#[cfg(unix)]
+use fabric_storage::MIGRATIONS;
 use fabric_storage::{
-    KeyError, KeyKind, MIGRATIONS, Migration, Mutation, OpenError, Store, StoreFault, TEST_KEY,
-    TestKey, TxError, Unavailable,
+    KeyError, KeyKind, Migration, Mutation, OpenError, Store, StoreFault, TEST_KEY, TestKey,
+    TxError, Unavailable,
 };
 
 /// Content that must never reach an error text.

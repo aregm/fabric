@@ -256,10 +256,10 @@ fn closed_store(data_dir: &Path) -> u64 {
 
 /// Opens the store with the test key after the process holding it ended. Windows releases a
 /// killed process's file lock a short, unspecified time after the process ends, so a reopen at
-/// once can meet `InUse` there: it is retried while the answer is `InUse`, for up to two
+/// once can meet `InUse` there: it is retried while the answer is `InUse`, for up to ten
 /// seconds. Any other answer is final at once.
 fn open_after_kill(data_dir: &Path, now_ms: i64) -> Store {
-    let deadline = Instant::now() + Duration::from_secs(2);
+    let deadline = Instant::now() + Duration::from_secs(10);
     loop {
         match Store::open(common::options(data_dir, TestKey, now_ms)) {
             Ok(store) => return store,

@@ -108,7 +108,12 @@ impl Drop for TempDir {
 fn bare_command() -> Command {
     let mut command = Command::new(broker_path());
     for (name, _) in std::env::vars_os() {
-        if name.as_encoded_bytes().starts_with(b"FABRIC_BROKER_") {
+        // In any case: Windows compares variable names without regard to case, as the broker does.
+        if name
+            .as_encoded_bytes()
+            .to_ascii_uppercase()
+            .starts_with(b"FABRIC_BROKER_")
+        {
             command.env_remove(name);
         }
     }
@@ -398,7 +403,7 @@ impl Drop for Broker {
     }
 }
 
-/// Waits, for up to two seconds, while another process holds the store's lock in `data_dir`,
+/// Waits, for up to ten seconds, while another process holds the store's lock in `data_dir`,
 /// then releases it at once. Windows releases a killed process's file lock a short, unspecified
 /// time after the process ends, so a broker started at once on the same directory could find
 /// the store in use and answer `store_unavailable` there; elsewhere the lock is free at once.
@@ -406,7 +411,7 @@ impl Drop for Broker {
 /// recovery.
 fn wait_for_the_lock(data_dir: &Path) {
     let path = data_dir.join(fabric_storage::LOCK_FILE);
-    let deadline = Instant::now() + Duration::from_secs(2);
+    let deadline = Instant::now() + Duration::from_secs(10);
     loop {
         let file = std::fs::OpenOptions::new()
             .read(true)
@@ -421,8 +426,9 @@ fn wait_for_the_lock(data_dir: &Path) {
             Err(std::fs::TryLockError::WouldBlock) if Instant::now() < deadline => {
                 thread::sleep(Duration::from_millis(50));
             }
-            // Still held after two seconds: the broker started next answers as it will.
-            Err(std::fs::TryLockError::WouldBlock) => return,
+            Err(std::fs::TryLockError::WouldBlock) => {
+                panic!("the killed broker's lock on the store was still held after ten seconds")
+            }
             Err(std::fs::TryLockError::Error(e)) => panic!("the lock file: {e}"),
         }
     }
