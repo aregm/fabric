@@ -1,13 +1,17 @@
 # Personal Knowledge Fabric — Technical Architecture
 
-**Status:** decision-ready baseline, version 1.4
+**Status:** decision-ready baseline, version 1.5
 
 **Prepared:** 2026-09-13
 
+**Updated:** 2026-11-15
+
 **Scope:** platform architecture, canonical model, retrieval, agents, automation, security, and implementation setup
-**Related:** [Product requirements](PRD.md) · [Calendar vertical](calendar.md)
+**Related:** [Product requirements](PRD.md) · [Calendar vertical](calendar.md) · [Roadmap](roadmap.md) · [Calendar Desktop plan](plans/calendar-desktop-plan.md)
 
 ---
+
+**Scope note, from 2026-11-15.** PIM, a separate product in its own repository, builds the knowledge kernel. The sections that describe PIM's kernel are reference text, not Fabric's plan: the kernel rows of §9.3, and §10, §11, §13 apart from its action tiers, the vault-root half of §14.2, §14.4, §14.5 and §15. The order of Fabric's work is in [the roadmap](roadmap.md).
 
 ## 9. Architecture
 
@@ -167,12 +171,9 @@ A personal corpus can reach millions of relations without requiring a separate g
 
 A graph database becomes justified only after measured queries cannot meet budgets or multi-user server analytics becomes primary. It should never be the only copy of source text or human knowledge.
 
-### 9.5 Current executable seam: `fabric-schedule-sim/0`
+### 9.5 Current executable slices
 
-The repository now implements the narrow semantic seam needed to test two-agent
-agreement before storage, transport, cryptography, provider adapters, or UI are
-introduced. This is consistent with the modular-monolith decision: domain rules
-are executable in `fabric-core`, while the CLI is only a fixture driver.
+The Cargo workspace holds two executable slices. The first is the semantic seam: `fabric-core` and the CLI implement two-agent agreement with no storage, transport or cryptography. The second is the Isabelle-gated calendar demo: `fabric-policy`, `fabric-token`, `fabric-wire` and `apps/fabric-demo` add a policy gate that proves each action, single-use signed tokens, Noise IK sessions with signed messages, and a loopback relay. The second slice is demo-grade and does not use the first; its specification is [isabelle-calendar-demo.md](isabelle-calendar-demo.md).
 
 | Rust boundary | Current responsibility | Explicitly absent |
 |---|---|---|
@@ -213,7 +214,7 @@ exercise the message lifecycle (identity created on the device, an offline outbo
 delivery, an ordered log, attachments) and to fix the seams where Fabric's encryption, policy, and
 local-first storage will attach. It does not change the desktop decision in §9.3. Status:
 built and verified on the simulator and an iPhone; every gate closed on 2026-10-26. Whether it
-graduates is ADR-114.
+graduates is ADR-114, which is parked. The prototype is closed.
 
 | Boundary | Responsibility | Explicitly absent |
 |---|---|---|
@@ -595,7 +596,7 @@ Research supports studying and constructing purposeful concept maps, with strong
 
 ## 12. Local AI and agent design
 
-AI has four named product roles, each with different authority:
+AI has five named product roles, each with different authority:
 
 - **clerk** — normalize, deduplicate, extract, route, and prepare reversible suggestions;
 - **scout** — retrieve sources, surface comparisons, and show why a result matched;
@@ -657,7 +658,7 @@ Proposed tools:
 
 Each grant specifies vault/space, item types, predicates, sensitivity ceiling, read/write actions, purpose, expiry, rate/volume bounds, and whether human confirmation is required. The agent receives only the minimum retrieved fragments, not the whole vault.
 
-Grants are presented to the user as profiles (bundles of per-action modes) and as request cards that narrow scope and fix a duration at the moment of need. Modes are allow, ask and block; block is final. A grant records purpose, scope, duration and the approval that created it, and can be revoked individually. The same boundary can run without the vault, as a broker between a third-party agent and a provider; [the Agent Sandbox proposal](agent-sandbox.md) specifies that deployment.
+Grants are presented to the user as profiles (bundles of per-action modes) and as request cards that narrow scope and fix a duration at the moment of need. Modes are allow, ask and block; block is final. A grant records purpose, scope, duration and the approval that created it, and can be revoked individually. The same boundary can run without the vault, as a broker between a third-party agent and a provider; [the Calendar Desktop plan](plans/calendar-desktop-plan.md) specifies that deployment, and [the Agent Sandbox proposal](agent-sandbox.md) is its historical input.
 
 Calendar scopes are independent: `calendar:availability.compute`, `calendar:event.read`, `schedule:negotiate`, `calendar:hold.write`, `calendar:event.commit`, `calendar:event.cancel`, and `calendar:external_invite.send`. A commit capability binds negotiation, candidate, `membership_digest`, `event_template_digest`, projection fields, destination calendar, idempotency key, and expiry. The scheduler cannot widen those arguments. Natural-language parsing can fail safely into a draft; authoritative time arithmetic, recurrence, policy, state transitions, signatures, and provider writes are model-free.
 
@@ -803,6 +804,8 @@ A per-device hash chain detects modification or gaps relative to a previously tr
 **P2 shared spaces:** CRDT-backed shared document state and a group key protocol. Use one Automerge document per collaboratively mutable note or shared document, not one CRDT for the vault. Automerge is network-agnostic and merges concurrent changes without a central server. [Automerge](https://automerge.org/). Messaging Layer Security (MLS) is an IETF standard for asynchronous group key establishment with forward secrecy and post-compromise security; it is a candidate for shared-space group epochs, not a drop-in authorization system. [RFC 9420](https://datatracker.ietf.org/doc/html/rfc9420)
 
 A scheduling negotiation uses a fresh two-party or small-group security context, independent of any long-lived shared knowledge space. The baseline is an ephemeral MLS group; participant responses in a meeting of three or more are signed and additionally HPKE-encrypted to the coordinator so other participants learn the final consensus, not each person’s rejection vector. HPKE base mode does not itself authenticate a sender, so the application signs the envelope and binds protocol version, pinned contact identity, capability, negotiation, participant set, and purpose into the context. The relay carries only opaque, expiring ciphertext addressed to rotating pseudonymous mailboxes. MLS protects content/authenticity but does not hide IP addresses, timing, group size, or traffic volume; use TLS/QUIC, size buckets, short retention, and explicit residual-metadata documentation. [HPKE RFC 9180](https://www.rfc-editor.org/rfc/rfc9180.html), [MLS architecture RFC 9750](https://www.rfc-editor.org/rfc/rfc9750.html)
+
+The only peer transport implemented is Noise IK, in `fabric-wire`, used by the calendar demo (§9.5). Neither MLS nor HPKE is implemented; the MLS baseline is pending ADR-112.
 
 Define a field-level merge matrix: immutable, multi-value register, observed-remove set, CRDT text, presentation-only last-writer-wins, or explicit manual conflict. Database replay order never silently resolves a semantic disagreement. Each shared space states whether a new member receives no history, a current snapshot, or full history; removal protects future epochs only and cannot revoke plaintext already received.
 
@@ -1021,20 +1024,22 @@ The rehearsal passes when each result opens its original evidence, search works 
 
 ## 19. Architecture decision records to create first
 
-1. **ADR-001 Canonical data and export boundary** — SQLite/SQLCipher kernel versus Markdown-as-canonical.
-2. **ADR-002 At-rest encryption and recovery** — key hierarchy, KDF, OS keychain, recovery workflow.
-3. **ADR-003 Desktop framework and performance reference** — macOS/Windows first, device and corpus budgets.
-4. **ADR-004 Editor document model** — portable AST, Markdown mapping, CRDT boundary.
-5. **ADR-005 Search fusion and evaluation** — FTS/vector implementation, rank explanation, benchmark.
-6. **ADR-006 Connector sandbox and capability manifest** — process/WASM boundary and credential access.
-7. **ADR-107 Operation log and sync evolution** — single-user oplog, personal devices, shared CRDT spaces. Drafted: [ADR-107](adr/ADR-107-operation-log-and-sync-evolution.md), proposed 2026-10-26.
-8. **ADR-108 Agent/MCP permission model** — resource/tool surface, grants, consent, injection controls, permission profiles and modes, incremental authorization and duration, recipient sets, and the standalone broker deployment ([agent-sandbox.md](agent-sandbox.md)).
-9. **ADR-109 Sharing crypto and metadata model** — envelope encryption versus MLS, relay leakage, revocation. Drafted: [ADR-109](adr/ADR-109-sharing-crypto-and-metadata-model.md), proposed 2026-10-26.
-10. **ADR-010 Licensing/product posture** — personal, open-source, or commercial distribution.
-11. **ADR-111 Calendar authority and time model** — Fabric-native versus provider-authoritative events, recurrence/zone semantics, and provider bindings.
-12. **ADR-112 Fabric Rendezvous protocol** — identity pairing, MLS/HPKE profile, disclosure budget, transcript/state machine, metadata leakage, and recovery.
-13. **ADR-113 Calendar projection and commit saga** — Fabric-only/private-busy/native-invite modes, idempotency, holds, compensation, and reconciliation.
-14. **ADR-114 Mobile client and messaging relay** — whether the paracels chat prototype (§9.6: an Expo client and a Node relay) graduates, and whether the relay moves into the Rust core; it depends on ADR-107 and ADR-109. Drafted: [ADR-114](adr/ADR-114-mobile-client-and-messaging-relay.md), proposed 2026-10-26.
+PIM numbers its own ADRs; its series reuses the numbers 001 to 009 for other topics. On 2026-11-15 Fabric's own records were renumbered by adding 100. Each entry names its owner (PIM, Fabric or both parts) and its state.
+
+1. **ADR-001 Canonical data and export boundary** — SQLite/SQLCipher kernel versus Markdown-as-canonical. Owner: PIM. Not written here.
+2. **ADR-002 At-rest encryption and recovery** — key hierarchy, KDF, OS keychain, recovery workflow. Owner: both parts; the kernel part is PIM's, and encryption of Fabric's own stores is Fabric's. Not written.
+3. **ADR-003 Desktop framework and performance reference** — macOS/Windows first, device and corpus budgets. Owner: both parts; the kernel part is PIM's, and the broker's desktop shell is Fabric's. Not written.
+4. **ADR-004 Editor document model** — portable AST, Markdown mapping, CRDT boundary. Owner: PIM. Not written here.
+5. **ADR-005 Search fusion and evaluation** — FTS/vector implementation, rank explanation, benchmark. Owner: PIM. Not written here.
+6. **ADR-006 Connector sandbox and capability manifest** — process/WASM boundary and credential access. Owner: both parts; the kernel part is PIM's, and the holding of provider credentials is Fabric's. Not written.
+7. **ADR-107 Operation log and sync evolution** — single-user oplog, personal devices, shared CRDT spaces. Owner: Fabric. Drafted: [ADR-107](adr/ADR-107-operation-log-and-sync-evolution.md), proposed 2026-10-26; parked.
+8. **ADR-108 Agent/MCP permission model** — resource/tool surface, grants, consent, injection controls, permission profiles and modes, incremental authorization and duration, recipient sets, and the standalone broker deployment, specified by the [Calendar Desktop plan](plans/calendar-desktop-plan.md), with [agent-sandbox.md](agent-sandbox.md) as its historical input. Owner: Fabric. Drafted: [ADR-108](adr/ADR-108-agent-and-mcp-permission-model.md), proposed 2026-11-15.
+9. **ADR-109 Sharing crypto and metadata model** — envelope encryption versus MLS, relay leakage, revocation. Owner: Fabric. Drafted: [ADR-109](adr/ADR-109-sharing-crypto-and-metadata-model.md), proposed 2026-10-26; parked.
+10. **ADR-010 Licensing/product posture** — personal, open-source, or commercial distribution. Owner: open (roadmap `RD-17`). Not written.
+11. **ADR-111 Calendar authority and time model** — Fabric-native versus provider-authoritative events, recurrence/zone semantics, and provider bindings. Owner: Fabric. Not written; the broker settles its subject before `CD-G5`, and its Rendezvous part is parked.
+12. **ADR-112 Fabric Rendezvous protocol** — identity pairing, MLS/HPKE profile, disclosure budget, transcript/state machine, metadata leakage, and recovery. Owner: Fabric. Not written; parked.
+13. **ADR-113 Calendar projection and commit saga** — Fabric-only/private-busy/native-invite modes, idempotency, holds, compensation, and reconciliation. Owner: Fabric. Not written; the broker settles its subject before `CD-G5`, and its Rendezvous part is parked.
+14. **ADR-114 Mobile client and messaging relay** — whether the paracels chat prototype (§9.6: an Expo client and a Node relay) graduates, and whether the relay moves into the Rust core; it depends on ADR-107 and ADR-109. Owner: Fabric. Drafted: [ADR-114](adr/ADR-114-mobile-client-and-messaging-relay.md), proposed 2026-10-26; parked.
 
 ---
 

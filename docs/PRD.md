@@ -1,11 +1,13 @@
 # Personal Knowledge Fabric — Product Requirements Document
 
-**Status:** decision-ready baseline, version 1.3
+**Status:** decision-ready baseline, version 1.4
 
 **Prepared:** 2026-09-13
 
+**Updated:** 2026-11-15
+
 **Scope:** problem statement, market research, product experience, requirements, roadmap, and evaluation
-**Related:** [Technical architecture](architecture.md) · [Calendar vertical](calendar.md)
+**Related:** [Technical architecture](architecture.md) · [Calendar vertical](calendar.md) · [Roadmap](roadmap.md) · [Calendar Desktop plan](plans/calendar-desktop-plan.md)
 
 ---
 
@@ -36,7 +38,9 @@ The practical recommendation is therefore a staged strategy:
 - **Build the product kernel separately** around stable IDs, immutable evidence, typed relationship assertions, hybrid retrieval, a permission engine, and event history.
 - **Do not begin by replacing email and messaging clients.** Begin by importing selected information and extracting actionable objects. Add sending, deletion, and account-wide automation only after the trust and permission model is proven.
 - **Do not begin with a graph database, an autonomous agent, or a giant ontology.** A single encrypted SQLite kernel, derived indexes, a small type system, and auditable suggestions are sufficient for the personal scale and offer a much faster path to an instant-feeling product.
-- **Make the calendar the first Fabric application after the kernel.** Private scheduling is bounded enough to test local replicas, deterministic policy, consent, encrypted peer exchange, constrained agents, external writes, and recovery without first replacing mail or messaging. The protocol shares a handful of proposed intervals and signed decisions—not a calendar or free/busy map.
+- **Make the calendar the first Fabric application.** It no longer waits for a kernel in this repository: its first form is a permission broker for AI agents on Google Calendar, and private peer scheduling follows. Private scheduling is bounded enough to test local replicas, deterministic policy, consent, encrypted peer exchange, constrained agents, external writes, and recovery without first replacing mail or messaging. The protocol shares a handful of proposed intervals and signed decisions—not a calendar or free/busy map.
+
+**Scope of this repository, from 2026-11-15.** The evidence vault, the knowledge kernel and the cognitive workspace are built by PIM, a separate product in its own repository. This repository builds the trust part of the capability boundary: the agreement protocol, the policy gate, per-action tokens, messaging and relay, sharing crypto and the permission broker. The rows marked PIM in section 7 remain the shared vision; PIM's requirements carry acceptance only for the rows PIM has adopted. The order of work is in [the roadmap](roadmap.md).
 
 ### 1.1 What success means
 
@@ -63,7 +67,7 @@ This specification uses only the requirements confirmed in the discovery answers
 |---|---|
 | Users | Single-user first; later sharing and multi-user capability |
 | Platforms | macOS first; cross-platform later |
-| Privacy | Local-first, encrypted at rest, and end-to-end encrypted between Fabric endpoints |
+| Privacy | Local-first, encrypted at rest, and end-to-end encrypted between Fabric endpoints; encryption at rest of the vault is PIM's requirement and is deferred there |
 | Models | Local models preferred |
 | Existing ecosystem | Evernote, Obsidian, Notion, email, calendars, task managers, storage, messages, and browsers are all in use |
 | Initial connectors | Email, messages, web pages, videos, and the first selected calendar provider/standard adapter |
@@ -78,31 +82,36 @@ This specification uses only the requirements confirmed in the discovery answers
 | Market review | Commercial, open-source, self-hosted, and SaaS products may all be evaluated |
 | First calendar adapter | Google Calendar on macOS; direct Google API is the provider synchronization boundary, with EventKit an optional later macOS integration |
 | Scheduling contacts | Any entry in the user-selected Fabric contact list is authorized to initiate a bounded scheduling request; first-seen keys use TOFU and later key changes cannot be silent |
-| First Fabric application | A private agentic calendar and synchronization subsystem: two or more contact-listed users exchange only bounded candidate times and decisions over an E2EE channel, then commit the exact approved meeting |
+| First Fabric application | A private agentic calendar and synchronization subsystem: two or more contact-listed users exchange only bounded candidate times and decisions over an E2EE channel, then commit the exact approved meeting; its first form is the permission broker, and peer scheduling follows |
 
 ### 2.2 Decisions still required before provider-connected or production implementation
 
-1. Exact Mac hardware, especially Apple Silicon generation and RAM.
-2. Email providers and number of accounts.
-3. Exact message platforms: iMessage, SMS/RCS, WhatsApp, Signal, Telegram, Slack, Teams, Matrix, or others.
+1. Exact Mac hardware, especially Apple Silicon generation and RAM. Travels with the kernel to PIM.
+2. Email providers and number of accounts. Open for ingestion (roadmap `RD-15`).
+3. Exact message platforms: iMessage, SMS/RCS, WhatsApp, Signal, Telegram, Slack, Teams, Matrix, or others. Travels with the kernel to PIM.
 4. Whether Docker or a small always-on home server is acceptable.
 5. Whether a paid E2EE sync service is acceptable, or all relays must be self-hosted.
-6. Recovery preference: memorized passphrase, printed recovery key, trusted contact recovery, or some combination.
-7. Content-retention rules for email, conversations, web archives, and downloaded video/audio.
+6. Recovery preference: memorized passphrase, printed recovery key, trusted contact recovery, or some combination. Travels with the kernel to PIM.
+7. Content-retention rules for email, conversations, web archives, and downloaded video/audio. Travels with the kernel to PIM.
 8. Whether the eventual product is personal software, an open-source project, or a commercial product.
-9. The acceptable scope of automated actions: organize only, create tasks, draft replies, or send/modify external systems. Proposed answer, from the Agent Sandbox design: two profiles, Careful (read, draft and label; ask before any send; never delete, archive, spam or forward) and Flexible (send to allowed recipient sets, ask for strangers, attachments and lists; trash-only delete with a review period), with per-action overrides. See [docs/agent-sandbox.md](agent-sandbox.md).
-10. Google account type and initial calendar scope: personal versus Workspace, number of accounts, calendars that affect availability, and destination calendar for Fabric-created events.
+9. The acceptable scope of automated actions: organize only, create tasks, draft replies, or send/modify external systems. For calendar actions, the policy matrix was frozen at gate `CD-G0` on 2026-11-15: see section 7 of the [Calendar Desktop plan](plans/calendar-desktop-plan.md#7-policy-matrix-and-duration-semantics) and [ADR-108](adr/ADR-108-agent-and-mcp-permission-model.md) (Proposed).
+10. Google account type and initial calendar scope: personal versus Workspace, number of accounts, calendars that affect availability, and destination calendar for Fabric-created events. For the permission broker, the Calendar Desktop plan records: personal Google accounts (`CD-C03`), several connected at once (`CD-C12`; no cap in code, and acceptance uses two accounts); agents may write to selected existing calendars, owned or shared with write access (`CD-C07`, `CD-C13`), and to an Agent Drafts calendar the user creates in Google and selects (`CD-Q05f`).
 11. Default Google representation after agreement: no Google event, an opaque private `Busy` block, selected local details without attendees, or a native Google invitation that discloses attendees.
 12. Source of the authorized contact list—Fabric-native import, macOS Contacts, Google Contacts, or a combination—and duplicate/removed-contact behavior.
 13. Relay deployment and metadata posture: local development relay, self-hosted internet relay, or operated ciphertext relay; retention and push-delivery requirements remain open.
 
 The immediate setup in section 15 now treats macOS plus Google Calendar as primary. Other providers remain portability targets rather than hidden MVP dependencies.
 
-### 2.3 Current executable agreement slice (`fabric-schedule-sim/0`)
+### 2.3 M0 executable agreement slice (`fabric-schedule-sim/0`)
 
 The repository now includes a pre-production semantic simulator that deliberately
 precedes encrypted networking and provider integration. It is implementation
 evidence for the calendar protocol shape, not a claim that Phase 3 is complete.
+
+Two slices came later. The [Isabelle-gated calendar demo](isabelle-calendar-demo.md)
+adds a policy gate that proves each action, single-use signed tokens and a
+loopback relay; it does not use this simulator. The permission broker of the
+[Calendar Desktop plan](plans/calendar-desktop-plan.md) is planned and not yet built.
 
 The slice has exactly two required fixture contacts, one round, at most three UTC
 candidates, synthetic local busy intervals, candidate-specific eligibility bits,
@@ -432,7 +441,7 @@ Replacing email and messaging should proceed in four trust stages:
 
 External deletion, sending, sharing, account changes, and financial/legal actions must never be enabled by a generic “autonomous” toggle.
 
-An agent profile places each action on one of these stages; a profile may not move sending, deleting, sharing, account changes or financial actions to stage 4 by default (see [docs/agent-sandbox.md](agent-sandbox.md)).
+An agent profile places each action on one of these stages; a profile may not move sending, deleting, sharing, account changes or financial actions to stage 4 by default (see the [Calendar Desktop plan](plans/calendar-desktop-plan.md)).
 
 ### 6.6 Inquiry workspace
 
@@ -451,76 +460,78 @@ The same content can project as an evidence matrix, outline, timeline, focused g
 
 Priority: **P0** is the first usable kernel, **P1** completes the personal product, **P2** adds sharing/replacement workflows.
 
+Owner, approved on 2026-11-15 ([roadmap](roadmap.md) section 3): **Fabric** means this repository builds the requirement; **PIM** means it has left Fabric's roadmap, not that it is done.
+
 ### 7.1 Capture and ingestion
 
-| ID | Priority | Requirement | Acceptance criterion |
-|---|---:|---|---|
-| CAP-001 | P0 | Accept URL, text, file, image, and clipboard capture through global shortcut, drag/drop, watched folder, browser extension, and local API | With the broker already running, URL/text/≤1 MB captures return a durable receipt ID p95 ≤100 ms after receipt, source descriptor, and job commit. Large files expose `received`, `copying`, and `preserved`; only `preserved` means encrypted bytes, manifest, and canonical operation are durable. A URL is not `archived` until its requested snapshot succeeds |
-| CAP-002 | P0 | Preserve immutable raw source plus normalized representation | User can open original bytes/snapshot and see content hash, capture time, connector, and source URI |
-| CAP-003 | P0 | Idempotent ingestion using source IDs and content fingerprints | Replaying a connector page does not create duplicate canonical artifacts |
-| CAP-004 | P0 | Resumable background processing with visible state | Crash/restart resumes jobs without losing or double-committing results |
-| CAP-005 | P1 | Email connectors for Gmail, Microsoft Graph, IMAP4rev2, and JMAP where available | Selected label/folder imports threads, message headers/body, attachments, and remote IDs incrementally |
-| CAP-006 | P1 | Web preservation modes: bookmark, readable snapshot, full archive, screenshot, and metadata-only | Policy can choose storage mode per domain/content type |
-| CAP-007 | P1 | Video intake stores URL/metadata/chapters and uses authorized captions or local transcription when permitted | Transcript segments retain timestamps and source linkage |
-| CAP-008 | P1 | Message connector framework supports official APIs, exports, share actions, and user-controlled bots | Each platform adapter declares read/write/export capability and legal/technical limitations |
-| CAP-009 | P1 | PDF, office document, image OCR, and audio transcription | Extracted spans map back to page, bounding box, or timestamp where possible |
-| CAP-010 | P2 | Cloud drive, social bookmark, RSS, and external task connectors | Connector conformance suite passes incremental sync, deletion, revocation, and rate-limit tests; calendar requirements live in [Calendar §7.6](calendar.md#76-calendar-and-agentic-scheduling) |
+| ID | Priority | Owner | Requirement | Acceptance criterion |
+|---|---:|---|---|---|
+| CAP-001 | P0 | PIM | Accept URL, text, file, image, and clipboard capture through global shortcut, drag/drop, watched folder, browser extension, and local API | With the broker already running, URL/text/≤1 MB captures return a durable receipt ID p95 ≤100 ms after receipt, source descriptor, and job commit. Large files expose `received`, `copying`, and `preserved`; only `preserved` means encrypted bytes, manifest, and canonical operation are durable. A URL is not `archived` until its requested snapshot succeeds |
+| CAP-002 | P0 | PIM | Preserve immutable raw source plus normalized representation | User can open original bytes/snapshot and see content hash, capture time, connector, and source URI |
+| CAP-003 | P0 | PIM | Idempotent ingestion using source IDs and content fingerprints | Replaying a connector page does not create duplicate canonical artifacts |
+| CAP-004 | P0 | PIM | Resumable background processing with visible state | Crash/restart resumes jobs without losing or double-committing results |
+| CAP-005 | P1 | PIM | Email connectors for Gmail, Microsoft Graph, IMAP4rev2, and JMAP where available | Selected label/folder imports threads, message headers/body, attachments, and remote IDs incrementally |
+| CAP-006 | P1 | PIM | Web preservation modes: bookmark, readable snapshot, full archive, screenshot, and metadata-only | Policy can choose storage mode per domain/content type |
+| CAP-007 | P1 | PIM | Video intake stores URL/metadata/chapters and uses authorized captions or local transcription when permitted | Transcript segments retain timestamps and source linkage |
+| CAP-008 | P1 | PIM | Message connector framework supports official APIs, exports, share actions, and user-controlled bots | Each platform adapter declares read/write/export capability and legal/technical limitations |
+| CAP-009 | P1 | PIM | PDF, office document, image OCR, and audio transcription | Extracted spans map back to page, bounding box, or timestamp where possible |
+| CAP-010 | P2 | PIM | Cloud drive, social bookmark, RSS, and external task connectors | Connector conformance suite passes incremental sync, deletion, revocation, and rate-limit tests; calendar requirements live in [Calendar §7.6](calendar.md#76-calendar-and-agentic-scheduling) |
 
 ### 7.2 Knowledge and composition
 
-| ID | Priority | Requirement | Acceptance criterion |
-|---|---:|---|---|
-| KNO-001 | P0 | Stable items, immutable revisions, source artifacts, typed relations, and evidence spans | IDs survive rename, move, export, and re-import |
-| KNO-002 | P0 | Notes support Markdown-compatible text plus block/rich-text structure | Lossless internal round-trip; useful Markdown export without proprietary IDs in prose |
-| KNO-003 | P0 | Human content and AI-derived content are visibly distinct | Every derived field names model/rule, run, time, and evidence |
-| KNO-004 | P0 | Accept/reject/edit suggested entities, claims, and links | Feedback changes assertion state without overwriting the original suggestion |
-| KNO-005 | P1 | First-class people, organizations, projects, goals, tasks, events, concepts, claims, questions, decisions, and sources | Each type has minimal schema and can be extended without migration-heavy custom columns |
-| KNO-006 | P1 | Contradiction, support, refinement, prerequisite, cause, and alternative relations | Graph and item view expose evidence and epistemic state |
-| KNO-007 | P1 | Reusable templates and saved views | Views are queries, not duplicated folders |
-| KNO-008 | P1 | History, diff, restore, merge/fork, and tombstones | User can restore any human-authored revision and inspect automated changes |
-| KNO-009 | P0 | Independent intent field: reference, act, learn, develop, share, or ignore | Changing intent alters workflow without moving or duplicating the item |
-| KNO-010 | P1 | After initial exposure, learning mode supports skippable attempts before reveal, corrective feedback, user-authored explanations, retrieval prompts, spacing, transfer/application, and confidence judgments | Delayed retrieval/transfer outcomes and confidence calibration are recorded separately from capture/activity counts |
-| KNO-011 | P1 | Development mode supports claims, hypotheses, assumptions, counterevidence, and belief revision | A synthesis can show its supporting, contradicting, stale, and superseded evidence over time |
+| ID | Priority | Owner | Requirement | Acceptance criterion |
+|---|---:|---|---|---|
+| KNO-001 | P0 | PIM | Stable items, immutable revisions, source artifacts, typed relations, and evidence spans | IDs survive rename, move, export, and re-import |
+| KNO-002 | P0 | PIM | Notes support Markdown-compatible text plus block/rich-text structure | Lossless internal round-trip; useful Markdown export without proprietary IDs in prose |
+| KNO-003 | P0 | PIM | Human content and AI-derived content are visibly distinct | Every derived field names model/rule, run, time, and evidence |
+| KNO-004 | P0 | PIM | Accept/reject/edit suggested entities, claims, and links | Feedback changes assertion state without overwriting the original suggestion |
+| KNO-005 | P1 | PIM | First-class people, organizations, projects, goals, tasks, events, concepts, claims, questions, decisions, and sources | Each type has minimal schema and can be extended without migration-heavy custom columns |
+| KNO-006 | P1 | PIM | Contradiction, support, refinement, prerequisite, cause, and alternative relations | Graph and item view expose evidence and epistemic state |
+| KNO-007 | P1 | PIM | Reusable templates and saved views | Views are queries, not duplicated folders |
+| KNO-008 | P1 | PIM | History, diff, restore, merge/fork, and tombstones | User can restore any human-authored revision and inspect automated changes |
+| KNO-009 | P0 | PIM | Independent intent field: reference, act, learn, develop, share, or ignore | Changing intent alters workflow without moving or duplicating the item |
+| KNO-010 | P1 | PIM | After initial exposure, learning mode supports skippable attempts before reveal, corrective feedback, user-authored explanations, retrieval prompts, spacing, transfer/application, and confidence judgments | Delayed retrieval/transfer outcomes and confidence calibration are recorded separately from capture/activity counts |
+| KNO-011 | P1 | PIM | Development mode supports claims, hypotheses, assumptions, counterevidence, and belief revision | A synthesis can show its supporting, contradicting, stale, and superseded evidence over time |
 
 ### 7.3 Retrieval and exploration
 
-| ID | Priority | Requirement | Acceptance criterion |
-|---|---:|---|---|
-| RET-001 | P0 | Instant lexical search with phrase, prefix, field, date, source, type, and boolean filtering | First useful results p95 under 50 ms on the reference corpus |
-| RET-002 | P0 | Hybrid retrieval fuses lexical, semantic, graph, recency, and active-context signals | Result card explains which signals caused the match |
-| RET-003 | P0 | Search never requires an LLM | Lexical/structured search works while models are absent or stopped |
-| RET-004 | P1 | Bounded graph explorer with dimension filters and semantic zoom | Maintains 60 fps for the agreed visible-node budget; never renders the entire vault by default |
-| RET-005 | P1 | Timeline, conversation, map when geodata exists, and project/person projections | Same item appears without duplication across projections |
-| RET-006 | P1 | Grounded answer mode cites exact source spans and exposes retrieval set | User can open each cited page/timestamp/message |
-| RET-007 | P1 | Duplicate and contradiction discovery | Suggestions include evidence and can be dismissed permanently or temporarily |
+| ID | Priority | Owner | Requirement | Acceptance criterion |
+|---|---:|---|---|---|
+| RET-001 | P0 | PIM | Instant lexical search with phrase, prefix, field, date, source, type, and boolean filtering | First useful results p95 under 50 ms on the reference corpus |
+| RET-002 | P0 | PIM | Hybrid retrieval fuses lexical, semantic, graph, recency, and active-context signals | Result card explains which signals caused the match |
+| RET-003 | P0 | PIM | Search never requires an LLM | Lexical/structured search works while models are absent or stopped |
+| RET-004 | P1 | PIM | Bounded graph explorer with dimension filters and semantic zoom | Maintains 60 fps for the agreed visible-node budget; never renders the entire vault by default |
+| RET-005 | P1 | PIM | Timeline, conversation, map when geodata exists, and project/person projections | Same item appears without duplication across projections |
+| RET-006 | P1 | PIM | Grounded answer mode cites exact source spans and exposes retrieval set | User can open each cited page/timestamp/message |
+| RET-007 | P1 | PIM | Duplicate and contradiction discovery | Suggestions include evidence and can be dismissed permanently or temporarily |
 
 ### 7.4 Automation and AI
 
-| ID | Priority | Requirement | Acceptance criterion |
-|---|---:|---|---|
-| AIA-001 | P0 | Local model provider abstraction supporting Ollama and OpenAI-compatible localhost runtimes | Models can be changed without reformatting canonical data |
-| AIA-002 | P0 | JSON-schema-constrained extraction and validation | Invalid output is rejected/retried/quarantined, never partially committed |
-| AIA-003 | P0 | Processing provenance stores model digest, prompt/template version, parameters, inputs, outputs, and evaluator result | Every derived object is reproducible where practical and always attributable to its origin |
-| AIA-004 | P0 | Rules are deterministic objects separate from model inference | User can inspect, test, disable, and roll back each rule |
-| AIA-005 | P1 | Infer candidate rules from repeated user actions | Proposal explains pattern statistics and previews affected historical items |
-| AIA-006 | P1 | Three action tiers: auto, suggest, confirm | Destructive/external actions cannot be assigned to auto tier |
-| AIA-007 | P1 | Local evaluation set for tagging, entity resolution, links, summaries, and retrieval | Model/prompt upgrade is blocked when agreed quality regresses |
-| AIA-008 | P1 | Agent access through current MCP plus local typed API | Read/write scopes, purpose, expiry, and audit are enforced outside the model |
-| AIA-009 | P1 | Permission profiles bundle per-action modes (allow, ask, block) across a resource, with fine-grained overrides underneath | Switching profiles changes defaults without erasing custom overrides; a destructive action cannot be set to allow in a shipped profile |
-| AIA-010 | P1 | Incremental authorization: an agent requests a scoped grant at the moment a task needs it, and the user narrows scope and chooses a duration before granting | No grant exists without a purpose, a scope and an expiry; "until revoked" is an explicit choice |
-| AIA-011 | P1 | Recipient and attendee rules by set (contacts, named group, exact address, domain), with strangers always requiring approval | A send to an address outside every allowed set is held for approval |
-| AIA-012 | P1 | Every agent tool call is recorded with agent identity, tool, argument digest, grant, policy decision and result, in OpenTelemetry GenAI attribute names | The record exists before the external call is made; a missing record fails the call |
-| AIA-013 | P1 | Agent grants can be revoked at any time, individually or all at once, and revocation takes effect on the next call | A token minted under a revoked grant is refused |
+| ID | Priority | Owner | Requirement | Acceptance criterion |
+|---|---:|---|---|---|
+| AIA-001 | P0 | PIM | Local model provider abstraction supporting Ollama and OpenAI-compatible localhost runtimes | Models can be changed without reformatting canonical data |
+| AIA-002 | P0 | PIM | JSON-schema-constrained extraction and validation | Invalid output is rejected/retried/quarantined, never partially committed |
+| AIA-003 | P0 | PIM | Processing provenance stores model digest, prompt/template version, parameters, inputs, outputs, and evaluator result | Every derived object is reproducible where practical and always attributable to its origin |
+| AIA-004 | P0 | Fabric | Rules are deterministic objects separate from model inference | User can inspect, test, disable, and roll back each rule |
+| AIA-005 | P1 | PIM | Infer candidate rules from repeated user actions | Proposal explains pattern statistics and previews affected historical items |
+| AIA-006 | P1 | Fabric | Three action tiers: auto, suggest, confirm | Deleting an event or a calendar and changing sharing cannot be assigned to auto tier; other external actions can be assigned to it only by a built-in profile or by a custom profile the user saves after seeing the expansion ([ADR-108](adr/ADR-108-agent-and-mcp-permission-model.md)) |
+| AIA-007 | P1 | PIM | Local evaluation set for tagging, entity resolution, links, summaries, and retrieval | Model/prompt upgrade is blocked when agreed quality regresses |
+| AIA-008 | P1 | Fabric | Agent access through current MCP plus local typed API | Read/write scopes, purpose, expiry, and audit are enforced outside the model |
+| AIA-009 | P1 | Fabric | Permission profiles bundle per-action modes (allow, ask, block) across a resource, with fine-grained overrides underneath | Switching profiles changes defaults without erasing custom overrides; a destructive action cannot be set to allow in a shipped profile |
+| AIA-010 | P1 | Fabric | Incremental authorization: an agent requests a scoped grant at the moment a task needs it, and the user narrows scope and chooses a duration before granting | No grant exists without a purpose, a scope and a duration (this request, this session, or until revoked); "until revoked" is an explicit choice and has no expiry |
+| AIA-011 | P1 | Fabric | Recipient and attendee rules by set (named local group, exact address, domain), with contacts imported from Google People as a source for those sets, and strangers always requiring approval | A send to an address outside every allowed set is held for approval |
+| AIA-012 | P1 | Fabric | Every agent tool call is recorded with agent identity, tool, argument digest, grant, policy decision and result | The record exists before the external call is made; a missing record fails the call |
+| AIA-013 | P1 | Fabric | Agent grants can be revoked at any time, individually or all at once, and revocation takes effect on the next call | A token minted under a revoked grant is refused |
 
 ### 7.5 Sharing and communication
 
-| ID | Priority | Requirement | Acceptance criterion |
-|---|---:|---|---|
-| SHR-001 | P1 | Export selected items/subgraphs as Markdown plus JSON-LD and attachments | Export uses package-local pseudonymous IDs by default plus user-selected provenance; reusable public IDs are explicit, and private vault UUIDs are never reused across recipients as correlation handles |
-| SHR-002 | P2 | E2EE spaces with per-space keys and device membership | Relay cannot decrypt content; independent security review completed |
-| SHR-003 | P2 | Share a note, collection, query snapshot, or bounded subgraph | Preview proves which nodes, edges, attachments, and metadata leave the private vault |
-| SHR-004 | P2 | Revocation rotates future keys and explains limits of revoking already received plaintext | Removed device cannot decrypt new epochs |
-| SHR-005 | P2 | Comments, mentions, tasks, and collaborative editing in shared spaces | Offline concurrent edits converge; membership changes are audited |
+| ID | Priority | Owner | Requirement | Acceptance criterion |
+|---|---:|---|---|---|
+| SHR-001 | P1 | PIM | Export selected items/subgraphs as Markdown plus JSON-LD and attachments | Export uses package-local pseudonymous IDs by default plus user-selected provenance; reusable public IDs are explicit, and private vault UUIDs are never reused across recipients as correlation handles |
+| SHR-002 | P2 | Fabric | E2EE spaces with per-space keys and device membership | Relay cannot decrypt content; independent security review completed |
+| SHR-003 | P2 | PIM | Share a note, collection, query snapshot, or bounded subgraph | Preview proves which nodes, edges, attachments, and metadata leave the private vault |
+| SHR-004 | P2 | Fabric | Revocation rotates future keys and explains limits of revoking already received plaintext | Removed device cannot decrypt new epochs |
+| SHR-005 | P2 | PIM | Comments, mentions, tasks, and collaborative editing in shared spaces | Offline concurrent edits converge; membership changes are audited |
 
 A relation may leave the private vault only when both endpoints and its selected evidence are in the share manifest. Otherwise it is omitted or replaced by a deliberately approved redacted stub. Cross-space relations remain a private local overlay by default; a query or graph view never expands the share transitively.
 
@@ -578,6 +589,8 @@ Model latency must be reported separately. “Instant UI” cannot honestly impl
 
 ## 16. Delivery roadmap
 
+Since 2026-11-15, Fabric's order of work is in [the roadmap](roadmap.md). M0 stays as written; Phase 0 is closed as superseded, and Phase 1 and the kernel rows of Phase 2 are PIM's.
+
 ### M0 — executable two-agent agreement semantics
 
 Goal: close the gap between the prose protocol and the diagnostic Rust scaffold
@@ -599,6 +612,8 @@ E2EE and safe-commit obligations.
 
 ### Phase 0 — one-week reality test
 
+Closed as superseded on 2026-11-15: it was never recorded as run, and PIM's acceptance work takes its place.
+
 Goal: validate capture, local processing, retrieval, relationship usefulness, and restore using the practical stack.
 
 Deliverables:
@@ -613,6 +628,8 @@ Deliverables:
 Exit gate: at least 80% of test sources capture reliably; a known item can be found in under 15 seconds in 9 of 10 trials; no content lacks a return path to its source.
 
 ### Phase 1 — kernel MVP, approximately 6–10 engineering weeks
+
+PIM's since 2026-11-15.
 
 Goal: one fast local application with universal manual capture and hybrid retrieval.
 
@@ -630,6 +647,8 @@ Build:
 Do not build collaborative sync, autonomous agents, or mail sending in this phase.
 
 ### Phase 2 — trusted personal automation, approximately 8–12 weeks
+
+The kernel rows are PIM's since 2026-11-15. The calendar and time row is Fabric's, and the MCP row is delivered for calendar actions by the [Calendar Desktop plan](plans/calendar-desktop-plan.md).
 
 Goal: selected email/video/message imports and useful rules.
 
@@ -680,18 +699,12 @@ Replacement is earned through reliability and trust; it is not an MVP checkbox.
 
 ```mermaid
 flowchart LR
-    P0[Reality test] --> K[Encrypted kernel]
-    K --> R[Hybrid retrieval]
-    K --> I[Ingestion SDK]
-    K --> A[Audit and policy]
-    R --> G[Typed graph views]
-    I --> C["Email / web / video / messages"]
-    A --> Rules[Inferred rules]
+    R[Hybrid retrieval] --> G[Typed graph views]
+    I[Ingestion SDK] --> C["Email / web / video / messages"]
+    A[Audit and policy] --> Rules[Inferred rules]
     A --> Agent[Scoped agent access]
-    K --> CalLocal["Local calendar replica + policy"]
-    K --> Sync[Encrypted multi-device sync]
-    Sync --> Share[E2EE shared spaces]
-    CalLocal --> Rendezvous["Fabric Rendezvous"]
+    Sync[Encrypted multi-device sync] --> Share[E2EE shared spaces]
+    CalLocal["Local calendar replica + policy"] --> Rendezvous["Fabric Rendezvous"]
     Share --> Rendezvous
     Agent --> Rendezvous
     A --> Rendezvous
@@ -707,6 +720,8 @@ flowchart LR
 ## 17. Verification and evaluation plan
 
 ### 17.1 Product metrics
+
+The kernel metrics, the rows from Universal capture to AI correction, are PIM's since 2026-11-15.
 
 | Outcome | Metric | Initial target |
 |---|---|---:|
@@ -808,6 +823,8 @@ Once those are chosen, the next artifact should be a small repository containing
 - a calendar standards/provider spike plus a two-profile synthetic Fabric Rendezvous simulator;
 - a threat-model test checklist.
 
+The first six items are PIM's since 2026-11-15, ADR-002 and ADR-003 in their kernel parts only.
+
 ---
 
 ## 21. Selected primary and official references
@@ -856,8 +873,8 @@ The next-generation PIM is best understood as a **personal epistemic operating s
 2. **Authority remains explicit.** A connector, rule, model, recipient, or agent can do only what a visible grant permits.
 3. **Interaction remains local and immediate.** Network, sync, and AI improve the experience but do not gate basic capture, writing, or retrieval.
 
-The most practical route is to validate the behavior now with existing specialist tools, while building a small, encrypted canonical kernel rather than attempting a monolithic replacement application. The kernel’s first proof is not a beautiful global graph or a clever agent. It is a 100-millisecond durable receipt with truthful preservation state, a 50-millisecond lexical result, a source-preserving relationship, and a successful restore.
+The most practical route is to validate the behavior now with existing specialist tools, while building a small, encrypted canonical kernel rather than attempting a monolithic replacement application. The kernel’s first proof is not a beautiful global graph or a clever agent. It is a 100-millisecond durable receipt with truthful preservation state, a 50-millisecond lexical result, a source-preserving relationship, and a successful restore. Since 2026-11-15 that proof is PIM's.
 
-The first application-level proof should be **Fabric Rendezvous**: two contact-listed, key-bound users disclose only a few proposed intervals and exact consent decisions, while their devices privately evaluate calendars and safely reconcile the final write. Calendar is an unusually good proving ground because one bounded flow exercises nearly every differentiator—local replicas, time-aware graph objects, deterministic policy, encrypted sharing, narrow agent authority, transparent disclosure, external side effects, and recovery—without pretending that the entire PIM must already replace email or messaging.
+The first application-level proof should be **Fabric Rendezvous**: two contact-listed, key-bound users disclose only a few proposed intervals and exact consent decisions, while their devices privately evaluate calendars and safely reconcile the final write. Calendar is an unusually good proving ground because one bounded flow exercises nearly every differentiator—local replicas, time-aware graph objects, deterministic policy, encrypted sharing, narrow agent authority, transparent disclosure, external side effects, and recovery—without pretending that the entire PIM must already replace email or messaging. The first application's first form is the permission broker for AI agents on Google Calendar; private peer scheduling follows.
 
 ---

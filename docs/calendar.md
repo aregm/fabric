@@ -1,11 +1,13 @@
 # Fabric Calendar — First Vertical Application
 
-**Status:** design baseline with executable semantic profile, version 1.3
+**Status:** design baseline with executable semantic profile, version 1.4
 
 **Prepared:** 2026-09-13
 
+**Updated:** 2026-11-15
+
 **Scope:** Google Calendar-first product test, private scheduling protocol, consent model, provider projection, and release gates
-**Related:** [Product requirements](PRD.md) · [Technical architecture](architecture.md)
+**Related:** [Product requirements](PRD.md) · [Technical architecture](architecture.md) · [Roadmap](roadmap.md) · [Calendar Desktop plan](plans/calendar-desktop-plan.md)
 
 ---
 
@@ -48,7 +50,7 @@ The model may translate “find 30 minutes with Sam next week” into a typed dr
 
 ## 7.6 Calendar and agentic scheduling
 
-This is the first Fabric application after the kernel. Its local calendar capabilities are P0/P1; encrypted peer negotiation builds on the P2 sharing substrate but is delivered as the first end-to-end multi-user vertical in section 23. The `CAL-P0/P1/P2` labels below describe dependency and maturity inside the calendar vertical; they are not the numbered PRD delivery phases. The implemented `fabric-schedule-sim/0` profile in section 23.16 is pre-production evidence and satisfies none of the E2EE/provider release gates by itself.
+This is the first Fabric application. Its first form is a permission broker for AI agents on Google Calendar, specified by the [Calendar Desktop plan](plans/calendar-desktop-plan.md); private peer scheduling follows. Its local calendar capabilities are P0/P1; encrypted peer negotiation builds on the P2 sharing substrate but is delivered as the first end-to-end multi-user vertical in section 23. The `CAL-P0/P1/P2` labels below describe dependency and maturity inside the calendar vertical; they are not the numbered PRD delivery phases. The implemented `fabric-schedule-sim/0` profile in section 23.16 is pre-production evidence and satisfies none of the E2EE/provider release gates by itself.
 
 | ID | Priority | Requirement | Acceptance criterion |
 |---|---:|---|---|
@@ -61,8 +63,8 @@ This is the first Fabric application after the kernel. Its local calendar capabi
 | CAL-007 | P1 | Revalidate and create encrypted local soft holds before commit | A stale slot is revoked, not silently forced; holds expire automatically and block competing local negotiations according to deterministic priority |
 | CAL-008 | P1 | Commit across participant providers through idempotent per-owner writes and a recoverable saga | Duplicate/reordered messages or timeout retries produce one logical meeting; partial commits enter visible reconciliation rather than being reported as success |
 | CAL-009 | P2 | Cancel or reschedule through new consented state transitions | Historical approvals remain immutable; required participant rules and provider recovery behavior are explicit |
-| CAL-010 | P1 | Keep provider invitations out of private mode by default | Each agent writes only its owner’s private event or opaque `Busy` block; attendee lists/iTIP/iMIP are sent only after a separate native-invitation confirmation |
-| CAL-011 | P1 | Link meetings to the knowledge fabric | Event view can traverse to people, project, source request, agenda, notes, decisions, tasks, and follow-ups without exposing those private links to peers |
+| CAL-010 | P1 | Keep provider invitations out of private mode by default | Each agent writes only its owner’s private event or opaque `Busy` block; attendee lists/iTIP/iMIP are sent only after a separate native-invitation confirmation, given for each invitation or in advance under the rule in section 23.11 |
+| CAL-011 | P1 | Link meetings to the knowledge fabric | Event view can traverse to people, project, source request, agenda, notes, decisions, tasks, and follow-ups without exposing those private links to peers. Depends on PIM: since 2026-11-15 this requirement is PIM’s, and the links live entirely in PIM |
 | CAL-012 | P1 | Give scheduling agents narrow capabilities and a complete audit | Availability read, proposal send, response, hold, exact commit, cancel, and native invite are distinct scopes; every read disclosure and external effect is inspectable |
 
 ---
@@ -103,7 +105,7 @@ The confirmed pilot target is a Mac with Google Calendar. Use the direct Google 
 5. Rehearse three candidates, one round, and two explicit users. Each peer evaluates those intervals locally and returns only yes/no. Inspect both devices’ disclosure receipts and the relay capture.
 6. Run prepare/revalidation with Fabric-local expiring holds while provider writes remain disabled. Inject a conflicting event and verify that the stale slot is revoked.
 7. Enable exact commit only to each user’s dedicated calendar, with no attendees and a provider-local title such as `Busy`. Force a timeout after one write and verify idempotent retry/reconciliation.
-8. Export the meeting’s local graph neighborhood—people, request, meeting, agenda, note, task—while proving that other calendar events and private relations are absent.
+8. Export the meeting’s local graph neighborhood—people, request, meeting, agenda, note, task—while proving that other calendar events and private relations are absent. This step depends on PIM, which holds the links (CAL-011).
 
 Do not connect one participant’s Google/Outlook free-busy API to the other participant, and do not test privacy mode through email/iMIP invitations. Those paths disclose more than the Fabric protocol. The practical acceptance checklist in section 23 defines what must be measured before real calendars or autonomous commits are enabled.
 
@@ -131,7 +133,7 @@ Do not connect one participant’s Google/Outlook free-busy API to the other par
 
 ## 23.1 Product decision and promise
 
-The product target for Fabric Calendar is a complete local-first calendar surface and the first executable vertical on the knowledge kernel. The current M0 implements only the agreement-semantics seam in section 23.16; the target has five layers:
+The product target for Fabric Calendar is a complete local-first calendar surface and Fabric’s first executable vertical. The current M0 implements only the agreement-semantics seam in section 23.16; the target has five layers:
 
 1. **Encrypted local replicas** of selected external calendars.
 2. **Fabric-native calendar** for endpoint-encrypted events, private overlays, and local holds.
@@ -236,7 +238,7 @@ The relay never receives provider tokens. Calendar adapters never receive peer k
 
 ## 23.5 Contact authorization, TOFU key binding, and scheduling capabilities
 
-Use three identity layers:
+Use four identity layers:
 
 1. **Contact-list authorization identity** — an entry in the user-selected Fabric contact list is allowed to initiate a bounded scheduling request. Unknown contacts are rejected or quarantined before any calendar evaluation.
 2. **TOFU cryptographic binding** — the first valid E2EE exchange pins the contact’s account signing key and independent device keys to that contact record. A later unexpected key change blocks scheduling until the user explicitly accepts the replacement.
@@ -273,6 +275,8 @@ Encode capabilities with deterministic CBOR and COSE signatures; keep them insid
 - Persist MLS state, replay windows, feed heads, and protocol state transactionally with rollback detection. After cryptographic state loss, rejoin as a new member and restart active negotiations rather than replaying stale approval authority.
 
 An optional later metadata-reduction profile can partition relay and gateway roles with Oblivious HTTP, but the baseline must not claim anonymity. [Oblivious HTTP RFC 9458](https://www.rfc-editor.org/rfc/rfc9458.html)
+
+The only implemented peer transport is the calendar demo’s (section 23.16), in `crates/fabric-wire`: Noise IK sessions (`Noise_IK_25519_ChaChaPoly_BLAKE2s`) carrying COSE-signed messages through a loopback relay. It does not conform to this profile. The MLS baseline above is pending ADR-112.
 
 ## 23.7 Wire messages, disclosure budget, and state machine
 
@@ -536,6 +540,8 @@ Each owner chooses what their own calendar provider receives. Participants agree
 | `local_details` | Owner-selected title/location/reminder on that owner’s provider; no provider attendee list or invitation | No added peer disclosure, but that owner’s provider learns the fields | Familiar local calendar UX with an explicit field preview |
 | `native_invite` | Conventional organizer/attendees and provider/iTIP/iMIP fields | Provider/email infrastructure learns final time, identities, and written details | Explicit interoperability escape hatch; never called private mode |
 
+The permission broker of the [Calendar Desktop plan](plans/calendar-desktop-plan.md) sends provider invitations (`CD-C07`) as an explicit compatibility mode, outside the private Rendezvous disclosure contract of section 23.1. Its approval rule was frozen at gate `CD-G0` on 2026-11-15: under the Careful profile every invitation asks the owner; under Flexible an invitation asks by default and runs without asking only for a recipient set the owner approved in advance; a custom profile may be set wider. The owner’s approval under this rule, for one invitation or in advance, is the separate native-invitation confirmation that CAL-010 requires.
+
 #### Representation decision: what information is needed
 
 “Representation” means the Google Calendar event each agent creates **after** Fabric participants agree. It does not change the peer protocol; it determines what Google and anyone with access to that Google calendar can see. If no Google record is created, the event exists only in Fabric and will not block time in ordinary Google Calendar views.
@@ -701,6 +707,8 @@ protocol.
 | Slice | Indicative effort | Deliverable and exit gate |
 |---|---:|---|
 | M0 Semantic simulator | Implemented | Checked interval/domain types, two private synthetic calendars, bounded in-memory messages, explicit yes/no, deterministic agreement/no-match state, replay/scope validation, CLI fixture, and exhaustive Boolean consensus test; no security/provider claim |
+| Isabelle calendar demo | Implemented; frozen at tag `demo-g3-2026-11-15` | Precursor that does not conform to sections 23.6 or 23.8: Noise IK instead of MLS, and a language model, not deterministic code, reads the busy intervals and picks the candidates and answers. Specified in [isabelle-calendar-demo.md](isabelle-calendar-demo.md) |
+| Permission broker | Work packages `CD-W01` to `CD-W11` of the [Calendar Desktop plan](plans/calendar-desktop-plan.md); exit gate `CD-G5` | Delivers C0 through the `CD-W05` and `CD-W09` spikes; part of C1 through `CD-W02`, `CD-W04` and `CD-W08`, with no agenda UI and no replica; and part of C3 through `CD-W04` and `CD-W05`, for single-owner effects. It delivers no part of C2, C4 or C5 |
 | C0 Standards/Google spike | 2 weeks | Canonical time/recurrence model; ICS and Google fixtures; Google personal/Workspace permission test; DST oracle; capability/loss matrix; no real writes |
 | C1 Personal calendar | 4–6 weeks | macOS app, SQLCipher schema, direct Google replica, Fabric-native events, agenda/week UI, policy engine, occurrence cache, ICS; deterministic conformance passes |
 | C2 Two-agent Rendezvous | 4–6 weeks | Contact-list authorization, TOFU key pinning, MLS, opaque relay, bounded candidate/eligibility exchange, yes/no commitments, disclosure audit, synthetic calendars; independent protocol review begins |
@@ -744,11 +752,11 @@ The following are now confirmed:
 
 These implementation-changing details remain open:
 
-1. **Mac hardware and Google account type:** Apple Silicon/RAM plus Google personal versus Workspace.
-2. **Calendar scope:** calendars included in conflict calculation and the owned destination calendar for Fabric projections.
+1. **Mac hardware and Google account type:** Apple Silicon/RAM plus Google personal versus Workspace. For the permission broker, the [Calendar Desktop plan](plans/calendar-desktop-plan.md) answers: macOS 15.0 or later on Apple Silicon, and real personal Google accounts, several connected at once, with no cap in code (`CD-C03`, `CD-C11`, `CD-C12`, `CD-W00a`, `CD-W00b`).
+2. **Calendar scope:** calendars included in conflict calculation and the owned destination calendar for Fabric projections. For the permission broker, the plan answers: owned calendars and writable calendars shared by another person (`CD-C13`); edits to existing selected calendars and invitations, not a draft calendar alone (`CD-C07`); an Agent Drafts calendar that the owner creates in Google and selects (`CD-Q05f`); acceptance uses two accounts, each with an owned and a writable shared calendar (`CD-W00b`).
 3. **Google representation:** confirm the minimal recommendation in section 23.11 or specify title, visibility, reminders, attendees, location, Meet link, and cancellation behavior.
 4. **Contact-list source:** Fabric-native contacts, macOS Contacts, Google Contacts, or a merged view; define duplicate and deletion semantics.
 5. **Relay deployment:** local development, self-hosted internet, or operated ciphertext relay; define retention, availability, push delivery, and IP-log policy.
 6. **Initial group boundary:** two-person production with multi-party test fixtures, or all-required small groups at launch.
 
-The M0 semantic simulator is now implemented. Once the remaining decisions are answered, the production package should continue with ADR-111 through ADR-113, CDDL schemas/test vectors for `fabric-schedule/1`, the deterministic time oracle, a Google capability/loss matrix, a disclosure auditor, and a fault-injected commit-saga harness.
+The M0 semantic simulator is now implemented. Once the remaining decisions are answered, the production package should continue with ADR-111 through ADR-113, CDDL schemas/test vectors for `fabric-schedule/1`, the deterministic time oracle, a Google capability/loss matrix, a disclosure auditor, and a fault-injected commit-saga harness. ADR-107, ADR-109 and ADR-114 were drafted first, on 2026-10-26, and are Proposed; ADR-111 to ADR-113 are not yet written.
