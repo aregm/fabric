@@ -10,8 +10,9 @@
 //!
 //! The host holds no Google credential and no database, and makes no policy decision: it tells
 //! the broker where its encrypted store lives and where its key comes from (work package
-//! CD-W04), and the broker opens it. The relaying itself is the crate `fabric-desktop-relay`,
-//! which has no Tauri in it.
+//! CD-W04), and the broker opens it. A debug build may also tell the broker where Isabelle and
+//! the rule theory are, so that it proves requests (apps/fabric-desktop/README.md, "The practice
+//! run"). The relaying itself is the crate `fabric-desktop-relay`, which has no Tauri in it.
 
 mod bridge;
 mod host;

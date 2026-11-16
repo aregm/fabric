@@ -3,7 +3,9 @@
 //! Nothing here is Tauri, so it is tested without a window. The host relays and nothing more:
 //! it never builds a frame, never answers for the broker and never looks at what a request
 //! asks for. It holds no Google credential and no database: it tells the broker where its
-//! store lives and where its key comes from ([`BrokerStore`]), and the broker opens it.
+//! store lives and where its key comes from ([`BrokerStore`]), and the broker opens it. A debug
+//! host may also tell it where Isabelle and the rule theory are ([`BrokerProver`]); the broker
+//! checks those paths and runs the prover.
 
 use std::ffi::{OsStr, OsString};
 use std::path::{Path, PathBuf};
@@ -13,9 +15,11 @@ use std::time::Instant;
 use fabric_desktop_contracts::owner::OwnerResponse;
 use fabric_desktop_contracts::{Entry, Frame, decode};
 use fabric_desktop_relay::{
-    BROKER_DATA_DIR as DATA_DIR, BROKER_KEY_SOURCE as KEY_SOURCE,
-    BROKER_SYNTHETIC_AGENT as SYNTHETIC_AGENT, BrokerConfig, ENVIRONMENT_ALLOWLIST, Event,
-    InstanceError, InstanceLock, QUIT_DRAIN, Session, is_broker_variable, same_name as is_variable,
+    BROKER_DATA_DIR as DATA_DIR, BROKER_ISABELLE_HOME as ISABELLE_HOME,
+    BROKER_ISABELLE_USER_HOME as ISABELLE_USER_HOME, BROKER_KEY_SOURCE as KEY_SOURCE,
+    BROKER_RULES_DIR as RULES_DIR, BROKER_SYNTHETIC_AGENT as SYNTHETIC_AGENT, BrokerConfig,
+    ENVIRONMENT_ALLOWLIST, Event, InstanceError, InstanceLock, QUIT_DRAIN, Session,
+    is_broker_variable, same_name as is_variable,
 };
 
 use crate::bridge::{DisconnectReason, HostMessage, HostState, SendRefusal};
@@ -74,7 +78,20 @@ impl BrokerKeySource {
     }
 }
 
-/// The store settings the host gives the broker (design 10.6).
+/// Where the broker's rule prover finds Isabelle and the rule theory: three absolute paths, all
+/// or none. Only a debug host passes them, with any store; the broker checks
+/// them before it starts and refuses a wrong one (exit 78).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct BrokerProver {
+    /// The Isabelle distribution's root (`FABRIC_BROKER_ISABELLE_HOME`).
+    pub isabelle_home: PathBuf,
+    /// Isabelle's per-user directory (`FABRIC_BROKER_ISABELLE_USER_HOME`).
+    pub isabelle_user_home: PathBuf,
+    /// The directory with `ROOTS` and `Fabric_Broker/` (`FABRIC_BROKER_RULES_DIR`).
+    pub rules_dir: PathBuf,
+}
+
+/// The store settings the host gives the broker (design 10.6), and where its prover is.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct BrokerStore {
     /// The broker's data directory: `broker` under the host's directory.
@@ -83,6 +100,9 @@ pub struct BrokerStore {
     pub key_source: BrokerKeySource,
     /// True when the broker runs its synthetic agent (debug builds, test key only).
     pub synthetic_agent: bool,
+    /// Where Isabelle and the rule theory are, when a debug host was given all three paths.
+    /// `None` means the broker runs no rule prover.
+    pub prover: Option<BrokerProver>,
 }
 
 /// The variable that moves the host's directory, and with it the lock and the store, in a
@@ -92,10 +112,11 @@ pub const DESKTOP_DATA_DIR: &str = "FABRIC_DESKTOP_DATA_DIR";
 const BROKER_DIRECTORY: &str = "broker";
 
 impl BrokerStore {
-    /// From the host's own environment. Release builds: root = `app_data_dir`, Keychain, no synthetic agent, the
-    /// three names ignored. Debug builds: root = `FABRIC_DESKTOP_DATA_DIR` if set; `FABRIC_BROKER_KEY_SOURCE=test` and
+    /// From the host's own environment. Release builds: root = `app_data_dir`, Keychain, no synthetic agent, no
+    /// prover, all six names ignored. Debug builds: root = `FABRIC_DESKTOP_DATA_DIR` if set; `FABRIC_BROKER_KEY_SOURCE=test` and
     /// `FABRIC_BROKER_SYNTHETIC_AGENT=1` are honoured only with `FABRIC_DESKTOP_DATA_DIR` set, and the synthetic agent
-    /// only with the test key; otherwise `Err(detail)`. Returns the root (the lock directory) and the store settings
+    /// only with the test key; the three prover paths ([`BrokerProver`]) are passed when all three are set and
+    /// absolute, with any store; otherwise `Err(detail)`. Returns the root (the lock directory) and the store settings
     /// (`data_dir = root/broker`).
     pub fn from_environment(
         app_data_dir: &Path,
@@ -104,6 +125,7 @@ impl BrokerStore {
         let mut desktop = None;
         let mut key = None;
         let mut synthetic = None;
+        let mut prover = [None, None, None];
         for (name, value) in vars {
             if is_variable(&name, DESKTOP_DATA_DIR) {
                 desktop = Some(value);
@@ -111,15 +133,20 @@ impl BrokerStore {
                 key = Some(value);
             } else if is_variable(&name, SYNTHETIC_AGENT) {
                 synthetic = Some(value);
+            } else if let Some(index) = PROVER_NAMES.iter().position(|n| is_variable(&name, n)) {
+                prover[index] = Some(value);
             }
         }
-        BrokerStore::store_from(
-            app_data_dir,
-            desktop,
-            key,
-            synthetic,
-            cfg!(not(debug_assertions)),
-        )
+        let release = cfg!(not(debug_assertions));
+        let (root, store) = BrokerStore::store_from(app_data_dir, desktop, key, synthetic, release);
+        let prover = BrokerProver::prover_from(prover, release);
+        let store = store.and_then(|store| {
+            Ok(BrokerStore {
+                prover: prover?,
+                ..store
+            })
+        });
+        (root, store)
     }
 
     /// The rule of [`BrokerStore::from_environment`] once the variables are found; `release` is
@@ -213,10 +240,12 @@ impl BrokerStore {
             data_dir: root.join(BROKER_DIRECTORY),
             key_source,
             synthetic_agent,
+            prover: None,
         }
     }
 
-    /// The broker's variables: data dir, key source, and the synthetic pair only when `synthetic_agent` is true.
+    /// The broker's variables: data dir, key source, the synthetic pair only when `synthetic_agent` is true, and the
+    /// three prover paths only when `prover` is set.
     #[must_use]
     pub fn variables(&self) -> Vec<(OsString, OsString)> {
         let mut variables = vec![
@@ -232,7 +261,60 @@ impl BrokerStore {
         if self.synthetic_agent {
             variables.push((OsString::from(SYNTHETIC_AGENT), OsString::from("1")));
         }
+        if let Some(prover) = &self.prover {
+            for (name, path) in PROVER_NAMES.into_iter().zip([
+                &prover.isabelle_home,
+                &prover.isabelle_user_home,
+                &prover.rules_dir,
+            ]) {
+                variables.push((OsString::from(name), path.clone().into_os_string()));
+            }
+        }
         variables
+    }
+}
+
+/// The prover's variables, in the order of [`BrokerProver`]'s fields.
+const PROVER_NAMES: [&str; 3] = [ISABELLE_HOME, ISABELLE_USER_HOME, RULES_DIR];
+
+impl BrokerProver {
+    /// The rule for the three prover variables once they are found, in the order of
+    /// [`PROVER_NAMES`]. A release build ignores them (no prover until one ships with the
+    /// application). A debug build takes all three or none: one or two set, or a path that is
+    /// not absolute, is `Err(detail)`. Whether the paths hold Isabelle and the rule theory is the
+    /// broker's check, not the host's.
+    fn prover_from(
+        values: [Option<OsString>; 3],
+        release: bool,
+    ) -> Result<Option<BrokerProver>, String> {
+        if release {
+            let _ = values;
+            return Ok(None);
+        }
+        if values.iter().all(Option::is_none) {
+            return Ok(None);
+        }
+        let [Some(home), Some(user_home), Some(rules)] = values else {
+            return Err(format!(
+                "the rule prover needs {ISABELLE_HOME}, {ISABELLE_USER_HOME} and {RULES_DIR} together, or none; nothing was started"
+            ));
+        };
+        let absolute = |name: &str, value: OsString| {
+            let path = PathBuf::from(value);
+            if path.is_absolute() {
+                Ok(path)
+            } else {
+                Err(format!(
+                    "{name} is {:?}, which is not an absolute path; nothing was started",
+                    path.display()
+                ))
+            }
+        };
+        Ok(Some(BrokerProver {
+            isabelle_home: absolute(ISABELLE_HOME, home)?,
+            isabelle_user_home: absolute(ISABELLE_USER_HOME, user_home)?,
+            rules_dir: absolute(RULES_DIR, rules)?,
+        }))
     }
 }
 
@@ -361,12 +443,17 @@ impl Host {
         match Session::start(&config, move |event| host.relay(run, event)) {
             Ok(session) => {
                 let extra = format!(
-                    " pid={} broker={:?} key={}{}",
+                    " pid={} broker={:?} key={}{}{}",
                     session.pid(),
                     config.program().display().to_string(),
                     store.key_source.as_str(),
                     if store.synthetic_agent {
                         " synthetic"
+                    } else {
+                        ""
+                    },
+                    if store.prover.is_some() {
+                        " prover"
                     } else {
                         ""
                     }
@@ -553,6 +640,7 @@ mod tests {
             data_dir: directory.join("broker"),
             key_source: BrokerKeySource::Test,
             synthetic_agent: false,
+            prover: None,
         })
     }
 
@@ -779,6 +867,7 @@ mod tests {
                 data_dir: app.join("broker"),
                 key_source: BrokerKeySource::Keychain,
                 synthetic_agent: false,
+                prover: None,
             })
         );
 
@@ -837,6 +926,7 @@ mod tests {
             data_dir: app.join("broker"),
             key_source: BrokerKeySource::Keychain,
             synthetic_agent: false,
+            prover: None,
         });
         let scratch = std::env::temp_dir().join("fabric-scratch").into_os_string();
         let some = |text: &str| Some(OsString::from(text));
@@ -856,15 +946,158 @@ mod tests {
         }
     }
 
+    /// Three absolute prover paths under the temporary directory, as text, in the order of
+    /// [`PROVER_NAMES`]. Nothing is created: the host does not look at them.
+    fn prover_paths() -> [String; 3] {
+        let base = std::env::temp_dir().join("fabric-prover-paths");
+        ["Isabelle2025-2", "home", "isabelle"]
+            .map(|leaf| base.join(leaf).to_string_lossy().into_owned())
+    }
+
+    #[cfg(debug_assertions)]
+    #[test]
+    fn a_debug_host_passes_the_prover_paths_only_all_three_and_absolute() {
+        let app = Path::new("/Users/someone/Library/Application Support/app");
+        let scratch = std::env::temp_dir().join("fabric-scratch");
+        let scratch_text = scratch.to_string_lossy().into_owned();
+        let [home, user_home, rules] = prover_paths();
+        let expected = BrokerProver {
+            isabelle_home: PathBuf::from(&home),
+            isabelle_user_home: PathBuf::from(&user_home),
+            rules_dir: PathBuf::from(&rules),
+        };
+
+        // The practice run of the README: the synthetic run and the three paths.
+        let (root, store) = BrokerStore::from_environment(
+            app,
+            vars(&[
+                (DESKTOP_DATA_DIR, &scratch_text),
+                (KEY_SOURCE, "test"),
+                (SYNTHETIC_AGENT, "1"),
+                (ISABELLE_HOME, &home),
+                (ISABELLE_USER_HOME, &user_home),
+                (RULES_DIR, &rules),
+            ]),
+        );
+        assert_eq!(root, scratch);
+        let store = store.unwrap();
+        assert_eq!(store.prover.as_ref(), Some(&expected));
+        assert_eq!(
+            store.variables(),
+            vec![
+                (
+                    OsString::from(DATA_DIR),
+                    scratch.join("broker").into_os_string()
+                ),
+                (OsString::from(KEY_SOURCE), OsString::from("test")),
+                (OsString::from(SYNTHETIC_AGENT), OsString::from("1")),
+                (OsString::from(ISABELLE_HOME), OsString::from(&home)),
+                (
+                    OsString::from(ISABELLE_USER_HOME),
+                    OsString::from(&user_home)
+                ),
+                (OsString::from(RULES_DIR), OsString::from(&rules)),
+            ]
+        );
+
+        // With any store: the product's store and the Keychain keep the paths too.
+        let (root, store) = BrokerStore::from_environment(
+            app,
+            vars(&[
+                (ISABELLE_HOME, &home),
+                (ISABELLE_USER_HOME, &user_home),
+                (RULES_DIR, &rules),
+            ]),
+        );
+        assert_eq!(root, app);
+        let store = store.unwrap();
+        assert_eq!(store.key_source, BrokerKeySource::Keychain);
+        assert!(!store.synthetic_agent);
+        assert_eq!(store.prover, Some(expected));
+
+        // None of the three: no prover, and none of its variables.
+        let (_, store) = BrokerStore::from_environment(
+            app,
+            vars(&[(DESKTOP_DATA_DIR, &scratch_text), (KEY_SOURCE, "test")]),
+        );
+        let store = store.unwrap();
+        assert_eq!(store.prover, None);
+        assert!(
+            store
+                .variables()
+                .iter()
+                .all(|(name, _)| !PROVER_NAMES.iter().any(|n| is_variable(name, n)))
+        );
+
+        // Refused: one or two of the three, a relative or empty path, and a refused store that
+        // has all three.
+        for refused in [
+            vars(&[(ISABELLE_HOME, &home)]),
+            vars(&[(ISABELLE_USER_HOME, &user_home), (RULES_DIR, &rules)]),
+            vars(&[(ISABELLE_HOME, &home), (RULES_DIR, &rules)]),
+            vars(&[
+                (ISABELLE_HOME, ".tooling/isabelle/Isabelle2025-2"),
+                (ISABELLE_USER_HOME, &user_home),
+                (RULES_DIR, &rules),
+            ]),
+            vars(&[
+                (ISABELLE_HOME, &home),
+                (ISABELLE_USER_HOME, &user_home),
+                (RULES_DIR, ""),
+            ]),
+            vars(&[
+                (KEY_SOURCE, "test"),
+                (ISABELLE_HOME, &home),
+                (ISABELLE_USER_HOME, &user_home),
+                (RULES_DIR, &rules),
+            ]),
+        ] {
+            let (_, store) = BrokerStore::from_environment(app, refused.clone());
+            assert!(store.is_err(), "{refused:?} was accepted: {store:?}");
+        }
+        let (_, partial) = BrokerStore::from_environment(app, vars(&[(RULES_DIR, &rules)]));
+        assert_eq!(
+            partial,
+            Err(
+                "the rule prover needs FABRIC_BROKER_ISABELLE_HOME, FABRIC_BROKER_ISABELLE_USER_HOME and FABRIC_BROKER_RULES_DIR together, or none; nothing was started"
+                    .to_owned()
+            )
+        );
+    }
+
+    #[test]
+    fn a_release_host_ignores_the_prover_variables() {
+        let [home, user_home, rules] = prover_paths();
+        let some = |text: &str| Some(OsString::from(text));
+        for values in [
+            // All three, which a debug build passes.
+            [some(&home), some(&user_home), some(&rules)],
+            // Values a debug build refuses.
+            [some(&home), None, None],
+            [some("relative"), some(&user_home), some(&rules)],
+            [None, None, None],
+        ] {
+            let case = format!("{values:?}");
+            assert_eq!(BrokerProver::prover_from(values, true), Ok(None), "{case}");
+        }
+    }
+
     #[test]
     fn every_broker_variable_the_host_sets_passes_the_relay_allowlist() {
-        let store = BrokerStore {
+        let mut store = BrokerStore {
             data_dir: PathBuf::from("/scratch/broker"),
             key_source: BrokerKeySource::Test,
             synthetic_agent: true,
+            prover: None,
         };
+        assert_eq!(store.variables().len(), 3);
+        store.prover = Some(BrokerProver {
+            isabelle_home: PathBuf::from("/isabelle/Isabelle2025-2"),
+            isabelle_user_home: PathBuf::from("/isabelle/home"),
+            rules_dir: PathBuf::from("/rules"),
+        });
         let variables = store.variables();
-        assert_eq!(variables.len(), 3);
+        assert_eq!(variables.len(), 6);
         for (name, _) in &variables {
             assert!(is_broker_variable(name), "{name:?}");
             assert!(
@@ -882,6 +1115,7 @@ mod tests {
             data_dir: PathBuf::from("/scratch/broker"),
             key_source: BrokerKeySource::Test,
             synthetic_agent: false,
+            prover: None,
         };
         let environment = broker_environment(&store);
         let broker: Vec<String> = environment

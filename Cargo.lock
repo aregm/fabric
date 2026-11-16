@@ -361,6 +361,7 @@ name = "fabric-broker"
 version = "0.1.0"
 dependencies = [
  "fabric-broker-core",
+ "fabric-broker-policy",
  "fabric-desktop-contracts",
  "fabric-desktop-relay",
  "fabric-storage",

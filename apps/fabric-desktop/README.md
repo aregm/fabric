@@ -2,7 +2,7 @@
 
 Work packages CD-W02, CD-W04 and CD-W08 of the [Calendar Desktop plan](../../docs/plans/calendar-desktop-plan.md): the Tauri shell and the round trip to a Rust broker child (CD-W02, gate CD-G1b), the real broker behind it: the encrypted store, the authority core and the owner channel (CD-W04, gate CD-G2a), and the screens of the owner's interface (CD-W08, gate CD-G3a).
 
-The broker ([`apps/fabric-broker`](../fabric-broker)) keeps its state in an encrypted store and survives a restart. It has no rule prover yet (the Isabelle wiring follows CD-W03), no Google access (CD-W05) and no agent channel (CD-W06), so nothing an agent asks is ever carried out: an approved request ends "undecided". A test build can run a synthetic agent so that a person sees requests; it runs only when asked for from a terminal, with a scratch data directory and the test key (see "The synthetic demonstration"). The strip at the top of the page says that the rule checker is not running.
+The broker ([`apps/fabric-broker`](../fabric-broker)) keeps its state in an encrypted store and survives a restart. It has no Google access (CD-W05) and no agent channel (CD-W06), and the application does not ship Isabelle yet, so in the product nothing an agent asks is carried out: an approved request ends "undecided". A test build can run a synthetic agent so that a person sees requests; it runs only when asked for from a terminal, with a scratch data directory and the test key (see "The synthetic demonstration"). A test build given the paths of an Isabelle installed in the checkout also proves every request with the real rule prover and carries the approved ones out on a practice calendar held in memory (see "The practice run"). The strip at the top of the page says when the rule checker is not running, and a second line under the title (the practice line) says that a request is carried out only on practice data and that nothing changes a real calendar.
 
 ## The three parts
 
@@ -15,7 +15,7 @@ broker child (Rust, apps/fabric-broker)
 ```
 
 - The webview reaches only the host, and only through `owner_attach`, `owner_send` and `broker_restart`. The capability file [`src-tauri/capabilities/owner-interface.json`](src-tauri/capabilities/owner-interface.json) allows these three and no command of Tauri itself (no window, event, path, shell or file command).
-- The host starts one broker with an empty environment except the broker's three variables (the allowlist in [`relay/src/config.rs`](relay/src/config.rs)): its data directory, where its store key comes from, and, in a test run only, the synthetic agent. It validates every frame in both directions with `fabric-desktop-contracts`, and relays. It builds no frame, answers nothing for the broker, holds no credential, never opens the store, and makes no policy decision.
+- The host starts one broker with an empty environment except the broker's variables (the allowlist in [`relay/src/config.rs`](relay/src/config.rs)): its data directory and where its store key comes from; the synthetic agent only in a test run with a scratch directory and the test key; and, in a debug build, the three paths of the rule prover (Isabelle, Isabelle's per-user directory and the rule theory) when all three are set, with any store. With the real store nothing is carried out, so an approved request ends "undecided". On Unix it adds one fixed `PATH`, `/usr/bin:/bin:/usr/sbin:/sbin`, never its own, because Isabelle's scripts call system tools such as `/usr/sbin/sysctl` by name. It validates every frame in both directions with `fabric-desktop-contracts`, and relays. It builds no frame, answers nothing for the broker, holds no credential, never opens the store, and makes no policy decision.
 - The contract is [`contracts/desktop/v1`](../../contracts/desktop/v1/README.md). The webview imports its TypeScript types; it does not copy them.
 
 | Path | What it holds |
@@ -53,7 +53,10 @@ In `ui/src` each screen has a model without the DOM and a view (`review`, `profi
 sh scripts/verify-desktop.sh                      # typecheck, tests, host lint and tests
 sh scripts/build-desktop.sh --configuration debug # target/debug/bundle/macos/Fabric Calendar.app
 sh scripts/verify-desktop.sh --packaged           # the bundle, from a path with spaces
+sh scripts/verify-desktop.sh --live-proofs        # the broker with the real Isabelle, never in CI
 ```
+
+`--live-proofs` runs the tests that need the real rule prover: the broker's live tests ([`apps/fabric-broker/tests/live.rs`](../fabric-broker/tests/live.rs)), the first of them alone and by name, and the rule theory's corpus. Install Isabelle first, by hand, with `sh scripts/setup-demo.sh`; the script never installs it and stops if it is missing. It takes Isabelle's place from the three variables of "The practice run", all three or none; with none, from the checkout (`.tooling/isabelle` and `isabelle`). Every test uses the test key in a temporary directory. The first run can take several minutes while Isabelle builds its session heap. The live proofs assert that the in-process stop of the prover is acknowledged within 1.5 s (measured 0.8 s to 1.3 s on an idle Mac), so run them on an otherwise idle Mac.
 
 The bundle is arm64, for macOS 15.0 or later, and signed ad hoc. Developer ID signing, notarization and the DMG are CD-W11.
 
@@ -67,7 +70,7 @@ cd apps/fabric-desktop && npm ci && npm run build
 npm run harness -- --broker ../../target/debug/fabric-broker
 ```
 
-The harness always starts the broker with the test key and the synthetic agent, in a new temporary data directory that it removes when it stops. It never opens the real store.
+The harness always starts the broker with the test key and the synthetic agent, in a new temporary data directory that it removes when it stops. It never opens the real store. Started with the three variables of "The practice run" set, it passes them to the broker, which then proves requests and uses the practice calendar; with one or two of them set it starts nothing. On Unix it gives the broker the host's fixed `PATH` ("The three parts").
 
 The harness has switches for states that are hard to reach by hand:
 
@@ -78,7 +81,7 @@ curl -X POST http://127.0.0.1:4317/harness/release-store   # that process ends
 npm run harness -- --broker harness/replay-broker.ts --port 4319
 ```
 
-With the store held, "Restart broker" in the page starts a broker that cannot open its store, and the strip shows the broker's reason and "Read the current state again"; after the release the broker opens the store at the next request that comes five seconds or more after its last try. The last line runs a stand-in in place of the broker. It replays the contract's fixtures and changes nothing, to look at what this broker cannot show yet: a blocked request with its proof, a request that was carried out, a failure, several agents, an account that needs a new sign-in. It is for looking at the page and never evidence for a gate.
+With the store held, "Restart broker" in the page starts a broker that cannot open its store, and the strip shows the broker's reason and "Read the current state again"; after the release the broker opens the store at the next request that comes five seconds or more after its last try. The last line runs a stand-in in place of the broker. It replays the contract's fixtures and changes nothing, to look at what this broker cannot show yet, or shows only in the practice run: a blocked request with its proof, a request that was carried out, a failure, several agents, an account that needs a new sign-in. It is for looking at the page and never evidence for a gate.
 
 With `FABRIC_DESKTOP_TRACE=1` the host writes one line per relayed frame to stderr: the method, the id, the sequence and the size, never the content.
 
@@ -108,9 +111,56 @@ FABRIC_DESKTOP_DATA_DIR="$(mktemp -d)" FABRIC_BROKER_KEY_SOURCE=test FABRIC_BROK
   "target/debug/bundle/macos/Fabric Calendar.app/Contents/MacOS/fabric-desktop"
 ```
 
-`FABRIC_DESKTOP_DATA_DIR` moves the single-instance lock and the store to that scratch directory; the store opens with the public test key, so it never touches the Keychain. Once the window has subscribed, "Synthetic agent (test build)" and a synthetic account appear, and about a second later the agent proposes an event; the request waits for your decision. Its classifier is a stand-in that always asks you and never permits, so an approval creates a grant and the request ends "undecided". The agent proposes once more after the first request ends, two requests per run. Quit and start again with the same directory (write it down instead of `$(mktemp -d)`): pending requests, until-revoked grants and decisions are still there.
+`FABRIC_DESKTOP_DATA_DIR` moves the single-instance lock and the store to that scratch directory; the store opens with the public test key, so it never touches the Keychain. Once the window has subscribed, "Synthetic agent (test build)" and a synthetic account appear, and about a second later the agent proposes an event; the request waits for your decision. Without the rule prover's variables ("The practice run") its classifier is a stand-in that always asks you and never permits, so an approval creates a grant and the request ends "undecided". The agent proposes once more after the first request ends, two requests per run. Quit and start again with the same directory (write it down instead of `$(mktemp -d)`): pending requests, until-revoked grants and decisions are still there.
 
-The host refuses the test key or the synthetic agent without `FABRIC_DESKTOP_DATA_DIR`, and the synthetic agent without the test key: the window then shows a configuration error and no broker starts. A release build ignores all three variables and refuses the test key and the synthetic agent.
+The host refuses the test key or the synthetic agent without `FABRIC_DESKTOP_DATA_DIR`, and the synthetic agent without the test key: the window then shows a configuration error and no broker starts. A release build ignores all of these variables, the rule prover's three too, and refuses the test key and the synthetic agent.
+
+## The practice run
+
+A debug build can show the whole path of a request: the agent asks, you approve, the real rule prover (Isabelle) proves it, Fabric authorizes it once, carries it out and records it. It is carried out on a practice calendar that exists only in the broker's memory, in debug builds, with the synthetic agent and the test key. **Everything in this run is practice data.** No real calendar changes, nothing reaches Google, and the practice calendar is gone when the broker stops.
+
+Prepare once, by hand: `sh scripts/setup-demo.sh` installs Isabelle in `.tooling/isabelle` of the checkout. Then build the debug application and start it from the checkout's root, with a new scratch directory each time:
+
+```sh
+sh scripts/build-desktop.sh --configuration debug
+D="$(mktemp -d)"
+FABRIC_DESKTOP_DATA_DIR="$D" FABRIC_BROKER_KEY_SOURCE=test FABRIC_BROKER_SYNTHETIC_AGENT=1 \
+FABRIC_BROKER_ISABELLE_HOME="$PWD/.tooling/isabelle/Isabelle2025-2" \
+FABRIC_BROKER_ISABELLE_USER_HOME="$PWD/.tooling/isabelle/home" \
+FABRIC_BROKER_RULES_DIR="$PWD/isabelle" \
+  "target/debug/bundle/macos/Fabric Calendar.app/Contents/MacOS/fabric-desktop"
+```
+
+The three `FABRIC_BROKER_ISABELLE_HOME`, `FABRIC_BROKER_ISABELLE_USER_HOME` and `FABRIC_BROKER_RULES_DIR` go together, as absolute paths: with one or two of them the host starts no broker. The broker never looks for Isabelle by itself. The host gives the broker no `PATH` of its own: on Unix the broker gets the fixed `/usr/bin:/bin:/usr/sbin:/sbin`, where Isabelle's scripts find the system tools they call ("The three parts"). The same run in a browser, once "Build and check" has built the broker and the page: from the checkout's root, keep the root in a variable before `cd`, because a `$PWD` written after it would point into `apps/fabric-desktop` and the broker would refuse the paths.
+
+```sh
+R="$PWD"
+cd apps/fabric-desktop
+FABRIC_BROKER_ISABELLE_HOME="$R/.tooling/isabelle/Isabelle2025-2" \
+FABRIC_BROKER_ISABELLE_USER_HOME="$R/.tooling/isabelle/home" \
+FABRIC_BROKER_RULES_DIR="$R/isabelle" \
+  npm run harness -- --broker ../../target/debug/fabric-broker
+```
+
+The words "the calendar" in the request states mean the practice calendar in this run, as the practice line under the page's title says. What you see:
+
+1. The build line under the title reads "Development build. Broker: fabric-broker, build 0.1.0 CD-W04 synthetic practice."; below it the practice line says that a request is carried out only on practice data and that nothing changes a real calendar. The strip says "The rule checker is starting." with "Requests wait until it is ready." The first start can take several minutes while Isabelle builds its session heap; later starts take seconds.
+2. That entry of the strip goes away. The Status screen says "Running." under "Rule checker", and its activity has "Rule checker: Running. Store: Open". Under "Agents", "Synthetic agent (test build)" is connected. The agent proposes only once the rule checker is ready.
+3. Request A, "Create an event, from Synthetic agent (test build)": "Received, checking", then "Waiting for your decision", with the approval card. "Why you are asked" names "Rule: authority", and "Show the proof" opens the Isabelle proof of that ruling. Choose "Only this request" and Allow.
+4. Request A goes on: "You allowed it; Fabric checks it once more before it is done", "Fabric checks it once more before it is done", "Allowed; waiting to be sent to the calendar", "Being sent to the calendar", then "Done: the calendar accepted it. Fabric has not confirmed it by reading it back yet". Some of these pass quickly; the activity on the Status screen lists each. The event was made on the practice calendar. No confirmation comes in this build, so the request stays there and counts as in progress. Its details list the decision, both proofs (the ruling and the check before carrying it out), the authorization and the attempt.
+5. Request B, "Delete an event", of an event on the practice calendar that Fabric did not make: "Blocked by a rule", with "Rule fabric_created: Only events that Fabric created may be deleted." and the proof's id. Nothing asks you; the rule prover blocked it. "Show the proof" shows the proof: outcome "Blocked", failing rule `fabric_created`.
+6. Request C, "Change an event", moves A's event by 30 minutes and notifies nobody: a card. Allow once; it ends "Done: the calendar accepted it. Fabric has not confirmed it by reading it back yet".
+7. Request D, "Delete an event", deletes A's event and notifies nobody: a card (a delete always asks). Allow once; it ends the same way. The agent's script is finished.
+
+If request A ends any other way, C and D are skipped and B still runs. When something fails, nothing is carried out:
+
+- Without the three variables the synthetic agent works as in "The synthetic demonstration": a card, then "Not done: Fabric could not prove that it is allowed".
+- One or two of the variables, or a path that is not absolute: the strip says "Fabric Calendar is not installed correctly." with the host's reason under "Details", and no broker starts.
+- A path that holds no Isabelle or no rule theory stops the broker at start: the strip says "The broker stopped." with its exit code under "Details", and the Terminal shows the broker's one line naming the variable and the path.
+- A rule theory that is not the one the broker was built with leaves the rule checker not running for the run: the strip says "The rule checker is not running."
+- If Isabelle stops, or a check runs past its time, the request ends "Not done: Fabric could not prove that it is allowed". The strip says the rule checker is not running, then that it is starting, and the entry goes away when it is ready again.
+
+Use a new scratch directory for every practice run. A restart of the broker starts a fresh practice calendar, while the store keeps the requests that were done: on a reused directory those requests show done for events the practice calendar no longer has. Requests that are done stay open until CD-W05 can confirm them, and each agent may have 25 open requests, so about eight runs fit in one directory before the agent is told it is busy.
 
 ## Identifiers
 
@@ -156,7 +206,7 @@ Do not touch the mouse or the trackpad after the window is in front.
 2. Press Tab six times: the five screens of the navigation, then "Review the waiting requests" in the strip, each with a visible outline. Press Return. Expected: focus is on the request's heading.
 3. Press Tab. Focus enters the card at "How long this approval lasts", on "Only this request". Press the Down arrow twice and the Up arrow once. The choice moves; nothing is sent.
 4. Press Tab three times. Focus is on "Show the proof", then on "Deny", then on "Allow". Press Escape. Expected: the state still says "Waiting for your decision".
-5. With focus on "Allow", press Return. Expected: the card closes with "You allowed this. The permission lasts until this agent's current session ends." (or the sentence of the duration you chose), focus is on the request's heading, and the state changes to "Fabric checks it once more before it is done" and then to "Not done: Fabric could not prove that it is allowed". The last one is correct here: this build runs no rule prover. Under "Permissions you gave" the permission is listed as "In force."
+5. With focus on "Allow", press Return. Expected: the card closes with "You allowed this. The permission lasts until this agent's current session ends." (or the sentence of the duration you chose), focus is on the request's heading, and the state changes to "Fabric checks it once more before it is done" and then to "Not done: Fabric could not prove that it is allowed". The last one is correct here: this run has no rule prover. Under "Permissions you gave" the permission is listed as "In force."
 6. Press Tab until focus is on "Take back the permission" of that permission, and press Return. Expected: the permission stays on the page as "Ended while this window was open.", with "You took it back." in its last line, and focus is on its heading.
 7. One or two seconds after the first request ended a second request arrived, another "Create an event". Press Shift+Tab back to its card, to "Deny", and press Space. Expected: "You denied this."
 8. Press Tab until focus is on "Pause Synthetic agent (test build)" under "Agents", and press Return. Expected: the agent's state says "Paused.", and the button now reads "Resume" and still has the focus. Press Return again. Expected: "Connected."

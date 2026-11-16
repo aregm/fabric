@@ -1,8 +1,9 @@
 #!/usr/bin/env sh
 # Checks the desktop application (work packages CD-W02 and CD-W04).
 #
-#   sh scripts/verify-desktop.sh              the sources
-#   sh scripts/verify-desktop.sh --packaged   the bundle that scripts/build-desktop.sh made
+#   sh scripts/verify-desktop.sh                the sources
+#   sh scripts/verify-desktop.sh --packaged     the bundle that scripts/build-desktop.sh made
+#   sh scripts/verify-desktop.sh --live-proofs  the broker with the real Isabelle (this Mac only)
 #
 # scripts/verify.sh already checks the broker (apps/fabric-broker) and the host's relay
 # (apps/fabric-desktop/relay) on every platform, because they are members of the Cargo workspace.
@@ -30,7 +31,19 @@
 # the test key. It opens the application's window on this Mac for a few seconds. It cannot press a
 # key in the webview, so the approval in the webview, the restart button, Quit and VoiceOver are
 # checked by a person (apps/fabric-desktop/README.md has the steps). The application must not be
-# running.
+# running. Its launches unset FABRIC_BROKER_ISABELLE_HOME, FABRIC_BROKER_ISABELLE_USER_HOME and
+# FABRIC_BROKER_RULES_DIR, so values exported in the terminal never turn them into practice runs.
+#
+# With --live-proofs it runs the tests that need the real Isabelle, which CI never runs: the
+# broker's live tests (apps/fabric-broker/tests/live.rs) and the rule theory's corpus
+# (crates/fabric-broker-policy/tests/corpus.rs). Isabelle must be installed beforehand by hand
+# with sh scripts/setup-demo.sh; this script never installs it. The live tests take Isabelle's
+# place from FABRIC_BROKER_ISABELLE_HOME, FABRIC_BROKER_ISABELLE_USER_HOME and
+# FABRIC_BROKER_RULES_DIR, all three or none; with none, the repository's development layout
+# (.tooling/isabelle and isabelle). The test that starts Isabelle from the relay's environment
+# (its variables and a fixed PATH) runs first, by name. Every store uses the test key in a
+# temporary directory; nothing reaches the Keychain. The first run can build Isabelle's session
+# heap for several minutes.
 set -eu
 
 die() {
@@ -38,11 +51,14 @@ die() {
     exit 1
 }
 
+USAGE="usage: sh scripts/verify-desktop.sh [--packaged | --live-proofs]"
 mode=sources
 for argument in "$@"; do
+    [ "$mode" = sources ] || die "$USAGE"
     case "$argument" in
         --packaged) mode=packaged ;;
-        *) die "usage: sh scripts/verify-desktop.sh [--packaged]" ;;
+        --live-proofs) mode=live ;;
+        *) die "$USAGE" ;;
     esac
 done
 
@@ -56,13 +72,16 @@ DESKTOP="$ROOT/apps/fabric-desktop"
 HOST_MANIFEST="$DESKTOP/src-tauri/Cargo.toml"
 TARGET_TRIPLE=aarch64-apple-darwin
 
-command -v node >/dev/null 2>&1 || die "node was not found; install Node 22.18 or later."
-node -e '
+# The live proofs need no Node.
+if [ "$mode" != live ]; then
+    command -v node >/dev/null 2>&1 || die "node was not found; install Node 22.18 or later."
+    node -e '
 const [major, minor] = process.versions.node.split(".").map(Number);
 if (major < 22 || (major === 22 && minor < 18)) {
     console.error("error: Node " + process.versions.node + " cannot run TypeScript files directly; install Node 22.18 or later.");
     process.exit(1);
 }'
+fi
 
 sources() {
     command -v npm >/dev/null 2>&1 || die "npm was not found; it comes with Node."
@@ -89,8 +108,9 @@ sources() {
     mkdir -p "$DESKTOP/src-tauri/binaries"
     cp "$ROOT/target/debug/fabric-broker" "$DESKTOP/src-tauri/binaries/fabric-broker-$TARGET_TRIPLE"
     # The release broker, which drops the test key and the synthetic agent, must compile too, and
-    # its configuration must refuse them. The library tests only parse variables: they open no
-    # store and never reach the Keychain.
+    # its configuration must refuse them. The library tests parse variables, build plans and run
+    # the prover worker's unit tests against test doubles: they open no store, start no Isabelle
+    # and never reach the Keychain.
     sh "$RUN" cargo check --release --locked -p fabric-broker
     sh "$RUN" cargo test --release --locked -p fabric-broker --lib
     sh "$RUN" cargo fmt --manifest-path "$HOST_MANIFEST" -- --check
@@ -153,10 +173,15 @@ packaged() {
     # Every launch below uses this scratch directory, the test key and the synthetic agent, so
     # none opens the real store; the same directory each time, so the second launch meets the
     # first one's lock.
+    # The three prover variables are unset, so a developer's exported values never make this a
+    # practice run. The subshell ends in exec, so $! is the host's own process id.
     DATA="$WORK/data"
     launch() {
-        FABRIC_DESKTOP_DATA_DIR="$DATA" FABRIC_BROKER_KEY_SOURCE=test FABRIC_BROKER_SYNTHETIC_AGENT=1 \
-            FABRIC_DESKTOP_TRACE=1 "$HOST" 2>"$1" &
+        (
+            unset FABRIC_BROKER_ISABELLE_HOME FABRIC_BROKER_ISABELLE_USER_HOME FABRIC_BROKER_RULES_DIR
+            FABRIC_DESKTOP_DATA_DIR="$DATA" FABRIC_BROKER_KEY_SOURCE=test FABRIC_BROKER_SYNTHETIC_AGENT=1 \
+                FABRIC_DESKTOP_TRACE=1 exec "$HOST"
+        ) 2>"$1" &
     }
 
     echo "[2/5] The application: echo and progress through the webview"
@@ -229,9 +254,76 @@ packaged() {
     echo "webview, the restart button, Quit and VoiceOver (apps/fabric-desktop/README.md)."
 }
 
+# The live test that must run first and alone: whether the broker, started by the relay with the
+# relay's environment (its variables and a fixed PATH), can start Isabelle at all.
+FIRST_LIVE_TEST=the_built_broker_starts_isabelle_with_an_empty_environment
+
+live() {
+    [ "$(uname -s)" = "Darwin" ] || die "the live proofs run only on macOS."
+    set_count=0
+    for name in FABRIC_BROKER_ISABELLE_HOME FABRIC_BROKER_ISABELLE_USER_HOME FABRIC_BROKER_RULES_DIR; do
+        eval "value=\${$name+set}"
+        [ -z "$value" ] || set_count=$((set_count + 1))
+    done
+    case "$set_count" in
+        0)
+            # The repository's development layout, the one scripts/setup-demo.sh installs.
+            FABRIC_BROKER_ISABELLE_HOME="$ROOT/.tooling/isabelle/Isabelle2025-2"
+            FABRIC_BROKER_ISABELLE_USER_HOME="$ROOT/.tooling/isabelle/home"
+            FABRIC_BROKER_RULES_DIR="$ROOT/isabelle"
+            export FABRIC_BROKER_ISABELLE_HOME FABRIC_BROKER_ISABELLE_USER_HOME FABRIC_BROKER_RULES_DIR
+            ;;
+        3)
+            for value in "$FABRIC_BROKER_ISABELLE_HOME" "$FABRIC_BROKER_ISABELLE_USER_HOME" "$FABRIC_BROKER_RULES_DIR"; do
+                case "$value" in
+                    /*) ;;
+                    *) die "the three FABRIC_BROKER_ISABELLE_HOME, FABRIC_BROKER_ISABELLE_USER_HOME and FABRIC_BROKER_RULES_DIR must be absolute paths; this one is not: $value" ;;
+                esac
+            done
+            ;;
+        *) die "the rule prover needs FABRIC_BROKER_ISABELLE_HOME, FABRIC_BROKER_ISABELLE_USER_HOME and FABRIC_BROKER_RULES_DIR together, or none" ;;
+    esac
+    # The corpus always uses the repository's layout, so it must be installed in every case.
+    [ -x "$ROOT/.tooling/isabelle/Isabelle2025-2/bin/isabelle" ] \
+        || die "Isabelle is not installed in $ROOT/.tooling/isabelle; run sh scripts/setup-demo.sh by hand (this script never installs it)."
+    [ -x "$FABRIC_BROKER_ISABELLE_HOME/bin/isabelle" ] \
+        || die "there is no Isabelle at FABRIC_BROKER_ISABELLE_HOME=$FABRIC_BROKER_ISABELLE_HOME; run sh scripts/setup-demo.sh by hand, or fix the variable."
+    [ -d "$FABRIC_BROKER_ISABELLE_USER_HOME" ] \
+        || die "FABRIC_BROKER_ISABELLE_USER_HOME=$FABRIC_BROKER_ISABELLE_USER_HOME is not a directory; run sh scripts/setup-demo.sh by hand, or fix the variable."
+    [ -f "$FABRIC_BROKER_RULES_DIR/Fabric_Broker/Fabric_Broker.thy" ] \
+        || die "FABRIC_BROKER_RULES_DIR=$FABRIC_BROKER_RULES_DIR holds no Fabric_Broker/Fabric_Broker.thy."
+
+    WORK=$(mktemp -d)
+    trap 'rm -rf "$WORK"' EXIT INT TERM
+
+    echo "[1/4] The Isabelle version"
+    version=$(sh "$ROOT/scripts/isabelle.sh" version) \
+        || die "Isabelle did not run; run sh scripts/setup-demo.sh by hand."
+    [ "$version" = Isabelle2025-2 ] || die "expected Isabelle2025-2, found: $version"
+    echo "ok: $version"
+
+    # Output to a file and no pipe: `set -e` does not see a failure inside a pipe. The count must be
+    # exactly one, so a name that matches no test cannot pass.
+    echo "[2/4] The broker starts Isabelle with the relay's environment (its variables and a fixed PATH) ($FIRST_LIVE_TEST)"
+    status=0
+    sh "$RUN" cargo test --locked -p fabric-broker --test live -- \
+        --ignored --exact "$FIRST_LIVE_TEST" >"$WORK/first.log" 2>&1 || status=$?
+    cat "$WORK/first.log"
+    [ "$status" -eq 0 ] || die "the live test $FIRST_LIVE_TEST failed; the other live tests were not run."
+    grep -q 'test result: ok. 1 passed' "$WORK/first.log" \
+        || die "the live test $FIRST_LIVE_TEST did not run exactly once."
+
+    echo "[3/4] The rule theory's corpus"
+    sh "$RUN" cargo test --locked -p fabric-broker-policy --test corpus -- --ignored --test-threads=1
+
+    echo "[4/4] The broker's live tests"
+    sh "$RUN" cargo test --locked -p fabric-broker --test live -- --ignored --test-threads=1 --nocapture
+}
+
 case "$mode" in
     sources) sources ;;
     packaged) packaged ;;
+    live) live ;;
 esac
 
 echo "All desktop checks of this mode passed."
