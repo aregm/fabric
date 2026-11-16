@@ -1,10 +1,10 @@
 # Fabric Roadmap — Restored on 2026-11-15
 
-**Status:** approved at gate `H0` on 2026-11-15; version 0.5. It records five decisions you made on 2026-11-15 and restores the order of work for this repository. The approval covers the order of work in section 4 and the parking in section 5. It does not cover the ownership table in section 3, the recommended outcomes in section 4.3, the decision defaults in section 7 or the baseline edits in section 10; each of those is put to you separately. It now takes precedence over section 16 of the PRD for the order of work, until the PRD itself is edited. Nothing in the PRD, the architecture document or the calendar specification has been edited, apart from the ADR renumbering of 2026-11-15 (section 3).
+**Status:** approved at gate `H0` on 2026-11-15; version 0.6. It records five decisions you made on 2026-11-15 and restores the order of work for this repository. The approval covers the order of work in section 4 and the parking in section 5. You approved the ownership table in section 3 with four changes on 2026-11-15. The approval does not cover the recommended outcomes in section 4.3, the decision defaults in section 7 or the baseline edits in section 10; each of those is put to you separately. It now takes precedence over section 16 of the PRD for the order of work, until the PRD itself is edited. Nothing in the PRD, the architecture document or the calendar specification has been edited, apart from the ADR renumbering of 2026-11-15 (section 3).
 
 **Prepared:** 2026-11-15, from a full re-read of `main` at `4fb3330`, the unmerged branch `codex/calendar-desktop-plan` at `5b310df`, the 2026-11-03 plan "iii in Fabric", and the documents of the PIM repository. Section 11 says how the facts were checked.
 
-**Updated:** 2026-11-15, after gate `H0`, with `main` at `7d12cf5`; 2026-11-15, after gate `DEMO-G3`, with `main` at `5ff0e6b`; and 2026-11-15, after gate `CD-G0`, with `main` at `7a54a5c`.
+**Updated:** 2026-11-15, after gate `H0`, with `main` at `7d12cf5`; 2026-11-15, after gate `DEMO-G3`, with `main` at `5ff0e6b`; 2026-11-15, after gate `CD-G0`, with `main` at `7a54a5c`; and 2026-11-15, after your answers to `RD-3`, `RD-4` and `RD-12`, with `main` at `4b70dc1`.
 
 **Scope:** what Fabric is now, what exists, the order of work with a gate after each step, what is parked or has left this repository, and the decisions still open
 **Related:** [Product requirements](PRD.md) · [Technical architecture](architecture.md) · [Calendar vertical](calendar.md) · [Isabelle-gated calendar demo](isabelle-calendar-demo.md) · [Paracels chat prototype](paracels-chat.md) · [Agent Sandbox proposal](agent-sandbox.md) · [Requirements trace](requirements-trace.md) · [ADRs](adr/) · [Calendar Desktop plan](plans/calendar-desktop-plan.md)
@@ -50,7 +50,7 @@ The PRD ordered the work as kernel, then policy and scoped agent access, then sy
 
 **What you are asked to do, in order.**
 
-1. **`BASE-1`** (section 10): the baseline diffs, shown to you in one pass after you answer `RD-3`, `RD-4` and `RD-12`.
+1. **`BASE-1`** (section 10): the baseline diffs, drafted after your answers to `RD-3`, `RD-4` and `RD-12`, shown to you as one pull request on 2026-11-15 and applied with your approval. Architecture edit 2 still waits for `CD-G1`.
 2. **Gate `CD-G1`** (section 4.4): contracts, the Tauri shell spike and real proofs.
 
 One value is still owed by you: the bundle-id prefix, on a domain you own, before work package `CD-W02`.
@@ -87,29 +87,29 @@ Outside the gates, three decisions have a deadline set by PIM, not by Fabric: `R
 
 ## 3. Who owns what
 
-Proposed; you approve this table as `RD-3` (section 7). By requirement id, across the 58 ids in the PRD and the calendar specification:
+Approved as `RD-3` on 2026-11-15, with four changes you chose: CAL-001 moves from Fabric to the seam; AIA-004, AIA-006 and AIA-008 move from the seam to Fabric; CAL-011 moves from the seam to PIM; SHR-003 and SHR-005 move from the seam to PIM. By requirement id, across the 58 ids in the PRD and the calendar specification:
 
 | Family | PIM | Fabric | Seam (both) |
 |---|---|---|---|
 | Capture (CAP, 10) | 10 | | |
 | Knowledge (KNO, 11) | 11 | | |
 | Retrieval (RET, 7) | 7 | | |
-| Automation and AI (AIA, 13) | 5: AIA-001, 002, 003, 005, 007 | 5: AIA-009 to AIA-013 | 3: AIA-004, 006, 008 |
-| Sharing (SHR, 5) | 1: SHR-001 | 2: SHR-002, SHR-004 | 2: SHR-003, SHR-005 |
-| Calendar (CAL, 12) | | 11: CAL-001 to CAL-010, CAL-012 | 1: CAL-011 |
-| **Total (58)** | **34** | **18** | **6** |
+| Automation and AI (AIA, 13) | 5: AIA-001, 002, 003, 005, 007 | 8: AIA-004, 006, 008, AIA-009 to AIA-013 | |
+| Sharing (SHR, 5) | 3: SHR-001, 003, 005 | 2: SHR-002, SHR-004 | |
+| Calendar (CAL, 12) | 1: CAL-011 | 10: CAL-002 to CAL-010, CAL-012 | 1: CAL-001 |
+| **Total (58)** | **37** | **20** | **1** |
 
 - "PIM" means "left Fabric's roadmap", not "done". PIM v0.1 has features toward all four P0 capture rows and meets none of their acceptance criteria in full.
 - PIM's documents decline part of the PIM column today: sync between devices or people, agents with write authority, and account connectors. CAP-008 and CAP-010 have no PIM requirement behind them. CAP-005 has one (PIM CAP-5, email import by selected label), but PIM's documents disagree on when: its execution plan keeps email accounts in v0.2, and its non-goals exclude account connectors through v0.2.
-- CAL-001 and CAL-002 are Fabric's because the lead plan puts Google access, the encrypted store of provider observations and the normalized calendar domain in the broker. The plan has no calendar view and calls a persisted synchronized replica an optional future, so `CD-G5` does not meet CAL-001's sync criterion.
-- Four of the six seam ids need a bridge (section 4.5): AIA-008 needs `BR-1` and `BR-2`; SHR-003 and SHR-005 need `BR-3`; CAL-011 needs `BR-4`. For AIA-004 and AIA-006, Fabric's half is the broker's rules and its allow, ask and block modes.
+- CAL-002 is Fabric's because the lead plan puts Google access, the encrypted store of provider observations and the normalized calendar domain in the broker. CAL-001 is the one seam id: the broker holds Google access and the calendar store, but the plan has no calendar view and calls a persisted synchronized replica an optional future, so `CD-G5` does not meet CAL-001's sync criterion. A mirror with a view is shared with PIM.
+- The bridges (section 4.5) serve ids that each belong to one side: AIA-008, Fabric's, needs `BR-1` and `BR-2`; SHR-003 and SHR-005, PIM's, need `BR-3`; CAL-011, PIM's, needs `BR-4`. AIA-004 and AIA-006 are Fabric's: the broker owns agent rules and access outright. No bridge names CAL-001.
 
 The old PRD roadmap, phase by phase:
 
 | PRD section 16 | Where it is now |
 |---|---|
 | M0 | Done, in Fabric. |
-| Phase 0, the one-week reality test | Never recorded as run. Its subject is PIM's now. Needs your confirmation that it is closed (`RD-4`). |
+| Phase 0, the one-week reality test | Never recorded as run. Its subject is PIM's now. Closed as superseded on 2026-11-15 (`RD-4`). |
 | Phase 1, the kernel MVP | PIM. |
 | Phase 2 | Kernel rows: PIM. The calendar and time item is Fabric's: the broker builds the provider adapter and part of the time model (`CD-W05`, `CD-W09`). The MCP tools item is delivered, for calendar actions, by the Calendar Desktop plan. |
 | Phase 3, first application plus encrypted sharing | Fabric, after the broker. Rendezvous and safe commit are calendar slices C2 and C3. The broker builds safe commit for one owner first (plan section 11). Sync and sharing items are parked with ADR-107 and ADR-109. |
@@ -251,7 +251,7 @@ Nothing below starts until you choose it. The Needs column lists what must be se
 | **Mail on the same broker** | The Agent Sandbox proposal's mail material, re-planned on the broker that exists: mail profiles, recipient sets, read, draft and send behind approval. | Gmail scopes and Google verification for them; where "my contacts" come from. |
 | **Rendezvous to specification** | ADR-112, the protocol record. ADR-107, ADR-109 and ADR-114 leave pairing and key pinning to it, and slice C2 needs it. If `RD-13` chooses MLS, ADR-112 is written against ADR-109's credential shape, so the substrate re-scope comes first. Then C2 on synthetic calendars, then C3. | `RD-13`; the calendar specification's open decisions on the contact list, the Google representation after agreement, and two-person or group sessions. |
 | **Substrate: operation envelope, sharing crypto, relay** | Re-scope ADR-107, ADR-109 and ADR-114 against decision 1 and their known gaps, before any of them is offered for acceptance. | `RD-14`; relay hosting (PRD section 2.2 items 4, 5, 13). |
-| **Bridges to PIM** | `BR-1`: an agent reads PIM items only under a Fabric grant. `BR-4`: a committed meeting becomes a record in PIM (CAL-011). | `RD-2` and `RD-12`; PIM has a stable interface, and no unauthenticated local surface reaches the vault. |
+| **Bridges to PIM** | `BR-1`: an agent reads PIM items only under a Fabric grant. `BR-4`: a committed meeting becomes a record in PIM (CAL-011, PIM's requirement; this bridge is how a Fabric meeting reaches it). | `RD-2` and `RD-12`; PIM has a stable interface, and no unauthenticated local surface reaches the vault. |
 
 `BR-2` (agent writes arrive in PIM as suggestions) and `BR-3` (PIM items shared through Fabric spaces) are parked: PIM's intent document excludes agents with write authority and sync between people.
 
@@ -264,7 +264,7 @@ Nothing below starts until you choose it. The Needs column lists what must be se
 | Paracels graduation; `PCL-A10`; a CI job, audit clean-up and Node pin for `apps/paracels` | The prototype is closed. The flagged packages are transitive through Expo tooling and are not imported by the app or server code. | You decide to continue mobile messaging; ADR-114 is amended first. |
 | Relay hardening (durable storage, dedup, TLS and authentication, WebSocket push, expiry) | The broker is local and has no relay. | With ADR-114. |
 | Calendar slices C2 to C5, the 23.17 release gates, the 15.8 pilot steps, the research track, ADR-112, and the Rendezvous parts of ADR-111 and ADR-113 | C2 needs ADR-112. The rest follow in order. | After `CD-G5`, or earlier if you put Rendezvous ahead. |
-| The PIM-content half of PRD Phase 3 sharing (SHR-003, SHR-005); PRD Phase 4 inbox, tasks, automations and mail interface; `BR-2`, `BR-3` | They need a vault or ingestion that Fabric no longer owns, or a change to PIM's intent. | A bridge to PIM is defined. |
+| The PIM-content half of PRD Phase 3 sharing (SHR-003, SHR-005: PIM's requirements, with Fabric supplying only the crypto); PRD Phase 4 inbox, tasks, automations and mail interface; `BR-2`, `BR-3` | They need a vault or ingestion that Fabric no longer owns, or a change to PIM's intent. | A bridge to PIM is defined. |
 | Repairs to the demo (section 8.1); tests for its launcher, dashboard and fault wiring | The demo is a record since 2026-11-15 (`RD-11`). | Not planned. |
 | The rest of the hygiene: a root instruction file for agents, a compiler update, CI hardening, three merged local branches, remaining README wording | None is needed by a gate before `CD-G1`. The plan's work packages will need the instruction file. | One at a time, when it costs time; the instruction file before `CD-W01`. |
 
@@ -289,15 +289,15 @@ Nothing below starts until you choose it. The Needs column lists what must be se
 
 ## 7. Decisions you still have to make
 
-Decisions taken inside a gate are in section 4: the README text, the plan's branch and pull request 9 were settled at `H0`; the model-id exception at `DEMO-G3`; `RD-5` to `RD-11` and `RD-18` were decided at `CD-G0` on 2026-11-15, with dates for `RD-7` and `RD-8` (section 4.3). `RD-3`, `RD-4` and `RD-12` are answered with `BASE-1`; they are in the table below with the rest. Defaults are recommendations from the evidence.
+Decisions taken inside a gate are in section 4: the README text, the plan's branch and pull request 9 were settled at `H0`; the model-id exception at `DEMO-G3`; `RD-5` to `RD-11` and `RD-18` were decided at `CD-G0` on 2026-11-15, with dates for `RD-7` and `RD-8` (section 4.3). `RD-3`, `RD-4` and `RD-12` were answered on 2026-11-15, for `BASE-1`; they are in the table below with the rest. Defaults are recommendations from the evidence.
 
 | Id | Question | Needed before | Suggested default |
 |---|---|---|---|
 | RD-1 | Should PIM's next schema reserve the seam: a `space` column and the four-level sensitivity vocabulary of architecture section 10.4? PIM reserves `space` as a concept only. | You accept PIM ADR-006 (its schema record), raised as an amendment while it is still Proposed. | Reserve both now. Reserving costs nothing today. Not reserving costs a migration later. |
 | RD-2 | Is Fabric's broker the single door for agents, including any later agent access to PIM's vault? | You accept PIM ADR-009, which defines PIM's interface. | Yes. It matches invariants 4 and 7 of the architecture and PIM's own non-goal. |
-| RD-3 | Approve the ownership table in section 3? | Regenerating the trace; `BASE-1`. | Approve. |
-| RD-4 | Is PRD Phase 0, the one-week reality test, closed? | The PRD section 16 edit. | Closed as superseded: it was never recorded, and PIM's acceptance work takes its place. |
-| RD-12 | The PRD confirms "encrypted at rest", but the vault is PIM's and PIM defers encryption. May Fabric grant an agent read access over an unencrypted vault? | `BR-1`; the PRD section 2.1 edit. | No, until PIM delivers encryption. PIM carries the requirement and the PRD states the limit. Fabric's own stores are encrypted from the first build. |
+| RD-3 | Approve the ownership table in section 3? | Decided on 2026-11-15, for `BASE-1` (section 3). | Decided on 2026-11-15: approved with four changes you chose, not as proposed. CAL-001 moves to the seam; AIA-004, AIA-006 and AIA-008 move to Fabric; CAL-011, SHR-003 and SHR-005 move to PIM. |
+| RD-4 | Is PRD Phase 0, the one-week reality test, closed? | Decided on 2026-11-15, for `BASE-1`. | Decided on 2026-11-15 as the default, closed as superseded: it was never recorded, and PIM's acceptance work takes its place. `BASE-1` marks it closed in PRD section 16 and redraws the 16.1 graph without it at its head. |
+| RD-12 | The PRD confirms "encrypted at rest", but the vault is PIM's and PIM defers encryption. May Fabric grant an agent read access over an unencrypted vault? | Planning `BR-1`. | Answered on 2026-11-15 against the default of "No, until PIM delivers encryption": decide with the PIM bridge. The question stays open until `BR-1` is planned. The PRD section 2.1 edit notes only that encryption at rest of the vault is PIM's requirement and is deferred there; it states no limit on agent access and does not say access is allowed. |
 | RD-13 | Two-party negotiation: one MLS group per negotiation, as the calendar specification requires, or the Noise IK that is built? | C2; ADR-112. | Decide in ADR-112. Proposed ADR-109 points both ways. Keeping Noise IK is an edit to calendar section 23.6. Deterministic availability is already the baseline (CAL-003); the demo's model-computed answers do not carry forward. |
 | RD-14 | Does Fabric have an operation log at all, now that the vault is PIM's? Does the envelope gain a signed agent field? | `CD-W04` for the broker's single-device envelope and its agent field; any multi-device work under ADR-107, ADR-109 or ADR-114 for the rest. | Settle the broker's envelope fields in `CD-W01`. Decide the rest after `CD-G2a`, on evidence from the broker's own ledger. |
 | RD-15 | Who holds provider credentials when PIM wants email ingestion? | PIM takes email account import into scope (PIM CAP-5; its plan says v0.2, its non-goals say later). | One holder per machine: Fabric's broker. |
@@ -348,6 +348,8 @@ The deterministic logic the calendar specification asks for exists in `fabric-co
 ## 10. Edits the baselines need (not applied)
 
 Your rule is that the PRD, the architecture and the calendar specification change only after you have seen the exact wording. This is the list. The exact diffs are work item `BASE-1`: they are shown to you in one pass after `CD-G0` and applied when you approve them. One edit waits and is shown later: Architecture edit 2, after `CD-G1`. Two edits are worded here because the direction depends on them: PRD edit 2 and Architecture edit 3.
+
+The exact wording was drafted on 2026-11-15 and shown to you as one pull request. Architecture edit 2 still waits for `CD-G1`. The list below is kept as the record of what was asked.
 
 **PRD**
 
