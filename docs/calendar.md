@@ -751,4 +751,4 @@ These implementation-changing details remain open:
 5. **Relay deployment:** local development, self-hosted internet, or operated ciphertext relay; define retention, availability, push delivery, and IP-log policy.
 6. **Initial group boundary:** two-person production with multi-party test fixtures, or all-required small groups at launch.
 
-The M0 semantic simulator is now implemented. Once the remaining decisions are answered, the production package should continue with ADR-011 through ADR-013, CDDL schemas/test vectors for `fabric-schedule/1`, the deterministic time oracle, a Google capability/loss matrix, a disclosure auditor, and a fault-injected commit-saga harness.
+The M0 semantic simulator is now implemented. Once the remaining decisions are answered, the production package should continue with ADR-111 through ADR-113, CDDL schemas/test vectors for `fabric-schedule/1`, the deterministic time oracle, a Google capability/loss matrix, a disclosure auditor, and a fault-injected commit-saga harness.

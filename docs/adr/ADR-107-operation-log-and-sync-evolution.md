@@ -1,10 +1,10 @@
-# ADR-007: Operation log and sync evolution
+# ADR-107: Operation log and sync evolution
 
 **Status:** Proposed
 **Date:** 2026-10-26
 **Deciders:** Areg Melik-Adamyan
 **Owner:** Areg Melik-Adamyan
-**Related:** [Technical architecture](../architecture.md) §9.3, §10.4, §14.3 · [PRD](../PRD.md) §2.1, §8.2, §16 · [Paracels chat prototype](../paracels-chat.md) §8, §11 · ADR-009 (sharing crypto, open) · ADR-014 (mobile client and relay, open)
+**Related:** [Technical architecture](../architecture.md) §9.3, §10.4, §14.3 · [PRD](../PRD.md) §2.1, §8.2, §16 · [Paracels chat prototype](../paracels-chat.md) §8, §11 · ADR-109 (sharing crypto, open) · ADR-114 (mobile client and relay, open)
 
 ## Context
 
@@ -24,7 +24,7 @@ Constraints:
 - PRD §8.2: no claim of one ACID transaction across SQLite, the filesystem and a remote service; no live SQLite database in a file-sync folder.
 - Space is a security invariant (invariant 8): every operation belongs to exactly one space.
 - Policy and HLC never grant authority or silently resolve a semantic conflict (§10.4).
-- Decisions this ADR must leave open: the ciphertext wrapping of an operation and the relay's metadata posture (ADR-009), whether a paid relay is acceptable (PRD §2.2 items 5 and 13), and whether the paracels relay graduates (ADR-014).
+- Decisions this ADR must leave open: the ciphertext wrapping of an operation and the relay's metadata posture (ADR-109), whether a paid relay is acceptable (PRD §2.2 items 5 and 13), and whether the paracels relay graduates (ADR-114).
 
 ## Decision
 
@@ -43,14 +43,14 @@ An operation envelope carries, in deterministic CBOR using the `fabric-token` pr
 | Field | Rule |
 |---|---|
 | `operation_id` | UUIDv7, created on the device that performs the mutation, kept across every retry |
-| `space_id`, `key_epoch` | The one space the operation belongs to, and the epoch it will be encrypted under (epoch semantics come from ADR-009) |
+| `space_id`, `key_epoch` | The one space the operation belongs to, and the epoch it will be encrypted under (epoch semantics come from ADR-109) |
 | `device_id`, `device_sequence` | Per-device monotonic sequence, no gaps, assigned at append time |
 | `previous_device_hash` | BLAKE3 of this device's previous envelope; null only for a device's first operation |
 | `hybrid_logical_clock` | For ordering across devices; carries no authority |
 | `operation_type`, `schema_version` | A new field or meaning is a new version; readers refuse unknown versions rather than guessing |
 | `idempotency_scope`, `idempotency_key` | Scoped so that connector replays and user retries dedupe without colliding across spaces |
 | `causation_id`, `correlation_id` | Optional provenance links to the operation or job that caused this one |
-| `payload_hash` or ciphertext | The plaintext hash is inside the envelope; what the relay sees is decided by ADR-009 |
+| `payload_hash` or ciphertext | The plaintext hash is inside the envelope; what the relay sees is decided by ADR-109 |
 | `signature` | COSE_Sign1 with the device's Ed25519 signing key over the envelope's CBOR, external data `fabric-operation-v1` |
 
 The signature covers every field above, so an operation cannot pass for a token, a consent record or a wire message (which use `fabric-message-v1` and their own tags), and an envelope cannot be re-sequenced, moved between spaces or re-attributed without breaking the chain.
@@ -61,13 +61,13 @@ The signature covers every field above, so an operation cannot pass for a token,
 |---|---|---|---|
 | S0 single device | PRD Phase 1 | The log, chain verification at startup, snapshot at a watermark, restore verifier | Envelope, append transaction |
 | S1 personal devices | PRD Phase 3 | Device enrollment, per-device feeds sent through a relay as opaque ciphertext, per-device cursors, witnessed signed feed heads, snapshot compaction, the field-level merge matrix | Envelope, chain, local-first reads |
-| S2 shared spaces | PRD Phase 3 | Space membership and epochs (ADR-009), one Automerge document per collaboratively mutable note or document, carried as operation payloads in the same feeds | Everything above; no whole-vault CRDT |
+| S2 shared spaces | PRD Phase 3 | Space membership and epochs (ADR-109), one Automerge document per collaboratively mutable note or document, carried as operation payloads in the same feeds | Everything above; no whole-vault CRDT |
 
 Each stage's log is readable by the next without rewriting history. A device enrolled in S1 replays an S0 log unchanged; an S2 space is an S1 feed whose payloads include CRDT changes.
 
 ### D4. The relay is a cursor, never an authority
 
-The paracels prototype's lesson is kept and its limitation removed. A relay assigns each space a monotonic receive sequence that devices use as a catch-up cursor, exactly as the chat used `seq`, and it stores at most one copy of an operation per relay-visible identifier (ADR-009 D4 makes that a keyed hash of `operation_id`, so the relay deduplicates without seeing the ID). But authority stays with the device chain: a device accepts an operation only if its signature verifies, its `device_sequence` continues the sender's chain, and its hash links to the previous envelope it holds. A relay that reorders, drops, replays, or serves an old head is detected by the chain and the witnessed heads, and the client reports incomplete synchronization instead of silently trusting the cursor. A relay reset (the chat's `databaseId` change) is a new relay identity, not a reason to discard local operations.
+The paracels prototype's lesson is kept and its limitation removed. A relay assigns each space a monotonic receive sequence that devices use as a catch-up cursor, exactly as the chat used `seq`, and it stores at most one copy of an operation per relay-visible identifier (ADR-109 D4 makes that a keyed hash of `operation_id`, so the relay deduplicates without seeing the ID). But authority stays with the device chain: a device accepts an operation only if its signature verifies, its `device_sequence` continues the sender's chain, and its hash links to the previous envelope it holds. A relay that reorders, drops, replays, or serves an old head is detected by the chain and the witnessed heads, and the client reports incomplete synchronization instead of silently trusting the cursor. A relay reset (the chat's `databaseId` change) is a new relay identity, not a reason to discard local operations.
 
 ### D5. Conflicts are classified, never guessed
 
@@ -133,14 +133,14 @@ The decision trades Phase 1 effort for the absence of a Phase 3 rewrite. Option 
 
 The real risk in Option D is scope creep in S1: witnessed heads, compaction and device revocation are each a protocol. D3 keeps them out of Phase 1 by making S0 nothing more than "the log exists, is chained, and is verified at startup". Everything S1 adds is transport and agreement on top of operations that are already correct.
 
-What this ADR does not decide, on purpose: how an envelope is encrypted and what a relay learns (ADR-009), how two parties pair and pin keys (ADR-012), and whether the Node relay from paracels graduates or is rewritten in Rust (ADR-014). Those decisions consume this envelope; they do not change it.
+What this ADR does not decide, on purpose: how an envelope is encrypted and what a relay learns (ADR-109), how two parties pair and pin keys (ADR-112), and whether the Node relay from paracels graduates or is rewritten in Rust (ADR-114). Those decisions consume this envelope; they do not change it.
 
 ## Consequences
 
-- **Easier:** attribution and audit of every canonical change from the first release; backups at an exact watermark; a device replica for the chat (paracels §11, local-first seam) becomes an S1 feed instead of a new design; ADR-014 can be written against a fixed envelope.
+- **Easier:** attribution and audit of every canonical change from the first release; backups at an exact watermark; a device replica for the chat (paracels §11, local-first seam) becomes an S1 feed instead of a new design; ADR-114 can be written against a fixed envelope.
 - **Harder:** every canonical write goes through one append path, so bulk imports and connector replays must batch operations rather than bypass them; schema changes must update the merge matrix; the UI must show "synchronization incomplete" states instead of hiding them.
 - **Operational burden:** a chain verifier runs at startup and after every sync; a corrupt or forked chain is a user-visible repair flow, not a log line. Compaction needs every enrolled device to acknowledge, so a lost device blocks pruning until it is revoked.
-- **Revisit when:** ADR-009 chooses MLS over envelope encryption, which changes what `key_epoch` means and whether the relay sees `operation_type`; ADR-004 finds the editor's CRDT cannot be carried as an operation payload; measured operation volume from connectors (email, messages) makes one signature per mutation a bottleneck; PRD §2.2 items 5 and 13 pick a hosted relay with retention rules the cursor model must honor.
+- **Revisit when:** ADR-109 chooses MLS over envelope encryption, which changes what `key_epoch` means and whether the relay sees `operation_type`; ADR-004 finds the editor's CRDT cannot be carried as an operation payload; measured operation volume from connectors (email, messages) makes one signature per mutation a bottleneck; PRD §2.2 items 5 and 13 pick a hosted relay with retention rules the cursor model must honor.
 
 ## Assumptions and evidence
 
@@ -164,6 +164,6 @@ What this ADR does not decide, on purpose: how an envelope is encrypted and what
 1. [ ] Approve or amend D1 to D6; record the outcome and bump this ADR to Accepted.
 2. [ ] Add the `operation_log` migration and `fabric_core::oplog` with the chain verifier (S0), with the property tests in item 4.
 3. [ ] Write the first merge matrix for the Phase 1 schema (item, revision, relation_assertion, artifact).
-4. [ ] Draft ADR-009 against this envelope: what is encrypted, what the relay sees, how `key_epoch` is assigned.
-5. [x] Draft ADR-014: map the paracels outbox and cursor onto S1, and decide the relay's language and home. Drafted 2026-10-26.
+4. [ ] Draft ADR-109 against this envelope: what is encrypted, what the relay sees, how `key_epoch` is assigned.
+5. [x] Draft ADR-114: map the paracels outbox and cursor onto S1, and decide the relay's language and home. Drafted 2026-10-26.
 6. [ ] Link this ADR from §9.3 (Sync row), §10.4 and §14.3 of the architecture document once accepted.

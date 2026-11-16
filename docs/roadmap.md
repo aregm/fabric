@@ -1,10 +1,10 @@
 # Fabric Roadmap — Restored on 2026-11-15
 
-**Status:** approved at gate `H0` on 2026-11-15; version 0.4. It records five decisions you made on 2026-11-15 and restores the order of work for this repository. The approval covers the order of work in section 4 and the parking in section 5. It does not cover the ownership table in section 3, the recommended outcomes in section 4.3, the decision defaults in section 7 or the baseline edits in section 10; each of those is put to you separately. It now takes precedence over section 16 of the PRD for the order of work, until the PRD itself is edited. Nothing in the PRD, the architecture document or the calendar specification has been edited.
+**Status:** approved at gate `H0` on 2026-11-15; version 0.5. It records five decisions you made on 2026-11-15 and restores the order of work for this repository. The approval covers the order of work in section 4 and the parking in section 5. It does not cover the ownership table in section 3, the recommended outcomes in section 4.3, the decision defaults in section 7 or the baseline edits in section 10; each of those is put to you separately. It now takes precedence over section 16 of the PRD for the order of work, until the PRD itself is edited. Nothing in the PRD, the architecture document or the calendar specification has been edited, apart from the ADR renumbering of 2026-11-15 (section 3).
 
 **Prepared:** 2026-11-15, from a full re-read of `main` at `4fb3330`, the unmerged branch `codex/calendar-desktop-plan` at `5b310df`, the 2026-11-03 plan "iii in Fabric", and the documents of the PIM repository. Section 11 says how the facts were checked.
 
-**Updated:** 2026-11-15, after gate `H0`, with `main` at `7d12cf5`; and 2026-11-15, after gate `DEMO-G3`, with `main` at `5ff0e6b`.
+**Updated:** 2026-11-15, after gate `H0`, with `main` at `7d12cf5`; 2026-11-15, after gate `DEMO-G3`, with `main` at `5ff0e6b`; and 2026-11-15, after gate `CD-G0`, with `main` at `7a54a5c`.
 
 **Scope:** what Fabric is now, what exists, the order of work with a gate after each step, what is parked or has left this repository, and the decisions still open
 **Related:** [Product requirements](PRD.md) · [Technical architecture](architecture.md) · [Calendar vertical](calendar.md) · [Isabelle-gated calendar demo](isabelle-calendar-demo.md) · [Paracels chat prototype](paracels-chat.md) · [Agent Sandbox proposal](agent-sandbox.md) · [Requirements trace](requirements-trace.md) · [ADRs](adr/) · [Calendar Desktop plan](plans/calendar-desktop-plan.md)
@@ -46,9 +46,14 @@ The PRD ordered the work as kernel, then policy and scoped agent access, then sy
 
 **Gate `DEMO-G3` closed on 2026-11-15** (section 4.2), with one exit check not met as written: the dashboard does not name the rule for an action denied when authorizing (`DEF-7`). You chose to close it with that gap.
 
+**Gate `CD-G0` closed on 2026-11-15** (section 4.3): you froze the plan's decisions group by group; they are recorded in the plan and in ADR-108, written as Proposed.
+
 **What you are asked to do, in order.**
 
-1. **Gate `CD-G0`** (section 4.3): freeze the plan's policy matrix and defaults, answer the questions it dates at that gate, and settle the points this re-read adds. The baseline edits follow it (`BASE-1`, section 10).
+1. **`BASE-1`** (section 10): the baseline diffs, shown to you in one pass after you answer `RD-3`, `RD-4` and `RD-12`.
+2. **Gate `CD-G1`** (section 4.4): contracts, the Tauri shell spike and real proofs.
+
+One value is still owed by you: the bundle-id prefix, on a domain you own, before work package `CD-W02`.
 
 Outside the gates, three decisions have a deadline set by PIM, not by Fabric: `RD-1`, `RD-2` and `RD-15` (section 7).
 
@@ -57,14 +62,14 @@ Outside the gates, three decisions have a deadline set by PIM, not by Fabric: `R
 | Line of work | State | What is open |
 |---|---|---|
 | M0 agreement simulator (`fabric-core`, `fabric-cli`) | Done. `fabric demo-meeting` reaches `Agreed` on `c3`. The exhaustive selection test is in `crates/fabric-core/tests/two_agent_meeting.rs`. | Nothing. Only the CLI uses `fabric-core`; the demo does not. |
-| Isabelle-gated calendar demo (`fabric-policy`, `fabric-token`, `fabric-wire`, `apps/fabric-demo`, the theory) | Built. The spec records Phases 0 to 9 done and gates `DEMO-G1`, `DEMO-G2` closed. The macOS port is on `main`. The theory, the spec and the Rust model hold the same 12 rules; the corpus has 39 cases. `DEMO-G3` closed on 2026-11-15, after two Claude-backed runs on this Mac. | `DEF-7`, recorded and not fixed. Whether the demo is frozen (`RD-11`). |
-| Paracels chat prototype (`apps/paracels`) | Complete. `PCL-G0` and `PCL-G1` closed on 2026-10-22, `PCL-G2` to `PCL-G6` on 2026-10-26. No commit to the app since. | Whether it graduates (ADR-014). Criterion `PCL-A10` (VoiceOver) has no recorded result. |
-| ADR-007, ADR-009, ADR-014 | Proposed since 2026-10-26. No decision in them is approved and no code exists for any of them. | Each has gaps the others expose (section 8.3). |
-| Agent Sandbox proposal v0.2 | Draft. Its section 11 additions are in the PRD and the architecture. | Superseded as the lead by decision 5. Its decisions `SBX-D1` to `SBX-D13` were never confirmed. |
-| Calendar Desktop plan, with a build audit and `docs/system-design.md` | On `main` since 2026-11-15, through pull request 13: [the plan](plans/calendar-desktop-plan.md), [the build audit](plans/calendar-desktop-build-audit.md) and [the system design](system-design.md). Planning documents only; the plan says implementation is not yet authorized. | `CD-G0`. |
+| Isabelle-gated calendar demo (`fabric-policy`, `fabric-token`, `fabric-wire`, `apps/fabric-demo`, the theory) | Built. The spec records Phases 0 to 9 done and gates `DEMO-G1`, `DEMO-G2` closed. The macOS port is on `main`. The theory, the spec and the Rust model hold the same 12 rules; the corpus has 39 cases. `DEMO-G3` closed on 2026-11-15, after two Claude-backed runs on this Mac. Frozen as a record since 2026-11-15, at the annotated tag `demo-g3-2026-11-15` on `7a54a5c` (`RD-11`). | Nothing. `DEF-1` to `DEF-7` stay recorded and not fixed; `DEF-1`, `DEF-2`, `DEF-4` and `DEF-7` become broker acceptance tests. |
+| Paracels chat prototype (`apps/paracels`) | Complete. `PCL-G0` and `PCL-G1` closed on 2026-10-22, `PCL-G2` to `PCL-G6` on 2026-10-26. No commit to the app since. | Whether it graduates (ADR-114). Criterion `PCL-A10` (VoiceOver) has no recorded result. |
+| ADR-107, ADR-109, ADR-114 | Proposed since 2026-10-26. No decision in them is approved and no code exists for any of them. | Each has gaps the others expose (section 8.3). |
+| Agent Sandbox proposal v0.2 | Historical input to the Calendar Desktop plan since 2026-11-15 (`RD-5`). Its section 11 additions are in the PRD and the architecture. | Its decisions `SBX-D1` to `SBX-D13` were never confirmed and are superseded. AIA-009 to AIA-013 are corrected in `BASE-1`. |
+| Calendar Desktop plan, with a build audit and `docs/system-design.md` | On `main` since 2026-11-15, through pull request 13: [the plan](plans/calendar-desktop-plan.md), [the build audit](plans/calendar-desktop-build-audit.md) and [the system design](system-design.md). `CD-G0` closed on 2026-11-15: the decisions are in the plan and in ADR-108 (Proposed), and every work package up to `CD-G5` is authorized (section 4.3). `system-design.md` is superseded as implementation baseline and kept as design background (`RD-6`). | `BASE-1`, then `CD-G1`. The bundle-id prefix, before `CD-W02`. |
 | Requirements trace | On `main` since 2026-11-10. | Stale: written before the macOS port, before decision 1 and before decision 5. |
 
-**Health, measured today.** `scripts/verify.sh` passes: 93 tests, 0 failed, 11 ignored (8 on Linux, where the three credential-store tests are compiled out). The six Isabelle-gated tests pass on this Mac when run with `--ignored`. `apps/paracels` passes 111 of 111 tests, the typecheck and lint. CI is green on `main` on six runners.
+**Health, measured today.** `scripts/verify.sh` passes: 93 tests, 0 failed, 11 ignored (8 on Linux, where the three credential-store tests are compiled out). The six Isabelle-gated tests pass on this Mac when run with `--ignored`. `apps/paracels` passes 111 of 111 tests, the typecheck and lint. CI is green on `main` on three runners since 2026-11-15: macos-26, ubuntu-24.04 and windows-2025-vs2026.
 
 **What the checks do not cover.** CI runs only the Cargo workspace. It runs no Isabelle test, nothing in `apps/paracels`, and none of the 11 ignored tests. The demo test that failed by chance was fixed by pull request 12 (`HYG-1`).
 
@@ -107,11 +112,11 @@ The old PRD roadmap, phase by phase:
 | Phase 0, the one-week reality test | Never recorded as run. Its subject is PIM's now. Needs your confirmation that it is closed (`RD-4`). |
 | Phase 1, the kernel MVP | PIM. |
 | Phase 2 | Kernel rows: PIM. The calendar and time item is Fabric's: the broker builds the provider adapter and part of the time model (`CD-W05`, `CD-W09`). The MCP tools item is delivered, for calendar actions, by the Calendar Desktop plan. |
-| Phase 3, first application plus encrypted sharing | Fabric, after the broker. Rendezvous and safe commit are calendar slices C2 and C3. The broker builds safe commit for one owner first (plan section 11). Sync and sharing items are parked with ADR-007 and ADR-009. |
+| Phase 3, first application plus encrypted sharing | Fabric, after the broker. Rendezvous and safe commit are calendar slices C2 and C3. The broker builds safe commit for one owner first (plan section 11). Sync and sharing items are parked with ADR-107 and ADR-109. |
 | Phase 4 | Reply drafts and explicit send wait for the mail vertical on the broker. The unified inbox, task extraction, policy-scoped automations and the mail interface are parked: they need ingestion that only PIM would have. |
 | ADR-001, 004, 005 (architecture section 19) | Not Fabric's to write. PIM has its own ADR series, which reuses the numbers 001 to 009 for other topics. |
 | ADR-002 (encryption at rest), ADR-003 (desktop framework), ADR-006 (connector sandbox and credentials) | The kernel parts are PIM's. Encryption of Fabric's own stores, the broker's desktop shell (`CD-Q01`) and the holding of provider credentials stay with the broker. |
-| ADR-008 (agent and MCP permission model), ADR-011 (calendar authority and time model), ADR-013 (projection and commit) | Fabric's. The broker settles their subjects before `CD-G5`. `CD-G0` decides whether they are written as ADRs or the plan stands in for them (`RD-18`). |
+| ADR-108 (agent and MCP permission model), ADR-111 (calendar authority and time model), ADR-113 (projection and commit) | Fabric's. The broker settles their subjects before `CD-G5`. On 2026-11-15 Fabric's own records were renumbered by adding 100 (`RD-18`); PIM's series is untouched. ADR-108 is written as Proposed and holds the `CD-G0` permission-model decisions with the plan. |
 
 Three slice lists now describe calendar work: the calendar specification's C0 to C5, the system design's slices A to G, and the plan's `CD-W00` to `CD-W11`. Decision 5 makes the plan's list the one that is scheduled. Reconciling the other two with it is part of `CD-G0` (`RD-6`).
 
@@ -122,21 +127,21 @@ flowchart TB
     H0["H0: hygiene<br/>flaky test, direction recorded, branches settled"] --> DG3["DEMO-G3<br/>your run of the calendar demo"]
     H0 --> G0["CD-G0<br/>decisions frozen (CD-W00)"]
     DG3 -. "recommended first" .-> G0
-    G0 --> G1["CD-G1<br/>contracts, native shell spike, real proofs (CD-W01 to CD-W03)"]
+    G0 --> G1["CD-G1<br/>contracts, Tauri shell spike, real proofs (CD-W01 to CD-W03)"]
     G1 --> G2["CD-G2<br/>store and authority, Google, four agent clients (CD-W04 to CD-W07)"]
     G2 --> G3["CD-G3<br/>screens and warnings (CD-W08, CD-W09)"]
     G3 --> G4["CD-G4<br/>end-to-end acceptance (CD-W10)"]
     G4 --> G5["CD-G5<br/>signed release on a second Mac (CD-W11)"]
     G5 --> NEXT{"You choose the next line"}
     NEXT --> MAIL["Mail on the same broker"]
-    NEXT --> RV["Rendezvous<br/>ADR-012, C2, C3"]
-    NEXT --> SUB["Substrate<br/>ADR-007, ADR-009, ADR-014 re-scoped"]
+    NEXT --> RV["Rendezvous<br/>ADR-112, C2, C3"]
+    NEXT --> SUB["Substrate<br/>ADR-107, ADR-109, ADR-114 re-scoped"]
     NEXT --> BR["Bridges to PIM<br/>BR-1, BR-4"]
 ```
 
-Each step ends at a gate you approve. For `CD-G1` to `CD-G5` the plan has a reviewer independent of the implementer accept the evidence first (plan section 13); `CD-G0` names that reviewer. Gates are approved in this order. Work may overlap where the plan's dependencies allow, for example `CD-W02`, `CD-W03` and `CD-W04` once `CD-W01` is done.
+Each step ends at a gate you approve. For `CD-G1` to `CD-G5` the plan has a reviewer independent of the implementer accept the evidence first (plan section 13); `CD-G0` named that reviewer: a fresh session from the other model family, which may not edit code or tests. Gates are approved in this order. Work may overlap where the plan's dependencies allow, for example `CD-W02`, `CD-W03` and `CD-W04` once `CD-W01` is done.
 
-If a gate fails, its step is repeated. The plan's section 14 lists two results that reopen a decision instead (the native shell, the Google scope design) and four that block release: the audit can fail open; a client cannot use the tools; Isabelle cannot run legally and reliably on a recipient's Mac; an unclear notification outcome leads to a blind resend.
+If a gate fails, its step is repeated. The plan's section 14 lists two results that reopen a decision instead (the desktop shell, the Google scope design) and four that block release: the audit can fail open; a client cannot use the tools; Isabelle cannot run legally and reliably on a recipient's Mac; an unclear notification outcome leads to a blind resend.
 
 No step through `CD-G5` has an effort estimate: the plan gives none. For the Rendezvous line the calendar specification's indicative efforts stand until re-measured (C2: 4 to 6 weeks; C3: 3 to 4 weeks).
 
@@ -187,9 +192,43 @@ Nothing under `apps/fabric-demo/src` changes before your run. There is one state
 | RD-10 | The demo's measured cost of a proof: about half a second per authorizing proof on this Mac today (93 proofs, 1.1 seconds at most); the Windows rehearsal measured 1.0 second; the `DEMO-G3` runs on 2026-11-15 measured 0.71 and 0.62 seconds per check on average, screening included (1.39 seconds at most). Starting the gate took 12.6 seconds on 2026-10-26, when it also built the session. The plan proves each request at least twice, and once more before a read result is released. | With `CD-Q11`: whether the plan's proposed targets (progress visible within 500 ms, a 30-second proof timeout) fit two or three proofs per agent read. |
 | RD-11 | After `DEMO-G3`, the demo application can be frozen as a record or refactored to share new crates. The plan already keeps the demo's behaviour and puts new semantics in new namespaces. | Recommended: freeze `apps/fabric-demo` after `DEMO-G3` with a tag and a note of its known defects (section 8.1). The three crates it uses stay shared, and its tests are their regression contract. |
 
+**Outcomes at `CD-G0`.**
+
+- **RD-5.** Decided on 2026-11-15: `agent-sandbox.md` is historical input to the plan; `SBX-D1` to `SBX-D13` were never confirmed and are superseded, and the plan's `CD-C01` to `CD-C13` govern. The mail material moves to the later mail vertical. AIA-009 to AIA-013 are corrected in `BASE-1`.
+- **RD-6.** Decided on 2026-11-15: `system-design.md` is superseded as implementation baseline and kept as design background; a mapping of slices A to G and C0 to C5 to the work packages goes into the plan. Invitations are a compatibility mode outside CAL-010's private scheduling: Careful asks; Flexible asks by default and allows only for an approved recipient set. The calendar specification's wording follows in `BASE-1`.
+- **RD-7.** Date: decided before `CD-W03` starts. Default until then: a release run only. Isabelle stays out of CI, as in the demo; the corpus is proved at release and by hand on policy changes.
+- **RD-8.** Dates: a private byte-exact copy of the pinned Isabelle2025-2 archive before `CD-W03` starts, with a fallback URL in the setup script; the broker's Isabelle version is chosen at `CD-G1` with `CD-Q09`. Default: no public mirror until the bundled licences are reviewed.
+- **RD-9.** Decided on 2026-11-15: split later. The codec moves to its own crate when a crate that must not link policy code needs it.
+- **RD-10.** Decided on 2026-11-15, reworded: within 500 ms a "received, checking" state is visible, and the verdict follows when the proofs finish; a denial keeps its failing rule on screen (`DEF-7`); the 30-second timeout is per Isabelle check, counted from the check's start. `CD-W03` re-measures and reopens this if a mean check exceeds 1.5 seconds.
+- **RD-11.** Decided on 2026-11-15: frozen, with the annotated tag `demo-g3-2026-11-15` on `7a54a5c`, pushed. `DEF-1` to `DEF-7` stay unfixed; `DEF-1`, `DEF-2`, `DEF-4` and `DEF-7` become broker acceptance tests.
+
 **Gate `CD-G0`:** as the plan defines it: the decisions are written into the plan or an ADR, with an outcome there for `RD-5`, `RD-6`, `RD-9`, `RD-10` and `RD-11`, and a date for `RD-7` and `RD-8`, which close before `CD-G1c`.
 
-**After `CD-G0`: `BASE-1`.** The baseline diffs of section 10 are shown to you in one pass. You answer `RD-3`, `RD-4` and `RD-12` first, because the diffs depend on them.
+**Result, 2026-11-15.** Gate `CD-G0` closed on 2026-11-15. You gave your decisions group by group; they are recorded in the plan's G0 decision record ([the plan](plans/calendar-desktop-plan.md)) and in ADR-108, written as Proposed, and the outcomes above give one for each `RD-` point. Eleven decisions differ from the recommended default:
+
+- **Desktop shell (`CD-Q01`).** A Tauri application now: static HTML and CSS with a small vanilla TypeScript layer, no framework, whose Rust host launches the broker as a child over private pipes and relays the plan's versioned JSON contract. The plan had recommended SwiftUI over a Rust broker; the process and authority boundary does not change.
+- **Reads under Careful.** You approve a grant limited to the requested fields and date window, and reads inside it run for the grant's duration; the default was to ask on each read.
+- **Edits to Fabric-created events**, as the plan words them: Flexible allows them inside an accepted scoped grant if there are no new recipients. `CD-W03` must state how this combines with the invitation rule, with negative cases, so that a change of time for existing attendees is caught.
+- **Custom profiles** may set any row to Allow except the Block rows, including editing a pre-existing event and responding to an invitation, which stay Ask in Careful and Flexible; saving such a profile shows the expansion first. The default was Flexible as the ceiling.
+- **Event deletion:** only events Fabric created, and Ask in every profile; the default was off in version 1.
+- **Recurring events:** an agent may ask to accept or decline one occurrence of a recurring invitation, and nothing more on a series; the default was none.
+- **Authorization (`CD-W00`):** every work package up to `CD-G5` is authorized, and only your gate approvals stop the work; the default was `CD-W01` only.
+- **ADR numbering (`RD-18`):** Fabric's own ADRs are renumbered by adding 100; the default was no renumbering.
+- **Isabelle in CI (`RD-7`):** a release run only until the decision is due; the default was a CI job on macos-26.
+- **Contacts (`CD-Q06`):** version 1 imports contacts from Google People; the default was manual groups only.
+- **The codec (`RD-9`):** split later; the default was to split first.
+
+Three interpretations of your answers, which you confirmed on 2026-11-15:
+
+1. Event deletion asks in every profile, custom ones included. So a custom profile can raise every row to Allow except deleting an event (Ask), and deleting a calendar or changing sharing (Block).
+2. With People import required, local groups and exact or domain recipient sets remain, and import adds a source for them.
+3. "Everything to `CD-G5`" authorizes all work packages, but the plan's dependency order, the single contract owner for schemas, token format and rule theory, the independent reviewer, and your approval at each gate in order all still apply.
+
+One value is open: the bundle-id prefix, on a domain you own. It has not been supplied yet and is due before `CD-W02`.
+
+`CD-G0` authorizes all work packages up to `CD-G5` under the conditions of interpretation 3. Implementation starts from the `main` commit that records these decisions, with one branch and pull request per work package.
+
+**After `CD-G0`: `BASE-1`.** The baseline diffs of section 10 are shown to you in one pass. You answer `RD-3`, `RD-4` and `RD-12` first, because the diffs depend on them. This gate raised these baseline points, in addition to section 10: PRD AIA-006, AIA-009 to AIA-013, and AIA-010; calendar specification CAL-010; architecture section 19 beyond the ids.
 
 ### 4.4 Then: CD-G1 to CD-G5
 
@@ -197,7 +236,7 @@ The plan's sections 13 and 14 hold the work packages, their owners, their depend
 
 | Gate | Work packages | What it shows | What this re-read adds |
 |---|---|---|---|
-| `CD-G1` (a, b, c) | `CD-W01` contracts; `CD-W02` SwiftUI application and Rust broker round trip, packaging spike; `CD-W03` the broker's rule theory proved by a real Isabelle | The three riskiest choices hold: one contract for Swift and Rust, a native shell over IPC, live proofs for broker actions. The plan also puts four checks here: the Isabelle runtime strategy for distribution (`CD-Q09`), SQLCipher's build, signing and licence, the signing and Keychain behaviour of the MCP bridge, and the macOS 15 baseline (`CD-Q02`). | The demo's 12-rule theory and its 39-case corpus stay untouched. The plan's proposed layout gives the broker its own theory, but its section 8 says "Extend the theory"; `CD-G0` should record that the broker's rules are a separate theory. `RD-7` and `RD-8` close before `CD-G1c`. |
+| `CD-G1` (a, b, c) | `CD-W01` contracts; `CD-W02` Tauri shell and Rust broker child round trip, packaging spike; `CD-W03` the broker's rule theory proved by a real Isabelle | The three riskiest choices hold: one contract for TypeScript and Rust, a Tauri shell over private pipes to the broker, live proofs for broker actions. The plan also puts four checks here: the Isabelle runtime strategy for distribution (`CD-Q09`), SQLCipher's build, signing and licence, the signing and Keychain behaviour of the MCP bridge, and the macOS 15 baseline (`CD-Q02`). | The demo's 12-rule theory and its 39-case corpus stay untouched. The plan's proposed layout gives the broker its own theory, and its section 8 said "Extend the theory"; `CD-G0` recorded that the broker's rules are a separate theory, `isabelle/Fabric_Broker`, and section 8 now says so. `RD-7` and `RD-8` close before `CD-G1c`. |
 | `CD-G2` (a, b, c, d) | `CD-W04` encrypted store, grants, pause and revoke, audit; `CD-W05` Google sign-in and Calendar; `CD-W06` MCP bridge with Claude Desktop, Claude Code and Codex desktop; `CD-W07` the Ollama runtime | Grants, revocations and used authorizations survive a restart, and session grants end with it; a real Google account works; all four agent clients reach the same tools. | The plan already requires one writer and durable used authorizations, which answers `DEF-1` and `DEF-4`. The re-read adds, from `DEF-2`: configuration is checked before anything starts. `RD-14` settles the envelope before `CD-W04`. This is the first Google code in the repository. |
 | `CD-G3` (a, b) | `CD-W08` the screens; `CD-W09` the time and buffer warnings | Every screen scenario; the same warnings for every agent and profile. | `CD-W09` needs time zones, all-day dates and daylight-saving rules; for recurrence the plan allows Google's expanded occurrences in place of an engine. `fabric-core` has only exact UTC intervals, so part of the standards half of calendar slice C0 is built here and in `CD-W05`. |
 | `CD-G4` | `CD-W10` integration and independent QA | The plan's acceptance matrix, on real accounts and real agents. | Regenerate the requirements trace here, with an owner column. |
@@ -210,8 +249,8 @@ Nothing below starts until you choose it. The Needs column lists what must be se
 | Line | First step | Needs |
 |---|---|---|
 | **Mail on the same broker** | The Agent Sandbox proposal's mail material, re-planned on the broker that exists: mail profiles, recipient sets, read, draft and send behind approval. | Gmail scopes and Google verification for them; where "my contacts" come from. |
-| **Rendezvous to specification** | ADR-012, the protocol record. ADR-007, ADR-009 and ADR-014 leave pairing and key pinning to it, and slice C2 needs it. If `RD-13` chooses MLS, ADR-012 is written against ADR-009's credential shape, so the substrate re-scope comes first. Then C2 on synthetic calendars, then C3. | `RD-13`; the calendar specification's open decisions on the contact list, the Google representation after agreement, and two-person or group sessions. |
-| **Substrate: operation envelope, sharing crypto, relay** | Re-scope ADR-007, ADR-009 and ADR-014 against decision 1 and their known gaps, before any of them is offered for acceptance. | `RD-14`; relay hosting (PRD section 2.2 items 4, 5, 13). |
+| **Rendezvous to specification** | ADR-112, the protocol record. ADR-107, ADR-109 and ADR-114 leave pairing and key pinning to it, and slice C2 needs it. If `RD-13` chooses MLS, ADR-112 is written against ADR-109's credential shape, so the substrate re-scope comes first. Then C2 on synthetic calendars, then C3. | `RD-13`; the calendar specification's open decisions on the contact list, the Google representation after agreement, and two-person or group sessions. |
+| **Substrate: operation envelope, sharing crypto, relay** | Re-scope ADR-107, ADR-109 and ADR-114 against decision 1 and their known gaps, before any of them is offered for acceptance. | `RD-14`; relay hosting (PRD section 2.2 items 4, 5, 13). |
 | **Bridges to PIM** | `BR-1`: an agent reads PIM items only under a Fabric grant. `BR-4`: a committed meeting becomes a record in PIM (CAL-011). | `RD-2` and `RD-12`; PIM has a stable interface, and no unauthenticated local surface reaches the vault. |
 
 `BR-2` (agent writes arrive in PIM as suggestions) and `BR-3` (PIM items shared through Fabric spaces) are parked: PIM's intent document excludes agents with write authority and sync between people.
@@ -220,13 +259,13 @@ Nothing below starts until you choose it. The Needs column lists what must be se
 
 | What | Why it is parked | Un-park when |
 |---|---|---|
-| The Agent Sandbox proposal's own phases and gates (`SBX-G0` to `SBX-G6`): mail first, a web dashboard, a Rust rule evaluator to be measured | Decision 5. The plan's `CD-C02` and `CD-C05`, and its desktop application (a native shell is recommended; `CD-Q01` is open), replace them. | Mail returns as the mail vertical (section 4.5). A web front end returns only as the plan's stated fallback (Tauri). The Rust evaluator does not return. |
-| ADR-007, ADR-009, ADR-014 (all decisions, stages and action items) | The broker needs none of them accepted. Its store borrows one idea from Proposed ADR-007: the single-device operation envelope, with canonical mutations kept apart from the access audit (plan section 11; `RD-14`). Each has gaps (section 8.3). ADR-007's first stage lost its home to PIM. | A second device, a shared space, or a relay beyond loopback is scheduled. The first step is then a rewrite, not approval as written. |
-| Paracels graduation; `PCL-A10`; a CI job, audit clean-up and Node pin for `apps/paracels` | The prototype is closed. The flagged packages are transitive through Expo tooling and are not imported by the app or server code. | You decide to continue mobile messaging; ADR-014 is amended first. |
-| Relay hardening (durable storage, dedup, TLS and authentication, WebSocket push, expiry) | The broker is local and has no relay. | With ADR-014. |
-| Calendar slices C2 to C5, the 23.17 release gates, the 15.8 pilot steps, the research track, ADR-012, and the Rendezvous parts of ADR-011 and ADR-013 | C2 needs ADR-012. The rest follow in order. | After `CD-G5`, or earlier if you put Rendezvous ahead. |
+| The Agent Sandbox proposal's own phases and gates (`SBX-G0` to `SBX-G6`): mail first, a web dashboard, a Rust rule evaluator to be measured | Decision 5. The plan's `CD-C02` and `CD-C05`, and its desktop application (a Tauri shell since `CD-G0`), replace them. | Mail returns as the mail vertical (section 4.5). The web dashboard does not return; the owner interface is the plan's Tauri application. The Rust evaluator does not return. |
+| ADR-107, ADR-109, ADR-114 (all decisions, stages and action items) | The broker needs none of them accepted. Its store borrows one idea from Proposed ADR-107: the single-device operation envelope, with canonical mutations kept apart from the access audit (plan section 11; `RD-14`). Each has gaps (section 8.3). ADR-107's first stage lost its home to PIM. | A second device, a shared space, or a relay beyond loopback is scheduled. The first step is then a rewrite, not approval as written. |
+| Paracels graduation; `PCL-A10`; a CI job, audit clean-up and Node pin for `apps/paracels` | The prototype is closed. The flagged packages are transitive through Expo tooling and are not imported by the app or server code. | You decide to continue mobile messaging; ADR-114 is amended first. |
+| Relay hardening (durable storage, dedup, TLS and authentication, WebSocket push, expiry) | The broker is local and has no relay. | With ADR-114. |
+| Calendar slices C2 to C5, the 23.17 release gates, the 15.8 pilot steps, the research track, ADR-112, and the Rendezvous parts of ADR-111 and ADR-113 | C2 needs ADR-112. The rest follow in order. | After `CD-G5`, or earlier if you put Rendezvous ahead. |
 | The PIM-content half of PRD Phase 3 sharing (SHR-003, SHR-005); PRD Phase 4 inbox, tasks, automations and mail interface; `BR-2`, `BR-3` | They need a vault or ingestion that Fabric no longer owns, or a change to PIM's intent. | A bridge to PIM is defined. |
-| Repairs to the demo (section 8.1); tests for its launcher, dashboard and fault wiring | The demo is a record after `DEMO-G3` if you accept `RD-11`. | Not planned. |
+| Repairs to the demo (section 8.1); tests for its launcher, dashboard and fault wiring | The demo is a record since 2026-11-15 (`RD-11`). | Not planned. |
 | The rest of the hygiene: a root instruction file for agents, a compiler update, CI hardening, three merged local branches, remaining README wording | None is needed by a gate before `CD-G1`. The plan's work packages will need the instruction file. | One at a time, when it costs time; the instruction file before `CD-W01`. |
 
 ## 6. What you provide, and the main risks
@@ -234,8 +273,8 @@ Nothing below starts until you choose it. The Needs column lists what must be se
 | Gate | What you provide |
 |---|---|
 | `DEMO-G3` | Provided on 2026-11-15: an Anthropic API key in `.env`, and a sitting at the machine. |
-| `CD-G0` | Answers to `CD-Q01`, `CD-Q05` and `CD-Q11`, and to `RD-5`, `RD-6`, `RD-9`, `RD-10` and `RD-11`; the name of the reviewer who accepts evidence at the later gates. |
-| `CD-G1`, `CD-G5` | An Apple Developer team and Developer ID certificates, a product name and bundle id (`CD-Q07`). |
+| `CD-G0` | Provided on 2026-11-15: answers to `CD-Q01`, `CD-Q05` and `CD-Q11`, and to `RD-5`, `RD-6`, `RD-9`, `RD-10` and `RD-11`; the reviewer who accepts evidence at the later gates, a fresh session from the other model family. |
+| `CD-G1`, `CD-G5` | Settled on 2026-11-15: the product name is Fabric Calendar; an Apple Developer team exists and is used from the shell work package `CD-W02`; you are the distribution owner, as an individual, under your own Apple Developer membership. Still owed: the bundle-id prefix, on a domain you own, before `CD-W02`. Developer ID certificates at release (`CD-Q07`). |
 | `CD-G2` | A Google Cloud project with a desktop OAuth client (`CD-C08`, `CD-Q08`); disposable Google accounts, calendars and recipients for live tests; Claude Desktop, Claude Code, Codex desktop and Ollama with a tool-capable model installed (`CD-C04`, `CD-Q10`). |
 | `CD-G5` | A clean second Apple Silicon Mac; a Mac or virtual machine on macOS 15.0 for the minimum-version test; Google consent branding, a privacy policy and a support contact for verification (`CD-Q08`). |
 
@@ -244,13 +283,13 @@ Nothing below starts until you choose it. The Needs column lists what must be se
 | The Isabelle runtime on a recipient's Mac (`RD-8`). The plan blocks release if it cannot run there legally and reliably. | `CD-G1`, `CD-G5` | Decided at `CD-G1`, where the plan compares bundling with a verified first-run install (`CD-Q09`). |
 | The plan proves each agent request at least twice, and once more before a read result is released. At half a second to a second each, agent reads may feel slow. | `CD-G1c` | `RD-10`. Measured in `CD-W03` before any screen is built. |
 | Four agent clients are release gates, and three are products outside your control whose MCP configuration can change. | `CD-G2c`, `CD-G4` | The plan tests the exact installed clients and pins the MCP SDK and the negotiated protocol version. Which client versions to support is open (`CD-Q10`). |
-| Real calendar data reaches cloud models through the agents, and text inside events can steer an agent. | `CD-G2`, `CD-G4` | The broker bounds what a steered agent may do; the plan shows a destination notice per agent. The residual risk follows from `CD-C03` and `CD-C04`; you are asked to accept it at `CD-G0`. |
-| One owner decides everything, and PIM's repair plan and rewrite wait on the same person. | Every gate | `H0` is passed and `DEMO-G3` closed; `CD-G0` asks for one sitting. The plan's later gates rest on evidence a reviewer accepts first. |
+| Real calendar data reaches cloud models through the agents, and text inside events can steer an agent. | `CD-G2`, `CD-G4` | The broker bounds what a steered agent may do; the plan shows a destination notice per agent. The residual risk follows from `CD-C03` and `CD-C04`; you accepted it at `CD-G0` on 2026-11-15, with that notice per agent. |
+| One owner decides everything, and PIM's repair plan and rewrite wait on the same person. | Every gate | `H0` is passed, and `DEMO-G3` and `CD-G0` are closed. The plan's later gates rest on evidence a reviewer accepts first. |
 | CI cannot see a broken rule: no Isabelle job exists. | Any change to `fabric-policy`, `fabric-token` or a theory | Until `RD-7` is settled, the six Isabelle tests are run by hand on every such change. |
 
 ## 7. Decisions you still have to make
 
-Decisions taken inside a gate are in section 4: the README text, the plan's branch and pull request 9 were settled at `H0`; the model-id exception at `DEMO-G3`; `RD-5` to `RD-11` at `CD-G0` or, for `RD-7` and `RD-8`, before `CD-G1c`. `RD-3`, `RD-4` and `RD-12` are answered with `BASE-1`; they are in the table below with the rest. Defaults are recommendations from the evidence.
+Decisions taken inside a gate are in section 4: the README text, the plan's branch and pull request 9 were settled at `H0`; the model-id exception at `DEMO-G3`; `RD-5` to `RD-11` and `RD-18` were decided at `CD-G0` on 2026-11-15, with dates for `RD-7` and `RD-8` (section 4.3). `RD-3`, `RD-4` and `RD-12` are answered with `BASE-1`; they are in the table below with the rest. Defaults are recommendations from the evidence.
 
 | Id | Question | Needed before | Suggested default |
 |---|---|---|---|
@@ -259,12 +298,12 @@ Decisions taken inside a gate are in section 4: the README text, the plan's bran
 | RD-3 | Approve the ownership table in section 3? | Regenerating the trace; `BASE-1`. | Approve. |
 | RD-4 | Is PRD Phase 0, the one-week reality test, closed? | The PRD section 16 edit. | Closed as superseded: it was never recorded, and PIM's acceptance work takes its place. |
 | RD-12 | The PRD confirms "encrypted at rest", but the vault is PIM's and PIM defers encryption. May Fabric grant an agent read access over an unencrypted vault? | `BR-1`; the PRD section 2.1 edit. | No, until PIM delivers encryption. PIM carries the requirement and the PRD states the limit. Fabric's own stores are encrypted from the first build. |
-| RD-13 | Two-party negotiation: one MLS group per negotiation, as the calendar specification requires, or the Noise IK that is built? | C2; ADR-012. | Decide in ADR-012. Proposed ADR-009 points both ways. Keeping Noise IK is an edit to calendar section 23.6. Deterministic availability is already the baseline (CAL-003); the demo's model-computed answers do not carry forward. |
-| RD-14 | Does Fabric have an operation log at all, now that the vault is PIM's? Does the envelope gain a signed agent field? | `CD-W04` for the broker's single-device envelope and its agent field; any multi-device work under ADR-007, ADR-009 or ADR-014 for the rest. | Settle the broker's envelope fields in `CD-W01`. Decide the rest after `CD-G2a`, on evidence from the broker's own ledger. |
+| RD-13 | Two-party negotiation: one MLS group per negotiation, as the calendar specification requires, or the Noise IK that is built? | C2; ADR-112. | Decide in ADR-112. Proposed ADR-109 points both ways. Keeping Noise IK is an edit to calendar section 23.6. Deterministic availability is already the baseline (CAL-003); the demo's model-computed answers do not carry forward. |
+| RD-14 | Does Fabric have an operation log at all, now that the vault is PIM's? Does the envelope gain a signed agent field? | `CD-W04` for the broker's single-device envelope and its agent field; any multi-device work under ADR-107, ADR-109 or ADR-114 for the rest. | Settle the broker's envelope fields in `CD-W01`. Decide the rest after `CD-G2a`, on evidence from the broker's own ledger. |
 | RD-15 | Who holds provider credentials when PIM wants email ingestion? | PIM takes email account import into scope (PIM CAP-5; its plan says v0.2, its non-goals say later). | One holder per machine: Fabric's broker. |
 | RD-16 | Relay hosting: a home server, self-hosted, or an operated ciphertext relay (PRD section 2.2 items 4, 5, 13)? | Any relay beyond loopback. | No decision now. |
 | RD-17 | Licence and product posture, for Fabric and PIM (ADR-010). The repository has no licence of its own. | `CD-G5`: the plan distributes a signed application to other Macs. | Decide once for both products. |
-| RD-18 | ADR-001 to ADR-009 mean different things in the two repositories, and `system-design.md` lists eight more records to write. Are the `CD-G0` decisions recorded under the reserved Fabric ADR-008, ADR-011 and ADR-013? | `CD-G0`; the plan records its decisions in the plan or in ADRs. | No renumbering. Cross-repository references carry the repository name. Write ADR-008 at `CD-G0`. The next free Fabric number is 015. |
+| RD-18 | ADR-001 to ADR-009 mean different things in the two repositories, and `system-design.md` lists eight more records to write. Are the `CD-G0` decisions recorded under the reserved Fabric ADR-108, ADR-111 and ADR-113? | Decided at `CD-G0` on 2026-11-15 (section 4.3). | Decided on 2026-11-15 against the default of no renumbering: Fabric's own ADRs were renumbered by adding 100, so the next free Fabric number is 115; PIM's series is untouched. ADR-108 is written as Proposed and holds the `CD-G0` decisions with the plan. |
 
 Three older open decisions travel with the Rendezvous line and are not asked now: what Google shows after an agreement (PRD section 2.2 item 11), where the Rendezvous contact list comes from (item 12), and two-person or group sessions at launch (calendar section 23.18). PRD section 2.2 items 1, 3, 6 and 7 travel with the kernel to PIM.
 
@@ -272,7 +311,7 @@ Three older open decisions travel with the Rendezvous line and are not asked now
 
 Each was found by reading and then checked by a second, independent reader. None is fixed by this document.
 
-### 8.1 In the calendar demo (DEF-1, DEF-2 and DEF-4 are proposed as rules for the broker)
+### 8.1 In the calendar demo (DEF-1, DEF-2, DEF-4 and DEF-7 are broker acceptance tests since `CD-G0`)
 
 - **DEF-1.** The host and its gateway write one audit file through two handles. Lines can splice, and the dashboard silently drops a line it cannot parse.
 - **DEF-2.** The Claude planner fails when `.env` is absent even if the key is in the environment, against `DEMO-Q25`. Every agent-side configuration error, including a misspelled backend name, surfaces only after Isabelle, the relay, both calendars and both hosts have started.
@@ -285,19 +324,19 @@ Each was found by reading and then checked by a second, independent reader. None
 
 ### 8.2 Between the demo and the calendar specification
 
-The deterministic logic the calendar specification asks for exists in `fabric-core` (exact-candidate availability, first-unanimous selection), and the demo does not use it. The two negotiation models share no code. CAL-003 already requires deterministic availability, so the `fabric-core` logic is the one that grows into the production profile. ADR-012 records that, and says which of the demo's wire and consent code is kept.
+The deterministic logic the calendar specification asks for exists in `fabric-core` (exact-candidate availability, first-unanimous selection), and the demo does not use it. The two negotiation models share no code. CAL-003 already requires deterministic availability, so the `fabric-core` logic is the one that grows into the production profile. ADR-112 records that, and says which of the demo's wire and consent code is kept.
 
 ### 8.3 In the three Proposed ADRs
 
-- **Crate graph.** ADR-014's rule that the relay never links the policy crate is false today (`RD-9`). ADR-007's plan to put the operation log in `fabric-core` would end that crate's zero-dependency rule (`DEMO-D27`).
-- **ADR-007.** The signed envelope has no agent or actor field. The architecture's illustrative table, which the ADR adopts, has `actor_agent_id`, so the actor would be stored but not signed; the Agent Sandbox proposal cites it as part of the envelope. BLAKE3 and UUIDv7 are specified and neither is in the tree; paracels uses UUID version 4. That table has no `key_epoch` and a nullable signature. Three cursor granularities appear across the documents: per device, per space, and per feed.
-- **ADR-009.** The header is authenticated in clear, yet the relay message has no place for it and the relay must not see the space id. No ADR gives the relay the enrolled-device set it would need to keep a message "until every enrolled device has fetched it". A device that missed a key rotation cannot find the feed that carries its new key. Two key paths are described for blob chunks. The option table says HPKE is already in use; it is not.
-- **ADR-014.** Its gates say A1 to A9; the paracels spec has `PCL-A1` to `PCL-A11`. Step 1, "the app, unchanged", cannot work: the app takes its API address from the Expo dev server, the step removes those routes, and a client test imports the server code. It defers TLS to step 3 while its own rule requires TLS off loopback. It names two different points for deleting the TypeScript server. `fabric-token` has no iOS key store.
+- **Crate graph.** ADR-114's rule that the relay never links the policy crate is false today (`RD-9`). ADR-107's plan to put the operation log in `fabric-core` would end that crate's zero-dependency rule (`DEMO-D27`).
+- **ADR-107.** The signed envelope has no agent or actor field. The architecture's illustrative table, which the ADR adopts, has `actor_agent_id`, so the actor would be stored but not signed; the Agent Sandbox proposal cites it as part of the envelope. BLAKE3 and UUIDv7 are specified and neither is in the tree; paracels uses UUID version 4. That table has no `key_epoch` and a nullable signature. Three cursor granularities appear across the documents: per device, per space, and per feed.
+- **ADR-109.** The header is authenticated in clear, yet the relay message has no place for it and the relay must not see the space id. No ADR gives the relay the enrolled-device set it would need to keep a message "until every enrolled device has fetched it". A device that missed a key rotation cannot find the feed that carries its new key. Two key paths are described for blob chunks. The option table says HPKE is already in use; it is not.
+- **ADR-114.** Its gates say A1 to A9; the paracels spec has `PCL-A1` to `PCL-A11`. Step 1, "the app, unchanged", cannot work: the app takes its API address from the Expo dev server, the step removes those routes, and a client test imports the server code. It defers TLS to step 3 while its own rule requires TLS off loopback. It names two different points for deleting the TypeScript server. `fabric-token` has no iOS key store.
 
 ### 8.4 In documents and CI
 
 - `README.md` still calls M0 the current slice, and describes paracels as both being built and complete.
-- `architecture.md` section 9.5 says the repository precedes storage, transport and cryptography. It never names the demo crates, which are most of the Rust code. Its stack table names Tauri 2 as the desktop shell; the plan recommends SwiftUI over a Rust broker, pending `CD-Q01`.
+- `architecture.md` section 9.5 says the repository precedes storage, transport and cryptography. It never names the demo crates, which are most of the Rust code. Its stack table names Tauri 2 as the desktop shell, which `CD-G0` chose on 2026-11-15 over the plan's SwiftUI recommendation.
 - CI has no dependency check. `actions/checkout` is pinned by tag, not by hash.
 
 ## 9. Withdrawn, and built elsewhere
@@ -336,9 +375,9 @@ The bullet's other two sentences stay.
 1. Header: bump the version and date; extend "Related". Add a scope note before section 9 naming the sections that describe PIM's kernel (the kernel rows of 9.3, and 10, 11, 13 apart from its action tiers, the vault-root half of 14.2, 14.4, 14.5, 15) as reference text, not Fabric's plan.
 2. Section 9.3: reconcile the desktop shell row and the agent interface row with the plan once `CD-Q01` and `CD-G1` settle them.
 3. Section 9.5: retitle it and describe the demo crates as the second executable slice.
-4. Section 9.6: say the prototype is closed and ADR-014 is parked.
-5. Section 12: "four named product roles" lists five. Sections 12.3 and 19 (ADR-008): the standalone broker deployment is specified by the Calendar Desktop plan; `agent-sandbox.md` is its historical input (`RD-5`).
-6. Section 14.3: record that the only implemented peer transport is Noise IK, with the MLS baseline pending ADR-012.
+4. Section 9.6: say the prototype is closed and ADR-114 is parked.
+5. Section 12: "four named product roles" lists five. Sections 12.3 and 19 (ADR-108): the standalone broker deployment is specified by the Calendar Desktop plan; `agent-sandbox.md` is its historical input (`RD-5`).
+6. Section 14.3: record that the only implemented peer transport is Noise IK, with the MLS baseline pending ADR-112.
 7. Section 19: give each ADR an owner and a state; note that PIM numbers its own ADRs.
 
 Proposed wording for edit 3, replacing the first paragraph of section 9.5:
@@ -350,7 +389,7 @@ Proposed wording for edit 3, replacing the first paragraph of section 9.5:
 1. Header: bump the version and date; extend "Related". Replace "the first Fabric application after the kernel" in section 7.6 and "the first executable vertical on the knowledge kernel" in section 23.1. Record the plan's account and calendar answers in section 23.18.
 2. Section 23.16: add a row between M0 and C0 for the demo, as a precursor that does not conform to 23.6 or 23.8; add the permission broker as a slice and say which parts of C0, C1 and C3 it delivers (`RD-6`).
 3. CAL-010 and section 23.11: record that the broker sends provider invitations (`CD-C07`) as an explicit mode under the approval rule frozen at `CD-G0`, outside the private Rendezvous contract, and reconcile CAL-010's "separate native-invitation confirmation" with that rule.
-4. Sections 23.6 and 23.18: record the implemented transport, and that ADR-007, ADR-009 and ADR-014 were drafted before ADR-011 to ADR-013.
+4. Sections 23.6 and 23.18: record the implemented transport, and that ADR-107, ADR-109 and ADR-114 were drafted before ADR-111 to ADR-113.
 5. CAL-011 and pilot step 8: note that both depend on PIM.
 6. Small corrections: "three identity layers" lists four; section 23.2 allows three rounds where 23.3 allows one counterproposal; say whether sealing to the coordinator applies to two-person sessions.
 

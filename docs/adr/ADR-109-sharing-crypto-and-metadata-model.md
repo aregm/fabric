@@ -1,14 +1,14 @@
-# ADR-009: Sharing crypto and metadata model
+# ADR-109: Sharing crypto and metadata model
 
 **Status:** Proposed
 **Date:** 2026-10-26
 **Deciders:** Areg Melik-Adamyan
 **Owner:** Areg Melik-Adamyan
-**Related:** [Technical architecture](../architecture.md) §9.3, §14.1 to §14.5 · [PRD](../PRD.md) §2.1, §2.2 items 5 and 13, §7.5, §8.3 · [Calendar vertical](../calendar.md) §23.5 to §23.7 · [ADR-007](ADR-007-operation-log-and-sync-evolution.md) (operation envelope) · ADR-012 (Rendezvous, open) · ADR-014 (mobile client and relay, open)
+**Related:** [Technical architecture](../architecture.md) §9.3, §14.1 to §14.5 · [PRD](../PRD.md) §2.1, §2.2 items 5 and 13, §7.5, §8.3 · [Calendar vertical](../calendar.md) §23.5 to §23.7 · [ADR-107](ADR-107-operation-log-and-sync-evolution.md) (operation envelope) · ADR-112 (Rendezvous, open) · ADR-114 (mobile client and relay, open)
 
 ## Context
 
-ADR-007 fixed the plaintext shape of an operation and left three questions to this record: how an operation and a blob are encrypted, what a relay can learn, and what revocation does and does not achieve. The PRD confirms the direction (§2.1: local-first, encrypted at rest, end-to-end encrypted between Fabric endpoints) and the requirements (§7.5: SHR-002 per-space keys and device membership with a relay that cannot decrypt; SHR-004 revocation rotates future keys and explains its limits). The architecture document already draws a key hierarchy (§14.2) in which a private space has a random epoch key and a shared space takes its epoch from "the MLS group key schedule", and §14.3 says MLS is "a candidate for shared-space group epochs, not a drop-in authorization system". None of that is yet binding.
+ADR-107 fixed the plaintext shape of an operation and left three questions to this record: how an operation and a blob are encrypted, what a relay can learn, and what revocation does and does not achieve. The PRD confirms the direction (§2.1: local-first, encrypted at rest, end-to-end encrypted between Fabric endpoints) and the requirements (§7.5: SHR-002 per-space keys and device membership with a relay that cannot decrypt; SHR-004 revocation rotates future keys and explains its limits). The architecture document already draws a key hierarchy (§14.2) in which a private space has a random epoch key and a shared space takes its epoch from "the MLS group key schedule", and §14.3 says MLS is "a candidate for shared-space group epochs, not a drop-in authorization system". None of that is yet binding.
 
 Three kinds of encrypted traffic exist, and they have different shapes:
 
@@ -16,12 +16,12 @@ Three kinds of encrypted traffic exist, and they have different shapes:
 |---|---|---|---|---|
 | Private-space sync | One person's devices | Years | Always full: it is the owner's own vault | This ADR |
 | Shared-space sync | Several people, their devices | Months to years | By policy: none, snapshot or full (§14.3) | This ADR |
-| Scheduling negotiation | Two to a few people | Minutes to days | None | Calendar §23.6 and ADR-012: one ephemeral MLS group per negotiation |
+| Scheduling negotiation | Two to a few people | Minutes to days | None | Calendar §23.6 and ADR-112: one ephemeral MLS group per negotiation |
 
 Evidence in the repository:
 
 - `fabric-wire` runs Noise IK sessions (`Noise_IK_25519_ChaChaPoly_BLAKE2s`) through a relay that stores frames in random mailboxes and logs only mailbox, size and time. The calendar demo's acceptance test A5 searches the relay capture for fixture markers and finds none. That is the working model of "the relay sees ciphertext plus traffic metadata", for a live pairwise session.
-- `fabric-token` holds Ed25519 identity keys, X25519 Noise static keys, deterministic CBOR and COSE_Sign1 with domain-separating external data (`fabric-message-v1`, `fabric-consent-v1`). ADR-007 adds `fabric-operation-v1`.
+- `fabric-token` holds Ed25519 identity keys, X25519 Noise static keys, deterministic CBOR and COSE_Sign1 with domain-separating external data (`fabric-message-v1`, `fabric-consent-v1`). ADR-107 adds `fabric-operation-v1`.
 - The paracels prototype stores payloads tagged `plain/1` and attachments as opaque blobs with a size and SHA-256, so an encrypted format can replace them without a schema change (paracels §11).
 - The calendar doc's actor-by-actor disclosure contract (§23.5) is the template for the leakage table this ADR must publish (PRD §18: "cryptographic overclaim" risk).
 
@@ -36,14 +36,14 @@ Constraints: reviewed libraries only, no invented cryptography (PRD §5.3). Keys
 ### D1. One content format, keyed by a space epoch
 
 - Every operation payload and every blob chunk is encrypted with XChaCha20-Poly1305 under a content key derived from the space's current epoch key by a context-separated KDF (`fabric/op/v1`, `fabric/blob/v1`). The random nonce is stored with the ciphertext.
-- The ADR-007 envelope splits into an authenticated header and an encrypted body. The header is the associated data and holds `operation_id`, `space_id`, `key_epoch` and `schema_version`. The body carries `device_id`, `device_sequence`, `previous_device_hash`, `hybrid_logical_clock`, `operation_type`, the idempotency and causation fields, `payload_hash` and the payload. The plaintext hash is inside on purpose, so the relay cannot match a ciphertext to a known plaintext. The signature covers header and body.
+- The ADR-107 envelope splits into an authenticated header and an encrypted body. The header is the associated data and holds `operation_id`, `space_id`, `key_epoch` and `schema_version`. The body carries `device_id`, `device_sequence`, `previous_device_hash`, `hybrid_logical_clock`, `operation_type`, the idempotency and causation fields, `payload_hash` and the payload. The plaintext hash is inside on purpose, so the relay cannot match a ciphertext to a known plaintext. The signature covers header and body.
 - A blob keeps the §14.2 rule: a random per-blob data key, wrapped under the space epoch key, with immutable manifest fields as associated data and fixed-size independently authenticated chunks.
 - The payload format tag that paracels introduced (`plain/1`) becomes `e2ee/1` for this format. A reader refuses a tag it does not know.
 
 ### D2. Private spaces: random epochs wrapped to devices
 
 - A private space's epoch key is random (§14.2). It is wrapped to each enrolled device's X25519 key-agreement public key with HPKE (RFC 9180, base mode) and the wrap is signed by the enrolling device, so a device cannot be added silently.
-- Enrollment is an operation (ADR-007) signed by an already enrolled device, carrying the new device's signing and key-agreement public keys and the wrapped epoch. Removal is an operation that starts a new epoch and rewraps it only to the remaining devices.
+- Enrollment is an operation (ADR-107) signed by an already enrolled device, carrying the new device's signing and key-agreement public keys and the wrapped epoch. Removal is an operation that starts a new epoch and rewraps it only to the remaining devices.
 - There is no MLS group for a private space. The members are one person's devices, membership changes are rare and always decided by that person, and MLS's forward secrecy per message is wrong for a vault whose owner must always be able to re-read everything.
 
 ### D3. Shared spaces: MLS for membership and epochs, nothing else
@@ -52,13 +52,13 @@ Constraints: reviewed libraries only, no invented cryptography (PRD §5.3). Keys
 - The space epoch key is the MLS exporter secret of the current MLS epoch, with the label `fabric-space-epoch-v1`. A membership change is therefore automatically a new content epoch.
 - Operations and blobs are **not** MLS application messages. MLS deletes its message keys after use for forward secrecy, which would make history unreadable by design; a space's history policy (§14.3) must be able to say "full" and mean it. Only commits, proposals and welcomes travel as MLS messages.
 - Late join follows the space's policy. *None*: the joiner receives only the current exporter and reads from the next operation on. *Snapshot* or *full*: an existing member sends the joiner a history key bundle, the earlier epoch keys the policy covers, encrypted to the joiner inside an MLS application message, which is the one legitimate use of application messages in a space.
-- MLS credentials are basic credentials whose identity is the thumbprint of the account's Ed25519 identity key; the leaf signature key is the device's key, bound to the account by a device certificate the account key signs (expiry and revocation epoch inside). Pairing, TOFU pinning and key-change warnings stay with ADR-012 and calendar §23.5; this ADR consumes a pinned key, it does not establish one.
+- MLS credentials are basic credentials whose identity is the thumbprint of the account's Ed25519 identity key; the leaf signature key is the device's key, bound to the account by a device certificate the account key signs (expiry and revocation epoch inside). Pairing, TOFU pinning and key-change warnings stay with ADR-112 and calendar §23.5; this ADR consumes a pinned key, it does not establish one.
 - Cipher suite: `MLS_128_DHKEMX25519_AES128GCM_SHA256_Ed25519`, pinned; no negotiation downward. Implementation: OpenMLS, behind one trait so it can be replaced.
 
 ### D4. The relay stores opaque expiring ciphertext in random feeds
 
 - A space has one relay feed identified by a random 256-bit token that members derive from the space epoch key (`fabric/feed/v1`), so a membership change rotates the feed token and a removed member cannot even find the new feed.
-- A relay message is `{feed, relay_message_id, size_bucket, expires_at, ciphertext}`. `relay_message_id` is a keyed hash of `operation_id` under a feed-derived key, so honest retries deduplicate on the relay and the relay learns equality within a feed and nothing else. The relay assigns a receive sequence per feed, which clients use as the catch-up cursor that ADR-007 D4 describes.
+- A relay message is `{feed, relay_message_id, size_bucket, expires_at, ciphertext}`. `relay_message_id` is a keyed hash of `operation_id` under a feed-derived key, so honest retries deduplicate on the relay and the relay learns equality within a feed and nothing else. The relay assigns a receive sequence per feed, which clients use as the catch-up cursor that ADR-107 D4 describes.
 - Ciphertext is padded to size buckets; the relay keeps a message until every enrolled device has fetched it or `expires_at` passes, whichever is first, and never longer than the space's retention setting.
 - Transport to the relay is TLS. The demo's Noise IK sessions remain the model for a live point-to-point session (negotiation, pairing) and are not used for feeds, because a feed must work when the sender is offline.
 - Device identity, sequence numbers, hash chain, operation type and HLC are inside the ciphertext. The relay cannot count devices from the format, only from connections.
@@ -138,14 +138,14 @@ The decisive trade is per-message forward secrecy against readable history. Fabr
 
 Between B and D for shared spaces, the question is whether membership needs proofs. SHR-002's acceptance criterion is an independent security review of "per-space keys and device membership". A reviewer can check an MLS ratchet tree; they cannot check an ad hoc list of who was handed a key. That is what D buys, and the reason private spaces, where the only authority is the owner's own devices, do not pay for it.
 
-What this ADR leaves to others, on purpose: how two people first exchange and pin keys (ADR-012); the relay's deployment, retention and whether it is paid (PRD §2.2); and whether the paracels relay becomes the feed relay (ADR-014). Those decisions pick a relay and a ceremony; they do not alter the content format, the feed shape or the leakage table.
+What this ADR leaves to others, on purpose: how two people first exchange and pin keys (ADR-112); the relay's deployment, retention and whether it is paid (PRD §2.2); and whether the paracels relay becomes the feed relay (ADR-114). Those decisions pick a relay and a ceremony; they do not alter the content format, the feed shape or the leakage table.
 
 ## Consequences
 
 - **Easier:** the paracels chat becomes a shared space by replacing `plain/1` with `e2ee/1` and the room key with MLS membership, as its §11 seams intended. Backups and the relay handle one ciphertext shape. Revocation has a one-sentence meaning the interface can show. Security review has a checkable membership structure.
 - **Harder:** two enrollment flows (device into a private space, member into a shared space) must be built and kept consistent. A late joiner with a "full" policy depends on an existing member being online to send the history key bundle. Size bucketing and padding cost bandwidth on small operations. OpenMLS state must be persisted transactionally with rollback detection (calendar §23.6).
 - **Operational burden:** a scheduled epoch rotation per space; monitoring that every enrolled device has fetched a feed before the relay expires it; a published leakage table that must be re-verified whenever the relay message shape changes.
-- **Revisit when:** ADR-012 needs a different credential shape in MLS; OpenMLS cannot be pinned to one reviewed release; measured padding overhead exceeds what the retention and bandwidth budget allows; PRD §2.2 chooses a hosted relay whose retention rules conflict with D4; a metadata-reduction profile (Oblivious HTTP, calendar §23.6) is adopted and changes what the relay sees.
+- **Revisit when:** ADR-112 needs a different credential shape in MLS; OpenMLS cannot be pinned to one reviewed release; measured padding overhead exceeds what the retention and bandwidth budget allows; PRD §2.2 chooses a hosted relay whose retention rules conflict with D4; a metadata-reduction profile (Oblivious HTTP, calendar §23.6) is adopted and changes what the relay sees.
 
 ## Assumptions and evidence
 
@@ -170,6 +170,6 @@ What this ADR leaves to others, on purpose: how two people first exchange and pi
 1. [ ] Approve or amend D1 to D6; record the outcome and bump this ADR to Accepted.
 2. [ ] Review the proposed KDF labels and MLS exporter label with the security reviewer named for SHR-002.
 3. [ ] Pin OpenMLS and its cipher suite; record the audit status of the pinned release.
-4. [ ] Implement item 1 and item 2's `PrivateDevices` for ADR-007 stage S1; defer `MlsGroup` to stage S2.
-5. [ ] Draft ADR-012 against D3's credential shape. ADR-014 was drafted against D4's relay message on 2026-10-26.
+4. [ ] Implement item 1 and item 2's `PrivateDevices` for ADR-107 stage S1; defer `MlsGroup` to stage S2.
+5. [ ] Draft ADR-112 against D3's credential shape. ADR-114 was drafted against D4's relay message on 2026-10-26.
 6. [ ] Add the D6 table to the architecture document §14 once accepted, replacing the sentence that the leakage "must be documented".

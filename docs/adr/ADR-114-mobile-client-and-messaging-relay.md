@@ -1,10 +1,10 @@
-# ADR-014: Mobile client and messaging relay
+# ADR-114: Mobile client and messaging relay
 
 **Status:** Proposed
 **Date:** 2026-10-26
 **Deciders:** Areg Melik-Adamyan
 **Owner:** Areg Melik-Adamyan
-**Related:** [Technical architecture](../architecture.md) §9.1, §9.3, §9.6, §14.3 · [PRD](../PRD.md) §2.1, §2.2 items 4 and 13, §8.1, §8.3 · [Paracels chat prototype](../paracels-chat.md) §8, §11, §13, §15 · [ADR-007](ADR-007-operation-log-and-sync-evolution.md) (envelope, stages, relay as cursor) · [ADR-009](ADR-009-sharing-crypto-and-metadata-model.md) (content format, relay message, leakage table) · ADR-012 (Rendezvous, open)
+**Related:** [Technical architecture](../architecture.md) §9.1, §9.3, §9.6, §14.3 · [PRD](../PRD.md) §2.1, §2.2 items 4 and 13, §8.1, §8.3 · [Paracels chat prototype](../paracels-chat.md) §8, §11, §13, §15 · [ADR-107](ADR-107-operation-log-and-sync-evolution.md) (envelope, stages, relay as cursor) · [ADR-109](ADR-109-sharing-crypto-and-metadata-model.md) (content format, relay message, leakage table) · ADR-112 (Rendezvous, open)
 
 ## Context
 
@@ -17,7 +17,7 @@ The prototype did not meet invariant 2 (local interactive path): reading history
 - Which Expo pieces are worth keeping: the pickers, the documents-directory copy of an attachment before upload, Quick Look, `expo-sqlite` for the outbox, and a list that is not inverted on iOS 26.
 - Which pieces exist only because of the dev server: Expo Router API routes (they cannot accept WebSockets and run only under `npx expo start`), the Node socket process, `node:sqlite`, and the whole `src/chat/server/` tree.
 
-Since the prototype was built, ADR-007 fixed the operation envelope and the three sync stages, with "the relay is a cursor, never an authority" taken directly from the prototype's lesson. ADR-009 fixed the content format (`e2ee/1`), the relay message (`{feed, relay_message_id, size_bucket, expires_at, ciphertext}`), the leakage table, and the rule that the paracels payload tag and room key are the seams where encryption and membership attach. A Rust relay already exists: `fabric-demo`'s relay (axum) stores frames in random 128-bit mailboxes with a per-mailbox receive sequence, a retention window, long-polling, loopback-only listening and an audit log that records only mailbox, size and time. It was built for the calendar demo's Noise sessions, but its shape is the ADR-009 feed.
+Since the prototype was built, ADR-107 fixed the operation envelope and the three sync stages, with "the relay is a cursor, never an authority" taken directly from the prototype's lesson. ADR-109 fixed the content format (`e2ee/1`), the relay message (`{feed, relay_message_id, size_bucket, expires_at, ciphertext}`), the leakage table, and the rule that the paracels payload tag and room key are the seams where encryption and membership attach. A Rust relay already exists: `fabric-demo`'s relay (axum) stores frames in random 128-bit mailboxes with a per-mailbox receive sequence, a retention window, long-polling, loopback-only listening and an audit log that records only mailbox, size and time. It was built for the calendar demo's Noise sessions, but its shape is the ADR-109 feed.
 
 Quality attributes served: the local interactive path on mobile (invariant 2); one implementation of domain, policy, crypto and transactions, in the trusted Rust core (§9.1, §9.3: "keep domain/core outside UI framework"); the UI never holding vault keys (§9.1); and continuity, so the validated lifecycle and the gates are kept as the regression contract rather than rebuilt.
 
@@ -30,21 +30,21 @@ Constraints: macOS and iOS first (PRD §2.1); no startup dependency on network o
 ### D1. Mobile client: Expo UI over the Rust core, in process
 
 - `apps/paracels` remains the iOS client and keeps Expo Router, the screen components, the pickers, Quick Look and the theme. It is renamed when it stops being a dummy; the bundle ID and signing team (paracels D28) are kept until then.
-- The Rust core runs inside the app as a native module generated with UniFFI's React Native bindings and wrapped as an Expo module, so a rebuild is `npx expo run:ios` as today. It owns everything that `src/chat/client/` owns now except presentation: the outbox and its worker, the device replica of the space, the ADR-007 envelope and chain verification, the ADR-009 content format and space keys, and the relay client. Keys live in the iOS Keychain through the core, never in JavaScript.
+- The Rust core runs inside the app as a native module generated with UniFFI's React Native bindings and wrapped as an Expo module, so a rebuild is `npx expo run:ios` as today. It owns everything that `src/chat/client/` owns now except presentation: the outbox and its worker, the device replica of the space, the ADR-107 envelope and chain verification, the ADR-109 content format and space keys, and the relay client. Keys live in the iOS Keychain through the core, never in JavaScript.
 - The TypeScript that remains is the reducer that merges what the core reports into screen state, the hook that drives the screen, and the components. The rule "app code never imports `src/chat/server/`" becomes "app code never touches a key, a signature or a socket": only the core does.
 - Tauri 2 mobile is not chosen now (Option C), because the Expo app already passes the gates and iOS integration (pickers, Keychain, Quick Look and later push) is what Expo modules are for. It is the alternative if the native-module spike fails (Executable manifestations, item 1).
 
-### D2. Relay: a Rust binary, grown from the demo relay, speaking the ADR-009 message
+### D2. Relay: a Rust binary, grown from the demo relay, speaking the ADR-109 message
 
-- A `fabric-relay` crate replaces `server/chat-socket.ts` and the Expo API routes. Its starting point is `apps/fabric-demo/src/relay.rs`: random mailboxes become ADR-009 feeds, the per-mailbox sequence becomes the per-feed receive sequence that ADR-007 D4 uses as the catch-up cursor, the retention window becomes the space's retention setting, and the audit log keeps recording only feed, size and time.
-- It adds what ADR-009 D4 requires and the demo did not need: deduplication by `relay_message_id`, size buckets, `expires_at`, deletion once every enrolled device has fetched a message, blob chunk storage, TLS, and push of new messages over a WebSocket in addition to long-polling. It stores ciphertext only; it has no policy module, because content policy moves to the client (ADR-009, assumptions table).
+- A `fabric-relay` crate replaces `server/chat-socket.ts` and the Expo API routes. Its starting point is `apps/fabric-demo/src/relay.rs`: random mailboxes become ADR-109 feeds, the per-mailbox sequence becomes the per-feed receive sequence that ADR-107 D4 uses as the catch-up cursor, the retention window becomes the space's retention setting, and the audit log keeps recording only feed, size and time.
+- It adds what ADR-109 D4 requires and the demo did not need: deduplication by `relay_message_id`, size buckets, `expires_at`, deletion once every enrolled device has fetched a message, blob chunk storage, TLS, and push of new messages over a WebSocket in addition to long-polling. It stores ciphertext only; it has no policy module, because content policy moves to the client (ADR-109, assumptions table).
 - It listens on loopback by default and on other interfaces only with TLS and a configured feed list, which satisfies PRD §8.3 and keeps the prototype's "servers on this Mac" setup working for development. Where it runs beyond this Mac is PRD §2.2 item 13 and does not change its code.
 - The relay is not the Rust core and never links `vault.db`, SQLCipher or the policy engine. It is the "cloud/relay" row of the threat model (§14.1): compromised, it yields ciphertext and the leakage table's "may learn" column.
 
 ### D3. Protocol: a chat message is an operation; `paracels-chat/1` is retired
 
-- A room becomes a shared space (ADR-009 D3); the room key is replaced by MLS membership; `main` becomes a space ID (paracels §11, invariant 8). A message is an operation of type `message.post` in the ADR-007 envelope, encrypted as `e2ee/1`. An attachment is a blob with ADR-009 chunks, referenced from the operation by its identifier.
-- The device holds a replica of the space's operations, so history reads are local and invariant 2 is met. Catch-up uses the relay cursor and is verified by the device chains; a relay reset is a new relay identity, not a reason to drop local history (ADR-007 D4).
+- A room becomes a shared space (ADR-109 D3); the room key is replaced by MLS membership; `main` becomes a space ID (paracels §11, invariant 8). A message is an operation of type `message.post` in the ADR-107 envelope, encrypted as `e2ee/1`. An attachment is a blob with ADR-109 chunks, referenced from the operation by its identifier.
+- The device holds a replica of the space's operations, so history reads are local and invariant 2 is met. Catch-up uses the relay cursor and is verified by the device chains; a relay reset is a new relay identity, not a reason to drop local history (ADR-107 D4).
 - The prototype's lifecycle (paracels §8) is kept whole as the stage S1 outbox: the four statuses, exactly-once by operation ID, oldest-first per device, the 10-second acknowledgement timeout, retry with the same ID, and the late-acknowledgement rule. The "ack" is now the relay's receipt with the receive sequence.
 - Frames of `paracels-chat/1` and the `plain/1` payload are not versioned forward. They are deleted with the TypeScript server once step 1 of D4 is passed.
 
@@ -53,14 +53,14 @@ Constraints: macOS and iOS first (PRD §2.1); no startup dependency on network o
 | Step | What changes | What stays | Gate |
 |---|---|---|---|
 | 1. Relay swap | `fabric-relay` serves the existing `paracels-chat/1` frames, history pages and attachment routes behind the room key. The Node server and API routes are removed. | The app, unchanged | Paracels A1 to A9 pass against the Rust relay |
-| 2. Core on device | The native module ships the outbox, envelope, chain and `e2ee/1` under an interim pre-shared epoch key (the room key, re-purposed); the relay stores ADR-009 messages. `src/chat/client/` shrinks to the reducer and hook. | The screens; the relay binary | A1 to A9 pass; a relay capture scan finds no plaintext (the demo's A5); the UI holds no key |
+| 2. Core on device | The native module ships the outbox, envelope, chain and `e2ee/1` under an interim pre-shared epoch key (the room key, re-purposed); the relay stores ADR-109 messages. `src/chat/client/` shrinks to the reducer and hook. | The screens; the relay binary | A1 to A9 pass; a relay capture scan finds no plaintext (the demo's A5); the UI holds no key |
 | 3. Membership | OpenMLS in the core; device enrollment; the pre-shared epoch is deleted; TLS on. The space is a real shared space. | Everything from step 2 | A1 to A9 pass with two accounts; a removed device cannot read the next epoch |
 
-The pre-shared epoch in step 2 is an interim for one gate and is named as such in the code; it is not a fourth kind of space in ADR-009.
+The pre-shared epoch in step 2 is an interim for one gate and is named as such in the code; it is not a fourth kind of space in ADR-109.
 
 ### D5. What is out of scope and stays out
 
-Android and web builds, push notifications and background delivery, release builds and TestFlight, more than one attachment per message, and editing or deleting messages (paracels §18). Each is a later decision once the three steps are closed. Push delivery, when it comes, is a generic notification from the relay with no content (ADR-009, calendar §23.6).
+Android and web builds, push notifications and background delivery, release builds and TestFlight, more than one attachment per message, and editing or deleting messages (paracels §18). Each is a later decision once the three steps are closed. Push delivery, when it comes, is a generic notification from the relay with no content (ADR-109, calendar §23.6).
 
 ## Options Considered
 
@@ -86,7 +86,7 @@ Android and web builds, push notifications and background delivery, release buil
 | Team familiarity | High |
 
 **Pros:** no FFI; the fastest path to a TLS-and-encrypted chat.
-**Cons:** two implementations of the ADR-007 and ADR-009 crypto, one of them in the UI language where §9.1 says the UI never holds keys. Expo Router API routes cannot accept WebSockets and run only under the dev server, so the server half must be rewritten anyway. Rejected.
+**Cons:** two implementations of the ADR-107 and ADR-109 crypto, one of them in the UI language where §9.1 says the UI never holds keys. Expo Router API routes cannot accept WebSockets and run only under the dev server, so the server half must be rewritten anyway. Rejected.
 
 ### Option C: Replace the client with Tauri 2 mobile
 
@@ -116,11 +116,11 @@ Android and web builds, push notifications and background delivery, release buil
 
 The decision is really about where the domain lives. Option B keeps everything in one language by putting crypto and the outbox in the UI, which §9.1 and §9.3 forbid for the desktop and which there is no reason to allow on mobile. Option C puts the core in process by changing shells, at the cost of the only client that passes the gates. Option D pays for one FFI boundary and gets both: the shell that works and the core that is supposed to own the domain.
 
-The relay decision is easier. The TypeScript relay existed because Expo API routes were convenient during the prototype; it has no production path (no WebSockets in routes, dev server only). The Rust relay exists, is tested, and already has the ADR-009 shape. Moving the relay into Rust is therefore not a rewrite but a merge of two relays into one.
+The relay decision is easier. The TypeScript relay existed because Expo API routes were convenient during the prototype; it has no production path (no WebSockets in routes, dev server only). The Rust relay exists, is tested, and already has the ADR-109 shape. Moving the relay into Rust is therefore not a rewrite but a merge of two relays into one.
 
 The protocol migration is the only part that cannot be done gradually in place, which is why D4 swaps the relay first, under the unchanged app and protocol, so that the first step is pure substitution with the gates as proof.
 
-What this ADR leaves open, on purpose: how two accounts first meet and pin keys (ADR-012), where the relay runs beyond this Mac and whether it is paid (PRD §2.2 items 4 and 13), and whether the desktop later shares the mobile UI (Option C, revisited with measurements).
+What this ADR leaves open, on purpose: how two accounts first meet and pin keys (ADR-112), where the relay runs beyond this Mac and whether it is paid (PRD §2.2 items 4 and 13), and whether the desktop later shares the mobile UI (Option C, revisited with measurements).
 
 ## Consequences
 
@@ -136,7 +136,7 @@ What this ADR leaves open, on purpose: how two accounts first meet and pin keys 
 | The prototype's lifecycle holds under a verified-chain, encrypted feed | Paracels gates G4, G5 and G6: exactly-once, ordering and catch-up through airplane mode, force-quit and a relay restart | Tested with one room and two devices, plaintext, no chain verification |
 | The demo relay is the right seed for `fabric-relay` | `apps/fabric-demo/src/relay.rs`: random mailboxes, per-mailbox sequence, retention, long-poll, audit log of mailbox, size and time; demo acceptance A5 | In-memory only, loopback only, no dedup, no TLS, built for Noise frames not feeds |
 | A Rust core can run inside an Expo app with an acceptable build and call overhead | UniFFI React Native bindings exist as a project; Expo modules wrap native code | No spike has been run; build time and binding maturity on Expo SDK 58 are unknown |
-| A chat message maps onto the ADR-007 envelope without a new operation kind | Paracels §6.1 fields (ID, room, sender, device time, server time, payload format, attachment) are all present in the envelope or the blob manifest | The 10-second acknowledgement timeout was tuned for a local WebSocket, not an internet relay |
+| A chat message maps onto the ADR-107 envelope without a new operation kind | Paracels §6.1 fields (ID, room, sender, device time, server time, payload format, attachment) are all present in the envelope or the blob manifest | The 10-second acknowledgement timeout was tuned for a local WebSocket, not an internet relay |
 | The Expo pieces kept are stable across SDKs | Paracels AGENTS.md and R10: every phase re-read the SDK 58 docs; pickers and `File.preview` worked on the device | Expo changes per SDK; the native module adds one more thing an upgrade can break |
 
 ## Executable manifestations

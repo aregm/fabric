@@ -1,11 +1,11 @@
 # Agent Sandbox — A Permission Broker Between AI Agents and Your Accounts
 
-**Status:** draft proposal, version 0.2. Section 11's additions to the PRD and the architecture document were approved and applied on 2026-10-26. Section 2 lists what it takes from the Design Document; section 3 lists the decisions D1 to D13 that still need your confirmation (gate G0).
+**Status:** Historical input to the Calendar Desktop plan since 2026-11-15 (CD-G0). D1 to D13 were never confirmed and are superseded; the plan's C01 to C13 govern. Mail material moves to the later mail vertical.
 
 **Prepared:** 2026-10-26, from "Design Document.docx" (Sandbox for AI Agents, 2026-10-25, not in the repository)
 
 **Scope:** a prototype that sits between one AI agent and one provider (Google: Gmail and Calendar), lets the user grant the agent bounded, explained, revocable, time-limited permissions through profiles and per-request approval cards, and records every call the agent makes
-**Related:** [Product requirements](PRD.md) §6.5, §7.4 · [Technical architecture](architecture.md) §9.1, §12.3, §12.4, §13, §14.1 · [Isabelle-gated calendar demo](isabelle-calendar-demo.md) · [ADR-007](adr/ADR-007-operation-log-and-sync-evolution.md) · ADR-008 (agent/MCP permission model, open)
+**Related:** [Product requirements](PRD.md) §6.5, §7.4 · [Technical architecture](architecture.md) §9.1, §12.3, §12.4, §13, §14.1 · [Isabelle-gated calendar demo](isabelle-calendar-demo.md) · [ADR-107](adr/ADR-107-operation-log-and-sync-evolution.md) · ADR-108 (agent/MCP permission model, open)
 
 ---
 
@@ -48,7 +48,7 @@ The document describes, as a standalone product, the boundary Fabric already spe
 | Incremental authorization with explicit duration | Grants carry purpose and expiry (architecture §12.3, AIA-008); `schedule.negotiate` capabilities are short-lived (calendar §23.5) | Exists for grants; the user-facing "ask at the moment of need, with a duration choice" is new |
 | Relationship-based permissions (contacts versus strangers) | Contact-list authorization and TOFU for scheduling peers (PRD §2.1); no equivalent for email recipients | Partly; extend to recipients |
 | Progressive trust and rule suggestions | §13.3 candidate-rule learning, with the rule that external actions are never learned from behavior alone | Exists; the document's "always allow similar actions" must respect that rule |
-| Autonomy boundary: edit only what the agent created | Calendar extended properties proposed in the document; Fabric records `actor_agent_id` on every operation (ADR-007 envelope) | Fabric's log is the source of truth; provider labels are a mirror, as the document itself says |
+| Autonomy boundary: edit only what the agent created | Calendar extended properties proposed in the document; Fabric records `actor_agent_id` on every operation (ADR-107 envelope) | Fabric's log is the source of truth; provider labels are a mirror, as the document itself says |
 | Revoke at any time | Grants have expiry; revocation of agent capability is in the threat model (§14.1) | Exists in principle; no revocation UI specified |
 | Awareness of consequences; review agent actions | Audit log of grant, tool arguments, decision and result by default (§12.4); replay capsule opt-in | Exists; the document's OTel span shape is a good concrete format for it |
 | Person-and-fact disclosure tracking (PROV-O) | AIA-003 processing provenance; `processing_run` and assertion evidence tables; calendar disclosure receipts | Exists for Fabric's own processing; deferred by the document for the broker, rightly |
@@ -72,10 +72,10 @@ Two tensions to decide rather than paper over:
 | D6 | Recipient rules | **Sets, not per-contact lists:** my contacts, a named group (saved from a previous approval, "save recipients as group tag"), exact addresses, an entire domain. Strangers always Ask. This answers the document's "individual whitelisting is too much overhead". | Per-contact allow and block lists. |
 | D7 | Traceability level | **API-level first**, as the document says: one record per tool call with agent identity, session, tool, argument digest, grant and policy decision, result, timing, in the OpenTelemetry GenAI attribute names. Person-and-fact disclosure is a later phase. | PROV-O from the start. |
 | D8 | Where the broker runs | **A local process on the user's Mac**, like every Fabric service: loopback only, the Google refresh token in the OS keychain, no cloud component. | A hosted broker; out of scope for a prototype and conflicts with PRD §8.3. |
-| D9 | Relationship to the vault | **Standalone**: the broker keeps profiles, grants, groups and the call log in its own encrypted SQLite file, with the ADR-007 envelope for its log so it can become a Fabric space later. It does not read `vault.db`. | Build inside the Fabric desktop app; too early, the kernel does not exist yet. |
+| D9 | Relationship to the vault | **Standalone**: the broker keeps profiles, grants, groups and the call log in its own encrypted SQLite file, with the ADR-107 envelope for its log so it can become a Fabric space later. It does not read `vault.db`. | Build inside the Fabric desktop app; too early, the kernel does not exist yet. |
 | D10 | Undo and revert | **Prevent and log, do not revert.** Deletes go to trash only, with a review period; sends and forwards are never reversible and are shown as such before approval. The document's "revert lost or corrupt data" stays a later decision. | Snapshot mail and calendar state before each write to allow restore. |
 | D11 | Approval interface | **A local web dashboard served by the broker**, as the calendar demo's dashboard, rendering the request card, the profile screen and the review log from the mockups. | A native macOS app; later, when the Fabric desktop shell exists. |
-| D12 | Language and location | **Rust crates in this workspace**, reusing `fabric-policy`, `fabric-token`, and the demo's host, audit and dashboard code. | A TypeScript service; rejected for the same reason as ADR-014 Option B. |
+| D12 | Language and location | **Rust crates in this workspace**, reusing `fabric-policy`, `fabric-token`, and the demo's host, audit and dashboard code. | A TypeScript service; rejected for the same reason as ADR-114 Option B. |
 | D13 | Google account and scopes | **A personal Google account in OAuth testing mode**, with Gmail and Calendar scopes requested at the narrowest level each tool needs; the broker never asks for a scope a profile forbids. Restricted Gmail scopes need Google's verification only for a published app. | A Workspace account; its admin policies differ. |
 
 ## 4. System overview
@@ -106,7 +106,7 @@ The colors in the document's legend (agent blue, sandbox amber, external service
 | Grants store | Grants with scope, purpose, duration and the approval that created them; revocation marks a grant ended and invalidates its tokens | Grants that outlive their stated duration |
 | Google connector | Gmail and Calendar calls with the broker's OAuth token, the narrowest provider scope per operation, idempotency keys on writes, trash-only deletes | Direct access by the agent; any other provider in the prototype |
 | Dashboard | Setup (profile choice), detailed settings, approval cards, contacts and groups, review of agent actions, revoke | Being an email or calendar client |
-| Call log | One record per tool call in the OpenTelemetry GenAI attribute names, inside an ADR-007 envelope, with the policy decision and grant ID | Message bodies, attachments, or personal facts in the prototype (D7) |
+| Call log | One record per tool call in the OpenTelemetry GenAI attribute names, inside an ADR-107 envelope, with the policy decision and grant ID | Message bodies, attachments, or personal facts in the prototype (D7) |
 | Agent stand-in (`fabric-demo`, extended) | A Claude-backed agent that talks MCP to the broker for the demo scenarios | Being the product's agent |
 
 ## 6. Data model
@@ -115,7 +115,7 @@ The colors in the document's legend (agent blue, sandbox amber, external service
 - **Recipient set:** my contacts, a named group, exact addresses, a domain. Groups are created from approvals ("save as group") or by hand.
 - **Grant:** resource, action, scope (sender groups, email age, calendar, fields), purpose text shown to the user, duration (this request, this session, until revoked), created by which approval, revoked at.
 - **Request:** what the agent asked, as typed arguments; the gate's decision; the grant used or created; the token minted; the connector result; timing.
-- **Call log record:** `gen_ai.agent.name`, session, `gen_ai.operation.name`, `gen_ai.tool.name`, an argument digest (arguments themselves only when the profile allows), `fabric.grant_id`, `fabric.policy.decision`, `fabric.policy.rule`, status, duration. The record is an ADR-007 operation so the log is chained and attributable.
+- **Call log record:** `gen_ai.agent.name`, session, `gen_ai.operation.name`, `gen_ai.tool.name`, an argument digest (arguments themselves only when the profile allows), `fabric.grant_id`, `fabric.policy.decision`, `fabric.policy.rule`, status, duration. The record is an ADR-107 operation so the log is chained and attributable.
 
 ## 7. The approval interface, from the mockups
 
@@ -194,7 +194,7 @@ Each phase ends with a commit and a stop for approval, as the paracels and calen
 
 **§14.1 threat model** — add a row: "| Agent bypasses the broker | An agent with browser control or its own provider OAuth grant is outside the sandbox; the product states this limit, asks the user to grant provider access only to the broker, and never claims to bound such an agent |".
 
-**§19** — extend ADR-008: "**ADR-008 Agent/MCP permission model** — resource/tool surface, grants, consent, injection controls, permission profiles and modes, incremental authorization and duration, recipient sets, and the standalone broker deployment (`docs/agent-sandbox.md`)."
+**§19** — extend ADR-108: "**ADR-108 Agent/MCP permission model** — resource/tool surface, grants, consent, injection controls, permission profiles and modes, incremental authorization and duration, recipient sets, and the standalone broker deployment (`docs/agent-sandbox.md`)."
 
 ### 11.3 Isabelle calendar demo
 

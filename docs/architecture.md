@@ -213,7 +213,7 @@ exercise the message lifecycle (identity created on the device, an offline outbo
 delivery, an ordered log, attachments) and to fix the seams where Fabric's encryption, policy, and
 local-first storage will attach. It does not change the desktop decision in §9.3. Status:
 built and verified on the simulator and an iPhone; every gate closed on 2026-10-26. Whether it
-graduates is ADR-014.
+graduates is ADR-114.
 
 | Boundary | Responsibility | Explicitly absent |
 |---|---|---|
@@ -232,7 +232,7 @@ How the prototype relates to the invariants in §9.2:
 
 The relay is TypeScript on Node because the prototype uses Expo Router API routes. Whether the
 prototype graduates, and whether the relay moves into the Rust core, is proposed in
-[ADR-014](adr/ADR-014-mobile-client-and-messaging-relay.md): the Expo app stays as the UI shell over
+[ADR-114](adr/ADR-114-mobile-client-and-messaging-relay.md): the Expo app stays as the UI shell over
 the Rust core, the relay becomes a Rust binary grown from the calendar demo's relay, and a chat
 message becomes an operation in a shared space.
 
@@ -1027,14 +1027,14 @@ The rehearsal passes when each result opens its original evidence, search works 
 4. **ADR-004 Editor document model** — portable AST, Markdown mapping, CRDT boundary.
 5. **ADR-005 Search fusion and evaluation** — FTS/vector implementation, rank explanation, benchmark.
 6. **ADR-006 Connector sandbox and capability manifest** — process/WASM boundary and credential access.
-7. **ADR-007 Operation log and sync evolution** — single-user oplog, personal devices, shared CRDT spaces. Drafted: [ADR-007](adr/ADR-007-operation-log-and-sync-evolution.md), proposed 2026-10-26.
-8. **ADR-008 Agent/MCP permission model** — resource/tool surface, grants, consent, injection controls, permission profiles and modes, incremental authorization and duration, recipient sets, and the standalone broker deployment ([agent-sandbox.md](agent-sandbox.md)).
-9. **ADR-009 Sharing crypto and metadata model** — envelope encryption versus MLS, relay leakage, revocation. Drafted: [ADR-009](adr/ADR-009-sharing-crypto-and-metadata-model.md), proposed 2026-10-26.
+7. **ADR-107 Operation log and sync evolution** — single-user oplog, personal devices, shared CRDT spaces. Drafted: [ADR-107](adr/ADR-107-operation-log-and-sync-evolution.md), proposed 2026-10-26.
+8. **ADR-108 Agent/MCP permission model** — resource/tool surface, grants, consent, injection controls, permission profiles and modes, incremental authorization and duration, recipient sets, and the standalone broker deployment ([agent-sandbox.md](agent-sandbox.md)).
+9. **ADR-109 Sharing crypto and metadata model** — envelope encryption versus MLS, relay leakage, revocation. Drafted: [ADR-109](adr/ADR-109-sharing-crypto-and-metadata-model.md), proposed 2026-10-26.
 10. **ADR-010 Licensing/product posture** — personal, open-source, or commercial distribution.
-11. **ADR-011 Calendar authority and time model** — Fabric-native versus provider-authoritative events, recurrence/zone semantics, and provider bindings.
-12. **ADR-012 Fabric Rendezvous protocol** — identity pairing, MLS/HPKE profile, disclosure budget, transcript/state machine, metadata leakage, and recovery.
-13. **ADR-013 Calendar projection and commit saga** — Fabric-only/private-busy/native-invite modes, idempotency, holds, compensation, and reconciliation.
-14. **ADR-014 Mobile client and messaging relay** — whether the paracels chat prototype (§9.6: an Expo client and a Node relay) graduates, and whether the relay moves into the Rust core; it depends on ADR-007 and ADR-009. Drafted: [ADR-014](adr/ADR-014-mobile-client-and-messaging-relay.md), proposed 2026-10-26.
+11. **ADR-111 Calendar authority and time model** — Fabric-native versus provider-authoritative events, recurrence/zone semantics, and provider bindings.
+12. **ADR-112 Fabric Rendezvous protocol** — identity pairing, MLS/HPKE profile, disclosure budget, transcript/state machine, metadata leakage, and recovery.
+13. **ADR-113 Calendar projection and commit saga** — Fabric-only/private-busy/native-invite modes, idempotency, holds, compensation, and reconciliation.
+14. **ADR-114 Mobile client and messaging relay** — whether the paracels chat prototype (§9.6: an Expo client and a Node relay) graduates, and whether the relay moves into the Rust core; it depends on ADR-107 and ADR-109. Drafted: [ADR-114](adr/ADR-114-mobile-client-and-messaging-relay.md), proposed 2026-10-26.
 
 ---
 

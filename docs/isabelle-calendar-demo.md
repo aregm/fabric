@@ -1,6 +1,6 @@
 # Fabric Policy Demo — Isabelle-Gated Calendar Agents
 
-**Status:** approved on 2026-10-18; version 1.11 records gates G1 and G2, the choices of Phases 3–8, the Phase 9 results, the macOS port of 2026-10-26 (section 16), corrections of 2026-11-15 to stale lines, and the preflight and gate G3 of 2026-11-15. Phases 0–9 are done; gate G3, your own run, was run and closed on 2026-11-15, with one exit check not met as written: the dashboard does not name the rule for an action denied when authorizing (section 15).
+**Status:** approved on 2026-10-18; version 1.12 records gates G1 and G2, the choices of Phases 3–8, the Phase 9 results, the macOS port of 2026-10-26 (section 16), corrections of 2026-11-15 to stale lines, the preflight and gate G3 of 2026-11-15, and the freeze of 2026-11-15. Phases 0–9 are done; gate G3, your own run, was run and closed on 2026-11-15, with one exit check not met as written: the dashboard does not name the rule for an action denied when authorizing (section 15). Since 2026-11-15 the demo is frozen as a record, at the annotated tag `demo-g3-2026-11-15` (`7a54a5c`); its known defects DEF-1 to DEF-7 (roadmap section 8.1) are not fixed, and the tests of the three shared crates (`fabric-policy`, `fabric-token`, `fabric-wire`) remain their regression contract.
 
 **Prepared:** 2026-10-18
 
@@ -106,7 +106,7 @@ Your answers left the gaps below. You approved every proposed default on 2026-10
 | D25 | **Models.** Both agents: `claude-opus-5-5` with adaptive thinking, `effort: "medium"` set explicitly, and server-side refusal fallbacks enabled (`fallbacks: "default"`), which re-run a declined request on another Claude model; confirmed at G1. A local run names its Ollama model in the run config; Phase 1 measured `granite4.1:3b`, `qwen3:4b` and `qwen3.5:4b`. | Name other models, or turn fallbacks off. |
 | D26 | **Parameters** as listed in section 8.3. | Change any value. |
 | D27 | **New dependencies.** The workspace has no third-party crates today. The demo adds them only to new crates; `fabric-core` stays dependency-free. Every version is pinned in `Cargo.lock`. | — |
-| D28 | **Tests and CI.** Tests that need Isabelle or an LLM run locally and are skipped in CI. Everything else, including the existing six-host CI, stays green. The demo itself is supported on Windows only; since 2026-10-26 also on macOS. No stand-in prover is used anywhere. | Add Isabelle to CI, which means a large download on six runners. |
+| D28 | **Tests and CI.** Tests that need Isabelle or an LLM run locally and are skipped in CI. Everything else, including the existing six-host CI, stays green; since 2026-11-15 CI has three hosts (macos-26, ubuntu-24.04, windows-2025-vs2026). The demo itself is supported on Windows only; since 2026-10-26 also on macOS. No stand-in prover is used anywhere. | Add Isabelle to CI, which means a large download on six runners. |
 | D29 | **Isabelle install** into `.tooling/isabelle/` by a new setup script, like the Rust toolchain. If the Isabelle site publishes no checksum, the script pins the SHA-256 of the first download you approve. | You install Isabelle anywhere and the demo reads its path from config. |
 
 ## 4. System overview
