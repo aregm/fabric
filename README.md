@@ -24,14 +24,15 @@ What exists on 2026-11-15:
 - the Isabelle-gated calendar demo: built, with the macOS port on `main`; its gate DEMO-G3, the owner's run with Claude driving both agents, was run and closed on 2026-11-15 with one exit check not met as written: the dashboard does not name the failing rule for an action denied when authorizing;
 - the paracels chat prototype: complete;
 - gate H0, hygiene: passed on 2026-11-15;
-- gate CD-G0, the Calendar Desktop plan's decisions: closed on 2026-11-15; among them, the owner interface is a Tauri application over the Rust broker, not the plan's recommended SwiftUI app.
+- gate CD-G0, the Calendar Desktop plan's decisions: closed on 2026-11-15; among them, the owner interface is a Tauri application over the Rust broker, not the plan's recommended SwiftUI app;
+- work package CD-W01 of that plan, the `fabric-desktop/1` contract: merged on 2026-11-15 through pull request 19. Its gate CD-G1a is not closed: it waits for the review by the other model family and for the owner's approval.
 
 What comes next:
 
 1. The baseline edits (BASE-1): the diffs to the PRD, the architecture and the calendar specification, shown to the owner as one pull request on 2026-11-15 and applied with his approval. One architecture edit, the desktop shell and agent interface rows, waits for gate CD-G1.
-2. The Calendar Desktop plan, from gate CD-G1 onward. The plan governs the permission broker, which leads now that hygiene is done, as the first product built on the policy gate and the tokens. The plan is [docs/plans/calendar-desktop-plan.md](docs/plans/calendar-desktop-plan.md). The Agent Sandbox proposal is its historical input. Mail follows later on the same broker.
+2. The Calendar Desktop plan, from gate CD-G1 onward: first the review and approval of gate CD-G1a, then the Tauri shell (CD-W02), the broker's rule theory (CD-W03) and the store (CD-W04). The plan governs the permission broker, which leads now that hygiene is done, as the first product built on the policy gate and the tokens. The plan is [docs/plans/calendar-desktop-plan.md](docs/plans/calendar-desktop-plan.md). The Agent Sandbox proposal is its historical input. Mail follows later on the same broker.
 
-The order comes from the [roadmap](docs/roadmap.md), version 0.6. It was approved at gate H0 on 2026-11-15 and updated after gates DEMO-G3 and CD-G0 and after the owner's answers to RD-3, RD-4 and RD-12.
+The order comes from the [roadmap](docs/roadmap.md), version 0.6. It was approved at gate H0 on 2026-11-15 and updated after gates DEMO-G3 and CD-G0, after the owner's answers to RD-3, RD-4 and RD-12, and after work package CD-W01 was merged.
 
 ## Product documentation
 
@@ -42,7 +43,7 @@ The order comes from the [roadmap](docs/roadmap.md), version 0.6. It was approve
 - [Calendar desktop implementation plan](docs/plans/calendar-desktop-plan.md) — standalone desktop-GUI and real Google broker plan, agent work packages, live-proof requirements, and release gates.
 - [Desktop planning build audit](docs/plans/calendar-desktop-build-audit.md) — current macOS build evidence, repository integration, and unverified live dependencies.
 - [Paracels chat prototype](docs/paracels-chat.md) — a dummy chat in the paracels iOS app: decisions, design, protocol, and phased plan.
-- [Roadmap](docs/roadmap.md) — what Fabric is now, what exists, the order of work with a gate after each step, what is parked, and the open decisions. Version 0.6, approved at gate H0 and updated after gates DEMO-G3 and CD-G0 and after the owner's answers to RD-3, RD-4 and RD-12.
+- [Roadmap](docs/roadmap.md) — what Fabric is now, what exists, the order of work with a gate after each step, what is parked, and the open decisions. Version 0.6, approved at gate H0 and updated after gates DEMO-G3 and CD-G0, after the owner's answers to RD-3, RD-4 and RD-12, and after work package CD-W01 was merged.
 - [Agent Sandbox proposal](docs/agent-sandbox.md) — a permission broker between AI agents and your accounts, draft version 0.2. The roadmap makes it historical input to the Calendar Desktop plan.
 - [Requirements trace](docs/requirements-trace.md) — every requirement id in the PRD and the calendar vertical, mapped to what the repository implements. A snapshot from 2026-10-26; the roadmap calls it stale.
 - [Architecture decision records](docs/adr/) — ADR-107 (operation log and sync evolution), ADR-109 (sharing crypto and metadata model) and ADR-114 (mobile client and messaging relay) are drafted, and ADR-108 (agent and MCP permission model) is proposed; the rest are listed in the architecture document, section 19.

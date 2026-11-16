@@ -4,7 +4,7 @@
 
 **Prepared:** 2026-11-15, from a full re-read of `main` at `4fb3330`, the unmerged branch `codex/calendar-desktop-plan` at `5b310df`, the 2026-11-03 plan "iii in Fabric", and the documents of the PIM repository. Section 11 says how the facts were checked.
 
-**Updated:** 2026-11-15, after gate `H0`, with `main` at `7d12cf5`; 2026-11-15, after gate `DEMO-G3`, with `main` at `5ff0e6b`; 2026-11-15, after gate `CD-G0`, with `main` at `7a54a5c`; and 2026-11-15, after your answers to `RD-3`, `RD-4` and `RD-12`, with `main` at `4b70dc1`.
+**Updated:** 2026-11-15, after gate `H0`, with `main` at `7d12cf5`; 2026-11-15, after gate `DEMO-G3`, with `main` at `5ff0e6b`; 2026-11-15, after gate `CD-G0`, with `main` at `7a54a5c`; 2026-11-15, after your answers to `RD-3`, `RD-4` and `RD-12`, with `main` at `4b70dc1`; and 2026-11-15, after work package `CD-W01` was merged, with `main` at `eb2c0c5`.
 
 **Scope:** what Fabric is now, what exists, the order of work with a gate after each step, what is parked or has left this repository, and the decisions still open
 **Related:** [Product requirements](PRD.md) · [Technical architecture](architecture.md) · [Calendar vertical](calendar.md) · [Isabelle-gated calendar demo](isabelle-calendar-demo.md) · [Paracels chat prototype](paracels-chat.md) · [Agent Sandbox proposal](agent-sandbox.md) · [Requirements trace](requirements-trace.md) · [ADRs](adr/) · [Calendar Desktop plan](plans/calendar-desktop-plan.md)
@@ -48,10 +48,12 @@ The PRD ordered the work as kernel, then policy and scoped agent access, then sy
 
 **Gate `CD-G0` closed on 2026-11-15** (section 4.3): you froze the plan's decisions group by group; they are recorded in the plan and in ADR-108, written as Proposed.
 
+**Work package `CD-W01` was merged on 2026-11-15** (section 4.4), through pull request 19: the `fabric-desktop/1` contract. Its gate `CD-G1a` is not closed: the reviewer from the other model family has not accepted the evidence, and you have not approved the gate.
+
 **What you are asked to do, in order.**
 
 1. **`BASE-1`** (section 10): the baseline diffs, drafted after your answers to `RD-3`, `RD-4` and `RD-12`, shown to you as one pull request on 2026-11-15 and applied with your approval. Architecture edit 2 still waits for `CD-G1`.
-2. **Gate `CD-G1`** (section 4.4): contracts, the Tauri shell spike and real proofs.
+2. **Gate `CD-G1`** (section 4.4): contracts, the Tauri shell spike and real proofs. The contracts are merged; `CD-G1a` waits for the reviewer and then for you, and the contract leaves choices that are yours.
 
 One value is still owed by you: the bundle-id prefix, on a domain you own, before work package `CD-W02`.
 
@@ -66,12 +68,12 @@ Outside the gates, three decisions have a deadline set by PIM, not by Fabric: `R
 | Paracels chat prototype (`apps/paracels`) | Complete. `PCL-G0` and `PCL-G1` closed on 2026-10-22, `PCL-G2` to `PCL-G6` on 2026-10-26. No commit to the app since. | Whether it graduates (ADR-114). Criterion `PCL-A10` (VoiceOver) has no recorded result. |
 | ADR-107, ADR-109, ADR-114 | Proposed since 2026-10-26. No decision in them is approved and no code exists for any of them. | Each has gaps the others expose (section 8.3). |
 | Agent Sandbox proposal v0.2 | Historical input to the Calendar Desktop plan since 2026-11-15 (`RD-5`). Its section 11 additions are in the PRD and the architecture. | Its decisions `SBX-D1` to `SBX-D13` were never confirmed and are superseded. AIA-009 to AIA-013 are corrected in `BASE-1`. |
-| Calendar Desktop plan, with a build audit and `docs/system-design.md` | On `main` since 2026-11-15, through pull request 13: [the plan](plans/calendar-desktop-plan.md), [the build audit](plans/calendar-desktop-build-audit.md) and [the system design](system-design.md). `CD-G0` closed on 2026-11-15: the decisions are in the plan and in ADR-108 (Proposed), and every work package up to `CD-G5` is authorized (section 4.3). `system-design.md` is superseded as implementation baseline and kept as design background (`RD-6`). | `BASE-1`, then `CD-G1`. The bundle-id prefix, before `CD-W02`. |
+| Calendar Desktop plan, with a build audit and `docs/system-design.md` | On `main` since 2026-11-15, through pull request 13: [the plan](plans/calendar-desktop-plan.md), [the build audit](plans/calendar-desktop-build-audit.md) and [the system design](system-design.md). `CD-G0` closed on 2026-11-15: the decisions are in the plan and in ADR-108 (Proposed), and every work package up to `CD-G5` is authorized (section 4.3). `system-design.md` is superseded as implementation baseline and kept as design background (`RD-6`). `CD-W01` was merged on 2026-11-15 through pull request 19: the contract in `contracts/desktop/v1`, the crate `fabric-desktop-contracts` and the suite `scripts/verify-contracts.sh` (section 4.4). | `BASE-1`, then `CD-G1`: `CD-G1a` waits for the reviewer's acceptance and your approval. The bundle-id prefix, before `CD-W02`. |
 | Requirements trace | On `main` since 2026-11-10. | Stale: written before the macOS port, before decision 1 and before decision 5. |
 
-**Health, measured today.** `scripts/verify.sh` passes: 93 tests, 0 failed, 11 ignored (8 on Linux, where the three credential-store tests are compiled out). The six Isabelle-gated tests pass on this Mac when run with `--ignored`. `apps/paracels` passes 111 of 111 tests, the typecheck and lint. CI is green on `main` on three runners since 2026-11-15: macos-26, ubuntu-24.04 and windows-2025-vs2026.
+**Health, measured today.** `scripts/verify.sh` passes: 184 tests, 0 failed, 11 ignored (8 on Linux, where the three credential-store tests are compiled out); 91 of the tests are the contract crate's. `scripts/verify-contracts.sh` passes: 705 fixture checks and 45,260 mutants of the accepted messages, each computed equal by the Rust side, the TypeScript side and a Python reference. The six Isabelle-gated tests pass on this Mac when run with `--ignored`. `apps/paracels` passes 111 of 111 tests, the typecheck and lint. CI is green on `main` on three runners since 2026-11-15: macos-26, ubuntu-24.04 and windows-2025-vs2026.
 
-**What the checks do not cover.** CI runs only the Cargo workspace. It runs no Isabelle test, nothing in `apps/paracels`, and none of the 11 ignored tests. The demo test that failed by chance was fixed by pull request 12 (`HYG-1`).
+**What the checks do not cover.** CI runs the Cargo workspace and, since `CD-W01`, the contract suite: all three sides on the two POSIX runners, and the TypeScript fixture tests on Windows. It runs no Isabelle test, nothing in `apps/paracels`, and none of the 11 ignored tests. The demo test that failed by chance was fixed by pull request 12 (`HYG-1`).
 
 **Two local checkouts exist.** Isabelle is installed in the one this roadmap was prepared in. The plan's build audit ran in the other and correctly reports Isabelle missing there.
 
@@ -242,6 +244,18 @@ The plan's sections 13 and 14 hold the work packages, their owners, their depend
 | `CD-G4` | `CD-W10` integration and independent QA | The plan's acceptance matrix, on real accounts and real agents. | Regenerate the requirements trace here, with an owner column. |
 | `CD-G5` | `CD-W11` signing, notarization, the Isabelle runtime, Google production readiness | A clean second Mac runs the released application. | `CD-Q09`, the Isabelle runtime on a recipient's Mac, is the largest release risk (section 6). |
 
+**`CD-W01`, merged on 2026-11-15.** Pull request 19 put the `fabric-desktop/1` contract on `main` at `eb2c0c5`: three JSON Schemas with the error grammar, the request lifecycle, the policy matrix as frozen at `CD-G0`, the tool catalog and the limits ([`contracts/desktop/v1`](../contracts/desktop/v1/README.md)); the Rust crate `fabric-desktop-contracts`; a TypeScript check that runs on Node alone; a Python reference that computed the fixtures' expectations; and the suite `scripts/verify-contracts.sh`. The token format of `fabric-token` is unchanged.
+
+The evidence for `CD-G1a` is that the three sides, written apart, compute the same result on 705 fixture checks and judge 45,260 mutants of the accepted messages identically. The suite ran green on the pull request's head on `macos-26` and `ubuntu-24.04`; on Windows only each side's own tests run.
+
+Gate `CD-G1a` is not closed. Merging the pull request was your instruction; the reviewer from the other model family has not accepted the evidence, and the gate has not been put to you. Three things from the work package are open:
+
+- **Choices that are yours.** The contract's README lists 33 choices made where the plan was open (its section 14). The ones most worth your eye: the editable fields, which `CD-Q05d` calls a "narrow list" without naming them; the authorization as an internal record with a 60-second lifetime, not a new token format; the 15 transitions added to close the plan's state grammar; one profile in force for the whole broker; and how a profile's rows are encoded.
+- **Commands the plan's method table does not list** are not in the contract (its section 15): selecting calendars and naming the Agent Drafts calendar, approving or removing an agent's enrollment, resolving an unknown outcome by hand, starting a People import, listing ended requests, and cancelling a request. They need your decision before `CD-W04` and `CD-W08`.
+- **`RD-14` is still open.** Its suggested default was to settle the broker's envelope fields in `CD-W01`. That was not done: the contract has no envelope. It is needed before `CD-W04`.
+
+The root instruction file for agents, which section 5 placed before `CD-W01`, was not written.
+
 ### 4.5 After CD-G5: you choose the next line
 
 Nothing below starts until you choose it. The Needs column lists what must be settled first.
@@ -337,7 +351,7 @@ The deterministic logic the calendar specification asks for exists in `fabric-co
 
 - `README.md` still calls M0 the current slice, and describes paracels as both being built and complete.
 - `architecture.md` section 9.5 says the repository precedes storage, transport and cryptography. It never names the demo crates, which are most of the Rust code. Its stack table names Tauri 2 as the desktop shell, which `CD-G0` chose on 2026-11-15 over the plan's SwiftUI recommendation.
-- CI has no dependency check. `actions/checkout` is pinned by tag, not by hash.
+- CI has no dependency check. `actions/checkout` is pinned by tag, not by hash. Since `CD-W01` the same holds for `actions/setup-node`, and the contract suite installs two npm packages (`typescript` and `@types/node`) from a lockfile in CI.
 
 ## 9. Withdrawn, and built elsewhere
 
