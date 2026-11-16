@@ -703,7 +703,10 @@ mod tests {
             let pairs: Vec<(&str, &str)> = all.iter().map(|(k, v)| (*k, v.as_str())).collect();
             let line = refused(&with_base(&dir, &pairs));
             assert!(line.contains(RULES_DIR) && line.contains(file), "{line}");
-            assert!(line.contains(&Layout::text(&layout.rules)), "{line}");
+            assert!(
+                line.contains(&format!("{:?}", layout.rules.display())),
+                "{line}"
+            );
         }
         #[cfg(unix)]
         {
