@@ -1,27 +1,48 @@
-// Wiring: the Tauri host, the real clock and ids, the model and the view.
+// Wiring: the Tauri host, the real clock and ids, the model, the navigation, the shell and the
+// screens. After every change the shell and the visible screen render; a screen also renders
+// when it becomes visible.
+import { byId, make } from "./dom.ts";
+import { GroupsView } from "./groups-view.ts";
 import { tauriHost } from "./host.ts";
 import { Model } from "./model.ts";
+import { Nav } from "./nav.ts";
+import type { ScreenId } from "./nav.ts";
+import { PreferencesView } from "./preferences-view.ts";
+import { ProfilesView } from "./profiles-view.ts";
+import { ReviewView } from "./review-view.ts";
+import { Shell } from "./shell.ts";
 import { localZone } from "./text.ts";
-import { View } from "./view.ts";
 
 const host = tauriHost();
 if (host === null) {
-  const problem = document.getElementById("problem");
-  if (problem !== null) {
-    problem.textContent = "This page works only inside the Fabric Calendar app.";
-    problem.hidden = false;
-  }
+  const strip = byId("attention");
+  byId("attention-list").replaceWith(make("p", "problem", "This page works only inside the Fabric Calendar app."));
+  strip.hidden = false;
 } else {
-  let view: View | null = null;
+  let shell: Shell | null = null;
+  let render = (): void => {};
   const model = new Model({
     host,
     now: () => Date.now(),
     newId: () => crypto.randomUUID(),
     zone: localZone(),
-    changed: () => view?.render(),
-    announce: (text) => view?.announce(text),
+    changed: () => render(),
+    announce: (text) => shell?.announce(text),
   });
-  view = new View(model);
-  view.render();
+  const review = new ReviewView(model);
+  const screens: Record<ScreenId, { render(): void } | null> = {
+    review,
+    permissions: new ProfilesView(model),
+    contacts: new GroupsView(model),
+    preferences: new PreferencesView(model),
+    status: null, // the shell renders the Status screen
+  };
+  const nav = new Nav((id) => screens[id]?.render());
+  shell = new Shell(model, nav, review);
+  render = () => {
+    shell?.render();
+    screens[nav.current]?.render();
+  };
+  render();
   model.start();
 }

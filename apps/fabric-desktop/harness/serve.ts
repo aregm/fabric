@@ -12,6 +12,17 @@
 // stops). It never opens the real store and never touches the Keychain. The broker must be a
 // debug build: a release build refuses the test key.
 //
+// A switch for a manual check of a store that cannot be opened: `POST /harness/hold-store`, allowed
+// only while no broker of the harness runs, starts a second broker process on the same data
+// directory (test key, no synthetic agent, its stdin kept open and its stdout discarded) that
+// holds the store's lock; the next "Restart broker" from the page then starts a broker that
+// answers `store_unavailable`. `POST /harness/release-store` ends that process (end of input,
+// then a kill after 2 s). Stopping the harness ends it too.
+//
+// To look at what the real broker cannot show yet (a blocked request with its proof, a request that
+// was carried out), `--broker harness/replay-broker.ts` runs a stand-in that replays the
+// contract's fixtures and changes nothing; the held-store switch has no meaning with it.
+//
 //   node harness/serve.ts --broker <path to fabric-broker> [--port 4317]
 import { spawn } from "node:child_process";
 import type { ChildProcess } from "node:child_process";
@@ -49,6 +60,7 @@ type State =
 let run = 0; // broker starts: 0 before any, 1 for the first
 let state: State = { name: "disconnected", reason: "stopped", detail: "not started yet" };
 let child: ChildProcess | null = null;
+let holder: ChildProcess | null = null; // the broker that holds the store's lock (hold-store)
 let page: ServerResponse | null = null; // the one attached event stream; a new attach replaces it
 
 function post(message: object): void {
@@ -63,7 +75,10 @@ function setState(next: State): void {
 function startBroker(): void {
   run += 1;
   const thisRun = run;
-  const c = spawn(BROKER, [], { stdio: ["pipe", "pipe", "inherit"], env: BROKER_ENV });
+  // A stand-in written in TypeScript (harness/replay-broker.ts) is run by this Node: the broker's
+  // environment has no PATH, so a script could not find one itself.
+  const script = BROKER.endsWith(".ts");
+  const c = spawn(script ? process.execPath : BROKER, script ? [BROKER] : [], { stdio: ["pipe", "pipe", "inherit"], env: BROKER_ENV });
   child = c;
   c.on("error", (e) => {
     if (child === c) child = null;
@@ -91,6 +106,30 @@ function startBroker(): void {
       setState({ name: "disconnected", reason: "protocol_violation", detail: "a line that is not JSON" });
     }
   });
+}
+
+function holdStore(): void {
+  const { FABRIC_BROKER_DATA_DIR, FABRIC_BROKER_KEY_SOURCE } = BROKER_ENV;
+  const h = spawn(BROKER, [], { stdio: ["pipe", "ignore", "inherit"], env: { FABRIC_BROKER_DATA_DIR, FABRIC_BROKER_KEY_SOURCE } });
+  holder = h;
+  h.on("error", (e) => {
+    if (holder === h) holder = null;
+    console.error(`harness: the store holder could not be started: ${e.message}`);
+  });
+  h.on("spawn", () => console.log(`harness: the store is held by a second broker, pid ${h.pid}`));
+  h.on("exit", (code, signal) => {
+    if (holder === h) holder = null;
+    console.log(`harness: the store holder ended, ${signal !== null ? `killed by signal ${signal}` : `exit code ${code}`}`);
+  });
+}
+
+function releaseStore(): void {
+  const h = holder;
+  holder = null;
+  h?.stdin?.end(); // end of input is the broker's order to stop
+  setTimeout(() => {
+    if (h !== null && h.exitCode === null && h.signalCode === null) h.kill("SIGKILL");
+  }, 2000).unref();
 }
 
 async function body(req: IncomingMessage): Promise<any> {
@@ -154,6 +193,17 @@ const server = createServer(async (req, res) => {
       child.kill("SIGKILL");
       return reply(res, 204);
     }
+    if (req.method === "POST" && path === "/harness/hold-store") {
+      if (child !== null) return reply(res, 409, "Stop the broker first (kill-broker); the store is held only while no broker of the harness runs.");
+      if (holder !== null) return reply(res, 409, "The store is held already.");
+      holdStore();
+      return reply(res, 204);
+    }
+    if (req.method === "POST" && path === "/harness/release-store") {
+      if (holder === null) return reply(res, 409, "The store is not held.");
+      releaseStore();
+      return reply(res, 204);
+    }
     if (req.method === "GET") return serveFile(res, path);
     reply(res, 405);
   } catch (e) {
@@ -169,13 +219,19 @@ server.listen(PORT, "127.0.0.1", () => {
 
 function quit(): void {
   child?.stdin?.end(); // end of input is the broker's order to stop
+  const h = holder;
+  h?.stdin?.end();
   page?.end();
   server.close();
   setTimeout(() => {
     child?.kill("SIGKILL");
+    h?.kill("SIGKILL");
     process.exit(0);
   }, 2000).unref();
 }
-process.on("exit", () => rmSync(SCRATCH, { recursive: true, force: true }));
+process.on("exit", () => {
+  holder?.kill("SIGKILL");
+  rmSync(SCRATCH, { recursive: true, force: true });
+});
 process.on("SIGINT", quit);
 process.on("SIGTERM", quit);
