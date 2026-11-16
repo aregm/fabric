@@ -1,0 +1,30 @@
+[package]
+name = "fabric-storage"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+fabric-desktop-contracts = { path = "../fabric-desktop-contracts" }
+getrandom = "0.3"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+zeroize = "1"
+
+# SQLCipher (CommonCrypto, no OpenSSL) on macOS; plain bundled SQLite elsewhere, where the
+# store is a test store by design. A target split, not a feature: CI builds with --all-features.
+[target.'cfg(target_os = "macos")'.dependencies]
+rusqlite = { version = "=0.43.0", features = ["bundled-sqlcipher"] }
+security-framework = "3"
+
+[target.'cfg(not(target_os = "macos"))'.dependencies]
+rusqlite = { version = "=0.43.0", features = ["bundled"] }
+
+[[test]]
+name = "crash"
+path = "tests/crash.rs"
+harness = false
+
+[lints]
+workspace = true

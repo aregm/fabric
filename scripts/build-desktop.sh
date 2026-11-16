@@ -76,6 +76,7 @@ for tool in codesign lipo /usr/libexec/PlistBuddy; do
 done
 
 echo "[1/4] The broker"
+unset OPENSSL_DIR OPENSSL_LIB_DIR OPENSSL_INCLUDE_DIR
 sh "$RUN" cargo build --locked -p fabric-broker
 mkdir -p "$DESKTOP/src-tauri/binaries"
 cp "$ROOT/target/debug/fabric-broker" "$DESKTOP/src-tauri/binaries/fabric-broker-$TARGET_TRIPLE"

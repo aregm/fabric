@@ -7,13 +7,18 @@
 // frames to the broker and the broker's lines to the page as they are. The checks of the
 // contract's layers are the Tauri host's job (apps/fabric-desktop/relay); do not test them here.
 //
+// The broker always runs with the public test key and the synthetic agent, in one new temporary
+// data directory per harness run (kept across restarts of the broker, removed when the harness
+// stops). It never opens the real store and never touches the Keychain. The broker must be a
+// debug build: a release build refuses the test key.
+//
 //   node harness/serve.ts --broker <path to fabric-broker> [--port 4317]
 import { spawn } from "node:child_process";
 import type { ChildProcess } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { createServer } from "node:http";
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { constants } from "node:os";
+import { constants, tmpdir } from "node:os";
 import { extname, join, resolve, sep } from "node:path";
 import { createInterface } from "node:readline";
 import { fileURLToPath } from "node:url";
@@ -29,6 +34,13 @@ const PORT = Number(values.port);
 const HERE = fileURLToPath(new URL(".", import.meta.url));
 const DIST = join(HERE, "..", "dist");
 const TYPES: Record<string, string> = { ".html": "text/html", ".css": "text/css", ".js": "text/javascript" };
+// One scratch directory per harness run (mode 0700); the broker's store is its child "broker".
+const SCRATCH = mkdtempSync(join(tmpdir(), "fabric-harness-"));
+const BROKER_ENV = {
+  FABRIC_BROKER_DATA_DIR: join(SCRATCH, "broker"),
+  FABRIC_BROKER_KEY_SOURCE: "test",
+  FABRIC_BROKER_SYNTHETIC_AGENT: "1",
+};
 
 type State =
   | { name: "connected" }
@@ -51,7 +63,7 @@ function setState(next: State): void {
 function startBroker(): void {
   run += 1;
   const thisRun = run;
-  const c = spawn(BROKER, [], { stdio: ["pipe", "pipe", "inherit"], env: {} });
+  const c = spawn(BROKER, [], { stdio: ["pipe", "pipe", "inherit"], env: BROKER_ENV });
   child = c;
   c.on("error", (e) => {
     if (child === c) child = null;
@@ -151,6 +163,7 @@ const server = createServer(async (req, res) => {
 
 server.listen(PORT, "127.0.0.1", () => {
   console.log(`harness: serving dist/ at http://127.0.0.1:${PORT}/ with broker ${BROKER}`);
+  console.log(`harness: the broker's store is ${BROKER_ENV.FABRIC_BROKER_DATA_DIR} (test key, synthetic agent)`);
   startBroker();
 });
 
@@ -163,5 +176,6 @@ function quit(): void {
     process.exit(0);
   }, 2000).unref();
 }
+process.on("exit", () => rmSync(SCRATCH, { recursive: true, force: true }));
 process.on("SIGINT", quit);
 process.on("SIGTERM", quit);

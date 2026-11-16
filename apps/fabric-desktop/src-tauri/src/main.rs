@@ -8,8 +8,10 @@
 //! - `owner_send` passes one owner request frame to the broker, after the host has validated it;
 //! - `broker_restart` starts the broker again after it died, when the owner asks.
 //!
-//! The host holds no Google credential and no database, and makes no policy decision. The
-//! relaying itself is the crate `fabric-desktop-relay`, which has no Tauri in it.
+//! The host holds no Google credential and no database, and makes no policy decision: it tells
+//! the broker where its encrypted store lives and where its key comes from (work package
+//! CD-W04), and the broker opens it. The relaying itself is the crate `fabric-desktop-relay`,
+//! which has no Tauri in it.
 
 mod bridge;
 mod host;
@@ -19,7 +21,7 @@ use tauri::ipc::Channel;
 use tauri::{Manager, RunEvent, State};
 
 use crate::bridge::{HostMessage, SendRefusal};
-use crate::host::{Host, Trace};
+use crate::host::{BrokerStore, Host, Trace};
 
 #[tauri::command]
 fn owner_attach(host: State<'_, Host>, channel: Channel<HostMessage>) {
@@ -49,11 +51,14 @@ fn main() {
             broker_restart
         ])
         .setup(|application| {
-            // The lock lives in the application's own directory under Application Support.
-            let lock_directory = application.path().app_data_dir()?;
+            // The lock and the broker's store live in the application's own directory under
+            // Application Support; a debug build started from a terminal may move both to a
+            // scratch directory (`FABRIC_DESKTOP_DATA_DIR`, apps/fabric-desktop/README.md).
+            let app_data_dir = application.path().app_data_dir()?;
+            let (root, store) = BrokerStore::from_environment(&app_data_dir, std::env::vars_os());
             // The broker ships beside the host executable, in Contents/MacOS of the bundle.
             let broker = broker_beside(&std::env::current_exe()?);
-            application.state::<Host>().start(&lock_directory, &broker);
+            application.state::<Host>().start(&root, &broker, store);
             Ok(())
         })
         .build(tauri::generate_context!())
