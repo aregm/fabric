@@ -1,0 +1,27 @@
+{
+  "description": "A recipient set curated in Fabric.",
+  "schema": "owner-channel.schema.json#/$defs/recipient_set",
+  "value": {
+    "recipient_set_id": "rset-team",
+    "revision": 2,
+    "source": {
+      "kind": "local"
+    },
+    "definition": {
+      "name": "Team",
+      "members": [
+        "ally@example.net",
+        "sam.lee@example.org"
+      ],
+      "domains": [
+        "example.com"
+      ]
+    }
+  },
+  "expect": {
+    "verdict": "accept",
+    "canonical": "{\"definition\":{\"domains\":[\"example.com\"],\"members\":[\"ally@example.net\",\"sam.lee@example.org\"],\"name\":\"Team\"},\"recipient_set_id\":\"rset-team\",\"revision\":2,\"source\":{\"kind\":\"local\"}}",
+    "command_digest": null,
+    "action_digest": null
+  }
+}

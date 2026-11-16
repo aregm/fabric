@@ -1,0 +1,96 @@
+{
+  "description": "save_profile answers with the profile settings after a new custom profile was saved.",
+  "schema": "owner-channel.schema.json#/$defs/owner_response",
+  "value": {
+    "protocol": "fabric-desktop/1",
+    "id": "command-8",
+    "method": "save_profile",
+    "result": {
+      "commit_sequence": 1289,
+      "profiles": {
+        "revision": 8,
+        "active_profile_id": "careful",
+        "items": [
+          {
+            "kind": "built_in",
+            "profile_id": "careful",
+            "name": "Careful",
+            "version": 1,
+            "rows": {
+              "list_and_availability": "allow",
+              "read_event_details": "ask",
+              "create_in_agent_drafts": "allow",
+              "create_in_existing_calendar": "ask",
+              "edit_fabric_created_event": "ask",
+              "edit_preexisting_event": "ask",
+              "send_or_change_invitations": "ask",
+              "respond_to_invitation": "ask",
+              "delete_event": "ask",
+              "delete_calendar_or_change_sharing": "block"
+            }
+          },
+          {
+            "kind": "built_in",
+            "profile_id": "flexible",
+            "name": "Flexible",
+            "version": 1,
+            "rows": {
+              "list_and_availability": "allow",
+              "read_event_details": "allow",
+              "create_in_agent_drafts": "allow",
+              "create_in_existing_calendar": "allow",
+              "edit_fabric_created_event": "allow",
+              "edit_preexisting_event": "ask",
+              "send_or_change_invitations": "allow",
+              "respond_to_invitation": "ask",
+              "delete_event": "ask",
+              "delete_calendar_or_change_sharing": "block"
+            }
+          },
+          {
+            "kind": "custom",
+            "profile_id": "custom-assistant",
+            "name": "Assistant hours",
+            "version": 2,
+            "rows": {
+              "list_and_availability": "allow",
+              "read_event_details": "allow",
+              "create_in_agent_drafts": "allow",
+              "create_in_existing_calendar": "allow",
+              "edit_fabric_created_event": "allow",
+              "edit_preexisting_event": "allow",
+              "send_or_change_invitations": "allow",
+              "respond_to_invitation": "allow",
+              "delete_event": "ask",
+              "delete_calendar_or_change_sharing": "block"
+            }
+          },
+          {
+            "kind": "custom",
+            "profile_id": "custom-lockdown",
+            "name": "Lockdown",
+            "version": 1,
+            "rows": {
+              "list_and_availability": "block",
+              "read_event_details": "block",
+              "create_in_agent_drafts": "block",
+              "create_in_existing_calendar": "block",
+              "edit_fabric_created_event": "block",
+              "edit_preexisting_event": "block",
+              "send_or_change_invitations": "block",
+              "respond_to_invitation": "block",
+              "delete_event": "ask",
+              "delete_calendar_or_change_sharing": "block"
+            }
+          }
+        ]
+      }
+    }
+  },
+  "expect": {
+    "verdict": "accept",
+    "canonical": "{\"id\":\"command-8\",\"method\":\"save_profile\",\"protocol\":\"fabric-desktop/1\",\"result\":{\"commit_sequence\":1289,\"profiles\":{\"active_profile_id\":\"careful\",\"items\":[{\"kind\":\"built_in\",\"name\":\"Careful\",\"profile_id\":\"careful\",\"rows\":{\"create_in_agent_drafts\":\"allow\",\"create_in_existing_calendar\":\"ask\",\"delete_calendar_or_change_sharing\":\"block\",\"delete_event\":\"ask\",\"edit_fabric_created_event\":\"ask\",\"edit_preexisting_event\":\"ask\",\"list_and_availability\":\"allow\",\"read_event_details\":\"ask\",\"respond_to_invitation\":\"ask\",\"send_or_change_invitations\":\"ask\"},\"version\":1},{\"kind\":\"built_in\",\"name\":\"Flexible\",\"profile_id\":\"flexible\",\"rows\":{\"create_in_agent_drafts\":\"allow\",\"create_in_existing_calendar\":\"allow\",\"delete_calendar_or_change_sharing\":\"block\",\"delete_event\":\"ask\",\"edit_fabric_created_event\":\"allow\",\"edit_preexisting_event\":\"ask\",\"list_and_availability\":\"allow\",\"read_event_details\":\"allow\",\"respond_to_invitation\":\"ask\",\"send_or_change_invitations\":\"allow\"},\"version\":1},{\"kind\":\"custom\",\"name\":\"Assistant hours\",\"profile_id\":\"custom-assistant\",\"rows\":{\"create_in_agent_drafts\":\"allow\",\"create_in_existing_calendar\":\"allow\",\"delete_calendar_or_change_sharing\":\"block\",\"delete_event\":\"ask\",\"edit_fabric_created_event\":\"allow\",\"edit_preexisting_event\":\"allow\",\"list_and_availability\":\"allow\",\"read_event_details\":\"allow\",\"respond_to_invitation\":\"allow\",\"send_or_change_invitations\":\"allow\"},\"version\":2},{\"kind\":\"custom\",\"name\":\"Lockdown\",\"profile_id\":\"custom-lockdown\",\"rows\":{\"create_in_agent_drafts\":\"block\",\"create_in_existing_calendar\":\"block\",\"delete_calendar_or_change_sharing\":\"block\",\"delete_event\":\"ask\",\"edit_fabric_created_event\":\"block\",\"edit_preexisting_event\":\"block\",\"list_and_availability\":\"block\",\"read_event_details\":\"block\",\"respond_to_invitation\":\"block\",\"send_or_change_invitations\":\"block\"},\"version\":1}],\"revision\":8}}}",
+    "command_digest": null,
+    "action_digest": null
+  }
+}

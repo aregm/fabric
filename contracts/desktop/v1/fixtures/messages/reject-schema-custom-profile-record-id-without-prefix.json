@@ -1,0 +1,27 @@
+{
+  "description": "A custom profile whose id does not begin with custom-.",
+  "schema": "owner-channel.schema.json#/$defs/profile",
+  "value": {
+    "kind": "custom",
+    "profile_id": "assistant",
+    "name": "Assistant hours",
+    "version": 2,
+    "rows": {
+      "list_and_availability": "allow",
+      "read_event_details": "allow",
+      "create_in_agent_drafts": "allow",
+      "create_in_existing_calendar": "allow",
+      "edit_fabric_created_event": "allow",
+      "edit_preexisting_event": "allow",
+      "send_or_change_invitations": "allow",
+      "respond_to_invitation": "allow",
+      "delete_event": "ask",
+      "delete_calendar_or_change_sharing": "block"
+    }
+  },
+  "expect": {
+    "verdict": "reject",
+    "layer": "schema",
+    "error": "invalid_params"
+  }
+}

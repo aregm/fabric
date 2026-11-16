@@ -1,0 +1,315 @@
+[
+  {
+    "name": "command-empty-object",
+    "domain": "command",
+    "subject": {},
+    "canonical": "{}",
+    "digest": "sha256:f271c897e5bb8343e16c7183b4b41c72c4871eb15e1155a4ed0b5e4709dca2a4"
+  },
+  {
+    "name": "action-empty-object",
+    "domain": "action",
+    "subject": {},
+    "canonical": "{}",
+    "digest": "sha256:d6a9bdae7464a427e0105fd8814e00ef903266fe8ceec037ffd2cb82917a9c5a"
+  },
+  {
+    "name": "action-create-event",
+    "domain": "action",
+    "subject": {
+      "tool": "fabric_calendar_propose_create",
+      "arguments": {
+        "account_id": "acct-1",
+        "calendar_id": "cal-drafts",
+        "event": {
+          "title": "Design review",
+          "start": {
+            "date_time": "2026-11-20T10:00:00-06:00",
+            "zone": "America/Chicago"
+          },
+          "end": {
+            "date_time": "2026-11-20T11:00:00-06:00",
+            "zone": "America/Chicago"
+          },
+          "description": null,
+          "location": "Room 4"
+        },
+        "task": "Book the design review the owner asked for"
+      }
+    },
+    "canonical": "{\"arguments\":{\"account_id\":\"acct-1\",\"calendar_id\":\"cal-drafts\",\"event\":{\"description\":null,\"end\":{\"date_time\":\"2026-11-20T11:00:00-06:00\",\"zone\":\"America/Chicago\"},\"location\":\"Room 4\",\"start\":{\"date_time\":\"2026-11-20T10:00:00-06:00\",\"zone\":\"America/Chicago\"},\"title\":\"Design review\"},\"task\":\"Book the design review the owner asked for\"},\"tool\":\"fabric_calendar_propose_create\"}",
+    "digest": "sha256:46d8a5a0ef018be6aa641d7633dbbf8d886e85beb4f27712414d07fc3a621ffb"
+  },
+  {
+    "name": "action-respond-to-one-occurrence",
+    "domain": "action",
+    "subject": {
+      "tool": "fabric_calendar_propose_response",
+      "arguments": {
+        "account_id": "acct-1",
+        "calendar_id": "cal-primary",
+        "target": {
+          "kind": "occurrence",
+          "occurrence": {
+            "instance_id": "evt9k2_20261123T150000Z",
+            "original_start_time": {
+              "date_time": "2026-11-23T09:00:00-06:00",
+              "zone": "America/Chicago"
+            },
+            "revision": "\"3181161784712000\""
+          }
+        },
+        "response": "declined",
+        "send_updates": "all",
+        "task": "Decline the stand-up on the 23rd only"
+      }
+    },
+    "canonical": "{\"arguments\":{\"account_id\":\"acct-1\",\"calendar_id\":\"cal-primary\",\"response\":\"declined\",\"send_updates\":\"all\",\"target\":{\"kind\":\"occurrence\",\"occurrence\":{\"instance_id\":\"evt9k2_20261123T150000Z\",\"original_start_time\":{\"date_time\":\"2026-11-23T09:00:00-06:00\",\"zone\":\"America/Chicago\"},\"revision\":\"\\\"3181161784712000\\\"\"}},\"task\":\"Decline the stand-up on the 23rd only\"},\"tool\":\"fabric_calendar_propose_response\"}",
+    "digest": "sha256:5791c9b0d364020792c4e4f2456127f1d659d1f7989cda5bc8c548a690ef5271"
+  },
+  {
+    "name": "action-invitation",
+    "domain": "action",
+    "subject": {
+      "tool": "fabric_calendar_propose_invitation",
+      "arguments": {
+        "account_id": "acct-1",
+        "calendar_id": "cal-primary",
+        "event": {
+          "event_id": "evt7h1",
+          "revision": "\"3181161784712001\""
+        },
+        "attendees": [
+          "bob@example.com",
+          "carol@example.org"
+        ],
+        "send_updates": "all",
+        "task": "Invite Bob and Carol"
+      }
+    },
+    "canonical": "{\"arguments\":{\"account_id\":\"acct-1\",\"attendees\":[\"bob@example.com\",\"carol@example.org\"],\"calendar_id\":\"cal-primary\",\"event\":{\"event_id\":\"evt7h1\",\"revision\":\"\\\"3181161784712001\\\"\"},\"send_updates\":\"all\",\"task\":\"Invite Bob and Carol\"},\"tool\":\"fabric_calendar_propose_invitation\"}",
+    "digest": "sha256:78d3c07054f0bdaff1a6147e0ea975bfbf4675e3dcffd656deb917129f39b5a2"
+  },
+  {
+    "name": "request-invitation",
+    "domain": "request",
+    "subject": {
+      "agent_id": "agent-claude-desktop",
+      "action": {
+        "tool": "fabric_calendar_propose_invitation",
+        "arguments": {
+          "account_id": "acct-1",
+          "calendar_id": "cal-primary",
+          "event": {
+            "event_id": "evt7h1",
+            "revision": "\"3181161784712001\""
+          },
+          "attendees": [
+            "bob@example.com",
+            "carol@example.org"
+          ],
+          "send_updates": "all",
+          "task": "Invite Bob and Carol"
+        }
+      },
+      "scope": {
+        "calendars": [
+          {
+            "account_id": "acct-1",
+            "calendar_id": "cal-primary"
+          }
+        ],
+        "window": null,
+        "fields": null,
+        "recipients": {
+          "kind": "exact",
+          "addresses": [
+            "bob@example.com",
+            "carol@example.org"
+          ]
+        },
+        "send_updates": "all"
+      }
+    },
+    "canonical": "{\"action\":{\"arguments\":{\"account_id\":\"acct-1\",\"attendees\":[\"bob@example.com\",\"carol@example.org\"],\"calendar_id\":\"cal-primary\",\"event\":{\"event_id\":\"evt7h1\",\"revision\":\"\\\"3181161784712001\\\"\"},\"send_updates\":\"all\",\"task\":\"Invite Bob and Carol\"},\"tool\":\"fabric_calendar_propose_invitation\"},\"agent_id\":\"agent-claude-desktop\",\"scope\":{\"calendars\":[{\"account_id\":\"acct-1\",\"calendar_id\":\"cal-primary\"}],\"fields\":null,\"recipients\":{\"addresses\":[\"bob@example.com\",\"carol@example.org\"],\"kind\":\"exact\"},\"send_updates\":\"all\",\"window\":null}}",
+    "digest": "sha256:43767abfdae83a6daf60530e9f42a3e756f2e5ec7609de8cdfb4307dc5d03a3d"
+  },
+  {
+    "name": "request-invitation-narrowed",
+    "domain": "request",
+    "subject": {
+      "agent_id": "agent-claude-desktop",
+      "action": {
+        "tool": "fabric_calendar_propose_invitation",
+        "arguments": {
+          "account_id": "acct-1",
+          "calendar_id": "cal-primary",
+          "event": {
+            "event_id": "evt7h1",
+            "revision": "\"3181161784712001\""
+          },
+          "attendees": [
+            "bob@example.com",
+            "carol@example.org"
+          ],
+          "send_updates": "all",
+          "task": "Invite Bob and Carol"
+        }
+      },
+      "scope": {
+        "calendars": [
+          {
+            "account_id": "acct-1",
+            "calendar_id": "cal-primary"
+          }
+        ],
+        "window": null,
+        "fields": null,
+        "recipients": {
+          "kind": "exact",
+          "addresses": [
+            "bob@example.com"
+          ]
+        },
+        "send_updates": "all"
+      }
+    },
+    "canonical": "{\"action\":{\"arguments\":{\"account_id\":\"acct-1\",\"attendees\":[\"bob@example.com\",\"carol@example.org\"],\"calendar_id\":\"cal-primary\",\"event\":{\"event_id\":\"evt7h1\",\"revision\":\"\\\"3181161784712001\\\"\"},\"send_updates\":\"all\",\"task\":\"Invite Bob and Carol\"},\"tool\":\"fabric_calendar_propose_invitation\"},\"agent_id\":\"agent-claude-desktop\",\"scope\":{\"calendars\":[{\"account_id\":\"acct-1\",\"calendar_id\":\"cal-primary\"}],\"fields\":null,\"recipients\":{\"addresses\":[\"bob@example.com\"],\"kind\":\"exact\"},\"send_updates\":\"all\",\"window\":null}}",
+    "digest": "sha256:6192b28203e1e5ee54e3b1740b15caad4a68b4a71bff8fae7c25317e96627757"
+  },
+  {
+    "name": "approval-approve-one-request",
+    "domain": "approval",
+    "subject": {
+      "request_id": "request-17",
+      "request_digest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+      "decision": "approve",
+      "scope": {
+        "calendars": [
+          {
+            "account_id": "acct-1",
+            "calendar_id": "cal-primary"
+          }
+        ],
+        "window": null,
+        "fields": null,
+        "recipients": {
+          "kind": "exact",
+          "addresses": [
+            "bob@example.com"
+          ]
+        },
+        "send_updates": "all"
+      },
+      "duration": {
+        "kind": "one_request"
+      }
+    },
+    "canonical": "{\"decision\":\"approve\",\"duration\":{\"kind\":\"one_request\"},\"request_digest\":\"sha256:0000000000000000000000000000000000000000000000000000000000000000\",\"request_id\":\"request-17\",\"scope\":{\"calendars\":[{\"account_id\":\"acct-1\",\"calendar_id\":\"cal-primary\"}],\"fields\":null,\"recipients\":{\"addresses\":[\"bob@example.com\"],\"kind\":\"exact\"},\"send_updates\":\"all\",\"window\":null}}",
+    "digest": "sha256:6d25b6f8fd06fad1321316383332d4eb4bb34404b0d28ceac69edab85f123578"
+  },
+  {
+    "name": "approval-approve-until-revoked",
+    "domain": "approval",
+    "subject": {
+      "request_id": "request-17",
+      "request_digest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+      "decision": "approve",
+      "scope": {
+        "calendars": [
+          {
+            "account_id": "acct-1",
+            "calendar_id": "cal-primary"
+          }
+        ],
+        "window": null,
+        "fields": null,
+        "recipients": {
+          "kind": "exact",
+          "addresses": [
+            "bob@example.com",
+            "carol@example.org"
+          ]
+        },
+        "send_updates": "all"
+      },
+      "duration": {
+        "kind": "until_revoked"
+      }
+    },
+    "canonical": "{\"decision\":\"approve\",\"duration\":{\"kind\":\"until_revoked\"},\"request_digest\":\"sha256:0000000000000000000000000000000000000000000000000000000000000000\",\"request_id\":\"request-17\",\"scope\":{\"calendars\":[{\"account_id\":\"acct-1\",\"calendar_id\":\"cal-primary\"}],\"fields\":null,\"recipients\":{\"addresses\":[\"bob@example.com\",\"carol@example.org\"],\"kind\":\"exact\"},\"send_updates\":\"all\",\"window\":null}}",
+    "digest": "sha256:42bc0fe84865fded0ee3c783433149f8b589ee41c48d4f1cded14bd97df25a85"
+  },
+  {
+    "name": "approval-deny",
+    "domain": "approval",
+    "subject": {
+      "request_id": "request-17",
+      "request_digest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+      "decision": "deny",
+      "scope": null,
+      "duration": null
+    },
+    "canonical": "{\"decision\":\"deny\",\"duration\":null,\"request_digest\":\"sha256:0000000000000000000000000000000000000000000000000000000000000000\",\"request_id\":\"request-17\",\"scope\":null}",
+    "digest": "sha256:ae22c8d523a5f614a42abcf353e32aef75f216f2f1a07918e836131383d19609"
+  },
+  {
+    "name": "command-decide-request",
+    "domain": "command",
+    "subject": {
+      "method": "decide_request",
+      "params": {
+        "request_id": "request-17",
+        "request_digest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+        "expected_revision": 3,
+        "decision": "approve",
+        "selected": null,
+        "duration": {
+          "kind": "one_request"
+        }
+      }
+    },
+    "canonical": "{\"method\":\"decide_request\",\"params\":{\"decision\":\"approve\",\"duration\":{\"kind\":\"one_request\"},\"expected_revision\":3,\"request_digest\":\"sha256:0000000000000000000000000000000000000000000000000000000000000000\",\"request_id\":\"request-17\",\"selected\":null}}",
+    "digest": "sha256:e2d6cc75739f089d5ab0ee69380eb8a95bc84bd803e06e3bd5b0e2434c91d81a"
+  },
+  {
+    "name": "command-pause-all",
+    "domain": "command",
+    "subject": {
+      "method": "pause_agent",
+      "params": {
+        "target": {
+          "kind": "all_agents"
+        },
+        "paused": true
+      }
+    },
+    "canonical": "{\"method\":\"pause_agent\",\"params\":{\"paused\":true,\"target\":{\"kind\":\"all_agents\"}}}",
+    "digest": "sha256:7338439705028aea8d678791c1e1cfb4122cc8b98ca265debe4e302d751d17a5"
+  },
+  {
+    "name": "expansion-custom-profile",
+    "domain": "expansion",
+    "subject": [
+      {
+        "row": "edit_preexisting_event",
+        "from": "ask",
+        "to": "allow"
+      },
+      {
+        "row": "respond_to_invitation",
+        "from": "ask",
+        "to": "allow"
+      }
+    ],
+    "canonical": "[{\"from\":\"ask\",\"row\":\"edit_preexisting_event\",\"to\":\"allow\"},{\"from\":\"ask\",\"row\":\"respond_to_invitation\",\"to\":\"allow\"}]",
+    "digest": "sha256:adb707febbe6adbb34101558819c19d81e389dc6eab34ae51f6cdc29273b1d8e"
+  },
+  {
+    "name": "same-subject-other-domain",
+    "domain": "request",
+    "subject": {},
+    "canonical": "{}",
+    "digest": "sha256:b53d885375998a85a9be044f0ebc564117c89ca63e0ac9357d81f38c1f435c71"
+  }
+]

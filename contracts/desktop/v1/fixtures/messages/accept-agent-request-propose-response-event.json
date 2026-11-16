@@ -1,0 +1,29 @@
+{
+  "description": "Propose accepting a single invitation.",
+  "schema": "agent-channel.schema.json#/$defs/agent_request",
+  "value": {
+    "protocol": "fabric-desktop/1",
+    "id": "call-11",
+    "method": "fabric_calendar_propose_response",
+    "params": {
+      "account_id": "acct-1",
+      "calendar_id": "cal-primary",
+      "target": {
+        "kind": "event",
+        "event": {
+          "event_id": "evt-7f3a9c",
+          "revision": "3181161784712000"
+        }
+      },
+      "response": "accepted",
+      "send_updates": "all",
+      "task": "Answer the invitation."
+    }
+  },
+  "expect": {
+    "verdict": "accept",
+    "canonical": "{\"id\":\"call-11\",\"method\":\"fabric_calendar_propose_response\",\"params\":{\"account_id\":\"acct-1\",\"calendar_id\":\"cal-primary\",\"response\":\"accepted\",\"send_updates\":\"all\",\"target\":{\"event\":{\"event_id\":\"evt-7f3a9c\",\"revision\":\"3181161784712000\"},\"kind\":\"event\"},\"task\":\"Answer the invitation.\"},\"protocol\":\"fabric-desktop/1\"}",
+    "command_digest": null,
+    "action_digest": "sha256:bd11394308c91f494a9d60544c1b07a632f84cfe6edc17c9ceef24a47ddf1b6d"
+  }
+}

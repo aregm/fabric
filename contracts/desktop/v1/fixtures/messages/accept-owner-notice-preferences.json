@@ -1,0 +1,78 @@
+{
+  "description": "A preferences change.",
+  "schema": "owner-channel.schema.json#/$defs/owner_notice",
+  "value": {
+    "protocol": "fabric-desktop/1",
+    "sequence": 1308,
+    "change": {
+      "kind": "preferences",
+      "preferences": {
+        "revision": 3,
+        "settings": {
+          "zone": "America/Chicago",
+          "workday": {
+            "days": [
+              "monday",
+              "tuesday",
+              "wednesday",
+              "thursday",
+              "friday"
+            ],
+            "start": "09:00",
+            "end": "17:30"
+          },
+          "protected_times": [
+            {
+              "enabled": true,
+              "range": {
+                "days": [
+                  "monday",
+                  "wednesday",
+                  "friday"
+                ],
+                "start": "12:00",
+                "end": "13:00"
+              }
+            },
+            {
+              "enabled": false,
+              "range": {
+                "days": [
+                  "saturday",
+                  "sunday"
+                ],
+                "start": "00:00",
+                "end": "23:59"
+              }
+            }
+          ],
+          "uninterrupted": {
+            "enabled": true,
+            "minimum_minutes": 120,
+            "part_of_day": "morning"
+          },
+          "buffer": {
+            "enabled": true,
+            "minutes": 10
+          },
+          "warning_calendars": [
+            {
+              "account_id": "acct-1",
+              "calendar_id": "cal-primary"
+            },
+            {
+              "account_id": "acct-2",
+              "calendar_id": "cal-work-primary"
+            }
+          ]
+        }
+      }
+    }
+  },
+  "expect": {
+    "verdict": "accept",
+    "canonical": "{\"change\":{\"kind\":\"preferences\",\"preferences\":{\"revision\":3,\"settings\":{\"buffer\":{\"enabled\":true,\"minutes\":10},\"protected_times\":[{\"enabled\":true,\"range\":{\"days\":[\"monday\",\"wednesday\",\"friday\"],\"end\":\"13:00\",\"start\":\"12:00\"}},{\"enabled\":false,\"range\":{\"days\":[\"saturday\",\"sunday\"],\"end\":\"23:59\",\"start\":\"00:00\"}}],\"uninterrupted\":{\"enabled\":true,\"minimum_minutes\":120,\"part_of_day\":\"morning\"},\"warning_calendars\":[{\"account_id\":\"acct-1\",\"calendar_id\":\"cal-primary\"},{\"account_id\":\"acct-2\",\"calendar_id\":\"cal-work-primary\"}],\"workday\":{\"days\":[\"monday\",\"tuesday\",\"wednesday\",\"thursday\",\"friday\"],\"end\":\"17:30\",\"start\":\"09:00\"},\"zone\":\"America/Chicago\"}}},\"protocol\":\"fabric-desktop/1\",\"sequence\":1308}",
+    "command_digest": null,
+    "action_digest": null
+  }
+}

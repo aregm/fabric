@@ -1,0 +1,23 @@
+{
+  "description": "command_reused for a command id sent again with a different body.",
+  "schema": "owner-channel.schema.json#/$defs/owner_response",
+  "value": {
+    "protocol": "fabric-desktop/1",
+    "id": "command-42",
+    "method": "decide_request",
+    "error": {
+      "code": "command_reused",
+      "message": "This command id was already used for another command.",
+      "retryable": false,
+      "recovery": "report_problem",
+      "correlation_id": "corr-0001",
+      "detail": null
+    }
+  },
+  "expect": {
+    "verdict": "accept",
+    "canonical": "{\"error\":{\"code\":\"command_reused\",\"correlation_id\":\"corr-0001\",\"detail\":null,\"message\":\"This command id was already used for another command.\",\"recovery\":\"report_problem\",\"retryable\":false},\"id\":\"command-42\",\"method\":\"decide_request\",\"protocol\":\"fabric-desktop/1\"}",
+    "command_digest": null,
+    "action_digest": null
+  }
+}

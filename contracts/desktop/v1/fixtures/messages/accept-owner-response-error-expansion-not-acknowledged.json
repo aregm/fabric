@@ -1,0 +1,37 @@
+{
+  "description": "expansion_not_acknowledged with the two-row expansion and its digest.",
+  "schema": "owner-channel.schema.json#/$defs/owner_response",
+  "value": {
+    "protocol": "fabric-desktop/1",
+    "id": "command-5",
+    "method": "save_profile",
+    "error": {
+      "code": "expansion_not_acknowledged",
+      "message": "This profile allows more than before. Confirm it.",
+      "retryable": false,
+      "recovery": "acknowledge_expansion",
+      "correlation_id": "corr-0001",
+      "detail": {
+        "expansion": [
+          {
+            "row": "edit_preexisting_event",
+            "from": "ask",
+            "to": "allow"
+          },
+          {
+            "row": "respond_to_invitation",
+            "from": "ask",
+            "to": "allow"
+          }
+        ],
+        "expansion_digest": "sha256:adb707febbe6adbb34101558819c19d81e389dc6eab34ae51f6cdc29273b1d8e"
+      }
+    }
+  },
+  "expect": {
+    "verdict": "accept",
+    "canonical": "{\"error\":{\"code\":\"expansion_not_acknowledged\",\"correlation_id\":\"corr-0001\",\"detail\":{\"expansion\":[{\"from\":\"ask\",\"row\":\"edit_preexisting_event\",\"to\":\"allow\"},{\"from\":\"ask\",\"row\":\"respond_to_invitation\",\"to\":\"allow\"}],\"expansion_digest\":\"sha256:adb707febbe6adbb34101558819c19d81e389dc6eab34ae51f6cdc29273b1d8e\"},\"message\":\"This profile allows more than before. Confirm it.\",\"recovery\":\"acknowledge_expansion\",\"retryable\":false},\"id\":\"command-5\",\"method\":\"save_profile\",\"protocol\":\"fabric-desktop/1\"}",
+    "command_digest": null,
+    "action_digest": null
+  }
+}

@@ -1,0 +1,103 @@
+{
+  "description": "The policy matrix frozen at gate CD-G0 on 2026-11-15 (plan section 7, ADR-108 D2), and how this contract encodes it. `cell` is the frozen wording of ADR-108 D2; `mode` is the value the profile carries. What a mode means in a row is its cell, decided by the broker's rule theory (CD-W03). `custom_modes` lists what a named custom profile may set. `modes` lists the modes from the least to the most permissive, which is the order an expansion is measured in.",
+  "modes": ["block", "ask", "allow"],
+  "rows": [
+    {
+      "row": "list_and_availability",
+      "decision": "CD-M01",
+      "operation": "List calendars, read availability",
+      "careful": { "mode": "allow", "cell": "Allow in grant" },
+      "flexible": { "mode": "allow", "cell": "Allow in grant" },
+      "custom_modes": ["block", "ask", "allow"]
+    },
+    {
+      "row": "read_event_details",
+      "decision": "CD-M02",
+      "operation": "Read event details",
+      "careful": { "mode": "ask", "cell": "Ask for a grant bound to the requested fields and date window; reads inside it run for the grant's duration" },
+      "flexible": { "mode": "allow", "cell": "Allow inside an accepted grant" },
+      "custom_modes": ["block", "ask", "allow"]
+    },
+    {
+      "row": "create_in_agent_drafts",
+      "decision": "CD-M03",
+      "operation": "Create owner-only event in Agent Drafts",
+      "careful": { "mode": "allow", "cell": "Allow in grant" },
+      "flexible": { "mode": "allow", "cell": "Allow in grant" },
+      "custom_modes": ["block", "ask", "allow"]
+    },
+    {
+      "row": "create_in_existing_calendar",
+      "decision": "CD-M04",
+      "operation": "Create event in a selected existing calendar",
+      "careful": { "mode": "ask", "cell": "Ask" },
+      "flexible": { "mode": "allow", "cell": "Allow in a user-created grant naming the calendars" },
+      "custom_modes": ["block", "ask", "allow"]
+    },
+    {
+      "row": "edit_fabric_created_event",
+      "decision": "CD-M05",
+      "operation": "Edit an event Fabric created",
+      "careful": { "mode": "ask", "cell": "Ask outside Drafts" },
+      "flexible": { "mode": "allow", "cell": "Allow in an accepted scoped grant if no new recipients" },
+      "custom_modes": ["block", "ask", "allow"]
+    },
+    {
+      "row": "edit_preexisting_event",
+      "decision": "CD-M06",
+      "operation": "Edit a pre-existing event",
+      "careful": { "mode": "ask", "cell": "Ask" },
+      "flexible": { "mode": "ask", "cell": "Ask" },
+      "custom_modes": ["block", "ask", "allow"]
+    },
+    {
+      "row": "send_or_change_invitations",
+      "decision": "CD-M07",
+      "operation": "Send or change invitations",
+      "careful": { "mode": "ask", "cell": "Ask" },
+      "flexible": { "mode": "allow", "cell": "Ask by default; Allow only for an approved recipient set" },
+      "custom_modes": ["block", "ask", "allow"]
+    },
+    {
+      "row": "respond_to_invitation",
+      "decision": "CD-M08",
+      "operation": "Respond to an invitation",
+      "careful": { "mode": "ask", "cell": "Ask" },
+      "flexible": { "mode": "ask", "cell": "Ask" },
+      "custom_modes": ["block", "ask", "allow"]
+    },
+    {
+      "row": "delete_event",
+      "decision": "CD-Q05a",
+      "operation": "Delete event, Fabric-created events only",
+      "careful": { "mode": "ask", "cell": "Ask" },
+      "flexible": { "mode": "ask", "cell": "Ask" },
+      "custom_modes": ["ask"]
+    },
+    {
+      "row": "delete_calendar_or_change_sharing",
+      "decision": "CD-M10",
+      "operation": "Delete calendar or change sharing",
+      "careful": { "mode": "block", "cell": "Block" },
+      "flexible": { "mode": "block", "cell": "Block" },
+      "custom_modes": ["block"]
+    }
+  ],
+  "rules_in_every_profile": [
+    {
+      "decision": "G0-STRANGERS",
+      "rule": "An invitation to an address outside every approved recipient set is held for the owner's approval in every profile, custom ones included.",
+      "encoding": "A recipient rule names exact addresses or recipient sets; no rule covers everyone, and no profile field widens it."
+    },
+    {
+      "decision": "CD-Q05a",
+      "rule": "Deleting an event asks in every profile, custom ones included, and only for an event Fabric created.",
+      "encoding": "profile_rows fixes delete_event to ask."
+    },
+    {
+      "decision": "CD-M10",
+      "rule": "Deleting a calendar or changing sharing is blocked in every profile.",
+      "encoding": "profile_rows fixes delete_calendar_or_change_sharing to block, and no agent tool exists for it."
+    }
+  ]
+}

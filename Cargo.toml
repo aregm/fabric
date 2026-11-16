@@ -3,6 +3,7 @@ members = [
     "apps/fabric-cli",
     "apps/fabric-demo",
     "crates/fabric-core",
+    "crates/fabric-desktop-contracts",
     "crates/fabric-policy",
     "crates/fabric-token",
     "crates/fabric-wire",

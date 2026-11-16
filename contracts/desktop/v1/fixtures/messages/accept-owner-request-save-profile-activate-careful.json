@@ -1,0 +1,22 @@
+{
+  "description": "save_profile puts the built-in Careful profile in force.",
+  "schema": "owner-channel.schema.json#/$defs/owner_request",
+  "value": {
+    "protocol": "fabric-desktop/1",
+    "id": "command-3",
+    "method": "save_profile",
+    "params": {
+      "expected_revision": 7,
+      "change": {
+        "kind": "activate",
+        "profile_id": "careful"
+      }
+    }
+  },
+  "expect": {
+    "verdict": "accept",
+    "canonical": "{\"id\":\"command-3\",\"method\":\"save_profile\",\"params\":{\"change\":{\"kind\":\"activate\",\"profile_id\":\"careful\"},\"expected_revision\":7},\"protocol\":\"fabric-desktop/1\"}",
+    "command_digest": "sha256:59f98b3dd64c979dcd81e51c5555a882b5d2c294a4e4a655d82bc064812cf0db",
+    "action_digest": null
+  }
+}

@@ -1,0 +1,15 @@
+{
+  "description": "An owner notice with no protocol member.",
+  "schema": "owner-channel.schema.json#/$defs/owner_notice",
+  "value": {
+    "sequence": 1318,
+    "change": {
+      "kind": "snapshot_required"
+    }
+  },
+  "expect": {
+    "verdict": "reject",
+    "layer": "protocol",
+    "error": "unsupported_protocol"
+  }
+}

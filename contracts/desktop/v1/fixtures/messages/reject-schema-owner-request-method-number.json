@@ -1,0 +1,15 @@
+{
+  "description": "An owner request whose method is a number.",
+  "schema": "owner-channel.schema.json#/$defs/owner_request",
+  "value": {
+    "protocol": "fabric-desktop/1",
+    "id": "snapshot-1",
+    "method": 3,
+    "params": {}
+  },
+  "expect": {
+    "verdict": "reject",
+    "layer": "schema",
+    "error": "unknown_method"
+  }
+}

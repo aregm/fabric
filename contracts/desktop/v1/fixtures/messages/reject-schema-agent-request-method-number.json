@@ -1,0 +1,15 @@
+{
+  "description": "An agent request whose method is a number.",
+  "schema": "agent-channel.schema.json#/$defs/agent_request",
+  "value": {
+    "protocol": "fabric-desktop/1",
+    "id": "call-1",
+    "method": 1,
+    "params": {}
+  },
+  "expect": {
+    "verdict": "reject",
+    "layer": "schema",
+    "error": "unknown_method"
+  }
+}

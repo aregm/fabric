@@ -1,0 +1,21 @@
+{
+  "description": "The prover became unavailable.",
+  "schema": "owner-channel.schema.json#/$defs/owner_notice",
+  "value": {
+    "protocol": "fabric-desktop/1",
+    "sequence": 1317,
+    "change": {
+      "kind": "health",
+      "health": {
+        "prover": "unavailable",
+        "store": "ready"
+      }
+    }
+  },
+  "expect": {
+    "verdict": "accept",
+    "canonical": "{\"change\":{\"health\":{\"prover\":\"unavailable\",\"store\":\"ready\"},\"kind\":\"health\"},\"protocol\":\"fabric-desktop/1\",\"sequence\":1317}",
+    "command_digest": null,
+    "action_digest": null
+  }
+}

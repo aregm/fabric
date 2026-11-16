@@ -1,0 +1,22 @@
+{
+  "description": "The Tauri host opens the owner channel with hello and schema version 1.",
+  "schema": "owner-channel.schema.json#/$defs/owner_request",
+  "value": {
+    "protocol": "fabric-desktop/1",
+    "id": "hello-1",
+    "method": "hello",
+    "params": {
+      "client": {
+        "name": "Fabric Calendar",
+        "build": "0.1.0-dev+20261115"
+      },
+      "schema_version": 1
+    }
+  },
+  "expect": {
+    "verdict": "accept",
+    "canonical": "{\"id\":\"hello-1\",\"method\":\"hello\",\"params\":{\"client\":{\"build\":\"0.1.0-dev+20261115\",\"name\":\"Fabric Calendar\"},\"schema_version\":1},\"protocol\":\"fabric-desktop/1\"}",
+    "command_digest": null,
+    "action_digest": null
+  }
+}

@@ -1,0 +1,40 @@
+{
+  "description": "The availability result: busy intervals only.",
+  "schema": "agent-channel.schema.json#/$defs/agent_response",
+  "value": {
+    "protocol": "fabric-desktop/1",
+    "id": "call-2",
+    "method": "fabric_calendar_availability",
+    "result": {
+      "request": {
+        "request_id": "request-28",
+        "updated_at": "2026-11-20T16:21:00.300Z",
+        "status": {
+          "state": "reconciled"
+        }
+      },
+      "result": {
+        "kind": "availability",
+        "observed_at": "2026-11-20T16:21:00.250Z",
+        "busy": [
+          {
+            "calendar_id": "cal-primary",
+            "start": "2026-11-20T16:00:00.000Z",
+            "end": "2026-11-20T17:00:00.000Z"
+          },
+          {
+            "calendar_id": "cal-team-shared",
+            "start": "2026-11-20T20:00:00.000Z",
+            "end": "2026-11-20T21:30:00.000Z"
+          }
+        ]
+      }
+    }
+  },
+  "expect": {
+    "verdict": "accept",
+    "canonical": "{\"id\":\"call-2\",\"method\":\"fabric_calendar_availability\",\"protocol\":\"fabric-desktop/1\",\"result\":{\"request\":{\"request_id\":\"request-28\",\"status\":{\"state\":\"reconciled\"},\"updated_at\":\"2026-11-20T16:21:00.300Z\"},\"result\":{\"busy\":[{\"calendar_id\":\"cal-primary\",\"end\":\"2026-11-20T17:00:00.000Z\",\"start\":\"2026-11-20T16:00:00.000Z\"},{\"calendar_id\":\"cal-team-shared\",\"end\":\"2026-11-20T21:30:00.000Z\",\"start\":\"2026-11-20T20:00:00.000Z\"}],\"kind\":\"availability\",\"observed_at\":\"2026-11-20T16:21:00.250Z\"}}}",
+    "command_digest": null,
+    "action_digest": null
+  }
+}

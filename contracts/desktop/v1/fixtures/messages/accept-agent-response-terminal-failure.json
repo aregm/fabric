@@ -1,0 +1,26 @@
+{
+  "description": "A terminal failure with its failure code.",
+  "schema": "agent-channel.schema.json#/$defs/agent_response",
+  "value": {
+    "protocol": "fabric-desktop/1",
+    "id": "call-7",
+    "method": "fabric_calendar_propose_update",
+    "result": {
+      "request": {
+        "request_id": "request-26",
+        "updated_at": "2026-11-20T16:10:03.900Z",
+        "status": {
+          "state": "terminal_failure",
+          "failure_code": "revision_conflict"
+        }
+      },
+      "result": null
+    }
+  },
+  "expect": {
+    "verdict": "accept",
+    "canonical": "{\"id\":\"call-7\",\"method\":\"fabric_calendar_propose_update\",\"protocol\":\"fabric-desktop/1\",\"result\":{\"request\":{\"request_id\":\"request-26\",\"status\":{\"failure_code\":\"revision_conflict\",\"state\":\"terminal_failure\"},\"updated_at\":\"2026-11-20T16:10:03.900Z\"},\"result\":null}}",
+    "command_digest": null,
+    "action_digest": null
+  }
+}

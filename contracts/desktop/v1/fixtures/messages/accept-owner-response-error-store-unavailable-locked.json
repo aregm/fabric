@@ -1,0 +1,25 @@
+{
+  "description": "store_unavailable because the store is locked.",
+  "schema": "owner-channel.schema.json#/$defs/owner_response",
+  "value": {
+    "protocol": "fabric-desktop/1",
+    "id": "snapshot-4",
+    "method": "get_snapshot",
+    "error": {
+      "code": "store_unavailable",
+      "message": "The store is locked.",
+      "retryable": true,
+      "recovery": "unlock_store",
+      "correlation_id": "corr-0001",
+      "detail": {
+        "reason": "locked"
+      }
+    }
+  },
+  "expect": {
+    "verdict": "accept",
+    "canonical": "{\"error\":{\"code\":\"store_unavailable\",\"correlation_id\":\"corr-0001\",\"detail\":{\"reason\":\"locked\"},\"message\":\"The store is locked.\",\"recovery\":\"unlock_store\",\"retryable\":true},\"id\":\"snapshot-4\",\"method\":\"get_snapshot\",\"protocol\":\"fabric-desktop/1\"}",
+    "command_digest": null,
+    "action_digest": null
+  }
+}

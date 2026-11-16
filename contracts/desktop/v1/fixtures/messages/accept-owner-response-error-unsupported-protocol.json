@@ -1,0 +1,28 @@
+{
+  "description": "The answer to a frame of protocol fabric-desktop/2.",
+  "schema": "owner-channel.schema.json#/$defs/owner_response",
+  "value": {
+    "protocol": "fabric-desktop/1",
+    "id": null,
+    "method": null,
+    "error": {
+      "code": "unsupported_protocol",
+      "message": "This version of Fabric speaks fabric-desktop/1 only.",
+      "retryable": false,
+      "recovery": "update_app",
+      "correlation_id": "corr-0001",
+      "detail": {
+        "received": "fabric-desktop/2",
+        "supported": [
+          "fabric-desktop/1"
+        ]
+      }
+    }
+  },
+  "expect": {
+    "verdict": "accept",
+    "canonical": "{\"error\":{\"code\":\"unsupported_protocol\",\"correlation_id\":\"corr-0001\",\"detail\":{\"received\":\"fabric-desktop/2\",\"supported\":[\"fabric-desktop/1\"]},\"message\":\"This version of Fabric speaks fabric-desktop/1 only.\",\"recovery\":\"update_app\",\"retryable\":false},\"id\":null,\"method\":null,\"protocol\":\"fabric-desktop/1\"}",
+    "command_digest": null,
+    "action_digest": null
+  }
+}

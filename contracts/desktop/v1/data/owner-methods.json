@@ -1,0 +1,18 @@
+{
+  "description": "The methods of the owner channel (plan section 9.1). A method with `command` true changes broker state: its frame id is the command id, and the broker deduplicates it by command id and command digest. `params` and `result` name the schemas.",
+  "methods": [
+    { "method": "hello", "command": false, "params": "owner-channel.schema.json#/$defs/params_hello", "result": "owner-channel.schema.json#/$defs/result_hello" },
+    { "method": "get_snapshot", "command": false, "params": "owner-channel.schema.json#/$defs/params_get_snapshot", "result": "owner-channel.schema.json#/$defs/snapshot" },
+    { "method": "connect_google", "command": true, "params": "owner-channel.schema.json#/$defs/params_connect_google", "result": "owner-channel.schema.json#/$defs/result_connect_google" },
+    { "method": "save_profile", "command": true, "params": "owner-channel.schema.json#/$defs/params_save_profile", "result": "owner-channel.schema.json#/$defs/result_save_profile" },
+    { "method": "save_preferences", "command": true, "params": "owner-channel.schema.json#/$defs/params_save_preferences", "result": "owner-channel.schema.json#/$defs/result_save_preferences" },
+    { "method": "save_group", "command": true, "params": "owner-channel.schema.json#/$defs/params_save_group", "result": "owner-channel.schema.json#/$defs/result_save_group" },
+    { "method": "decide_request", "command": true, "params": "owner-channel.schema.json#/$defs/params_decide_request", "result": "owner-channel.schema.json#/$defs/result_decide_request" },
+    { "method": "pause_agent", "command": true, "params": "owner-channel.schema.json#/$defs/params_pause_agent", "result": "owner-channel.schema.json#/$defs/result_pause_agent" },
+    { "method": "revoke_grant", "command": true, "params": "owner-channel.schema.json#/$defs/params_revoke_grant", "result": "owner-channel.schema.json#/$defs/result_revoke_grant" },
+    { "method": "get_request_details", "command": false, "params": "owner-channel.schema.json#/$defs/params_get_request_details", "result": "owner-channel.schema.json#/$defs/request_details" },
+    { "method": "get_proof", "command": false, "params": "owner-channel.schema.json#/$defs/params_get_proof", "result": "owner-channel.schema.json#/$defs/proof_report" },
+    { "method": "subscribe", "command": false, "params": "owner-channel.schema.json#/$defs/params_subscribe", "result": "owner-channel.schema.json#/$defs/result_subscribe" },
+    { "method": "disconnect_google", "command": true, "params": "owner-channel.schema.json#/$defs/params_disconnect_google", "result": "owner-channel.schema.json#/$defs/result_disconnect_google" }
+  ]
+}

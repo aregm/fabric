@@ -1,0 +1,63 @@
+{
+  "description": "A session grant ended after the idle timeout.",
+  "schema": "owner-channel.schema.json#/$defs/owner_notice",
+  "value": {
+    "protocol": "fabric-desktop/1",
+    "sequence": 1315,
+    "change": {
+      "kind": "grant",
+      "grant": {
+        "grant_id": "grant-5",
+        "revision": 2,
+        "agent_id": "agent-claude-code",
+        "purpose": "Check this week's meetings while planning the release.",
+        "tools": [
+          "fabric_calendar_read",
+          "fabric_request_result"
+        ],
+        "scope": {
+          "calendars": [
+            {
+              "account_id": "acct-1",
+              "calendar_id": "cal-primary"
+            }
+          ],
+          "window": {
+            "start": "2026-11-20T06:00:00.000Z",
+            "end": "2026-11-21T06:00:00.000Z"
+          },
+          "fields": [
+            "time",
+            "title"
+          ],
+          "recipients": null,
+          "send_updates": null
+        },
+        "term": {
+          "kind": "session",
+          "session_id": "session-claude-code-7"
+        },
+        "origin": {
+          "request_id": "request-15",
+          "approval_digest": "sha256:9ffdeaab4d3c5b25375e3861c0880d5f2fa9c737c6cc785c27db75f789c76c07"
+        },
+        "policy": {
+          "profile_id": "careful",
+          "version": 1
+        },
+        "revocation_epoch": 0,
+        "created_at": "2026-11-20T14:05:00.000Z",
+        "ended": {
+          "at": "2026-11-20T15:42:41.503Z",
+          "reason": "session_idle_timeout"
+        }
+      }
+    }
+  },
+  "expect": {
+    "verdict": "accept",
+    "canonical": "{\"change\":{\"grant\":{\"agent_id\":\"agent-claude-code\",\"created_at\":\"2026-11-20T14:05:00.000Z\",\"ended\":{\"at\":\"2026-11-20T15:42:41.503Z\",\"reason\":\"session_idle_timeout\"},\"grant_id\":\"grant-5\",\"origin\":{\"approval_digest\":\"sha256:9ffdeaab4d3c5b25375e3861c0880d5f2fa9c737c6cc785c27db75f789c76c07\",\"request_id\":\"request-15\"},\"policy\":{\"profile_id\":\"careful\",\"version\":1},\"purpose\":\"Check this week's meetings while planning the release.\",\"revision\":2,\"revocation_epoch\":0,\"scope\":{\"calendars\":[{\"account_id\":\"acct-1\",\"calendar_id\":\"cal-primary\"}],\"fields\":[\"time\",\"title\"],\"recipients\":null,\"send_updates\":null,\"window\":{\"end\":\"2026-11-21T06:00:00.000Z\",\"start\":\"2026-11-20T06:00:00.000Z\"}},\"term\":{\"kind\":\"session\",\"session_id\":\"session-claude-code-7\"},\"tools\":[\"fabric_calendar_read\",\"fabric_request_result\"]},\"kind\":\"grant\"},\"protocol\":\"fabric-desktop/1\",\"sequence\":1315}",
+    "command_digest": null,
+    "action_digest": null
+  }
+}

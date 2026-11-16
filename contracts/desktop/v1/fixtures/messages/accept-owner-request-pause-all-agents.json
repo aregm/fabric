@@ -1,0 +1,21 @@
+{
+  "description": "Pause every agent at once.",
+  "schema": "owner-channel.schema.json#/$defs/owner_request",
+  "value": {
+    "protocol": "fabric-desktop/1",
+    "id": "command-48",
+    "method": "pause_agent",
+    "params": {
+      "target": {
+        "kind": "all_agents"
+      },
+      "paused": true
+    }
+  },
+  "expect": {
+    "verdict": "accept",
+    "canonical": "{\"id\":\"command-48\",\"method\":\"pause_agent\",\"params\":{\"paused\":true,\"target\":{\"kind\":\"all_agents\"}},\"protocol\":\"fabric-desktop/1\"}",
+    "command_digest": "sha256:7338439705028aea8d678791c1e1cfb4122cc8b98ca265debe4e302d751d17a5",
+    "action_digest": null
+  }
+}

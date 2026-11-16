@@ -1,0 +1,10 @@
+{
+  "description": "The line feed that ends a frame is not part of the frame.",
+  "schema": "owner-channel.schema.json#/$defs/owner_request",
+  "text": "{\"protocol\":\"fabric-desktop/1\",\"id\":\"query-7\",\"method\":\"get_snapshot\",\"params\":{}}\n",
+  "expect": {
+    "verdict": "reject",
+    "layer": "frame",
+    "error": "malformed_frame"
+  }
+}

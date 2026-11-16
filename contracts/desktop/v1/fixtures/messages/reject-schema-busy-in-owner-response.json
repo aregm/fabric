@@ -1,0 +1,26 @@
+{
+  "description": "busy in an owner response.",
+  "schema": "owner-channel.schema.json#/$defs/owner_response",
+  "value": {
+    "protocol": "fabric-desktop/1",
+    "id": "call-20",
+    "method": "decide_request",
+    "error": {
+      "code": "busy",
+      "message": "Too many requests; try again later.",
+      "retryable": true,
+      "recovery": "retry_later",
+      "correlation_id": "corr-0001",
+      "detail": {
+        "limit": "open_requests_per_agent",
+        "maximum": 25,
+        "retry_after_ms": 4000
+      }
+    }
+  },
+  "expect": {
+    "verdict": "reject",
+    "layer": "schema",
+    "error": "invalid_params"
+  }
+}

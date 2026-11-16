@@ -1,0 +1,38 @@
+{
+  "description": "A new version of an existing custom profile with every free row allow, the widest a custom profile can be.",
+  "schema": "owner-channel.schema.json#/$defs/owner_request",
+  "value": {
+    "protocol": "fabric-desktop/1",
+    "id": "command-7",
+    "method": "save_profile",
+    "params": {
+      "expected_revision": 8,
+      "change": {
+        "kind": "save_custom",
+        "profile": {
+          "profile_id": "custom-assistant",
+          "name": "Assistant hours",
+          "rows": {
+            "list_and_availability": "allow",
+            "read_event_details": "allow",
+            "create_in_agent_drafts": "allow",
+            "create_in_existing_calendar": "allow",
+            "edit_fabric_created_event": "allow",
+            "edit_preexisting_event": "allow",
+            "send_or_change_invitations": "allow",
+            "respond_to_invitation": "allow",
+            "delete_event": "ask",
+            "delete_calendar_or_change_sharing": "block"
+          }
+        },
+        "acknowledged_expansion": "sha256:a81d70ad2b029a31769ade64c4781dd7925533636c96ffbfac7895b1f4de66f9"
+      }
+    }
+  },
+  "expect": {
+    "verdict": "accept",
+    "canonical": "{\"id\":\"command-7\",\"method\":\"save_profile\",\"params\":{\"change\":{\"acknowledged_expansion\":\"sha256:a81d70ad2b029a31769ade64c4781dd7925533636c96ffbfac7895b1f4de66f9\",\"kind\":\"save_custom\",\"profile\":{\"name\":\"Assistant hours\",\"profile_id\":\"custom-assistant\",\"rows\":{\"create_in_agent_drafts\":\"allow\",\"create_in_existing_calendar\":\"allow\",\"delete_calendar_or_change_sharing\":\"block\",\"delete_event\":\"ask\",\"edit_fabric_created_event\":\"allow\",\"edit_preexisting_event\":\"allow\",\"list_and_availability\":\"allow\",\"read_event_details\":\"allow\",\"respond_to_invitation\":\"allow\",\"send_or_change_invitations\":\"allow\"}}},\"expected_revision\":8},\"protocol\":\"fabric-desktop/1\"}",
+    "command_digest": "sha256:13baaf207d77af55529cd06f78ee93f7636326475b852e692b99e3810a0a445e",
+    "action_digest": null
+  }
+}

@@ -1,0 +1,21 @@
+{
+  "description": "An agent asks for the owner method save_profile.",
+  "schema": "agent-channel.schema.json#/$defs/agent_request",
+  "value": {
+    "protocol": "fabric-desktop/1",
+    "id": "call-30",
+    "method": "save_profile",
+    "params": {
+      "expected_revision": 7,
+      "change": {
+        "kind": "activate",
+        "profile_id": "flexible"
+      }
+    }
+  },
+  "expect": {
+    "verdict": "reject",
+    "layer": "schema",
+    "error": "unknown_method"
+  }
+}

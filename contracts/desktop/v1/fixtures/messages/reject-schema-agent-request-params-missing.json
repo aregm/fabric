@@ -1,0 +1,14 @@
+{
+  "description": "fabric_calendar_list without params.",
+  "schema": "agent-channel.schema.json#/$defs/agent_request",
+  "value": {
+    "protocol": "fabric-desktop/1",
+    "id": "call-1",
+    "method": "fabric_calendar_list"
+  },
+  "expect": {
+    "verdict": "reject",
+    "layer": "schema",
+    "error": "invalid_params"
+  }
+}

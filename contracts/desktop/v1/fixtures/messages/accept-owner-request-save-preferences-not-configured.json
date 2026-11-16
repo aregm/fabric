@@ -1,0 +1,26 @@
+{
+  "description": "save_preferences clearing every preference: nulls and empty lists mean not configured.",
+  "schema": "owner-channel.schema.json#/$defs/owner_request",
+  "value": {
+    "protocol": "fabric-desktop/1",
+    "id": "command-9",
+    "method": "save_preferences",
+    "params": {
+      "expected_revision": 3,
+      "settings": {
+        "zone": null,
+        "workday": null,
+        "protected_times": [],
+        "uninterrupted": null,
+        "buffer": null,
+        "warning_calendars": []
+      }
+    }
+  },
+  "expect": {
+    "verdict": "accept",
+    "canonical": "{\"id\":\"command-9\",\"method\":\"save_preferences\",\"params\":{\"expected_revision\":3,\"settings\":{\"buffer\":null,\"protected_times\":[],\"uninterrupted\":null,\"warning_calendars\":[],\"workday\":null,\"zone\":null}},\"protocol\":\"fabric-desktop/1\"}",
+    "command_digest": "sha256:4098cb889da469b5e67b5ada5a4192563df20b1078931f5b37fafac59c0b0f0c",
+    "action_digest": null
+  }
+}

@@ -1,0 +1,34 @@
+{
+  "description": "A proposed update whose changes carry attendees.",
+  "schema": "agent-channel.schema.json#/$defs/agent_request",
+  "value": {
+    "protocol": "fabric-desktop/1",
+    "id": "call-8",
+    "method": "fabric_calendar_propose_update",
+    "params": {
+      "account_id": "acct-1",
+      "calendar_id": "cal-primary",
+      "event": {
+        "event_id": "evt-7f3a9c",
+        "revision": "3181161784712000"
+      },
+      "changes": {
+        "title": "Design review",
+        "start": null,
+        "end": null,
+        "description": null,
+        "location": null,
+        "attendees": [
+          "ally@example.net"
+        ]
+      },
+      "send_updates": "none",
+      "task": "Move the review."
+    }
+  },
+  "expect": {
+    "verdict": "reject",
+    "layer": "schema",
+    "error": "invalid_params"
+  }
+}

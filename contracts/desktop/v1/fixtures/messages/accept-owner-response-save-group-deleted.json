@@ -1,0 +1,19 @@
+{
+  "description": "save_group answers a deletion with a null recipient set.",
+  "schema": "owner-channel.schema.json#/$defs/owner_response",
+  "value": {
+    "protocol": "fabric-desktop/1",
+    "id": "command-13",
+    "method": "save_group",
+    "result": {
+      "commit_sequence": 1292,
+      "recipient_set": null
+    }
+  },
+  "expect": {
+    "verdict": "accept",
+    "canonical": "{\"id\":\"command-13\",\"method\":\"save_group\",\"protocol\":\"fabric-desktop/1\",\"result\":{\"commit_sequence\":1292,\"recipient_set\":null}}",
+    "command_digest": null,
+    "action_digest": null
+  }
+}

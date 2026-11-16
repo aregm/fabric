@@ -1,0 +1,29 @@
+{
+  "description": "A blocked request: the denial names the rule and an explanation, not the proof.",
+  "schema": "agent-channel.schema.json#/$defs/agent_response",
+  "value": {
+    "protocol": "fabric-desktop/1",
+    "id": "call-8",
+    "method": "fabric_calendar_propose_update",
+    "result": {
+      "request": {
+        "request_id": "request-22",
+        "updated_at": "2026-11-20T15:30:00.412Z",
+        "status": {
+          "state": "blocked",
+          "denial": {
+            "rule": "recurring_mutation_unsupported",
+            "explanation": "Version 1 does not change recurring events; only a reply to one occurrence is supported."
+          }
+        }
+      },
+      "result": null
+    }
+  },
+  "expect": {
+    "verdict": "accept",
+    "canonical": "{\"id\":\"call-8\",\"method\":\"fabric_calendar_propose_update\",\"protocol\":\"fabric-desktop/1\",\"result\":{\"request\":{\"request_id\":\"request-22\",\"status\":{\"denial\":{\"explanation\":\"Version 1 does not change recurring events; only a reply to one occurrence is supported.\",\"rule\":\"recurring_mutation_unsupported\"},\"state\":\"blocked\"},\"updated_at\":\"2026-11-20T15:30:00.412Z\"},\"result\":null}}",
+    "command_digest": null,
+    "action_digest": null
+  }
+}

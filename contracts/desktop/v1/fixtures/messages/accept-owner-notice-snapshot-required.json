@@ -1,0 +1,17 @@
+{
+  "description": "The subscriber fell behind and must take a fresh snapshot.",
+  "schema": "owner-channel.schema.json#/$defs/owner_notice",
+  "value": {
+    "protocol": "fabric-desktop/1",
+    "sequence": 1318,
+    "change": {
+      "kind": "snapshot_required"
+    }
+  },
+  "expect": {
+    "verdict": "accept",
+    "canonical": "{\"change\":{\"kind\":\"snapshot_required\"},\"protocol\":\"fabric-desktop/1\",\"sequence\":1318}",
+    "command_digest": null,
+    "action_digest": null
+  }
+}

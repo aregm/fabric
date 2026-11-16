@@ -1,0 +1,26 @@
+{
+  "description": "The owner must decide: the state is pending_approval, the result is null, and the card's expiry is given.",
+  "schema": "agent-channel.schema.json#/$defs/agent_response",
+  "value": {
+    "protocol": "fabric-desktop/1",
+    "id": "call-9",
+    "method": "fabric_calendar_propose_invitation",
+    "result": {
+      "request": {
+        "request_id": "request-17",
+        "updated_at": "2026-11-20T15:00:01.250Z",
+        "status": {
+          "state": "pending_approval",
+          "approval_expires_at": "2026-11-21T15:00:00.000Z"
+        }
+      },
+      "result": null
+    }
+  },
+  "expect": {
+    "verdict": "accept",
+    "canonical": "{\"id\":\"call-9\",\"method\":\"fabric_calendar_propose_invitation\",\"protocol\":\"fabric-desktop/1\",\"result\":{\"request\":{\"request_id\":\"request-17\",\"status\":{\"approval_expires_at\":\"2026-11-21T15:00:00.000Z\",\"state\":\"pending_approval\"},\"updated_at\":\"2026-11-20T15:00:01.250Z\"},\"result\":null}}",
+    "command_digest": null,
+    "action_digest": null
+  }
+}

@@ -1,0 +1,21 @@
+{
+  "description": "An authorization without proof_id.",
+  "schema": "owner-channel.schema.json#/$defs/authorization",
+  "value": {
+    "profile": "fabric-broker-authorization/1",
+    "authorization_id": "authz-25-2",
+    "request_id": "request-25",
+    "agent_id": "agent-claude-desktop",
+    "action_digest": "sha256:4a1ac4edd8a9d518f2c1406e814ebb82d7acb81ef2c1095458a62a3d0f5bce75",
+    "grant_id": "grant-8",
+    "issued_at": "2026-11-20T16:05:02.000Z",
+    "expires_at": "2026-11-20T16:06:02.000Z",
+    "lifetime_seconds": 60,
+    "consumed_at": "2026-11-20T16:05:02.350Z"
+  },
+  "expect": {
+    "verdict": "reject",
+    "layer": "schema",
+    "error": "invalid_params"
+  }
+}

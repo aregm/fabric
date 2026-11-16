@@ -1,0 +1,24 @@
+{
+  "description": "A request waiting for approval.",
+  "schema": "owner-channel.schema.json#/$defs/request",
+  "value": {
+    "request_id": "request-17",
+    "revision": 3,
+    "agent_id": "agent-claude-desktop",
+    "tool": "fabric_calendar_propose_invitation",
+    "account_id": "acct-1",
+    "received_at": "2026-11-20T15:00:00.000Z",
+    "updated_at": "2026-11-20T15:00:01.250Z",
+    "request_digest": "sha256:9448c124de44cd137bb4a3c63df81e9a3a0ae40af06db3642c413320c1d76053",
+    "status": {
+      "state": "pending_approval",
+      "approval_expires_at": "2026-11-21T15:00:00.000Z"
+    }
+  },
+  "expect": {
+    "verdict": "accept",
+    "canonical": "{\"account_id\":\"acct-1\",\"agent_id\":\"agent-claude-desktop\",\"received_at\":\"2026-11-20T15:00:00.000Z\",\"request_digest\":\"sha256:9448c124de44cd137bb4a3c63df81e9a3a0ae40af06db3642c413320c1d76053\",\"request_id\":\"request-17\",\"revision\":3,\"status\":{\"approval_expires_at\":\"2026-11-21T15:00:00.000Z\",\"state\":\"pending_approval\"},\"tool\":\"fabric_calendar_propose_invitation\",\"updated_at\":\"2026-11-20T15:00:01.250Z\"}",
+    "command_digest": null,
+    "action_digest": null
+  }
+}

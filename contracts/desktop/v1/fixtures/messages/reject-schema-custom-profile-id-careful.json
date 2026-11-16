@@ -1,0 +1,37 @@
+{
+  "description": "A custom profile draft whose id is careful.",
+  "schema": "owner-channel.schema.json#/$defs/owner_request",
+  "value": {
+    "protocol": "fabric-desktop/1",
+    "id": "command-70",
+    "method": "save_profile",
+    "params": {
+      "expected_revision": 7,
+      "change": {
+        "kind": "save_custom",
+        "profile": {
+          "profile_id": "careful",
+          "name": "Mine",
+          "rows": {
+            "list_and_availability": "allow",
+            "read_event_details": "ask",
+            "create_in_agent_drafts": "allow",
+            "create_in_existing_calendar": "ask",
+            "edit_fabric_created_event": "ask",
+            "edit_preexisting_event": "ask",
+            "send_or_change_invitations": "ask",
+            "respond_to_invitation": "ask",
+            "delete_event": "ask",
+            "delete_calendar_or_change_sharing": "block"
+          }
+        },
+        "acknowledged_expansion": null
+      }
+    }
+  },
+  "expect": {
+    "verdict": "reject",
+    "layer": "schema",
+    "error": "invalid_params"
+  }
+}

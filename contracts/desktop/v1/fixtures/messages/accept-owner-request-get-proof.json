@@ -1,0 +1,18 @@
+{
+  "description": "Ask for one proof report.",
+  "schema": "owner-channel.schema.json#/$defs/owner_request",
+  "value": {
+    "protocol": "fabric-desktop/1",
+    "id": "proof-q-1",
+    "method": "get_proof",
+    "params": {
+      "proof_id": "proof-21-classification"
+    }
+  },
+  "expect": {
+    "verdict": "accept",
+    "canonical": "{\"id\":\"proof-q-1\",\"method\":\"get_proof\",\"params\":{\"proof_id\":\"proof-21-classification\"},\"protocol\":\"fabric-desktop/1\"}",
+    "command_digest": null,
+    "action_digest": null
+  }
+}

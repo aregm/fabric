@@ -1,0 +1,42 @@
+{
+  "description": "Approve invitations until revoked, with a recipient rule that names two recipient sets.",
+  "schema": "owner-channel.schema.json#/$defs/owner_request",
+  "value": {
+    "protocol": "fabric-desktop/1",
+    "id": "command-44",
+    "method": "decide_request",
+    "params": {
+      "request_id": "request-9",
+      "request_digest": "sha256:1757c293d186e2a39cedad79b78783dbb663bcc4808664ee237542736b002786",
+      "expected_revision": 2,
+      "decision": "approve",
+      "selected": {
+        "calendars": [
+          {
+            "account_id": "acct-1",
+            "calendar_id": "cal-team-shared"
+          }
+        ],
+        "window": null,
+        "fields": null,
+        "recipients": {
+          "kind": "recipient_sets",
+          "recipient_set_ids": [
+            "rset-team",
+            "rset-people-family"
+          ]
+        },
+        "send_updates": "all"
+      },
+      "duration": {
+        "kind": "until_revoked"
+      }
+    }
+  },
+  "expect": {
+    "verdict": "accept",
+    "canonical": "{\"id\":\"command-44\",\"method\":\"decide_request\",\"params\":{\"decision\":\"approve\",\"duration\":{\"kind\":\"until_revoked\"},\"expected_revision\":2,\"request_digest\":\"sha256:1757c293d186e2a39cedad79b78783dbb663bcc4808664ee237542736b002786\",\"request_id\":\"request-9\",\"selected\":{\"calendars\":[{\"account_id\":\"acct-1\",\"calendar_id\":\"cal-team-shared\"}],\"fields\":null,\"recipients\":{\"kind\":\"recipient_sets\",\"recipient_set_ids\":[\"rset-team\",\"rset-people-family\"]},\"send_updates\":\"all\",\"window\":null}},\"protocol\":\"fabric-desktop/1\"}",
+    "command_digest": "sha256:64a485a5ee7676b319377b528b48d561e5b9ecbe3d50b54999e97127cde44c4f",
+    "action_digest": null
+  }
+}

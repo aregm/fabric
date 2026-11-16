@@ -1,0 +1,16 @@
+{
+  "description": "Reading a result is an action.",
+  "schema": "agent-channel.schema.json#/$defs/action",
+  "value": {
+    "tool": "fabric_request_result",
+    "arguments": {
+      "request_id": "request-25"
+    }
+  },
+  "expect": {
+    "verdict": "accept",
+    "canonical": "{\"arguments\":{\"request_id\":\"request-25\"},\"tool\":\"fabric_request_result\"}",
+    "command_digest": null,
+    "action_digest": null
+  }
+}

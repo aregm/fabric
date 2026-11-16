@@ -1,0 +1,15 @@
+{
+  "description": "An owner request of protocol fabric-desktop/1.1.",
+  "schema": "owner-channel.schema.json#/$defs/owner_request",
+  "value": {
+    "protocol": "fabric-desktop/1.1",
+    "id": "snapshot-1",
+    "method": "get_snapshot",
+    "params": {}
+  },
+  "expect": {
+    "verdict": "reject",
+    "layer": "protocol",
+    "error": "unsupported_protocol"
+  }
+}

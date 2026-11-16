@@ -1,0 +1,17 @@
+{
+  "description": "An owner response whose protocol is the number 1.",
+  "schema": "owner-channel.schema.json#/$defs/owner_response",
+  "value": {
+    "protocol": 1,
+    "id": "subscribe-2",
+    "method": "subscribe",
+    "result": {
+      "cursor": 1287
+    }
+  },
+  "expect": {
+    "verdict": "reject",
+    "layer": "protocol",
+    "error": "unsupported_protocol"
+  }
+}

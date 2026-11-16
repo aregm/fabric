@@ -1,0 +1,27 @@
+{
+  "description": "A tool outcome whose result has the unknown kind warnings.",
+  "schema": "agent-channel.schema.json#/$defs/agent_response",
+  "value": {
+    "protocol": "fabric-desktop/1",
+    "id": "call-6",
+    "method": "fabric_calendar_propose_create",
+    "result": {
+      "request": {
+        "request_id": "request-25",
+        "updated_at": "2026-11-20T16:05:03.100Z",
+        "status": {
+          "state": "applied"
+        }
+      },
+      "result": {
+        "kind": "warnings",
+        "event": null
+      }
+    }
+  },
+  "expect": {
+    "verdict": "reject",
+    "layer": "schema",
+    "error": "invalid_params"
+  }
+}

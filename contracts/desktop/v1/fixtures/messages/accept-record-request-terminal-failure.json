@@ -1,0 +1,27 @@
+{
+  "description": "A request in terminal_failure.",
+  "schema": "owner-channel.schema.json#/$defs/request",
+  "value": {
+    "request_id": "request-26",
+    "revision": 8,
+    "agent_id": "agent-claude-desktop",
+    "tool": "fabric_calendar_propose_update",
+    "account_id": "acct-1",
+    "received_at": "2026-11-20T16:10:00.000Z",
+    "updated_at": "2026-11-20T16:10:03.900Z",
+    "request_digest": "sha256:6a66cd1c0aca0bafd49fcd63aedbc2b46632b5d180f6a843a787fc20664cf138",
+    "status": {
+      "state": "terminal_failure",
+      "failure": {
+        "code": "revision_conflict",
+        "explanation": "The event changed at Google after the agent read it, so the update was not applied."
+      }
+    }
+  },
+  "expect": {
+    "verdict": "accept",
+    "canonical": "{\"account_id\":\"acct-1\",\"agent_id\":\"agent-claude-desktop\",\"received_at\":\"2026-11-20T16:10:00.000Z\",\"request_digest\":\"sha256:6a66cd1c0aca0bafd49fcd63aedbc2b46632b5d180f6a843a787fc20664cf138\",\"request_id\":\"request-26\",\"revision\":8,\"status\":{\"failure\":{\"code\":\"revision_conflict\",\"explanation\":\"The event changed at Google after the agent read it, so the update was not applied.\"},\"state\":\"terminal_failure\"},\"tool\":\"fabric_calendar_propose_update\",\"updated_at\":\"2026-11-20T16:10:03.900Z\"}",
+    "command_digest": null,
+    "action_digest": null
+  }
+}

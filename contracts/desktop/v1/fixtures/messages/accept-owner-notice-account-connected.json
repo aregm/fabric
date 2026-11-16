@@ -1,0 +1,46 @@
+{
+  "description": "An account change: the account is connected.",
+  "schema": "owner-channel.schema.json#/$defs/owner_notice",
+  "value": {
+    "protocol": "fabric-desktop/1",
+    "sequence": 1300,
+    "change": {
+      "kind": "account",
+      "account": {
+        "account_id": "acct-1",
+        "revision": 5,
+        "state": "connected",
+        "email": "owner@example.com",
+        "calendars": [
+          {
+            "calendar_id": "cal-primary",
+            "name": "Owner",
+            "access": "owner",
+            "selected": true,
+            "agent_drafts": false
+          },
+          {
+            "calendar_id": "cal-drafts",
+            "name": "Agent Drafts",
+            "access": "owner",
+            "selected": true,
+            "agent_drafts": true
+          },
+          {
+            "calendar_id": "cal-team-shared",
+            "name": "Team schedule",
+            "access": "writer",
+            "selected": true,
+            "agent_drafts": false
+          }
+        ]
+      }
+    }
+  },
+  "expect": {
+    "verdict": "accept",
+    "canonical": "{\"change\":{\"account\":{\"account_id\":\"acct-1\",\"calendars\":[{\"access\":\"owner\",\"agent_drafts\":false,\"calendar_id\":\"cal-primary\",\"name\":\"Owner\",\"selected\":true},{\"access\":\"owner\",\"agent_drafts\":true,\"calendar_id\":\"cal-drafts\",\"name\":\"Agent Drafts\",\"selected\":true},{\"access\":\"writer\",\"agent_drafts\":false,\"calendar_id\":\"cal-team-shared\",\"name\":\"Team schedule\",\"selected\":true}],\"email\":\"owner@example.com\",\"revision\":5,\"state\":\"connected\"},\"kind\":\"account\"},\"protocol\":\"fabric-desktop/1\",\"sequence\":1300}",
+    "command_digest": null,
+    "action_digest": null
+  }
+}

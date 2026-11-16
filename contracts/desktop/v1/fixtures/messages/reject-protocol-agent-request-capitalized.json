@@ -1,0 +1,15 @@
+{
+  "description": "An agent request whose protocol differs only in case.",
+  "schema": "agent-channel.schema.json#/$defs/agent_request",
+  "value": {
+    "protocol": "Fabric-Desktop/1",
+    "id": "call-1",
+    "method": "fabric_calendar_list",
+    "params": {}
+  },
+  "expect": {
+    "verdict": "reject",
+    "layer": "protocol",
+    "error": "unsupported_protocol"
+  }
+}

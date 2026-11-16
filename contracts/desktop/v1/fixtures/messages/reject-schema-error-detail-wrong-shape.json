@@ -1,0 +1,22 @@
+{
+  "description": "conflict without its detail.",
+  "schema": "owner-channel.schema.json#/$defs/owner_response",
+  "value": {
+    "protocol": "fabric-desktop/1",
+    "id": "command-3",
+    "method": "save_profile",
+    "error": {
+      "code": "conflict",
+      "message": "Changed.",
+      "retryable": false,
+      "recovery": "refresh_snapshot",
+      "correlation_id": "corr-0001",
+      "detail": null
+    }
+  },
+  "expect": {
+    "verdict": "reject",
+    "layer": "schema",
+    "error": "invalid_params"
+  }
+}

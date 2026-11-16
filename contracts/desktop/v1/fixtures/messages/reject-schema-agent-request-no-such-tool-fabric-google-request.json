@@ -1,0 +1,18 @@
+{
+  "description": "An agent asks for fabric_google_request, which must not exist.",
+  "schema": "agent-channel.schema.json#/$defs/agent_request",
+  "value": {
+    "protocol": "fabric-desktop/1",
+    "id": "call-31",
+    "method": "fabric_google_request",
+    "params": {
+      "account_id": "acct-1",
+      "task": "x"
+    }
+  },
+  "expect": {
+    "verdict": "reject",
+    "layer": "schema",
+    "error": "unknown_method"
+  }
+}

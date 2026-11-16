@@ -1,0 +1,20 @@
+{
+  "description": "Limits with a zero.",
+  "schema": "common.schema.json#/$defs/limits",
+  "value": {
+    "max_frame_bytes": 1048576,
+    "subscriber_queue_notices": 256,
+    "open_requests_total": 100,
+    "open_requests_per_agent": 25,
+    "requests_per_minute_per_agent": 15,
+    "open_approval_cards_per_agent": 0,
+    "session_idle_timeout_seconds": 1800,
+    "authorization_lifetime_seconds": 60,
+    "approval_expiry_seconds": 86400
+  },
+  "expect": {
+    "verdict": "reject",
+    "layer": "schema",
+    "error": "invalid_params"
+  }
+}

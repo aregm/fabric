@@ -1,0 +1,18 @@
+{
+  "description": "An agent asks for the owner method revoke_grant.",
+  "schema": "agent-channel.schema.json#/$defs/agent_request",
+  "value": {
+    "protocol": "fabric-desktop/1",
+    "id": "call-30",
+    "method": "revoke_grant",
+    "params": {
+      "grant_id": "grant-6",
+      "expected_revision": 2
+    }
+  },
+  "expect": {
+    "verdict": "reject",
+    "layer": "schema",
+    "error": "unknown_method"
+  }
+}

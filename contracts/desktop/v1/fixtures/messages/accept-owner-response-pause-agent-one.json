@@ -1,0 +1,36 @@
+{
+  "description": "pause_agent answers with the one agent it paused.",
+  "schema": "owner-channel.schema.json#/$defs/owner_response",
+  "value": {
+    "protocol": "fabric-desktop/1",
+    "id": "command-47",
+    "method": "pause_agent",
+    "result": {
+      "commit_sequence": 1295,
+      "agents": [
+        {
+          "agent_id": "agent-claude-code",
+          "revision": 6,
+          "registered_name": "Claude Code",
+          "destination": {
+            "kind": "cloud",
+            "processor": "Anthropic"
+          },
+          "paused": true,
+          "session": {
+            "session_id": "session-claude-code-7",
+            "started_at": "2026-11-20T14:00:00.000Z",
+            "last_active_at": "2026-11-20T15:12:41.503Z"
+          },
+          "last_tool_call_at": "2026-11-20T15:12:41.503Z"
+        }
+      ]
+    }
+  },
+  "expect": {
+    "verdict": "accept",
+    "canonical": "{\"id\":\"command-47\",\"method\":\"pause_agent\",\"protocol\":\"fabric-desktop/1\",\"result\":{\"agents\":[{\"agent_id\":\"agent-claude-code\",\"destination\":{\"kind\":\"cloud\",\"processor\":\"Anthropic\"},\"last_tool_call_at\":\"2026-11-20T15:12:41.503Z\",\"paused\":true,\"registered_name\":\"Claude Code\",\"revision\":6,\"session\":{\"last_active_at\":\"2026-11-20T15:12:41.503Z\",\"session_id\":\"session-claude-code-7\",\"started_at\":\"2026-11-20T14:00:00.000Z\"}}],\"commit_sequence\":1295}}",
+    "command_digest": null,
+    "action_digest": null
+  }
+}

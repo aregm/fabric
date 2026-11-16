@@ -1,0 +1,51 @@
+{
+  "description": "disconnect_google answers with the disconnected account and the ids of the grants it ended.",
+  "schema": "owner-channel.schema.json#/$defs/owner_response",
+  "value": {
+    "protocol": "fabric-desktop/1",
+    "id": "command-51",
+    "method": "disconnect_google",
+    "result": {
+      "commit_sequence": 1298,
+      "account": {
+        "account_id": "acct-2",
+        "revision": 10,
+        "state": "disconnected",
+        "email": "owner.work@example.org",
+        "calendars": [
+          {
+            "calendar_id": "cal-work-primary",
+            "name": "Work",
+            "access": "owner",
+            "selected": true,
+            "agent_drafts": false
+          },
+          {
+            "calendar_id": "cal-family-shared",
+            "name": "Family",
+            "access": "writer",
+            "selected": false,
+            "agent_drafts": false
+          },
+          {
+            "calendar_id": "cal-holidays",
+            "name": "Holidays",
+            "access": "reader",
+            "selected": false,
+            "agent_drafts": false
+          }
+        ]
+      },
+      "ended_grant_ids": [
+        "grant-11",
+        "grant-12"
+      ]
+    }
+  },
+  "expect": {
+    "verdict": "accept",
+    "canonical": "{\"id\":\"command-51\",\"method\":\"disconnect_google\",\"protocol\":\"fabric-desktop/1\",\"result\":{\"account\":{\"account_id\":\"acct-2\",\"calendars\":[{\"access\":\"owner\",\"agent_drafts\":false,\"calendar_id\":\"cal-work-primary\",\"name\":\"Work\",\"selected\":true},{\"access\":\"writer\",\"agent_drafts\":false,\"calendar_id\":\"cal-family-shared\",\"name\":\"Family\",\"selected\":false},{\"access\":\"reader\",\"agent_drafts\":false,\"calendar_id\":\"cal-holidays\",\"name\":\"Holidays\",\"selected\":false}],\"email\":\"owner.work@example.org\",\"revision\":10,\"state\":\"disconnected\"},\"commit_sequence\":1298,\"ended_grant_ids\":[\"grant-11\",\"grant-12\"]}}",
+    "command_digest": null,
+    "action_digest": null
+  }
+}

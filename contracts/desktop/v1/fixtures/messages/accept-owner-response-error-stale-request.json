@@ -1,0 +1,23 @@
+{
+  "description": "stale_request for an approval of a request that has changed.",
+  "schema": "owner-channel.schema.json#/$defs/owner_response",
+  "value": {
+    "protocol": "fabric-desktop/1",
+    "id": "command-42",
+    "method": "decide_request",
+    "error": {
+      "code": "stale_request",
+      "message": "The request changed after you saw it. Review it again.",
+      "retryable": false,
+      "recovery": "review_request_again",
+      "correlation_id": "corr-0001",
+      "detail": null
+    }
+  },
+  "expect": {
+    "verdict": "accept",
+    "canonical": "{\"error\":{\"code\":\"stale_request\",\"correlation_id\":\"corr-0001\",\"detail\":null,\"message\":\"The request changed after you saw it. Review it again.\",\"recovery\":\"review_request_again\",\"retryable\":false},\"id\":\"command-42\",\"method\":\"decide_request\",\"protocol\":\"fabric-desktop/1\"}",
+    "command_digest": null,
+    "action_digest": null
+  }
+}

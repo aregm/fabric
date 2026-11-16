@@ -1,0 +1,15 @@
+{
+  "description": "A valid get_snapshot frame padded with spaces to 1,048,577 bytes, one more than the bound.",
+  "schema": "owner-channel.schema.json#/$defs/owner_request",
+  "generate": {
+    "prefix": "{\"id\":\"snapshot-1\",\"method\":\"get_snapshot\",\"params\":{},\"protocol\":\"fabric-desktop/1\"}",
+    "fill": " ",
+    "count": 1048492,
+    "suffix": ""
+  },
+  "expect": {
+    "verdict": "reject",
+    "layer": "frame",
+    "error": "malformed_frame"
+  }
+}

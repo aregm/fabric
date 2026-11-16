@@ -1,0 +1,33 @@
+{
+  "description": "save_group saves a new revision of an existing recipient set.",
+  "schema": "owner-channel.schema.json#/$defs/owner_request",
+  "value": {
+    "protocol": "fabric-desktop/1",
+    "id": "command-12",
+    "method": "save_group",
+    "params": {
+      "expected_revision": 2,
+      "change": {
+        "kind": "save",
+        "recipient_set_id": "rset-team",
+        "definition": {
+          "name": "Team",
+          "members": [
+            "ally@example.net",
+            "sam.lee@example.org",
+            "kim@example.net"
+          ],
+          "domains": [
+            "example.com"
+          ]
+        }
+      }
+    }
+  },
+  "expect": {
+    "verdict": "accept",
+    "canonical": "{\"id\":\"command-12\",\"method\":\"save_group\",\"params\":{\"change\":{\"definition\":{\"domains\":[\"example.com\"],\"members\":[\"ally@example.net\",\"sam.lee@example.org\",\"kim@example.net\"],\"name\":\"Team\"},\"kind\":\"save\",\"recipient_set_id\":\"rset-team\"},\"expected_revision\":2},\"protocol\":\"fabric-desktop/1\"}",
+    "command_digest": "sha256:10c6598339ff5aa8565688cfb74f1bff765fb23d0beb597680c275543abcbe84",
+    "action_digest": null
+  }
+}

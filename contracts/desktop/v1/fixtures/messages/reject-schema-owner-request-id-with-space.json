@@ -1,0 +1,15 @@
+{
+  "description": "A frame id containing a space.",
+  "schema": "owner-channel.schema.json#/$defs/owner_request",
+  "value": {
+    "protocol": "fabric-desktop/1",
+    "id": "snapshot 1",
+    "method": "get_snapshot",
+    "params": {}
+  },
+  "expect": {
+    "verdict": "reject",
+    "layer": "schema",
+    "error": "invalid_params"
+  }
+}

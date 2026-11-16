@@ -1,0 +1,25 @@
+{
+  "description": "Propose deleting an event Fabric created.",
+  "schema": "agent-channel.schema.json#/$defs/agent_request",
+  "value": {
+    "protocol": "fabric-desktop/1",
+    "id": "call-13",
+    "method": "fabric_calendar_propose_delete",
+    "params": {
+      "account_id": "acct-1",
+      "calendar_id": "cal-drafts",
+      "event": {
+        "event_id": "evt-fabric-0042",
+        "revision": "3181161799000000"
+      },
+      "send_updates": "none",
+      "task": "Remove the draft I made."
+    }
+  },
+  "expect": {
+    "verdict": "accept",
+    "canonical": "{\"id\":\"call-13\",\"method\":\"fabric_calendar_propose_delete\",\"params\":{\"account_id\":\"acct-1\",\"calendar_id\":\"cal-drafts\",\"event\":{\"event_id\":\"evt-fabric-0042\",\"revision\":\"3181161799000000\"},\"send_updates\":\"none\",\"task\":\"Remove the draft I made.\"},\"protocol\":\"fabric-desktop/1\"}",
+    "command_digest": null,
+    "action_digest": "sha256:a98e5c425b1142bd48fe538d4c803270dc191d2eb928f35907184c8dd646a6b3"
+  }
+}

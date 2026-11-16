@@ -1,0 +1,63 @@
+{
+  "description": "The calendars result.",
+  "schema": "agent-channel.schema.json#/$defs/agent_response",
+  "value": {
+    "protocol": "fabric-desktop/1",
+    "id": "call-1",
+    "method": "fabric_calendar_list",
+    "result": {
+      "request": {
+        "request_id": "request-27",
+        "updated_at": "2026-11-20T16:20:00.400Z",
+        "status": {
+          "state": "reconciled"
+        }
+      },
+      "result": {
+        "kind": "calendars",
+        "accounts": [
+          {
+            "account_id": "acct-1",
+            "calendars": [
+              {
+                "calendar_id": "cal-primary",
+                "name": "Owner",
+                "access": "owner",
+                "agent_drafts": false
+              },
+              {
+                "calendar_id": "cal-drafts",
+                "name": "Agent Drafts",
+                "access": "owner",
+                "agent_drafts": true
+              },
+              {
+                "calendar_id": "cal-team-shared",
+                "name": "Team schedule",
+                "access": "writer",
+                "agent_drafts": false
+              }
+            ]
+          },
+          {
+            "account_id": "acct-2",
+            "calendars": [
+              {
+                "calendar_id": "cal-holidays",
+                "name": "Holidays",
+                "access": "free_busy_reader",
+                "agent_drafts": false
+              }
+            ]
+          }
+        ]
+      }
+    }
+  },
+  "expect": {
+    "verdict": "accept",
+    "canonical": "{\"id\":\"call-1\",\"method\":\"fabric_calendar_list\",\"protocol\":\"fabric-desktop/1\",\"result\":{\"request\":{\"request_id\":\"request-27\",\"status\":{\"state\":\"reconciled\"},\"updated_at\":\"2026-11-20T16:20:00.400Z\"},\"result\":{\"accounts\":[{\"account_id\":\"acct-1\",\"calendars\":[{\"access\":\"owner\",\"agent_drafts\":false,\"calendar_id\":\"cal-primary\",\"name\":\"Owner\"},{\"access\":\"owner\",\"agent_drafts\":true,\"calendar_id\":\"cal-drafts\",\"name\":\"Agent Drafts\"},{\"access\":\"writer\",\"agent_drafts\":false,\"calendar_id\":\"cal-team-shared\",\"name\":\"Team schedule\"}]},{\"account_id\":\"acct-2\",\"calendars\":[{\"access\":\"free_busy_reader\",\"agent_drafts\":false,\"calendar_id\":\"cal-holidays\",\"name\":\"Holidays\"}]}],\"kind\":\"calendars\"}}}",
+    "command_digest": null,
+    "action_digest": null
+  }
+}

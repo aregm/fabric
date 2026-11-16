@@ -1,0 +1,25 @@
+{
+  "description": "A response with both result and error.",
+  "schema": "owner-channel.schema.json#/$defs/owner_response",
+  "value": {
+    "protocol": "fabric-desktop/1",
+    "id": "subscribe-2",
+    "method": "subscribe",
+    "result": {
+      "cursor": 1287
+    },
+    "error": {
+      "code": "internal",
+      "message": "Something went wrong in the broker.",
+      "retryable": false,
+      "recovery": "report_problem",
+      "correlation_id": "corr-0001",
+      "detail": null
+    }
+  },
+  "expect": {
+    "verdict": "reject",
+    "layer": "schema",
+    "error": "invalid_params"
+  }
+}

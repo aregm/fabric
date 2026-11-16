@@ -1,0 +1,27 @@
+{
+  "description": "Ask for busy intervals in two calendars over a week.",
+  "schema": "agent-channel.schema.json#/$defs/agent_request",
+  "value": {
+    "protocol": "fabric-desktop/1",
+    "id": "call-2",
+    "method": "fabric_calendar_availability",
+    "params": {
+      "account_id": "acct-1",
+      "calendar_ids": [
+        "cal-primary",
+        "cal-team-shared"
+      ],
+      "window": {
+        "start": "2026-11-16T06:00:00.000Z",
+        "end": "2026-11-23T06:00:00.000Z"
+      },
+      "task": "Find a free hour next week."
+    }
+  },
+  "expect": {
+    "verdict": "accept",
+    "canonical": "{\"id\":\"call-2\",\"method\":\"fabric_calendar_availability\",\"params\":{\"account_id\":\"acct-1\",\"calendar_ids\":[\"cal-primary\",\"cal-team-shared\"],\"task\":\"Find a free hour next week.\",\"window\":{\"end\":\"2026-11-23T06:00:00.000Z\",\"start\":\"2026-11-16T06:00:00.000Z\"}},\"protocol\":\"fabric-desktop/1\"}",
+    "command_digest": null,
+    "action_digest": "sha256:18919605011455997201e3ca96d8bbdd4cdc8908a087de790583712ce6263faf"
+  }
+}

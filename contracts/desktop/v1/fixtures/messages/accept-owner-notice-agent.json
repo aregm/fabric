@@ -1,0 +1,33 @@
+{
+  "description": "An agent change: an agent with an active session.",
+  "schema": "owner-channel.schema.json#/$defs/owner_notice",
+  "value": {
+    "protocol": "fabric-desktop/1",
+    "sequence": 1304,
+    "change": {
+      "kind": "agent",
+      "agent": {
+        "agent_id": "agent-claude-code",
+        "revision": 5,
+        "registered_name": "Claude Code",
+        "destination": {
+          "kind": "cloud",
+          "processor": "Anthropic"
+        },
+        "paused": false,
+        "session": {
+          "session_id": "session-claude-code-7",
+          "started_at": "2026-11-20T14:00:00.000Z",
+          "last_active_at": "2026-11-20T15:12:41.503Z"
+        },
+        "last_tool_call_at": "2026-11-20T15:12:41.503Z"
+      }
+    }
+  },
+  "expect": {
+    "verdict": "accept",
+    "canonical": "{\"change\":{\"agent\":{\"agent_id\":\"agent-claude-code\",\"destination\":{\"kind\":\"cloud\",\"processor\":\"Anthropic\"},\"last_tool_call_at\":\"2026-11-20T15:12:41.503Z\",\"paused\":false,\"registered_name\":\"Claude Code\",\"revision\":5,\"session\":{\"last_active_at\":\"2026-11-20T15:12:41.503Z\",\"session_id\":\"session-claude-code-7\",\"started_at\":\"2026-11-20T14:00:00.000Z\"}},\"kind\":\"agent\"},\"protocol\":\"fabric-desktop/1\",\"sequence\":1304}",
+    "command_digest": null,
+    "action_digest": null
+  }
+}

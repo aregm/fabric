@@ -1,0 +1,35 @@
+{
+  "description": "A blocked request with its denial.",
+  "schema": "owner-channel.schema.json#/$defs/owner_notice",
+  "value": {
+    "protocol": "fabric-desktop/1",
+    "sequence": 1311,
+    "change": {
+      "kind": "request",
+      "request": {
+        "request_id": "request-22",
+        "revision": 2,
+        "agent_id": "agent-codex-desktop",
+        "tool": "fabric_calendar_propose_update",
+        "account_id": "acct-1",
+        "received_at": "2026-11-20T15:30:00.000Z",
+        "updated_at": "2026-11-20T15:30:00.412Z",
+        "request_digest": "sha256:14efd6150ad30365f023f88300d6b1b3ed85c0a5de31a86388c233dd6cce8456",
+        "status": {
+          "state": "blocked",
+          "denial": {
+            "rule": "recurring_mutation_unsupported",
+            "explanation": "Version 1 does not change recurring events; only a reply to one occurrence is supported.",
+            "proof_id": "proof-22-classification"
+          }
+        }
+      }
+    }
+  },
+  "expect": {
+    "verdict": "accept",
+    "canonical": "{\"change\":{\"kind\":\"request\",\"request\":{\"account_id\":\"acct-1\",\"agent_id\":\"agent-codex-desktop\",\"received_at\":\"2026-11-20T15:30:00.000Z\",\"request_digest\":\"sha256:14efd6150ad30365f023f88300d6b1b3ed85c0a5de31a86388c233dd6cce8456\",\"request_id\":\"request-22\",\"revision\":2,\"status\":{\"denial\":{\"explanation\":\"Version 1 does not change recurring events; only a reply to one occurrence is supported.\",\"proof_id\":\"proof-22-classification\",\"rule\":\"recurring_mutation_unsupported\"},\"state\":\"blocked\"},\"tool\":\"fabric_calendar_propose_update\",\"updated_at\":\"2026-11-20T15:30:00.412Z\"}},\"protocol\":\"fabric-desktop/1\",\"sequence\":1311}",
+    "command_digest": null,
+    "action_digest": null
+  }
+}

@@ -1,0 +1,27 @@
+{
+  "description": "An invitation action.",
+  "schema": "agent-channel.schema.json#/$defs/action",
+  "value": {
+    "tool": "fabric_calendar_propose_invitation",
+    "arguments": {
+      "account_id": "acct-1",
+      "calendar_id": "cal-team-shared",
+      "event": {
+        "event_id": "evt-fabric-0042",
+        "revision": "3181161799000000"
+      },
+      "attendees": [
+        "ally@example.net",
+        "stranger@example.org"
+      ],
+      "send_updates": "all",
+      "task": "Invite the team to the planning meeting."
+    }
+  },
+  "expect": {
+    "verdict": "accept",
+    "canonical": "{\"arguments\":{\"account_id\":\"acct-1\",\"attendees\":[\"ally@example.net\",\"stranger@example.org\"],\"calendar_id\":\"cal-team-shared\",\"event\":{\"event_id\":\"evt-fabric-0042\",\"revision\":\"3181161799000000\"},\"send_updates\":\"all\",\"task\":\"Invite the team to the planning meeting.\"},\"tool\":\"fabric_calendar_propose_invitation\"}",
+    "command_digest": null,
+    "action_digest": null
+  }
+}

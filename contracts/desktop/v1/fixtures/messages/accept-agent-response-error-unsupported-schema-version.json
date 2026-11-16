@@ -1,0 +1,26 @@
+{
+  "description": "unsupported_schema_version on the agent channel.",
+  "schema": "agent-channel.schema.json#/$defs/agent_response",
+  "value": {
+    "protocol": "fabric-desktop/1",
+    "id": "call-25",
+    "method": "fabric_calendar_list",
+    "error": {
+      "code": "unsupported_schema_version",
+      "message": "Update the adapter.",
+      "retryable": false,
+      "recovery": "update_app",
+      "correlation_id": "corr-0001",
+      "detail": {
+        "received": 0,
+        "supported": 1
+      }
+    }
+  },
+  "expect": {
+    "verdict": "accept",
+    "canonical": "{\"error\":{\"code\":\"unsupported_schema_version\",\"correlation_id\":\"corr-0001\",\"detail\":{\"received\":0,\"supported\":1},\"message\":\"Update the adapter.\",\"recovery\":\"update_app\",\"retryable\":false},\"id\":\"call-25\",\"method\":\"fabric_calendar_list\",\"protocol\":\"fabric-desktop/1\"}",
+    "command_digest": null,
+    "action_digest": null
+  }
+}

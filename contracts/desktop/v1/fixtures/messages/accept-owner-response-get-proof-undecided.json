@@ -1,0 +1,38 @@
+{
+  "description": "A proof report whose outcome is undecided, with one rule left undecided.",
+  "schema": "owner-channel.schema.json#/$defs/owner_response",
+  "value": {
+    "protocol": "fabric-desktop/1",
+    "id": "proof-q-4",
+    "method": "get_proof",
+    "result": {
+      "proof_id": "proof-30-classification",
+      "request_id": "request-30",
+      "purpose": "classification",
+      "outcome": "undecided",
+      "failing_rule": null,
+      "rule_verdicts": [
+        {
+          "rule": "agent_paused",
+          "verdict": "holds"
+        },
+        {
+          "rule": "recurring_mutation_unsupported",
+          "verdict": "undecided"
+        }
+      ],
+      "isabelle_version": "Isabelle2025",
+      "theory_hash": "sha256:9d92e8fccd34bad0570cb6e6be7649c4a7765a523e26f438a219413be90f4edf",
+      "context_digest": "sha256:f367dc1c1c187f85d859860b6f731a4ef058f674418ade4dda5fc82e8c2b1f36",
+      "action_digest": "sha256:a4d73e5a982f5850423f24462b90574ca13a0e20a91721e3967473e5218bd2c2",
+      "started_at": "2026-11-20T17:00:00.000Z",
+      "elapsed_ms": 30000
+    }
+  },
+  "expect": {
+    "verdict": "accept",
+    "canonical": "{\"id\":\"proof-q-4\",\"method\":\"get_proof\",\"protocol\":\"fabric-desktop/1\",\"result\":{\"action_digest\":\"sha256:a4d73e5a982f5850423f24462b90574ca13a0e20a91721e3967473e5218bd2c2\",\"context_digest\":\"sha256:f367dc1c1c187f85d859860b6f731a4ef058f674418ade4dda5fc82e8c2b1f36\",\"elapsed_ms\":30000,\"failing_rule\":null,\"isabelle_version\":\"Isabelle2025\",\"outcome\":\"undecided\",\"proof_id\":\"proof-30-classification\",\"purpose\":\"classification\",\"request_id\":\"request-30\",\"rule_verdicts\":[{\"rule\":\"agent_paused\",\"verdict\":\"holds\"},{\"rule\":\"recurring_mutation_unsupported\",\"verdict\":\"undecided\"}],\"started_at\":\"2026-11-20T17:00:00.000Z\",\"theory_hash\":\"sha256:9d92e8fccd34bad0570cb6e6be7649c4a7765a523e26f438a219413be90f4edf\"}}",
+    "command_digest": null,
+    "action_digest": null
+  }
+}

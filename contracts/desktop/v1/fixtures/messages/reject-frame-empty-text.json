@@ -1,0 +1,10 @@
+{
+  "description": "An empty text.",
+  "schema": "owner-channel.schema.json#/$defs/owner_request",
+  "text": "",
+  "expect": {
+    "verdict": "reject",
+    "layer": "frame",
+    "error": "malformed_frame"
+  }
+}

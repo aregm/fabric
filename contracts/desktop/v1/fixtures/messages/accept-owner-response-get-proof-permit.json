@@ -1,0 +1,42 @@
+{
+  "description": "A fresh-permit proof report with outcome permit and no failing rule.",
+  "schema": "owner-channel.schema.json#/$defs/owner_response",
+  "value": {
+    "protocol": "fabric-desktop/1",
+    "id": "proof-q-3",
+    "method": "get_proof",
+    "result": {
+      "proof_id": "proof-25-permit-2",
+      "request_id": "request-25",
+      "purpose": "fresh_permit",
+      "outcome": "permit",
+      "failing_rule": null,
+      "rule_verdicts": [
+        {
+          "rule": "grant_revoked",
+          "verdict": "holds"
+        },
+        {
+          "rule": "agent_paused",
+          "verdict": "holds"
+        },
+        {
+          "rule": "fabric_created_only",
+          "verdict": "holds"
+        }
+      ],
+      "isabelle_version": "Isabelle2025",
+      "theory_hash": "sha256:9d92e8fccd34bad0570cb6e6be7649c4a7765a523e26f438a219413be90f4edf",
+      "context_digest": "sha256:357c07e731d201cbb3882052ebb443f18d9fc68c9eef5b50ee844da6b02fa085",
+      "action_digest": "sha256:4a1ac4edd8a9d518f2c1406e814ebb82d7acb81ef2c1095458a62a3d0f5bce75",
+      "started_at": "2026-11-20T16:05:01.700Z",
+      "elapsed_ms": 241
+    }
+  },
+  "expect": {
+    "verdict": "accept",
+    "canonical": "{\"id\":\"proof-q-3\",\"method\":\"get_proof\",\"protocol\":\"fabric-desktop/1\",\"result\":{\"action_digest\":\"sha256:4a1ac4edd8a9d518f2c1406e814ebb82d7acb81ef2c1095458a62a3d0f5bce75\",\"context_digest\":\"sha256:357c07e731d201cbb3882052ebb443f18d9fc68c9eef5b50ee844da6b02fa085\",\"elapsed_ms\":241,\"failing_rule\":null,\"isabelle_version\":\"Isabelle2025\",\"outcome\":\"permit\",\"proof_id\":\"proof-25-permit-2\",\"purpose\":\"fresh_permit\",\"request_id\":\"request-25\",\"rule_verdicts\":[{\"rule\":\"grant_revoked\",\"verdict\":\"holds\"},{\"rule\":\"agent_paused\",\"verdict\":\"holds\"},{\"rule\":\"fabric_created_only\",\"verdict\":\"holds\"}],\"started_at\":\"2026-11-20T16:05:01.700Z\",\"theory_hash\":\"sha256:9d92e8fccd34bad0570cb6e6be7649c4a7765a523e26f438a219413be90f4edf\"}}",
+    "command_digest": null,
+    "action_digest": null
+  }
+}

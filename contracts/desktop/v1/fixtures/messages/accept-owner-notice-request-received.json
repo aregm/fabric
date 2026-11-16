@@ -1,0 +1,30 @@
+{
+  "description": "A just-received request; no account is known yet.",
+  "schema": "owner-channel.schema.json#/$defs/owner_notice",
+  "value": {
+    "protocol": "fabric-desktop/1",
+    "sequence": 1309,
+    "change": {
+      "kind": "request",
+      "request": {
+        "request_id": "request-27",
+        "revision": 1,
+        "agent_id": "agent-claude-desktop",
+        "tool": "fabric_calendar_list",
+        "account_id": null,
+        "received_at": "2026-11-20T16:20:00.000Z",
+        "updated_at": "2026-11-20T16:20:00.000Z",
+        "request_digest": "sha256:bfa55bbae1bfc42b079af1ba54a38007ac87576bbe5982cbbf2fceb7a068e5ff",
+        "status": {
+          "state": "received"
+        }
+      }
+    }
+  },
+  "expect": {
+    "verdict": "accept",
+    "canonical": "{\"change\":{\"kind\":\"request\",\"request\":{\"account_id\":null,\"agent_id\":\"agent-claude-desktop\",\"received_at\":\"2026-11-20T16:20:00.000Z\",\"request_digest\":\"sha256:bfa55bbae1bfc42b079af1ba54a38007ac87576bbe5982cbbf2fceb7a068e5ff\",\"request_id\":\"request-27\",\"revision\":1,\"status\":{\"state\":\"received\"},\"tool\":\"fabric_calendar_list\",\"updated_at\":\"2026-11-20T16:20:00.000Z\"}},\"protocol\":\"fabric-desktop/1\",\"sequence\":1309}",
+    "command_digest": null,
+    "action_digest": null
+  }
+}

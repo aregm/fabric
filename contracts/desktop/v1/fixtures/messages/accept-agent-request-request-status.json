@@ -1,0 +1,18 @@
+{
+  "description": "Poll the status of a request; this is not an action.",
+  "schema": "agent-channel.schema.json#/$defs/agent_request",
+  "value": {
+    "protocol": "fabric-desktop/1",
+    "id": "call-14",
+    "method": "fabric_request_status",
+    "params": {
+      "request_id": "request-17"
+    }
+  },
+  "expect": {
+    "verdict": "accept",
+    "canonical": "{\"id\":\"call-14\",\"method\":\"fabric_request_status\",\"params\":{\"request_id\":\"request-17\"},\"protocol\":\"fabric-desktop/1\"}",
+    "command_digest": null,
+    "action_digest": null
+  }
+}

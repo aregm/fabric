@@ -1,0 +1,34 @@
+{
+  "description": "save_group answers with the recipient set it created.",
+  "schema": "owner-channel.schema.json#/$defs/owner_response",
+  "value": {
+    "protocol": "fabric-desktop/1",
+    "id": "command-11",
+    "method": "save_group",
+    "result": {
+      "commit_sequence": 1291,
+      "recipient_set": {
+        "recipient_set_id": "rset-contractors",
+        "revision": 1,
+        "source": {
+          "kind": "local"
+        },
+        "definition": {
+          "name": "Contractors",
+          "members": [
+            "pat@example.net"
+          ],
+          "domains": [
+            "example.org"
+          ]
+        }
+      }
+    }
+  },
+  "expect": {
+    "verdict": "accept",
+    "canonical": "{\"id\":\"command-11\",\"method\":\"save_group\",\"protocol\":\"fabric-desktop/1\",\"result\":{\"commit_sequence\":1291,\"recipient_set\":{\"definition\":{\"domains\":[\"example.org\"],\"members\":[\"pat@example.net\"],\"name\":\"Contractors\"},\"recipient_set_id\":\"rset-contractors\",\"revision\":1,\"source\":{\"kind\":\"local\"}}}}",
+    "command_digest": null,
+    "action_digest": null
+  }
+}

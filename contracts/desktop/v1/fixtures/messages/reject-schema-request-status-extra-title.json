@@ -1,0 +1,18 @@
+{
+  "description": "An agent status with an extra title member.",
+  "schema": "agent-channel.schema.json#/$defs/request_status",
+  "value": {
+    "request_id": "request-17",
+    "updated_at": "2026-11-20T15:00:01.250Z",
+    "status": {
+      "state": "pending_approval",
+      "approval_expires_at": "2026-11-21T15:00:00.000Z"
+    },
+    "title": "Q1 planning"
+  },
+  "expect": {
+    "verdict": "reject",
+    "layer": "schema",
+    "error": "invalid_params"
+  }
+}

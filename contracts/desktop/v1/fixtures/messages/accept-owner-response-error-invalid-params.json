@@ -1,0 +1,25 @@
+{
+  "description": "invalid_params with a pointer to the refused value.",
+  "schema": "owner-channel.schema.json#/$defs/owner_response",
+  "value": {
+    "protocol": "fabric-desktop/1",
+    "id": "command-42",
+    "method": "decide_request",
+    "error": {
+      "code": "invalid_params",
+      "message": "The duration is not one the broker offers.",
+      "retryable": false,
+      "recovery": "report_problem",
+      "correlation_id": "corr-0001",
+      "detail": {
+        "pointer": "/params/duration/kind"
+      }
+    }
+  },
+  "expect": {
+    "verdict": "accept",
+    "canonical": "{\"error\":{\"code\":\"invalid_params\",\"correlation_id\":\"corr-0001\",\"detail\":{\"pointer\":\"/params/duration/kind\"},\"message\":\"The duration is not one the broker offers.\",\"recovery\":\"report_problem\",\"retryable\":false},\"id\":\"command-42\",\"method\":\"decide_request\",\"protocol\":\"fabric-desktop/1\"}",
+    "command_digest": null,
+    "action_digest": null
+  }
+}

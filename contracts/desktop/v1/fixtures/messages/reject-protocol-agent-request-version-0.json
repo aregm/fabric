@@ -1,0 +1,15 @@
+{
+  "description": "An agent request of protocol fabric-desktop/0.",
+  "schema": "agent-channel.schema.json#/$defs/agent_request",
+  "value": {
+    "protocol": "fabric-desktop/0",
+    "id": "call-1",
+    "method": "fabric_calendar_list",
+    "params": {}
+  },
+  "expect": {
+    "verdict": "reject",
+    "layer": "protocol",
+    "error": "unsupported_protocol"
+  }
+}

@@ -1,0 +1,24 @@
+{
+  "description": "An account change: the owner granted only some scopes.",
+  "schema": "owner-channel.schema.json#/$defs/owner_notice",
+  "value": {
+    "protocol": "fabric-desktop/1",
+    "sequence": 1302,
+    "change": {
+      "kind": "account",
+      "account": {
+        "account_id": "acct-3",
+        "revision": 3,
+        "state": "partial_grant",
+        "email": "third@example.net",
+        "calendars": []
+      }
+    }
+  },
+  "expect": {
+    "verdict": "accept",
+    "canonical": "{\"change\":{\"account\":{\"account_id\":\"acct-3\",\"calendars\":[],\"email\":\"third@example.net\",\"revision\":3,\"state\":\"partial_grant\"},\"kind\":\"account\"},\"protocol\":\"fabric-desktop/1\",\"sequence\":1302}",
+    "command_digest": null,
+    "action_digest": null
+  }
+}

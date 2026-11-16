@@ -1,0 +1,28 @@
+{
+  "description": "A custom profile that allows editing pre-existing events.",
+  "schema": "owner-channel.schema.json#/$defs/profile",
+  "value": {
+    "kind": "custom",
+    "profile_id": "custom-assistant",
+    "name": "Assistant hours",
+    "version": 2,
+    "rows": {
+      "list_and_availability": "allow",
+      "read_event_details": "allow",
+      "create_in_agent_drafts": "allow",
+      "create_in_existing_calendar": "allow",
+      "edit_fabric_created_event": "allow",
+      "edit_preexisting_event": "allow",
+      "send_or_change_invitations": "allow",
+      "respond_to_invitation": "allow",
+      "delete_event": "ask",
+      "delete_calendar_or_change_sharing": "block"
+    }
+  },
+  "expect": {
+    "verdict": "accept",
+    "canonical": "{\"kind\":\"custom\",\"name\":\"Assistant hours\",\"profile_id\":\"custom-assistant\",\"rows\":{\"create_in_agent_drafts\":\"allow\",\"create_in_existing_calendar\":\"allow\",\"delete_calendar_or_change_sharing\":\"block\",\"delete_event\":\"ask\",\"edit_fabric_created_event\":\"allow\",\"edit_preexisting_event\":\"allow\",\"list_and_availability\":\"allow\",\"read_event_details\":\"allow\",\"respond_to_invitation\":\"allow\",\"send_or_change_invitations\":\"allow\"},\"version\":2}",
+    "command_digest": null,
+    "action_digest": null
+  }
+}

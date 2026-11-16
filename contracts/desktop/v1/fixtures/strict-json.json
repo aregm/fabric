@@ -1,0 +1,301 @@
+{
+  "accept": [
+    {
+      "name": "empty-object",
+      "text": "{}",
+      "canonical": "{}"
+    },
+    {
+      "name": "empty-array",
+      "text": "[]",
+      "canonical": "[]"
+    },
+    {
+      "name": "top-level-string",
+      "text": "\"x\"",
+      "canonical": "\"x\""
+    },
+    {
+      "name": "top-level-null",
+      "text": "null",
+      "canonical": "null"
+    },
+    {
+      "name": "top-level-integer",
+      "text": "5",
+      "canonical": "5"
+    },
+    {
+      "name": "members-sorted",
+      "text": "{\"b\":1,\"a\":2,\"aa\":3,\"B\":4,\"\":5}",
+      "canonical": "{\"\":5,\"B\":4,\"a\":2,\"aa\":3,\"b\":1}"
+    },
+    {
+      "name": "whitespace-ignored",
+      "text": " {\t\"a\" : [ 1 , 2 ] ,\r\n \"b\":null } \n",
+      "canonical": "{\"a\":[1,2],\"b\":null}"
+    },
+    {
+      "name": "string-escapes",
+      "text": "{\"s\":\"\\u0000\\u0001\\u001f\\u007f\\\"\\\\\\/\\b\\f\\n\\r\\t\"}",
+      "canonical": "{\"s\":\"\\u0000\\u0001\\u001f\u007f\\\"\\\\/\\b\\f\\n\\r\\t\"}"
+    },
+    {
+      "name": "uppercase-hex-escape",
+      "text": "{\"s\":\"\\u001F\\u00E9\"}",
+      "canonical": "{\"s\":\"\\u001f\u00e9\"}"
+    },
+    {
+      "name": "escaped-ascii-becomes-literal",
+      "text": "{\"\\u0061\":\"\\u0041\"}",
+      "canonical": "{\"a\":\"A\"}"
+    },
+    {
+      "name": "surrogate-pair-escape",
+      "text": "{\"s\":\"\\ud83d\\ude00\"}",
+      "canonical": "{\"s\":\"\ud83d\ude00\"}"
+    },
+    {
+      "name": "non-ascii-literal",
+      "text": "{\"s\":\"\u00e9\u20ac\ud83d\ude00\u2028\u2029\"}",
+      "canonical": "{\"s\":\"\u00e9\u20ac\ud83d\ude00\u2028\u2029\"}"
+    },
+    {
+      "name": "member-order-by-code-point-not-utf16",
+      "text": "{\"\ud83d\ude00\":1,\"\uffff\":2,\"\ue000\":3}",
+      "canonical": "{\"\ue000\":3,\"\uffff\":2,\"\ud83d\ude00\":1}"
+    },
+    {
+      "name": "no-unicode-normalization",
+      "text": "{\"\u00e9\":1,\"e\u0301\":2}",
+      "canonical": "{\"e\u0301\":2,\"\u00e9\":1}"
+    },
+    {
+      "name": "integer-bounds",
+      "text": "{\"max\":9007199254740991,\"min\":-9007199254740991,\"zero\":0,\"neg\":-1}",
+      "canonical": "{\"max\":9007199254740991,\"min\":-9007199254740991,\"neg\":-1,\"zero\":0}"
+    },
+    {
+      "name": "booleans-and-null",
+      "text": "[true,false,null]",
+      "canonical": "[true,false,null]"
+    },
+    {
+      "name": "depth-32",
+      "text": "[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]",
+      "canonical": "[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]"
+    },
+    {
+      "name": "nested-objects-sorted",
+      "text": "{\"z\":{\"b\":[{\"y\":1,\"x\":2}],\"a\":{}},\"a\":[]}",
+      "canonical": "{\"a\":[],\"z\":{\"a\":{},\"b\":[{\"x\":2,\"y\":1}]}}"
+    },
+    {
+      "name": "utf8-bytes",
+      "hex": "7b226b223a22e282ac227d",
+      "canonical": "{\"k\":\"\u20ac\"}"
+    }
+  ],
+  "reject": [
+    {
+      "name": "empty-text",
+      "text": ""
+    },
+    {
+      "name": "whitespace-only",
+      "text": "  \n"
+    },
+    {
+      "name": "duplicate-member",
+      "text": "{\"a\":1,\"a\":2}"
+    },
+    {
+      "name": "duplicate-member-by-escape",
+      "text": "{\"a\":1,\"\\u0061\":2}"
+    },
+    {
+      "name": "duplicate-member-nested",
+      "text": "{\"o\":{\"k\":null,\"k\":null}}"
+    },
+    {
+      "name": "fraction",
+      "text": "{\"a\":1.0}"
+    },
+    {
+      "name": "fraction-half",
+      "text": "{\"a\":0.5}"
+    },
+    {
+      "name": "exponent",
+      "text": "{\"a\":1e2}"
+    },
+    {
+      "name": "exponent-uppercase",
+      "text": "{\"a\":1E2}"
+    },
+    {
+      "name": "negative-zero",
+      "text": "{\"a\":-0}"
+    },
+    {
+      "name": "above-safe-range",
+      "text": "{\"a\":9007199254740992}"
+    },
+    {
+      "name": "below-safe-range",
+      "text": "{\"a\":-9007199254740992}"
+    },
+    {
+      "name": "huge-integer",
+      "text": "{\"a\":123456789012345678901234567890}"
+    },
+    {
+      "name": "leading-zero",
+      "text": "{\"a\":01}"
+    },
+    {
+      "name": "plus-sign",
+      "text": "{\"a\":+1}"
+    },
+    {
+      "name": "hexadecimal",
+      "text": "{\"a\":0x10}"
+    },
+    {
+      "name": "lone-high-surrogate",
+      "text": "{\"a\":\"\\ud800\"}"
+    },
+    {
+      "name": "lone-low-surrogate",
+      "text": "{\"a\":\"\\udc00\"}"
+    },
+    {
+      "name": "reversed-surrogates",
+      "text": "{\"a\":\"\\udc00\\ud800\"}"
+    },
+    {
+      "name": "lone-surrogate-in-name",
+      "text": "{\"\\ud800\":1}"
+    },
+    {
+      "name": "high-surrogate-then-text",
+      "text": "{\"a\":\"\\ud83dx\"}"
+    },
+    {
+      "name": "raw-tab-in-string",
+      "text": "{\"a\":\"\t\"}"
+    },
+    {
+      "name": "raw-newline-in-string",
+      "text": "{\"a\":\"\n\"}"
+    },
+    {
+      "name": "invalid-escape",
+      "text": "{\"a\":\"\\x41\"}"
+    },
+    {
+      "name": "short-unicode-escape",
+      "text": "{\"a\":\"\\u12\"}"
+    },
+    {
+      "name": "unterminated-string",
+      "text": "{\"a\":\"x}"
+    },
+    {
+      "name": "trailing-comma-object",
+      "text": "{\"a\":1,}"
+    },
+    {
+      "name": "trailing-comma-array",
+      "text": "[1,]"
+    },
+    {
+      "name": "missing-comma",
+      "text": "[1 2]"
+    },
+    {
+      "name": "missing-colon",
+      "text": "{\"a\" 1}"
+    },
+    {
+      "name": "single-quotes",
+      "text": "{'a':1}"
+    },
+    {
+      "name": "unquoted-name",
+      "text": "{a:1}"
+    },
+    {
+      "name": "comment",
+      "text": "{\"a\":1}//x"
+    },
+    {
+      "name": "two-values",
+      "text": "{} {}"
+    },
+    {
+      "name": "trailing-text",
+      "text": "{}x"
+    },
+    {
+      "name": "nan",
+      "text": "NaN"
+    },
+    {
+      "name": "infinity",
+      "text": "{\"a\":Infinity}"
+    },
+    {
+      "name": "capitalized-true",
+      "text": "True"
+    },
+    {
+      "name": "byte-order-mark",
+      "text": "\ufeff{}"
+    },
+    {
+      "name": "vertical-tab-as-whitespace",
+      "text": "{\u000b}"
+    },
+    {
+      "name": "form-feed-as-whitespace",
+      "text": "{\f}"
+    },
+    {
+      "name": "no-break-space-as-whitespace",
+      "text": "{\u00a0}"
+    },
+    {
+      "name": "nul-after-value",
+      "text": "{}\u0000"
+    },
+    {
+      "name": "depth-33",
+      "text": "[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]"
+    },
+    {
+      "name": "depth-33-objects",
+      "text": "{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}"
+    },
+    {
+      "name": "invalid-utf8-byte",
+      "hex": "7b2261223a22ff227d"
+    },
+    {
+      "name": "overlong-utf8",
+      "hex": "7b2261223a22c0af227d"
+    },
+    {
+      "name": "utf8-encoded-surrogate",
+      "hex": "7b2261223a22eda080227d"
+    },
+    {
+      "name": "truncated-utf8",
+      "hex": "7b2261223a22e282227d"
+    },
+    {
+      "name": "utf8-byte-order-mark-bytes",
+      "hex": "efbbbf7b7d"
+    }
+  ]
+}

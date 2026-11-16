@@ -1,0 +1,23 @@
+{
+  "description": "Deny a request: selected and duration are null.",
+  "schema": "owner-channel.schema.json#/$defs/owner_request",
+  "value": {
+    "protocol": "fabric-desktop/1",
+    "id": "command-46",
+    "method": "decide_request",
+    "params": {
+      "request_id": "request-17",
+      "request_digest": "sha256:9448c124de44cd137bb4a3c63df81e9a3a0ae40af06db3642c413320c1d76053",
+      "expected_revision": 3,
+      "decision": "deny",
+      "selected": null,
+      "duration": null
+    }
+  },
+  "expect": {
+    "verdict": "accept",
+    "canonical": "{\"id\":\"command-46\",\"method\":\"decide_request\",\"params\":{\"decision\":\"deny\",\"duration\":null,\"expected_revision\":3,\"request_digest\":\"sha256:9448c124de44cd137bb4a3c63df81e9a3a0ae40af06db3642c413320c1d76053\",\"request_id\":\"request-17\",\"selected\":null},\"protocol\":\"fabric-desktop/1\"}",
+    "command_digest": "sha256:c9728f81f1214c9029ccbef7699c31fa421c60d8b95d968828b99ec3e22895dc",
+    "action_digest": null
+  }
+}

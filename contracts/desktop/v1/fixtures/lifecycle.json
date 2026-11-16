@@ -1,0 +1,776 @@
+[
+  {
+    "name": "only-received",
+    "states": [
+      "received"
+    ],
+    "valid": true,
+    "first_invalid": null
+  },
+  {
+    "name": "allowed-and-applied",
+    "states": [
+      "received",
+      "validating",
+      "proving_classification",
+      "allowed",
+      "proving_fresh_permit",
+      "queued",
+      "dispatching",
+      "applied",
+      "reconciled"
+    ],
+    "valid": true,
+    "first_invalid": null
+  },
+  {
+    "name": "asked-approved-and-applied",
+    "states": [
+      "received",
+      "validating",
+      "proving_classification",
+      "pending_approval",
+      "approved",
+      "proving_fresh_permit",
+      "queued",
+      "dispatching",
+      "applied",
+      "reconciled"
+    ],
+    "valid": true,
+    "first_invalid": null
+  },
+  {
+    "name": "blocked-at-classification",
+    "states": [
+      "received",
+      "validating",
+      "proving_classification",
+      "blocked"
+    ],
+    "valid": true,
+    "first_invalid": null
+  },
+  {
+    "name": "undecided-at-classification",
+    "states": [
+      "received",
+      "validating",
+      "proving_classification",
+      "undecided"
+    ],
+    "valid": true,
+    "first_invalid": null
+  },
+  {
+    "name": "asked-and-denied",
+    "states": [
+      "received",
+      "validating",
+      "proving_classification",
+      "pending_approval",
+      "denied"
+    ],
+    "valid": true,
+    "first_invalid": null
+  },
+  {
+    "name": "asked-and-expired",
+    "states": [
+      "received",
+      "validating",
+      "proving_classification",
+      "pending_approval",
+      "expired"
+    ],
+    "valid": true,
+    "first_invalid": null
+  },
+  {
+    "name": "asked-and-cancelled",
+    "states": [
+      "received",
+      "validating",
+      "proving_classification",
+      "pending_approval",
+      "cancelled"
+    ],
+    "valid": true,
+    "first_invalid": null
+  },
+  {
+    "name": "asked-and-stale",
+    "states": [
+      "received",
+      "validating",
+      "proving_classification",
+      "pending_approval",
+      "stale"
+    ],
+    "valid": true,
+    "first_invalid": null
+  },
+  {
+    "name": "invalid-arguments",
+    "states": [
+      "received",
+      "validating",
+      "terminal_failure"
+    ],
+    "valid": true,
+    "first_invalid": null
+  },
+  {
+    "name": "cancelled-while-checking",
+    "states": [
+      "received",
+      "validating",
+      "proving_classification",
+      "cancelled"
+    ],
+    "valid": true,
+    "first_invalid": null
+  },
+  {
+    "name": "cancelled-while-queued",
+    "states": [
+      "received",
+      "validating",
+      "proving_classification",
+      "allowed",
+      "proving_fresh_permit",
+      "queued",
+      "cancelled"
+    ],
+    "valid": true,
+    "first_invalid": null
+  },
+  {
+    "name": "revoked-while-queued",
+    "states": [
+      "received",
+      "validating",
+      "proving_classification",
+      "allowed",
+      "proving_fresh_permit",
+      "queued",
+      "proving_fresh_permit",
+      "blocked"
+    ],
+    "valid": true,
+    "first_invalid": null
+  },
+  {
+    "name": "paused-after-approval",
+    "states": [
+      "received",
+      "validating",
+      "proving_classification",
+      "pending_approval",
+      "approved",
+      "proving_fresh_permit",
+      "blocked"
+    ],
+    "valid": true,
+    "first_invalid": null
+  },
+  {
+    "name": "prover-lost-after-approval",
+    "states": [
+      "received",
+      "validating",
+      "proving_classification",
+      "pending_approval",
+      "approved",
+      "proving_fresh_permit",
+      "undecided"
+    ],
+    "valid": true,
+    "first_invalid": null
+  },
+  {
+    "name": "fresh-proof-needs-approval",
+    "states": [
+      "received",
+      "validating",
+      "proving_classification",
+      "allowed",
+      "proving_fresh_permit",
+      "pending_approval",
+      "approved",
+      "proving_fresh_permit",
+      "queued",
+      "dispatching",
+      "applied",
+      "reconciled"
+    ],
+    "valid": true,
+    "first_invalid": null
+  },
+  {
+    "name": "stale-after-approval",
+    "states": [
+      "received",
+      "validating",
+      "proving_classification",
+      "pending_approval",
+      "approved",
+      "proving_fresh_permit",
+      "stale"
+    ],
+    "valid": true,
+    "first_invalid": null
+  },
+  {
+    "name": "retry-with-fresh-proof",
+    "states": [
+      "received",
+      "validating",
+      "proving_classification",
+      "allowed",
+      "proving_fresh_permit",
+      "queued",
+      "dispatching",
+      "retry_wait",
+      "proving_fresh_permit",
+      "queued",
+      "dispatching",
+      "applied",
+      "reconciled"
+    ],
+    "valid": true,
+    "first_invalid": null
+  },
+  {
+    "name": "cancelled-before-retry",
+    "states": [
+      "received",
+      "validating",
+      "proving_classification",
+      "allowed",
+      "proving_fresh_permit",
+      "queued",
+      "dispatching",
+      "retry_wait",
+      "cancelled"
+    ],
+    "valid": true,
+    "first_invalid": null
+  },
+  {
+    "name": "terminal-failure-at-dispatch",
+    "states": [
+      "received",
+      "validating",
+      "proving_classification",
+      "allowed",
+      "proving_fresh_permit",
+      "queued",
+      "dispatching",
+      "terminal_failure"
+    ],
+    "valid": true,
+    "first_invalid": null
+  },
+  {
+    "name": "unknown-outcome-then-applied",
+    "states": [
+      "received",
+      "validating",
+      "proving_classification",
+      "allowed",
+      "proving_fresh_permit",
+      "queued",
+      "dispatching",
+      "outcome_unknown",
+      "reconciling",
+      "applied",
+      "reconciled"
+    ],
+    "valid": true,
+    "first_invalid": null
+  },
+  {
+    "name": "unknown-outcome-then-absent",
+    "states": [
+      "received",
+      "validating",
+      "proving_classification",
+      "allowed",
+      "proving_fresh_permit",
+      "queued",
+      "dispatching",
+      "outcome_unknown",
+      "reconciling",
+      "absence_confirmed"
+    ],
+    "valid": true,
+    "first_invalid": null
+  },
+  {
+    "name": "unknown-outcome-needs-owner",
+    "states": [
+      "received",
+      "validating",
+      "proving_classification",
+      "allowed",
+      "proving_fresh_permit",
+      "queued",
+      "dispatching",
+      "outcome_unknown",
+      "reconciling",
+      "needs_owner_resolution"
+    ],
+    "valid": true,
+    "first_invalid": null
+  },
+  {
+    "name": "empty",
+    "states": [],
+    "valid": false,
+    "first_invalid": 0
+  },
+  {
+    "name": "does-not-start-at-received",
+    "states": [
+      "validating",
+      "proving_classification"
+    ],
+    "valid": false,
+    "first_invalid": 0
+  },
+  {
+    "name": "starts-at-approved",
+    "states": [
+      "approved",
+      "proving_fresh_permit"
+    ],
+    "valid": false,
+    "first_invalid": 0
+  },
+  {
+    "name": "unknown-state",
+    "states": [
+      "received",
+      "validating",
+      "executing"
+    ],
+    "valid": false,
+    "first_invalid": 2
+  },
+  {
+    "name": "unknown-first-state",
+    "states": [
+      "pending"
+    ],
+    "valid": false,
+    "first_invalid": 0
+  },
+  {
+    "name": "repeats-a-state",
+    "states": [
+      "received",
+      "received"
+    ],
+    "valid": false,
+    "first_invalid": 1
+  },
+  {
+    "name": "goes-backwards",
+    "states": [
+      "received",
+      "validating",
+      "received"
+    ],
+    "valid": false,
+    "first_invalid": 2
+  },
+  {
+    "name": "skips-validation",
+    "states": [
+      "received",
+      "proving_classification"
+    ],
+    "valid": false,
+    "first_invalid": 1
+  },
+  {
+    "name": "skips-the-proof",
+    "states": [
+      "received",
+      "validating",
+      "allowed"
+    ],
+    "valid": false,
+    "first_invalid": 2
+  },
+  {
+    "name": "dispatch-without-any-proof",
+    "states": [
+      "received",
+      "queued",
+      "dispatching"
+    ],
+    "valid": false,
+    "first_invalid": 1
+  },
+  {
+    "name": "dispatch-while-pending-approval",
+    "states": [
+      "received",
+      "validating",
+      "proving_classification",
+      "pending_approval",
+      "dispatching"
+    ],
+    "valid": false,
+    "first_invalid": 4
+  },
+  {
+    "name": "queued-while-pending-approval",
+    "states": [
+      "received",
+      "validating",
+      "proving_classification",
+      "pending_approval",
+      "queued"
+    ],
+    "valid": false,
+    "first_invalid": 4
+  },
+  {
+    "name": "approval-without-a-card",
+    "states": [
+      "received",
+      "validating",
+      "proving_classification",
+      "approved"
+    ],
+    "valid": false,
+    "first_invalid": 3
+  },
+  {
+    "name": "approved-skips-the-fresh-proof",
+    "states": [
+      "received",
+      "validating",
+      "proving_classification",
+      "pending_approval",
+      "approved",
+      "queued"
+    ],
+    "valid": false,
+    "first_invalid": 5
+  },
+  {
+    "name": "allowed-skips-the-fresh-proof",
+    "states": [
+      "received",
+      "validating",
+      "proving_classification",
+      "allowed",
+      "queued"
+    ],
+    "valid": false,
+    "first_invalid": 4
+  },
+  {
+    "name": "allowed-dispatches-directly",
+    "states": [
+      "received",
+      "validating",
+      "proving_classification",
+      "allowed",
+      "dispatching"
+    ],
+    "valid": false,
+    "first_invalid": 4
+  },
+  {
+    "name": "fresh-proof-dispatches-directly",
+    "states": [
+      "received",
+      "validating",
+      "proving_classification",
+      "allowed",
+      "proving_fresh_permit",
+      "dispatching"
+    ],
+    "valid": false,
+    "first_invalid": 5
+  },
+  {
+    "name": "blocked-then-approved",
+    "states": [
+      "received",
+      "validating",
+      "proving_classification",
+      "blocked",
+      "approved"
+    ],
+    "valid": false,
+    "first_invalid": 4
+  },
+  {
+    "name": "blocked-then-allowed",
+    "states": [
+      "received",
+      "validating",
+      "proving_classification",
+      "blocked",
+      "allowed"
+    ],
+    "valid": false,
+    "first_invalid": 4
+  },
+  {
+    "name": "denied-then-approved",
+    "states": [
+      "received",
+      "validating",
+      "proving_classification",
+      "pending_approval",
+      "denied",
+      "approved"
+    ],
+    "valid": false,
+    "first_invalid": 5
+  },
+  {
+    "name": "expired-then-approved",
+    "states": [
+      "received",
+      "validating",
+      "proving_classification",
+      "pending_approval",
+      "expired",
+      "approved"
+    ],
+    "valid": false,
+    "first_invalid": 5
+  },
+  {
+    "name": "stale-then-approved",
+    "states": [
+      "received",
+      "validating",
+      "proving_classification",
+      "pending_approval",
+      "stale",
+      "approved"
+    ],
+    "valid": false,
+    "first_invalid": 5
+  },
+  {
+    "name": "cancelled-then-approved",
+    "states": [
+      "received",
+      "validating",
+      "proving_classification",
+      "pending_approval",
+      "cancelled",
+      "approved"
+    ],
+    "valid": false,
+    "first_invalid": 5
+  },
+  {
+    "name": "undecided-then-allowed",
+    "states": [
+      "received",
+      "validating",
+      "proving_classification",
+      "undecided",
+      "allowed"
+    ],
+    "valid": false,
+    "first_invalid": 4
+  },
+  {
+    "name": "undecided-then-retried",
+    "states": [
+      "received",
+      "validating",
+      "proving_classification",
+      "undecided",
+      "proving_classification"
+    ],
+    "valid": false,
+    "first_invalid": 4
+  },
+  {
+    "name": "applied-then-dispatched-again",
+    "states": [
+      "received",
+      "validating",
+      "proving_classification",
+      "allowed",
+      "proving_fresh_permit",
+      "queued",
+      "dispatching",
+      "applied",
+      "dispatching"
+    ],
+    "valid": false,
+    "first_invalid": 8
+  },
+  {
+    "name": "reconciled-then-dispatched-again",
+    "states": [
+      "received",
+      "validating",
+      "proving_classification",
+      "allowed",
+      "proving_fresh_permit",
+      "queued",
+      "dispatching",
+      "applied",
+      "reconciled",
+      "dispatching"
+    ],
+    "valid": false,
+    "first_invalid": 9
+  },
+  {
+    "name": "cancelled-after-dispatch",
+    "states": [
+      "received",
+      "validating",
+      "proving_classification",
+      "allowed",
+      "proving_fresh_permit",
+      "queued",
+      "dispatching",
+      "cancelled"
+    ],
+    "valid": false,
+    "first_invalid": 7
+  },
+  {
+    "name": "retry-without-a-fresh-proof",
+    "states": [
+      "received",
+      "validating",
+      "proving_classification",
+      "allowed",
+      "proving_fresh_permit",
+      "queued",
+      "dispatching",
+      "retry_wait",
+      "dispatching"
+    ],
+    "valid": false,
+    "first_invalid": 8
+  },
+  {
+    "name": "retry-straight-to-queued",
+    "states": [
+      "received",
+      "validating",
+      "proving_classification",
+      "allowed",
+      "proving_fresh_permit",
+      "queued",
+      "dispatching",
+      "retry_wait",
+      "queued"
+    ],
+    "valid": false,
+    "first_invalid": 8
+  },
+  {
+    "name": "unknown-outcome-retried-blindly",
+    "states": [
+      "received",
+      "validating",
+      "proving_classification",
+      "allowed",
+      "proving_fresh_permit",
+      "queued",
+      "dispatching",
+      "outcome_unknown",
+      "retry_wait"
+    ],
+    "valid": false,
+    "first_invalid": 8
+  },
+  {
+    "name": "unknown-outcome-dispatched-again",
+    "states": [
+      "received",
+      "validating",
+      "proving_classification",
+      "allowed",
+      "proving_fresh_permit",
+      "queued",
+      "dispatching",
+      "outcome_unknown",
+      "dispatching"
+    ],
+    "valid": false,
+    "first_invalid": 8
+  },
+  {
+    "name": "unknown-outcome-called-applied",
+    "states": [
+      "received",
+      "validating",
+      "proving_classification",
+      "allowed",
+      "proving_fresh_permit",
+      "queued",
+      "dispatching",
+      "outcome_unknown",
+      "applied"
+    ],
+    "valid": false,
+    "first_invalid": 8
+  },
+  {
+    "name": "absent-then-dispatched-again",
+    "states": [
+      "received",
+      "validating",
+      "proving_classification",
+      "allowed",
+      "proving_fresh_permit",
+      "queued",
+      "dispatching",
+      "outcome_unknown",
+      "reconciling",
+      "absence_confirmed",
+      "dispatching"
+    ],
+    "valid": false,
+    "first_invalid": 10
+  },
+  {
+    "name": "failure-then-retried",
+    "states": [
+      "received",
+      "validating",
+      "proving_classification",
+      "allowed",
+      "proving_fresh_permit",
+      "queued",
+      "dispatching",
+      "terminal_failure",
+      "retry_wait"
+    ],
+    "valid": false,
+    "first_invalid": 8
+  },
+  {
+    "name": "pending-approval-straight-to-blocked",
+    "states": [
+      "received",
+      "validating",
+      "proving_classification",
+      "pending_approval",
+      "blocked"
+    ],
+    "valid": false,
+    "first_invalid": 4
+  }
+]

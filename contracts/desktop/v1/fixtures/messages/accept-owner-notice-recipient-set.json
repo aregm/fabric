@@ -1,0 +1,34 @@
+{
+  "description": "A recipient set change: a set imported from Google People.",
+  "schema": "owner-channel.schema.json#/$defs/owner_notice",
+  "value": {
+    "protocol": "fabric-desktop/1",
+    "sequence": 1306,
+    "change": {
+      "kind": "recipient_set",
+      "recipient_set": {
+        "recipient_set_id": "rset-people-family",
+        "revision": 1,
+        "source": {
+          "kind": "google_people",
+          "account_id": "acct-1",
+          "imported_at": "2026-11-20T08:30:00.000Z"
+        },
+        "definition": {
+          "name": "Family (Google contacts)",
+          "members": [
+            "parent@example.net",
+            "sibling@example.net"
+          ],
+          "domains": []
+        }
+      }
+    }
+  },
+  "expect": {
+    "verdict": "accept",
+    "canonical": "{\"change\":{\"kind\":\"recipient_set\",\"recipient_set\":{\"definition\":{\"domains\":[],\"members\":[\"parent@example.net\",\"sibling@example.net\"],\"name\":\"Family (Google contacts)\"},\"recipient_set_id\":\"rset-people-family\",\"revision\":1,\"source\":{\"account_id\":\"acct-1\",\"imported_at\":\"2026-11-20T08:30:00.000Z\",\"kind\":\"google_people\"}}},\"protocol\":\"fabric-desktop/1\",\"sequence\":1306}",
+    "command_digest": null,
+    "action_digest": null
+  }
+}

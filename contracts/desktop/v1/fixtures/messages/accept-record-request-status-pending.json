@@ -1,0 +1,18 @@
+{
+  "description": "A status waiting for the owner.",
+  "schema": "agent-channel.schema.json#/$defs/request_status",
+  "value": {
+    "request_id": "request-17",
+    "updated_at": "2026-11-20T15:00:01.250Z",
+    "status": {
+      "state": "pending_approval",
+      "approval_expires_at": "2026-11-21T15:00:00.000Z"
+    }
+  },
+  "expect": {
+    "verdict": "accept",
+    "canonical": "{\"request_id\":\"request-17\",\"status\":{\"approval_expires_at\":\"2026-11-21T15:00:00.000Z\",\"state\":\"pending_approval\"},\"updated_at\":\"2026-11-20T15:00:01.250Z\"}",
+    "command_digest": null,
+    "action_digest": null
+  }
+}

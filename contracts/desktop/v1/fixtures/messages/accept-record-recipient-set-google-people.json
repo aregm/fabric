@@ -1,0 +1,27 @@
+{
+  "description": "A recipient set imported from Google People.",
+  "schema": "owner-channel.schema.json#/$defs/recipient_set",
+  "value": {
+    "recipient_set_id": "rset-people-family",
+    "revision": 1,
+    "source": {
+      "kind": "google_people",
+      "account_id": "acct-1",
+      "imported_at": "2026-11-20T08:30:00.000Z"
+    },
+    "definition": {
+      "name": "Family (Google contacts)",
+      "members": [
+        "parent@example.net",
+        "sibling@example.net"
+      ],
+      "domains": []
+    }
+  },
+  "expect": {
+    "verdict": "accept",
+    "canonical": "{\"definition\":{\"domains\":[],\"members\":[\"parent@example.net\",\"sibling@example.net\"],\"name\":\"Family (Google contacts)\"},\"recipient_set_id\":\"rset-people-family\",\"revision\":1,\"source\":{\"account_id\":\"acct-1\",\"imported_at\":\"2026-11-20T08:30:00.000Z\",\"kind\":\"google_people\"}}",
+    "command_digest": null,
+    "action_digest": null
+  }
+}

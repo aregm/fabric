@@ -20,6 +20,10 @@ jobs:
     steps:
       - uses: actions/checkout@v6
       - run: sh scripts/setup.sh
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 26
+      - run: sh scripts/verify-contracts.sh --typecheck
 
   windows:
     name: ${{ matrix.runner }}
@@ -33,3 +37,9 @@ jobs:
       - uses: actions/checkout@v6
       - shell: pwsh
         run: ./scripts/setup.ps1
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 26
+      - shell: pwsh
+        working-directory: contracts/desktop/v1/typescript
+        run: node --test

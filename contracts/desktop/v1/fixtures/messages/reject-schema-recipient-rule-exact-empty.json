@@ -1,0 +1,38 @@
+{
+  "description": "An exact recipient rule with no address.",
+  "schema": "owner-channel.schema.json#/$defs/owner_request",
+  "value": {
+    "protocol": "fabric-desktop/1",
+    "id": "command-45",
+    "method": "decide_request",
+    "params": {
+      "request_id": "request-21",
+      "request_digest": "sha256:9911dcca0cc270f88cbd3b82afc1ffe5c0dc4f41b2c3efc9398967d0c6740a56",
+      "expected_revision": 2,
+      "decision": "approve",
+      "selected": {
+        "calendars": [
+          {
+            "account_id": "acct-1",
+            "calendar_id": "cal-team-shared"
+          }
+        ],
+        "window": null,
+        "fields": null,
+        "recipients": {
+          "kind": "exact",
+          "addresses": []
+        },
+        "send_updates": "all"
+      },
+      "duration": {
+        "kind": "one_request"
+      }
+    }
+  },
+  "expect": {
+    "verdict": "reject",
+    "layer": "schema",
+    "error": "invalid_params"
+  }
+}

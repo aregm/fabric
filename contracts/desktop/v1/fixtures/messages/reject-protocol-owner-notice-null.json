@@ -1,0 +1,16 @@
+{
+  "description": "An owner notice whose protocol is null.",
+  "schema": "owner-channel.schema.json#/$defs/owner_notice",
+  "value": {
+    "protocol": null,
+    "sequence": 1318,
+    "change": {
+      "kind": "snapshot_required"
+    }
+  },
+  "expect": {
+    "verdict": "reject",
+    "layer": "protocol",
+    "error": "unsupported_protocol"
+  }
+}

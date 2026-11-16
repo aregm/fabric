@@ -1,0 +1,22 @@
+{
+  "description": "not_found with a recovery that belongs to busy.",
+  "schema": "owner-channel.schema.json#/$defs/owner_response",
+  "value": {
+    "protocol": "fabric-desktop/1",
+    "id": "details-9",
+    "method": "get_request_details",
+    "error": {
+      "code": "not_found",
+      "message": "There is no request request-99.",
+      "retryable": false,
+      "recovery": "retry_later",
+      "correlation_id": "corr-0001",
+      "detail": null
+    }
+  },
+  "expect": {
+    "verdict": "reject",
+    "layer": "schema",
+    "error": "invalid_params"
+  }
+}

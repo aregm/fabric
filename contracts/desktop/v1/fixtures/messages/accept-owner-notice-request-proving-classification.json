@@ -1,0 +1,30 @@
+{
+  "description": "A request whose classification is being proved.",
+  "schema": "owner-channel.schema.json#/$defs/owner_notice",
+  "value": {
+    "protocol": "fabric-desktop/1",
+    "sequence": 1310,
+    "change": {
+      "kind": "request",
+      "request": {
+        "request_id": "request-18",
+        "revision": 2,
+        "agent_id": "agent-claude-code",
+        "tool": "fabric_calendar_read",
+        "account_id": "acct-1",
+        "received_at": "2026-11-20T15:12:41.503Z",
+        "updated_at": "2026-11-20T15:12:41.640Z",
+        "request_digest": "sha256:7a4b17e48cacba5ae9e25209e7bd593aa0cf0d0e01a657848666a8ea138d4707",
+        "status": {
+          "state": "proving_classification"
+        }
+      }
+    }
+  },
+  "expect": {
+    "verdict": "accept",
+    "canonical": "{\"change\":{\"kind\":\"request\",\"request\":{\"account_id\":\"acct-1\",\"agent_id\":\"agent-claude-code\",\"received_at\":\"2026-11-20T15:12:41.503Z\",\"request_digest\":\"sha256:7a4b17e48cacba5ae9e25209e7bd593aa0cf0d0e01a657848666a8ea138d4707\",\"request_id\":\"request-18\",\"revision\":2,\"status\":{\"state\":\"proving_classification\"},\"tool\":\"fabric_calendar_read\",\"updated_at\":\"2026-11-20T15:12:41.640Z\"}},\"protocol\":\"fabric-desktop/1\",\"sequence\":1310}",
+    "command_digest": null,
+    "action_digest": null
+  }
+}

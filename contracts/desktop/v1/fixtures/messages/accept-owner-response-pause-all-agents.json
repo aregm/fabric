@@ -1,0 +1,72 @@
+{
+  "description": "pause_agent answers a pause of all agents with every agent, each paused.",
+  "schema": "owner-channel.schema.json#/$defs/owner_response",
+  "value": {
+    "protocol": "fabric-desktop/1",
+    "id": "command-48",
+    "method": "pause_agent",
+    "result": {
+      "commit_sequence": 1296,
+      "agents": [
+        {
+          "agent_id": "agent-claude-desktop",
+          "revision": 4,
+          "registered_name": "Claude Desktop",
+          "destination": {
+            "kind": "cloud",
+            "processor": "Anthropic"
+          },
+          "paused": true,
+          "session": null,
+          "last_tool_call_at": "2026-11-20T09:41:00.000Z"
+        },
+        {
+          "agent_id": "agent-claude-code",
+          "revision": 6,
+          "registered_name": "Claude Code",
+          "destination": {
+            "kind": "cloud",
+            "processor": "Anthropic"
+          },
+          "paused": true,
+          "session": {
+            "session_id": "session-claude-code-7",
+            "started_at": "2026-11-20T14:00:00.000Z",
+            "last_active_at": "2026-11-20T15:12:41.503Z"
+          },
+          "last_tool_call_at": "2026-11-20T15:12:41.503Z"
+        },
+        {
+          "agent_id": "agent-codex-desktop",
+          "revision": 2,
+          "registered_name": "Codex Desktop",
+          "destination": {
+            "kind": "cloud",
+            "processor": "OpenAI"
+          },
+          "paused": true,
+          "session": null,
+          "last_tool_call_at": null
+        },
+        {
+          "agent_id": "agent-ollama",
+          "revision": 2,
+          "registered_name": "Fabric local assistant",
+          "destination": {
+            "kind": "local",
+            "endpoint": "Embedded Ollama runtime on this Mac"
+          },
+          "paused": true,
+          "session": null,
+          "last_tool_call_at": null
+        }
+      ]
+    }
+  },
+  "expect": {
+    "verdict": "accept",
+    "canonical": "{\"id\":\"command-48\",\"method\":\"pause_agent\",\"protocol\":\"fabric-desktop/1\",\"result\":{\"agents\":[{\"agent_id\":\"agent-claude-desktop\",\"destination\":{\"kind\":\"cloud\",\"processor\":\"Anthropic\"},\"last_tool_call_at\":\"2026-11-20T09:41:00.000Z\",\"paused\":true,\"registered_name\":\"Claude Desktop\",\"revision\":4,\"session\":null},{\"agent_id\":\"agent-claude-code\",\"destination\":{\"kind\":\"cloud\",\"processor\":\"Anthropic\"},\"last_tool_call_at\":\"2026-11-20T15:12:41.503Z\",\"paused\":true,\"registered_name\":\"Claude Code\",\"revision\":6,\"session\":{\"last_active_at\":\"2026-11-20T15:12:41.503Z\",\"session_id\":\"session-claude-code-7\",\"started_at\":\"2026-11-20T14:00:00.000Z\"}},{\"agent_id\":\"agent-codex-desktop\",\"destination\":{\"kind\":\"cloud\",\"processor\":\"OpenAI\"},\"last_tool_call_at\":null,\"paused\":true,\"registered_name\":\"Codex Desktop\",\"revision\":2,\"session\":null},{\"agent_id\":\"agent-ollama\",\"destination\":{\"endpoint\":\"Embedded Ollama runtime on this Mac\",\"kind\":\"local\"},\"last_tool_call_at\":null,\"paused\":true,\"registered_name\":\"Fabric local assistant\",\"revision\":2,\"session\":null}],\"commit_sequence\":1296}}",
+    "command_digest": null,
+    "action_digest": null
+  }
+}

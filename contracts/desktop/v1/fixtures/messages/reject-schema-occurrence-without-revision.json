@@ -1,0 +1,31 @@
+{
+  "description": "An occurrence target without revision.",
+  "schema": "agent-channel.schema.json#/$defs/agent_request",
+  "value": {
+    "protocol": "fabric-desktop/1",
+    "id": "call-12",
+    "method": "fabric_calendar_propose_response",
+    "params": {
+      "account_id": "acct-1",
+      "calendar_id": "cal-primary",
+      "target": {
+        "kind": "occurrence",
+        "occurrence": {
+          "instance_id": "evt-standup_20261120T150000Z",
+          "original_start_time": {
+            "date_time": "2026-11-20T10:00:00-06:00",
+            "zone": "America/Chicago"
+          }
+        }
+      },
+      "response": "declined",
+      "send_updates": "all",
+      "task": "Answer the invitation."
+    }
+  },
+  "expect": {
+    "verdict": "reject",
+    "layer": "schema",
+    "error": "invalid_params"
+  }
+}

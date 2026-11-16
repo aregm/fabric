@@ -1,0 +1,29 @@
+{
+  "description": "A read naming the field notes, which does not exist.",
+  "schema": "agent-channel.schema.json#/$defs/agent_request",
+  "value": {
+    "protocol": "fabric-desktop/1",
+    "id": "call-3",
+    "method": "fabric_calendar_read",
+    "params": {
+      "account_id": "acct-1",
+      "calendar_ids": [
+        "cal-primary"
+      ],
+      "window": {
+        "start": "2026-11-20T06:00:00.000Z",
+        "end": "2026-11-21T06:00:00.000Z"
+      },
+      "fields": [
+        "time",
+        "notes"
+      ],
+      "task": "See what is on Friday."
+    }
+  },
+  "expect": {
+    "verdict": "reject",
+    "layer": "schema",
+    "error": "invalid_params"
+  }
+}

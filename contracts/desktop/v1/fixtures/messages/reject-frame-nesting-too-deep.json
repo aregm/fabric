@@ -1,0 +1,10 @@
+{
+  "description": "A hello frame with arrays nested 33 deep counting the frame itself.",
+  "schema": "owner-channel.schema.json#/$defs/owner_request",
+  "text": "{\"id\":\"hello-1\",\"method\":\"hello\",\"params\":{\"client\":{\"build\":\"0.1.0-dev+20261115\",\"name\":[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]},\"schema_version\":1},\"protocol\":\"fabric-desktop/1\"}",
+  "expect": {
+    "verdict": "reject",
+    "layer": "frame",
+    "error": "malformed_frame"
+  }
+}

@@ -1,0 +1,21 @@
+{
+  "description": "An agent status blocked whose denial carries a proof_id.",
+  "schema": "agent-channel.schema.json#/$defs/request_status",
+  "value": {
+    "request_id": "request-22",
+    "updated_at": "2026-11-20T15:30:00.412Z",
+    "status": {
+      "state": "blocked",
+      "denial": {
+        "rule": "recurring_mutation_unsupported",
+        "explanation": "Version 1 does not change recurring events; only a reply to one occurrence is supported.",
+        "proof_id": "proof-22-classification"
+      }
+    }
+  },
+  "expect": {
+    "verdict": "reject",
+    "layer": "schema",
+    "error": "invalid_params"
+  }
+}

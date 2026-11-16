@@ -1,0 +1,18 @@
+{
+  "description": "A recipient set was deleted.",
+  "schema": "owner-channel.schema.json#/$defs/owner_notice",
+  "value": {
+    "protocol": "fabric-desktop/1",
+    "sequence": 1307,
+    "change": {
+      "kind": "recipient_set_deleted",
+      "recipient_set_id": "rset-team"
+    }
+  },
+  "expect": {
+    "verdict": "accept",
+    "canonical": "{\"change\":{\"kind\":\"recipient_set_deleted\",\"recipient_set_id\":\"rset-team\"},\"protocol\":\"fabric-desktop/1\",\"sequence\":1307}",
+    "command_digest": null,
+    "action_digest": null
+  }
+}

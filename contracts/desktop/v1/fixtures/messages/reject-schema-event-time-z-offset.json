@@ -1,0 +1,32 @@
+{
+  "description": "An event time written with Z instead of an offset.",
+  "schema": "agent-channel.schema.json#/$defs/agent_request",
+  "value": {
+    "protocol": "fabric-desktop/1",
+    "id": "call-5",
+    "method": "fabric_calendar_propose_create",
+    "params": {
+      "account_id": "acct-1",
+      "calendar_id": "cal-drafts",
+      "event": {
+        "title": "Planning block",
+        "start": {
+          "date_time": "2026-11-20T16:00:00Z",
+          "zone": "America/Chicago"
+        },
+        "end": {
+          "date_time": "2026-11-20T11:00:00-06:00",
+          "zone": "America/Chicago"
+        },
+        "description": null,
+        "location": null
+      },
+      "task": "Block time to plan next week."
+    }
+  },
+  "expect": {
+    "verdict": "reject",
+    "layer": "schema",
+    "error": "invalid_params"
+  }
+}

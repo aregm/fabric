@@ -1,0 +1,16 @@
+{
+  "name": "fabric-desktop-contract",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "TypeScript side of the fabric-desktop/1 contract: types, the strict JSON reader, the schema check and the fixture report.",
+  "scripts": {
+    "test": "node --test",
+    "report": "node src/report.ts report",
+    "typecheck": "node src/gen-typed-fixtures.ts && tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "26.6.6",
+    "typescript": "7.0.2"
+  }
+}

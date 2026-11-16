@@ -1,0 +1,29 @@
+{
+  "description": "Propose the complete attendee list of two people.",
+  "schema": "agent-channel.schema.json#/$defs/agent_request",
+  "value": {
+    "protocol": "fabric-desktop/1",
+    "id": "call-9",
+    "method": "fabric_calendar_propose_invitation",
+    "params": {
+      "account_id": "acct-1",
+      "calendar_id": "cal-team-shared",
+      "event": {
+        "event_id": "evt-fabric-0042",
+        "revision": "3181161799000000"
+      },
+      "attendees": [
+        "ally@example.net",
+        "stranger@example.org"
+      ],
+      "send_updates": "all",
+      "task": "Invite the team to the planning meeting."
+    }
+  },
+  "expect": {
+    "verdict": "accept",
+    "canonical": "{\"id\":\"call-9\",\"method\":\"fabric_calendar_propose_invitation\",\"params\":{\"account_id\":\"acct-1\",\"attendees\":[\"ally@example.net\",\"stranger@example.org\"],\"calendar_id\":\"cal-team-shared\",\"event\":{\"event_id\":\"evt-fabric-0042\",\"revision\":\"3181161799000000\"},\"send_updates\":\"all\",\"task\":\"Invite the team to the planning meeting.\"},\"protocol\":\"fabric-desktop/1\"}",
+    "command_digest": null,
+    "action_digest": "sha256:cfa155204ca23edaebcb06ac910306fe3a9f35e6b1a98f647f3be6ec2e7a9bbd"
+  }
+}
