@@ -1,0 +1,1625 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "fabric-desktop/1 — the owner channel: profiles, grants, requests, proofs and frames",
+  "$defs": {
+    "mode": {
+      "description": "What a profile says about one row of the policy matrix. What a mode means in a row is the frozen cell (data/policy-matrix.json) and is decided by the broker's rule theory.",
+      "enum": ["allow", "ask", "block"]
+    },
+    "policy_row": {
+      "description": "The rows of the policy matrix (plan section 7, ADR-108 D2).",
+      "enum": [
+        "list_and_availability",
+        "read_event_details",
+        "create_in_agent_drafts",
+        "create_in_existing_calendar",
+        "edit_fabric_created_event",
+        "edit_preexisting_event",
+        "send_or_change_invitations",
+        "respond_to_invitation",
+        "delete_event",
+        "delete_calendar_or_change_sharing"
+      ]
+    },
+    "profile_rows": {
+      "description": "One mode per row. Two rows are fixed in every profile, custom ones included: deleting an event always asks, and deleting a calendar or changing sharing is always blocked.",
+      "type": "object",
+      "properties": {
+        "list_and_availability": { "$ref": "#/$defs/mode" },
+        "read_event_details": { "$ref": "#/$defs/mode" },
+        "create_in_agent_drafts": { "$ref": "#/$defs/mode" },
+        "create_in_existing_calendar": { "$ref": "#/$defs/mode" },
+        "edit_fabric_created_event": { "$ref": "#/$defs/mode" },
+        "edit_preexisting_event": { "$ref": "#/$defs/mode" },
+        "send_or_change_invitations": { "$ref": "#/$defs/mode" },
+        "respond_to_invitation": { "$ref": "#/$defs/mode" },
+        "delete_event": { "const": "ask" },
+        "delete_calendar_or_change_sharing": { "const": "block" }
+      },
+      "required": [
+        "list_and_availability",
+        "read_event_details",
+        "create_in_agent_drafts",
+        "create_in_existing_calendar",
+        "edit_fabric_created_event",
+        "edit_preexisting_event",
+        "send_or_change_invitations",
+        "respond_to_invitation",
+        "delete_event",
+        "delete_calendar_or_change_sharing"
+      ],
+      "additionalProperties": false
+    },
+    "custom_profile_id": {
+      "type": "string",
+      "pattern": "^custom-[A-Za-z0-9._-]{1,120}$"
+    },
+    "profile_careful": {
+      "description": "The built-in profile Careful. Its name and its rows are frozen.",
+      "type": "object",
+      "properties": {
+        "kind": { "const": "built_in" },
+        "profile_id": { "const": "careful" },
+        "name": { "const": "Careful" },
+        "version": { "const": 1 },
+        "rows": {
+          "const": {
+            "list_and_availability": "allow",
+            "read_event_details": "ask",
+            "create_in_agent_drafts": "allow",
+            "create_in_existing_calendar": "ask",
+            "edit_fabric_created_event": "ask",
+            "edit_preexisting_event": "ask",
+            "send_or_change_invitations": "ask",
+            "respond_to_invitation": "ask",
+            "delete_event": "ask",
+            "delete_calendar_or_change_sharing": "block"
+          }
+        }
+      },
+      "required": ["kind", "profile_id", "name", "version", "rows"],
+      "additionalProperties": false
+    },
+    "profile_flexible": {
+      "description": "The built-in profile Flexible. Its name and its rows are frozen.",
+      "type": "object",
+      "properties": {
+        "kind": { "const": "built_in" },
+        "profile_id": { "const": "flexible" },
+        "name": { "const": "Flexible" },
+        "version": { "const": 1 },
+        "rows": {
+          "const": {
+            "list_and_availability": "allow",
+            "read_event_details": "allow",
+            "create_in_agent_drafts": "allow",
+            "create_in_existing_calendar": "allow",
+            "edit_fabric_created_event": "allow",
+            "edit_preexisting_event": "ask",
+            "send_or_change_invitations": "allow",
+            "respond_to_invitation": "ask",
+            "delete_event": "ask",
+            "delete_calendar_or_change_sharing": "block"
+          }
+        }
+      },
+      "required": ["kind", "profile_id", "name", "version", "rows"],
+      "additionalProperties": false
+    },
+    "profile_custom": {
+      "description": "A named custom profile. Each save makes a new immutable version.",
+      "type": "object",
+      "properties": {
+        "kind": { "const": "custom" },
+        "profile_id": { "$ref": "#/$defs/custom_profile_id" },
+        "name": { "$ref": "common.schema.json#/$defs/label" },
+        "version": { "$ref": "common.schema.json#/$defs/positive_count" },
+        "rows": { "$ref": "#/$defs/profile_rows" }
+      },
+      "required": ["kind", "profile_id", "name", "version", "rows"],
+      "additionalProperties": false
+    },
+    "profile": {
+      "oneOf": [
+        { "$ref": "#/$defs/profile_careful" },
+        { "$ref": "#/$defs/profile_flexible" },
+        { "$ref": "#/$defs/profile_custom" }
+      ]
+    },
+    "custom_profile_draft": {
+      "description": "What the owner saves. A null id creates a profile; an id saves a new version of that one.",
+      "type": "object",
+      "properties": {
+        "profile_id": { "oneOf": [{ "type": "null" }, { "$ref": "#/$defs/custom_profile_id" }] },
+        "name": { "$ref": "common.schema.json#/$defs/label" },
+        "rows": { "$ref": "#/$defs/profile_rows" }
+      },
+      "required": ["profile_id", "name", "rows"],
+      "additionalProperties": false
+    },
+    "expansion": {
+      "description": "The rows a save makes more permissive, each with the mode before and after. This object is the subject of the expansion digest.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "row": { "$ref": "#/$defs/policy_row" },
+          "from": { "$ref": "#/$defs/mode" },
+          "to": { "$ref": "#/$defs/mode" }
+        },
+        "required": ["row", "from", "to"],
+        "additionalProperties": false
+      },
+      "minItems": 1,
+      "maxItems": 10,
+      "uniqueItems": true
+    },
+    "profiles": {
+      "description": "The profile settings: the built-in profiles, the custom ones, and the one in force.",
+      "type": "object",
+      "properties": {
+        "revision": { "$ref": "common.schema.json#/$defs/count" },
+        "active_profile_id": { "$ref": "common.schema.json#/$defs/id" },
+        "items": { "type": "array", "items": { "$ref": "#/$defs/profile" }, "minItems": 2 }
+      },
+      "required": ["revision", "active_profile_id", "items"],
+      "additionalProperties": false
+    },
+
+    "recipient_set_source": {
+      "description": "Where a recipient set comes from: curated in Fabric, or imported from Google People (CD-Q06).",
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": { "kind": { "const": "local" } },
+          "required": ["kind"],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": { "const": "google_people" },
+            "account_id": { "$ref": "common.schema.json#/$defs/id" },
+            "imported_at": { "$ref": "common.schema.json#/$defs/timestamp" }
+          },
+          "required": ["kind", "account_id", "imported_at"],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "recipient_set_definition": {
+      "description": "A named selector: exact addresses, and domains matched by exact equality. A selector is not a grant.",
+      "type": "object",
+      "properties": {
+        "name": { "$ref": "common.schema.json#/$defs/label" },
+        "members": {
+          "type": "array",
+          "items": { "$ref": "common.schema.json#/$defs/email" },
+          "maxItems": 2000,
+          "uniqueItems": true
+        },
+        "domains": {
+          "type": "array",
+          "items": { "$ref": "common.schema.json#/$defs/domain" },
+          "maxItems": 50,
+          "uniqueItems": true
+        }
+      },
+      "required": ["name", "members", "domains"],
+      "additionalProperties": false
+    },
+    "recipient_set": {
+      "type": "object",
+      "properties": {
+        "recipient_set_id": { "$ref": "common.schema.json#/$defs/id" },
+        "revision": { "$ref": "common.schema.json#/$defs/positive_count" },
+        "source": { "$ref": "#/$defs/recipient_set_source" },
+        "definition": { "$ref": "#/$defs/recipient_set_definition" }
+      },
+      "required": ["recipient_set_id", "revision", "source", "definition"],
+      "additionalProperties": false
+    },
+    "recipient_rule": {
+      "description": "Who an approval covers: exact addresses, or the members of named recipient sets. There is no rule that covers everyone, so an address outside every approved recipient set always asks (G0-STRANGERS).",
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "kind": { "const": "exact" },
+            "addresses": { "$ref": "common.schema.json#/$defs/addresses" }
+          },
+          "required": ["kind", "addresses"],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": { "const": "recipient_sets" },
+            "recipient_set_ids": {
+              "type": "array",
+              "items": { "$ref": "common.schema.json#/$defs/id" },
+              "minItems": 1,
+              "maxItems": 50,
+              "uniqueItems": true
+            }
+          },
+          "required": ["kind", "recipient_set_ids"],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "scope": {
+      "description": "What an approval or a grant covers: the calendars, each named with its account, and, where they apply, a date window and the fields for reads, the recipients for invitations, and who is notified for changes. A member that does not apply to the tools is null; a member that applies and is null covers nothing.",
+      "type": "object",
+      "properties": {
+        "calendars": {
+          "type": "array",
+          "items": { "$ref": "common.schema.json#/$defs/calendar_ref" },
+          "minItems": 1,
+          "maxItems": 200,
+          "uniqueItems": true
+        },
+        "window": { "oneOf": [{ "type": "null" }, { "$ref": "common.schema.json#/$defs/window" }] },
+        "fields": { "oneOf": [{ "type": "null" }, { "$ref": "common.schema.json#/$defs/event_fields" }] },
+        "recipients": { "oneOf": [{ "type": "null" }, { "$ref": "#/$defs/recipient_rule" }] },
+        "send_updates": { "oneOf": [{ "type": "null" }, { "$ref": "common.schema.json#/$defs/send_updates" }] }
+      },
+      "required": ["calendars", "window", "fields", "recipients", "send_updates"],
+      "additionalProperties": false
+    },
+    "duration": {
+      "description": "How long an approval lasts. Every grant kind offers exactly these three (CD-M-DUR).",
+      "type": "object",
+      "properties": {
+        "kind": { "enum": ["one_request", "session", "until_revoked"] }
+      },
+      "required": ["kind"],
+      "additionalProperties": false
+    },
+    "grant_term": {
+      "description": "A grant's duration and what it is bound to.",
+      "oneOf": [
+        {
+          "description": "This request only: one immutable action, used once.",
+          "type": "object",
+          "properties": {
+            "kind": { "const": "one_request" },
+            "action_digest": { "$ref": "common.schema.json#/$defs/digest" }
+          },
+          "required": ["kind", "action_digest"],
+          "additionalProperties": false
+        },
+        {
+          "description": "This session: ends with the agent's session, the app, the broker run, or the idle timeout in the limits.",
+          "type": "object",
+          "properties": {
+            "kind": { "const": "session" },
+            "session_id": { "$ref": "common.schema.json#/$defs/id" }
+          },
+          "required": ["kind", "session_id"],
+          "additionalProperties": false
+        },
+        {
+          "description": "Until revoked: it has no expiry, and the null says so.",
+          "type": "object",
+          "properties": {
+            "kind": { "const": "until_revoked" },
+            "expires_at": { "type": "null" }
+          },
+          "required": ["kind", "expires_at"],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "grant_end": {
+      "type": "object",
+      "properties": {
+        "at": { "$ref": "common.schema.json#/$defs/timestamp" },
+        "reason": {
+          "enum": [
+            "consumed",
+            "revoked_by_owner",
+            "account_disconnected",
+            "authority_reduced",
+            "agent_removed",
+            "session_disconnected",
+            "session_idle_timeout",
+            "app_quit",
+            "broker_restart"
+          ]
+        }
+      },
+      "required": ["at", "reason"],
+      "additionalProperties": false
+    },
+    "grant": {
+      "type": "object",
+      "properties": {
+        "grant_id": { "$ref": "common.schema.json#/$defs/id" },
+        "revision": { "$ref": "common.schema.json#/$defs/positive_count" },
+        "agent_id": { "$ref": "common.schema.json#/$defs/id" },
+        "purpose": { "$ref": "agent-channel.schema.json#/$defs/task" },
+        "tools": {
+          "description": "The actions the grant covers.",
+          "type": "array",
+          "items": { "$ref": "common.schema.json#/$defs/tool_name" },
+          "minItems": 1,
+          "maxItems": 10,
+          "uniqueItems": true
+        },
+        "scope": { "$ref": "#/$defs/scope" },
+        "term": { "$ref": "#/$defs/grant_term" },
+        "origin": {
+          "description": "The approval that created the grant.",
+          "type": "object",
+          "properties": {
+            "request_id": { "$ref": "common.schema.json#/$defs/id" },
+            "approval_digest": { "$ref": "common.schema.json#/$defs/digest" }
+          },
+          "required": ["request_id", "approval_digest"],
+          "additionalProperties": false
+        },
+        "policy": {
+          "description": "The profile version in force when the grant was created.",
+          "type": "object",
+          "properties": {
+            "profile_id": { "$ref": "common.schema.json#/$defs/id" },
+            "version": { "$ref": "common.schema.json#/$defs/positive_count" }
+          },
+          "required": ["profile_id", "version"],
+          "additionalProperties": false
+        },
+        "revocation_epoch": { "$ref": "common.schema.json#/$defs/count" },
+        "created_at": { "$ref": "common.schema.json#/$defs/timestamp" },
+        "ended": { "oneOf": [{ "type": "null" }, { "$ref": "#/$defs/grant_end" }] }
+      },
+      "required": [
+        "grant_id",
+        "revision",
+        "agent_id",
+        "purpose",
+        "tools",
+        "scope",
+        "term",
+        "origin",
+        "policy",
+        "revocation_epoch",
+        "created_at",
+        "ended"
+      ],
+      "additionalProperties": false
+    },
+
+    "destination": {
+      "description": "Where data approved for this agent goes (R14, G0-RISK).",
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "kind": { "const": "cloud" },
+            "processor": { "$ref": "common.schema.json#/$defs/label" }
+          },
+          "required": ["kind", "processor"],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": { "const": "local" },
+            "endpoint": { "$ref": "common.schema.json#/$defs/label" }
+          },
+          "required": ["kind", "endpoint"],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "session": {
+      "type": "object",
+      "properties": {
+        "session_id": { "$ref": "common.schema.json#/$defs/id" },
+        "started_at": { "$ref": "common.schema.json#/$defs/timestamp" },
+        "last_active_at": { "$ref": "common.schema.json#/$defs/timestamp" }
+      },
+      "required": ["session_id", "started_at", "last_active_at"],
+      "additionalProperties": false
+    },
+    "agent": {
+      "description": "An enrolled agent, shown by its registered name.",
+      "type": "object",
+      "properties": {
+        "agent_id": { "$ref": "common.schema.json#/$defs/id" },
+        "revision": { "$ref": "common.schema.json#/$defs/positive_count" },
+        "registered_name": { "$ref": "common.schema.json#/$defs/label" },
+        "destination": { "$ref": "#/$defs/destination" },
+        "paused": { "type": "boolean" },
+        "session": { "oneOf": [{ "type": "null" }, { "$ref": "#/$defs/session" }] },
+        "last_tool_call_at": { "$ref": "common.schema.json#/$defs/nullable_timestamp" }
+      },
+      "required": [
+        "agent_id",
+        "revision",
+        "registered_name",
+        "destination",
+        "paused",
+        "session",
+        "last_tool_call_at"
+      ],
+      "additionalProperties": false
+    },
+    "calendar": {
+      "type": "object",
+      "properties": {
+        "calendar_id": { "$ref": "common.schema.json#/$defs/id" },
+        "name": { "$ref": "common.schema.json#/$defs/label" },
+        "access": { "$ref": "common.schema.json#/$defs/calendar_access" },
+        "selected": { "type": "boolean" },
+        "agent_drafts": {
+          "description": "True for the calendar the owner created in Google and selected as Agent Drafts (CD-Q05f).",
+          "type": "boolean"
+        }
+      },
+      "required": ["calendar_id", "name", "access", "selected", "agent_drafts"],
+      "additionalProperties": false
+    },
+    "account": {
+      "description": "A connected Google account. It never carries a token.",
+      "type": "object",
+      "properties": {
+        "account_id": { "$ref": "common.schema.json#/$defs/id" },
+        "revision": { "$ref": "common.schema.json#/$defs/positive_count" },
+        "state": {
+          "enum": [
+            "awaiting_consent",
+            "connected",
+            "consent_denied",
+            "partial_grant",
+            "cancelled",
+            "account_mismatch",
+            "reauthentication_required",
+            "disconnected"
+          ]
+        },
+        "email": { "oneOf": [{ "type": "null" }, { "$ref": "common.schema.json#/$defs/email" }] },
+        "calendars": { "type": "array", "items": { "$ref": "#/$defs/calendar" } }
+      },
+      "required": ["account_id", "revision", "state", "email", "calendars"],
+      "additionalProperties": false
+    },
+    "health": {
+      "type": "object",
+      "properties": {
+        "prover": { "enum": ["ready", "starting", "unavailable"] },
+        "store": { "enum": ["ready", "locked", "keychain_refused"] }
+      },
+      "required": ["prover", "store"],
+      "additionalProperties": false
+    },
+
+    "time_range": {
+      "type": "object",
+      "properties": {
+        "days": { "$ref": "common.schema.json#/$defs/weekdays" },
+        "start": { "$ref": "common.schema.json#/$defs/local_time" },
+        "end": { "$ref": "common.schema.json#/$defs/local_time" }
+      },
+      "required": ["days", "start", "end"],
+      "additionalProperties": false
+    },
+    "preferences_settings": {
+      "description": "The advanced calendar preferences, for every agent and profile. They ship empty: a null or an empty list means not configured (CD-Q11i).",
+      "type": "object",
+      "properties": {
+        "zone": { "oneOf": [{ "type": "null" }, { "$ref": "common.schema.json#/$defs/iana_zone" }] },
+        "workday": { "oneOf": [{ "type": "null" }, { "$ref": "#/$defs/time_range" }] },
+        "protected_times": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "enabled": { "type": "boolean" },
+              "range": { "$ref": "#/$defs/time_range" }
+            },
+            "required": ["enabled", "range"],
+            "additionalProperties": false
+          },
+          "maxItems": 50
+        },
+        "uninterrupted": {
+          "oneOf": [
+            { "type": "null" },
+            {
+              "type": "object",
+              "properties": {
+                "enabled": { "type": "boolean" },
+                "minimum_minutes": { "type": "integer", "minimum": 1, "maximum": 1440 },
+                "part_of_day": { "enum": ["any", "morning", "afternoon"] }
+              },
+              "required": ["enabled", "minimum_minutes", "part_of_day"],
+              "additionalProperties": false
+            }
+          ]
+        },
+        "buffer": {
+          "oneOf": [
+            { "type": "null" },
+            {
+              "type": "object",
+              "properties": {
+                "enabled": { "type": "boolean" },
+                "minutes": { "type": "integer", "minimum": 1, "maximum": 240 }
+              },
+              "required": ["enabled", "minutes"],
+              "additionalProperties": false
+            }
+          ]
+        },
+        "warning_calendars": {
+          "description": "The calendars whose events contribute to warnings.",
+          "type": "array",
+          "items": { "$ref": "common.schema.json#/$defs/calendar_ref" },
+          "maxItems": 200,
+          "uniqueItems": true
+        }
+      },
+      "required": ["zone", "workday", "protected_times", "uninterrupted", "buffer", "warning_calendars"],
+      "additionalProperties": false
+    },
+    "preferences": {
+      "type": "object",
+      "properties": {
+        "revision": { "$ref": "common.schema.json#/$defs/count" },
+        "settings": { "$ref": "#/$defs/preferences_settings" }
+      },
+      "required": ["revision", "settings"],
+      "additionalProperties": false
+    },
+
+    "ruling": {
+      "description": "What a live proof decided against permitting an action: the failing rule, a sentence, and the proof to open. A denial carries all three so the interface can keep them on screen (DEF-7).",
+      "type": "object",
+      "properties": {
+        "rule": { "$ref": "common.schema.json#/$defs/name_token" },
+        "explanation": { "$ref": "common.schema.json#/$defs/explanation" },
+        "proof_id": { "$ref": "common.schema.json#/$defs/id" }
+      },
+      "required": ["rule", "explanation", "proof_id"],
+      "additionalProperties": false
+    },
+    "failure": {
+      "type": "object",
+      "properties": {
+        "code": { "$ref": "common.schema.json#/$defs/failure_code" },
+        "explanation": { "$ref": "common.schema.json#/$defs/explanation" }
+      },
+      "required": ["code", "explanation"],
+      "additionalProperties": false
+    },
+    "lifecycle_status": {
+      "description": "Where a request is in its lifecycle, and what that state always carries. A blocked request cannot be written without its failing rule and its proof (DEF-7).",
+      "oneOf": [
+        {
+          "description": "Waiting for the owner. The card expires at `approval_expires_at`.",
+          "type": "object",
+          "properties": {
+            "state": { "const": "pending_approval" },
+            "approval_expires_at": { "$ref": "common.schema.json#/$defs/timestamp" }
+          },
+          "required": ["state", "approval_expires_at"],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "state": { "const": "blocked" },
+            "denial": { "$ref": "#/$defs/ruling" }
+          },
+          "required": ["state", "denial"],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "state": { "const": "terminal_failure" },
+            "failure": { "$ref": "#/$defs/failure" }
+          },
+          "required": ["state", "failure"],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "state": { "$ref": "common.schema.json#/$defs/plain_request_state" }
+          },
+          "required": ["state"],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "request": {
+      "description": "One logical request, without private event details.",
+      "type": "object",
+      "properties": {
+        "request_id": { "$ref": "common.schema.json#/$defs/id" },
+        "revision": { "$ref": "common.schema.json#/$defs/positive_count" },
+        "agent_id": { "$ref": "common.schema.json#/$defs/id" },
+        "tool": { "$ref": "common.schema.json#/$defs/tool_name" },
+        "account_id": { "$ref": "common.schema.json#/$defs/nullable_id" },
+        "received_at": { "$ref": "common.schema.json#/$defs/timestamp" },
+        "updated_at": { "$ref": "common.schema.json#/$defs/timestamp" },
+        "request_digest": { "$ref": "common.schema.json#/$defs/digest" },
+        "status": { "$ref": "#/$defs/lifecycle_status" }
+      },
+      "required": [
+        "request_id",
+        "revision",
+        "agent_id",
+        "tool",
+        "account_id",
+        "received_at",
+        "updated_at",
+        "request_digest",
+        "status"
+      ],
+      "additionalProperties": false
+    },
+    "approval_card": {
+      "description": "What the owner is asked to approve: the scope, the duration the broker proposes, why the current authority is insufficient, and when the card expires.",
+      "type": "object",
+      "properties": {
+        "scope": { "$ref": "#/$defs/scope" },
+        "proposed_duration": { "$ref": "#/$defs/duration" },
+        "insufficiency": { "$ref": "#/$defs/ruling" },
+        "expires_at": { "$ref": "common.schema.json#/$defs/timestamp" }
+      },
+      "required": ["scope", "proposed_duration", "insufficiency", "expires_at"],
+      "additionalProperties": false
+    },
+    "approval": {
+      "description": "The exact snapshot of the owner's decision.",
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "decision": { "const": "approve" },
+            "command_id": { "$ref": "common.schema.json#/$defs/id" },
+            "decided_at": { "$ref": "common.schema.json#/$defs/timestamp" },
+            "approval_digest": { "$ref": "common.schema.json#/$defs/digest" },
+            "scope": { "$ref": "#/$defs/scope" },
+            "duration": { "$ref": "#/$defs/duration" },
+            "effective_request_digest": { "$ref": "common.schema.json#/$defs/digest" },
+            "grant_id": { "$ref": "common.schema.json#/$defs/id" }
+          },
+          "required": [
+            "decision",
+            "command_id",
+            "decided_at",
+            "approval_digest",
+            "scope",
+            "duration",
+            "effective_request_digest",
+            "grant_id"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "decision": { "const": "deny" },
+            "command_id": { "$ref": "common.schema.json#/$defs/id" },
+            "decided_at": { "$ref": "common.schema.json#/$defs/timestamp" },
+            "approval_digest": { "$ref": "common.schema.json#/$defs/digest" },
+            "scope": { "type": "null" },
+            "duration": { "type": "null" },
+            "effective_request_digest": { "type": "null" },
+            "grant_id": { "type": "null" }
+          },
+          "required": [
+            "decision",
+            "command_id",
+            "decided_at",
+            "approval_digest",
+            "scope",
+            "duration",
+            "effective_request_digest",
+            "grant_id"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "authorization": {
+      "description": "The broker's exact-action authorization, profile fabric-broker-authorization/1. It names the live proof that permitted the action, lives 60 seconds and is used once.",
+      "type": "object",
+      "properties": {
+        "profile": { "const": "fabric-broker-authorization/1" },
+        "authorization_id": { "$ref": "common.schema.json#/$defs/id" },
+        "request_id": { "$ref": "common.schema.json#/$defs/id" },
+        "agent_id": { "$ref": "common.schema.json#/$defs/id" },
+        "action_digest": { "$ref": "common.schema.json#/$defs/digest" },
+        "proof_id": { "$ref": "common.schema.json#/$defs/id" },
+        "grant_id": { "$ref": "common.schema.json#/$defs/id" },
+        "issued_at": { "$ref": "common.schema.json#/$defs/timestamp" },
+        "expires_at": { "$ref": "common.schema.json#/$defs/timestamp" },
+        "lifetime_seconds": { "const": 60 },
+        "consumed_at": { "$ref": "common.schema.json#/$defs/nullable_timestamp" }
+      },
+      "required": [
+        "profile",
+        "authorization_id",
+        "request_id",
+        "agent_id",
+        "action_digest",
+        "proof_id",
+        "grant_id",
+        "issued_at",
+        "expires_at",
+        "lifetime_seconds",
+        "consumed_at"
+      ],
+      "additionalProperties": false
+    },
+    "proof_report": {
+      "description": "The record of one live Isabelle check. It holds digests and verdicts, never calendar content.",
+      "type": "object",
+      "properties": {
+        "proof_id": { "$ref": "common.schema.json#/$defs/id" },
+        "request_id": { "$ref": "common.schema.json#/$defs/id" },
+        "purpose": { "enum": ["classification", "fresh_permit"] },
+        "outcome": { "enum": ["permit", "need_approval", "block", "undecided"] },
+        "failing_rule": { "oneOf": [{ "type": "null" }, { "$ref": "common.schema.json#/$defs/name_token" }] },
+        "rule_verdicts": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "rule": { "$ref": "common.schema.json#/$defs/name_token" },
+              "verdict": { "enum": ["holds", "fails", "undecided"] }
+            },
+            "required": ["rule", "verdict"],
+            "additionalProperties": false
+          },
+          "maxItems": 200
+        },
+        "isabelle_version": { "$ref": "common.schema.json#/$defs/label" },
+        "theory_hash": { "$ref": "common.schema.json#/$defs/digest" },
+        "context_digest": { "$ref": "common.schema.json#/$defs/digest" },
+        "action_digest": { "$ref": "common.schema.json#/$defs/digest" },
+        "started_at": { "$ref": "common.schema.json#/$defs/timestamp" },
+        "elapsed_ms": { "$ref": "common.schema.json#/$defs/count" }
+      },
+      "required": [
+        "proof_id",
+        "request_id",
+        "purpose",
+        "outcome",
+        "failing_rule",
+        "rule_verdicts",
+        "isabelle_version",
+        "theory_hash",
+        "context_digest",
+        "action_digest",
+        "started_at",
+        "elapsed_ms"
+      ],
+      "additionalProperties": false
+    },
+    "attempt": {
+      "description": "One dispatch to the provider. Each has its own fresh proof.",
+      "type": "object",
+      "properties": {
+        "number": { "$ref": "common.schema.json#/$defs/positive_count" },
+        "proof_id": { "$ref": "common.schema.json#/$defs/id" },
+        "started_at": { "$ref": "common.schema.json#/$defs/timestamp" },
+        "finished_at": { "$ref": "common.schema.json#/$defs/nullable_timestamp" },
+        "outcome": {
+          "oneOf": [
+            { "type": "null" },
+            { "enum": ["applied", "transient_failure", "terminal_failure", "outcome_unknown"] }
+          ]
+        }
+      },
+      "required": ["number", "proof_id", "started_at", "finished_at", "outcome"],
+      "additionalProperties": false
+    },
+    "warning": {
+      "description": "An advisory notice for the owner. It never blocks and never reaches an agent (G0-WARNDISC).",
+      "type": "object",
+      "properties": {
+        "kind": { "enum": ["protected_time", "uninterrupted_time", "buffer"] },
+        "status": { "enum": ["warning", "unavailable", "incomplete_data"] },
+        "explanation": { "$ref": "common.schema.json#/$defs/explanation" },
+        "observed_at": { "$ref": "common.schema.json#/$defs/nullable_timestamp" }
+      },
+      "required": ["kind", "status", "explanation", "observed_at"],
+      "additionalProperties": false
+    },
+    "request_details": {
+      "description": "Everything the owner may open about one request. `private` holds the event content and is null when the retrieval was redacted.",
+      "type": "object",
+      "properties": {
+        "request": { "$ref": "#/$defs/request" },
+        "redaction": { "enum": ["redacted", "full"] },
+        "private": {
+          "oneOf": [
+            { "type": "null" },
+            {
+              "type": "object",
+              "properties": {
+                "action": { "$ref": "agent-channel.schema.json#/$defs/action" },
+                "before": {
+                  "description": "The event as it was when the request was written, for a change to an existing event.",
+                  "oneOf": [{ "type": "null" }, { "$ref": "agent-channel.schema.json#/$defs/event_view" }]
+                },
+                "warnings": { "type": "array", "items": { "$ref": "#/$defs/warning" }, "maxItems": 50 }
+              },
+              "required": ["action", "before", "warnings"],
+              "additionalProperties": false
+            }
+          ]
+        },
+        "card": { "oneOf": [{ "type": "null" }, { "$ref": "#/$defs/approval_card" }] },
+        "approval": { "oneOf": [{ "type": "null" }, { "$ref": "#/$defs/approval" }] },
+        "proof_ids": {
+          "type": "array",
+          "items": { "$ref": "common.schema.json#/$defs/id" },
+          "maxItems": 200,
+          "uniqueItems": true
+        },
+        "authorization": { "oneOf": [{ "type": "null" }, { "$ref": "#/$defs/authorization" }] },
+        "attempts": { "type": "array", "items": { "$ref": "#/$defs/attempt" }, "maxItems": 20 },
+        "provider_event": { "oneOf": [{ "type": "null" }, { "$ref": "common.schema.json#/$defs/event_ref" }] }
+      },
+      "required": [
+        "request",
+        "redaction",
+        "private",
+        "card",
+        "approval",
+        "proof_ids",
+        "authorization",
+        "attempts",
+        "provider_event"
+      ],
+      "additionalProperties": false
+    },
+
+    "snapshot": {
+      "description": "The broker's state at one cursor. `requests` holds the open requests and `grants` the grants that have not ended.",
+      "type": "object",
+      "properties": {
+        "cursor": { "$ref": "common.schema.json#/$defs/count" },
+        "health": { "$ref": "#/$defs/health" },
+        "profiles": { "$ref": "#/$defs/profiles" },
+        "accounts": { "type": "array", "items": { "$ref": "#/$defs/account" } },
+        "agents": { "type": "array", "items": { "$ref": "#/$defs/agent" } },
+        "recipient_sets": { "type": "array", "items": { "$ref": "#/$defs/recipient_set" } },
+        "preferences": { "$ref": "#/$defs/preferences" },
+        "requests": { "type": "array", "items": { "$ref": "#/$defs/request" } },
+        "grants": { "type": "array", "items": { "$ref": "#/$defs/grant" } }
+      },
+      "required": [
+        "cursor",
+        "health",
+        "profiles",
+        "accounts",
+        "agents",
+        "recipient_sets",
+        "preferences",
+        "requests",
+        "grants"
+      ],
+      "additionalProperties": false
+    },
+    "change": {
+      "description": "One ordered change to the broker's state.",
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": { "kind": { "const": "account" }, "account": { "$ref": "#/$defs/account" } },
+          "required": ["kind", "account"],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": { "kind": { "const": "agent" }, "agent": { "$ref": "#/$defs/agent" } },
+          "required": ["kind", "agent"],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": { "kind": { "const": "profiles" }, "profiles": { "$ref": "#/$defs/profiles" } },
+          "required": ["kind", "profiles"],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": { "const": "recipient_set" },
+            "recipient_set": { "$ref": "#/$defs/recipient_set" }
+          },
+          "required": ["kind", "recipient_set"],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": { "const": "recipient_set_deleted" },
+            "recipient_set_id": { "$ref": "common.schema.json#/$defs/id" }
+          },
+          "required": ["kind", "recipient_set_id"],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": { "const": "preferences" },
+            "preferences": { "$ref": "#/$defs/preferences" }
+          },
+          "required": ["kind", "preferences"],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": { "kind": { "const": "request" }, "request": { "$ref": "#/$defs/request" } },
+          "required": ["kind", "request"],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": { "kind": { "const": "grant" }, "grant": { "$ref": "#/$defs/grant" } },
+          "required": ["kind", "grant"],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": { "kind": { "const": "health" }, "health": { "$ref": "#/$defs/health" } },
+          "required": ["kind", "health"],
+          "additionalProperties": false
+        },
+        {
+          "description": "The subscriber fell behind. Take a fresh snapshot and subscribe again.",
+          "type": "object",
+          "properties": { "kind": { "const": "snapshot_required" } },
+          "required": ["kind"],
+          "additionalProperties": false
+        }
+      ]
+    },
+
+    "party": {
+      "type": "object",
+      "properties": {
+        "name": { "$ref": "common.schema.json#/$defs/label" },
+        "build": { "$ref": "common.schema.json#/$defs/label" }
+      },
+      "required": ["name", "build"],
+      "additionalProperties": false
+    },
+    "params_hello": {
+      "type": "object",
+      "properties": {
+        "client": { "$ref": "#/$defs/party" },
+        "schema_version": { "$ref": "common.schema.json#/$defs/count" }
+      },
+      "required": ["client", "schema_version"],
+      "additionalProperties": false
+    },
+    "result_hello": {
+      "type": "object",
+      "properties": {
+        "broker": { "$ref": "#/$defs/party" },
+        "schema_version": { "$ref": "common.schema.json#/$defs/positive_count" },
+        "capabilities": {
+          "type": "array",
+          "items": { "$ref": "common.schema.json#/$defs/name_token" },
+          "maxItems": 64,
+          "uniqueItems": true
+        },
+        "limits": { "$ref": "common.schema.json#/$defs/limits" }
+      },
+      "required": ["broker", "schema_version", "capabilities", "limits"],
+      "additionalProperties": false
+    },
+    "params_get_snapshot": {
+      "type": "object",
+      "properties": {},
+      "required": [],
+      "additionalProperties": false
+    },
+    "params_connect_google": {
+      "description": "Begins the browser consent flow. A null id adds an account; an id reconnects that account.",
+      "type": "object",
+      "properties": {
+        "account_id": { "$ref": "common.schema.json#/$defs/nullable_id" }
+      },
+      "required": ["account_id"],
+      "additionalProperties": false
+    },
+    "result_connect_google": {
+      "type": "object",
+      "properties": {
+        "commit_sequence": { "$ref": "common.schema.json#/$defs/positive_count" },
+        "account": { "$ref": "#/$defs/account" }
+      },
+      "required": ["commit_sequence", "account"],
+      "additionalProperties": false
+    },
+    "params_save_profile": {
+      "type": "object",
+      "properties": {
+        "expected_revision": { "$ref": "common.schema.json#/$defs/count" },
+        "change": {
+          "oneOf": [
+            {
+              "description": "Puts a profile in force.",
+              "type": "object",
+              "properties": {
+                "kind": { "const": "activate" },
+                "profile_id": { "$ref": "common.schema.json#/$defs/id" }
+              },
+              "required": ["kind", "profile_id"],
+              "additionalProperties": false
+            },
+            {
+              "description": "Saves a custom profile. If the save widens authority, `acknowledged_expansion` must be the digest of the expansion the owner was shown; otherwise the broker answers expansion_not_acknowledged with the expansion.",
+              "type": "object",
+              "properties": {
+                "kind": { "const": "save_custom" },
+                "profile": { "$ref": "#/$defs/custom_profile_draft" },
+                "acknowledged_expansion": { "$ref": "common.schema.json#/$defs/nullable_digest" }
+              },
+              "required": ["kind", "profile", "acknowledged_expansion"],
+              "additionalProperties": false
+            }
+          ]
+        }
+      },
+      "required": ["expected_revision", "change"],
+      "additionalProperties": false
+    },
+    "result_save_profile": {
+      "type": "object",
+      "properties": {
+        "commit_sequence": { "$ref": "common.schema.json#/$defs/positive_count" },
+        "profiles": { "$ref": "#/$defs/profiles" }
+      },
+      "required": ["commit_sequence", "profiles"],
+      "additionalProperties": false
+    },
+    "params_save_preferences": {
+      "type": "object",
+      "properties": {
+        "expected_revision": { "$ref": "common.schema.json#/$defs/count" },
+        "settings": { "$ref": "#/$defs/preferences_settings" }
+      },
+      "required": ["expected_revision", "settings"],
+      "additionalProperties": false
+    },
+    "result_save_preferences": {
+      "type": "object",
+      "properties": {
+        "commit_sequence": { "$ref": "common.schema.json#/$defs/positive_count" },
+        "preferences": { "$ref": "#/$defs/preferences" }
+      },
+      "required": ["commit_sequence", "preferences"],
+      "additionalProperties": false
+    },
+    "params_save_group": {
+      "type": "object",
+      "properties": {
+        "expected_revision": { "$ref": "common.schema.json#/$defs/count" },
+        "change": {
+          "oneOf": [
+            {
+              "description": "Saves a recipient set. A null id with expected revision 0 creates one.",
+              "type": "object",
+              "properties": {
+                "kind": { "const": "save" },
+                "recipient_set_id": { "$ref": "common.schema.json#/$defs/nullable_id" },
+                "definition": { "$ref": "#/$defs/recipient_set_definition" }
+              },
+              "required": ["kind", "recipient_set_id", "definition"],
+              "additionalProperties": false
+            },
+            {
+              "description": "Deletes the selector. Nothing changes at Google.",
+              "type": "object",
+              "properties": {
+                "kind": { "const": "delete" },
+                "recipient_set_id": { "$ref": "common.schema.json#/$defs/id" }
+              },
+              "required": ["kind", "recipient_set_id"],
+              "additionalProperties": false
+            }
+          ]
+        }
+      },
+      "required": ["expected_revision", "change"],
+      "additionalProperties": false
+    },
+    "result_save_group": {
+      "type": "object",
+      "properties": {
+        "commit_sequence": { "$ref": "common.schema.json#/$defs/positive_count" },
+        "recipient_set": { "oneOf": [{ "type": "null" }, { "$ref": "#/$defs/recipient_set" }] }
+      },
+      "required": ["commit_sequence", "recipient_set"],
+      "additionalProperties": false
+    },
+    "params_decide_request": {
+      "description": "The owner's decision on one request. `request_digest` is the digest of the request as the owner saw it. A null `selected` approves the scope as asked; a scope narrows it.",
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "request_id": { "$ref": "common.schema.json#/$defs/id" },
+            "request_digest": { "$ref": "common.schema.json#/$defs/digest" },
+            "expected_revision": { "$ref": "common.schema.json#/$defs/count" },
+            "decision": { "const": "approve" },
+            "selected": { "oneOf": [{ "type": "null" }, { "$ref": "#/$defs/scope" }] },
+            "duration": { "$ref": "#/$defs/duration" }
+          },
+          "required": ["request_id", "request_digest", "expected_revision", "decision", "selected", "duration"],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "request_id": { "$ref": "common.schema.json#/$defs/id" },
+            "request_digest": { "$ref": "common.schema.json#/$defs/digest" },
+            "expected_revision": { "$ref": "common.schema.json#/$defs/count" },
+            "decision": { "const": "deny" },
+            "selected": { "type": "null" },
+            "duration": { "type": "null" }
+          },
+          "required": ["request_id", "request_digest", "expected_revision", "decision", "selected", "duration"],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "result_decide_request": {
+      "type": "object",
+      "properties": {
+        "commit_sequence": { "$ref": "common.schema.json#/$defs/positive_count" },
+        "request": { "$ref": "#/$defs/request" },
+        "approval": { "$ref": "#/$defs/approval" }
+      },
+      "required": ["commit_sequence", "request", "approval"],
+      "additionalProperties": false
+    },
+    "params_pause_agent": {
+      "description": "Pauses or resumes one agent, or all of them. Resuming does not revive a revoked grant or a session grant of an earlier run.",
+      "type": "object",
+      "properties": {
+        "target": {
+          "oneOf": [
+            {
+              "type": "object",
+              "properties": {
+                "kind": { "const": "agent" },
+                "agent_id": { "$ref": "common.schema.json#/$defs/id" },
+                "expected_revision": { "$ref": "common.schema.json#/$defs/count" }
+              },
+              "required": ["kind", "agent_id", "expected_revision"],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": { "kind": { "const": "all_agents" } },
+              "required": ["kind"],
+              "additionalProperties": false
+            }
+          ]
+        },
+        "paused": { "type": "boolean" }
+      },
+      "required": ["target", "paused"],
+      "additionalProperties": false
+    },
+    "result_pause_agent": {
+      "type": "object",
+      "properties": {
+        "commit_sequence": { "$ref": "common.schema.json#/$defs/positive_count" },
+        "agents": { "type": "array", "items": { "$ref": "#/$defs/agent" } }
+      },
+      "required": ["commit_sequence", "agents"],
+      "additionalProperties": false
+    },
+    "params_revoke_grant": {
+      "type": "object",
+      "properties": {
+        "grant_id": { "$ref": "common.schema.json#/$defs/id" },
+        "expected_revision": { "$ref": "common.schema.json#/$defs/count" }
+      },
+      "required": ["grant_id", "expected_revision"],
+      "additionalProperties": false
+    },
+    "result_revoke_grant": {
+      "type": "object",
+      "properties": {
+        "commit_sequence": { "$ref": "common.schema.json#/$defs/positive_count" },
+        "grant": { "$ref": "#/$defs/grant" }
+      },
+      "required": ["commit_sequence", "grant"],
+      "additionalProperties": false
+    },
+    "params_get_request_details": {
+      "type": "object",
+      "properties": {
+        "request_id": { "$ref": "common.schema.json#/$defs/id" },
+        "redaction": { "enum": ["redacted", "full"] }
+      },
+      "required": ["request_id", "redaction"],
+      "additionalProperties": false
+    },
+    "params_get_proof": {
+      "type": "object",
+      "properties": {
+        "proof_id": { "$ref": "common.schema.json#/$defs/id" }
+      },
+      "required": ["proof_id"],
+      "additionalProperties": false
+    },
+    "params_subscribe": {
+      "description": "Asks for every change after `cursor`, in order.",
+      "type": "object",
+      "properties": {
+        "cursor": { "$ref": "common.schema.json#/$defs/count" }
+      },
+      "required": ["cursor"],
+      "additionalProperties": false
+    },
+    "result_subscribe": {
+      "type": "object",
+      "properties": {
+        "cursor": { "$ref": "common.schema.json#/$defs/count" }
+      },
+      "required": ["cursor"],
+      "additionalProperties": false
+    },
+    "params_disconnect_google": {
+      "description": "Stops future dispatch for the account and ends its grants. `revoke_provider_token` also revokes Fabric's token at Google.",
+      "type": "object",
+      "properties": {
+        "account_id": { "$ref": "common.schema.json#/$defs/id" },
+        "expected_revision": { "$ref": "common.schema.json#/$defs/count" },
+        "revoke_provider_token": { "type": "boolean" }
+      },
+      "required": ["account_id", "expected_revision", "revoke_provider_token"],
+      "additionalProperties": false
+    },
+    "result_disconnect_google": {
+      "type": "object",
+      "properties": {
+        "commit_sequence": { "$ref": "common.schema.json#/$defs/positive_count" },
+        "account": { "$ref": "#/$defs/account" },
+        "ended_grant_ids": {
+          "type": "array",
+          "items": { "$ref": "common.schema.json#/$defs/id" },
+          "uniqueItems": true
+        }
+      },
+      "required": ["commit_sequence", "account", "ended_grant_ids"],
+      "additionalProperties": false
+    },
+
+    "owner_request": {
+      "description": "A frame from the Tauri host to the broker. For a command the frame id is the command id.",
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "protocol": { "$ref": "common.schema.json#/$defs/protocol" },
+            "id": { "$ref": "common.schema.json#/$defs/id" },
+            "method": { "const": "hello" },
+            "params": { "$ref": "#/$defs/params_hello" }
+          },
+          "required": ["protocol", "id", "method", "params"],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "protocol": { "$ref": "common.schema.json#/$defs/protocol" },
+            "id": { "$ref": "common.schema.json#/$defs/id" },
+            "method": { "const": "get_snapshot" },
+            "params": { "$ref": "#/$defs/params_get_snapshot" }
+          },
+          "required": ["protocol", "id", "method", "params"],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "protocol": { "$ref": "common.schema.json#/$defs/protocol" },
+            "id": { "$ref": "common.schema.json#/$defs/id" },
+            "method": { "const": "connect_google" },
+            "params": { "$ref": "#/$defs/params_connect_google" }
+          },
+          "required": ["protocol", "id", "method", "params"],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "protocol": { "$ref": "common.schema.json#/$defs/protocol" },
+            "id": { "$ref": "common.schema.json#/$defs/id" },
+            "method": { "const": "save_profile" },
+            "params": { "$ref": "#/$defs/params_save_profile" }
+          },
+          "required": ["protocol", "id", "method", "params"],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "protocol": { "$ref": "common.schema.json#/$defs/protocol" },
+            "id": { "$ref": "common.schema.json#/$defs/id" },
+            "method": { "const": "save_preferences" },
+            "params": { "$ref": "#/$defs/params_save_preferences" }
+          },
+          "required": ["protocol", "id", "method", "params"],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "protocol": { "$ref": "common.schema.json#/$defs/protocol" },
+            "id": { "$ref": "common.schema.json#/$defs/id" },
+            "method": { "const": "save_group" },
+            "params": { "$ref": "#/$defs/params_save_group" }
+          },
+          "required": ["protocol", "id", "method", "params"],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "protocol": { "$ref": "common.schema.json#/$defs/protocol" },
+            "id": { "$ref": "common.schema.json#/$defs/id" },
+            "method": { "const": "decide_request" },
+            "params": { "$ref": "#/$defs/params_decide_request" }
+          },
+          "required": ["protocol", "id", "method", "params"],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "protocol": { "$ref": "common.schema.json#/$defs/protocol" },
+            "id": { "$ref": "common.schema.json#/$defs/id" },
+            "method": { "const": "pause_agent" },
+            "params": { "$ref": "#/$defs/params_pause_agent" }
+          },
+          "required": ["protocol", "id", "method", "params"],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "protocol": { "$ref": "common.schema.json#/$defs/protocol" },
+            "id": { "$ref": "common.schema.json#/$defs/id" },
+            "method": { "const": "revoke_grant" },
+            "params": { "$ref": "#/$defs/params_revoke_grant" }
+          },
+          "required": ["protocol", "id", "method", "params"],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "protocol": { "$ref": "common.schema.json#/$defs/protocol" },
+            "id": { "$ref": "common.schema.json#/$defs/id" },
+            "method": { "const": "get_request_details" },
+            "params": { "$ref": "#/$defs/params_get_request_details" }
+          },
+          "required": ["protocol", "id", "method", "params"],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "protocol": { "$ref": "common.schema.json#/$defs/protocol" },
+            "id": { "$ref": "common.schema.json#/$defs/id" },
+            "method": { "const": "get_proof" },
+            "params": { "$ref": "#/$defs/params_get_proof" }
+          },
+          "required": ["protocol", "id", "method", "params"],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "protocol": { "$ref": "common.schema.json#/$defs/protocol" },
+            "id": { "$ref": "common.schema.json#/$defs/id" },
+            "method": { "const": "subscribe" },
+            "params": { "$ref": "#/$defs/params_subscribe" }
+          },
+          "required": ["protocol", "id", "method", "params"],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "protocol": { "$ref": "common.schema.json#/$defs/protocol" },
+            "id": { "$ref": "common.schema.json#/$defs/id" },
+            "method": { "const": "disconnect_google" },
+            "params": { "$ref": "#/$defs/params_disconnect_google" }
+          },
+          "required": ["protocol", "id", "method", "params"],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "owner_response": {
+      "description": "The broker's answer to an owner frame: the same id and method, and either a result or an error.",
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "protocol": { "$ref": "common.schema.json#/$defs/protocol" },
+            "id": { "$ref": "common.schema.json#/$defs/id" },
+            "method": { "const": "hello" },
+            "result": { "$ref": "#/$defs/result_hello" }
+          },
+          "required": ["protocol", "id", "method", "result"],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "protocol": { "$ref": "common.schema.json#/$defs/protocol" },
+            "id": { "$ref": "common.schema.json#/$defs/id" },
+            "method": { "const": "get_snapshot" },
+            "result": { "$ref": "#/$defs/snapshot" }
+          },
+          "required": ["protocol", "id", "method", "result"],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "protocol": { "$ref": "common.schema.json#/$defs/protocol" },
+            "id": { "$ref": "common.schema.json#/$defs/id" },
+            "method": { "const": "connect_google" },
+            "result": { "$ref": "#/$defs/result_connect_google" }
+          },
+          "required": ["protocol", "id", "method", "result"],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "protocol": { "$ref": "common.schema.json#/$defs/protocol" },
+            "id": { "$ref": "common.schema.json#/$defs/id" },
+            "method": { "const": "save_profile" },
+            "result": { "$ref": "#/$defs/result_save_profile" }
+          },
+          "required": ["protocol", "id", "method", "result"],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "protocol": { "$ref": "common.schema.json#/$defs/protocol" },
+            "id": { "$ref": "common.schema.json#/$defs/id" },
+            "method": { "const": "save_preferences" },
+            "result": { "$ref": "#/$defs/result_save_preferences" }
+          },
+          "required": ["protocol", "id", "method", "result"],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "protocol": { "$ref": "common.schema.json#/$defs/protocol" },
+            "id": { "$ref": "common.schema.json#/$defs/id" },
+            "method": { "const": "save_group" },
+            "result": { "$ref": "#/$defs/result_save_group" }
+          },
+          "required": ["protocol", "id", "method", "result"],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "protocol": { "$ref": "common.schema.json#/$defs/protocol" },
+            "id": { "$ref": "common.schema.json#/$defs/id" },
+            "method": { "const": "decide_request" },
+            "result": { "$ref": "#/$defs/result_decide_request" }
+          },
+          "required": ["protocol", "id", "method", "result"],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "protocol": { "$ref": "common.schema.json#/$defs/protocol" },
+            "id": { "$ref": "common.schema.json#/$defs/id" },
+            "method": { "const": "pause_agent" },
+            "result": { "$ref": "#/$defs/result_pause_agent" }
+          },
+          "required": ["protocol", "id", "method", "result"],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "protocol": { "$ref": "common.schema.json#/$defs/protocol" },
+            "id": { "$ref": "common.schema.json#/$defs/id" },
+            "method": { "const": "revoke_grant" },
+            "result": { "$ref": "#/$defs/result_revoke_grant" }
+          },
+          "required": ["protocol", "id", "method", "result"],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "protocol": { "$ref": "common.schema.json#/$defs/protocol" },
+            "id": { "$ref": "common.schema.json#/$defs/id" },
+            "method": { "const": "get_request_details" },
+            "result": { "$ref": "#/$defs/request_details" }
+          },
+          "required": ["protocol", "id", "method", "result"],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "protocol": { "$ref": "common.schema.json#/$defs/protocol" },
+            "id": { "$ref": "common.schema.json#/$defs/id" },
+            "method": { "const": "get_proof" },
+            "result": { "$ref": "#/$defs/proof_report" }
+          },
+          "required": ["protocol", "id", "method", "result"],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "protocol": { "$ref": "common.schema.json#/$defs/protocol" },
+            "id": { "$ref": "common.schema.json#/$defs/id" },
+            "method": { "const": "subscribe" },
+            "result": { "$ref": "#/$defs/result_subscribe" }
+          },
+          "required": ["protocol", "id", "method", "result"],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "protocol": { "$ref": "common.schema.json#/$defs/protocol" },
+            "id": { "$ref": "common.schema.json#/$defs/id" },
+            "method": { "const": "disconnect_google" },
+            "result": { "$ref": "#/$defs/result_disconnect_google" }
+          },
+          "required": ["protocol", "id", "method", "result"],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "protocol": { "$ref": "common.schema.json#/$defs/protocol" },
+            "id": { "$ref": "common.schema.json#/$defs/nullable_id" },
+            "method": { "$ref": "common.schema.json#/$defs/nullable_method" },
+            "error": { "$ref": "common.schema.json#/$defs/owner_error" }
+          },
+          "required": ["protocol", "id", "method", "error"],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "owner_notice": {
+      "description": "A change the broker pushes to a subscriber. Sequences rise by one; a gap means a fresh snapshot is needed.",
+      "type": "object",
+      "properties": {
+        "protocol": { "$ref": "common.schema.json#/$defs/protocol" },
+        "sequence": { "$ref": "common.schema.json#/$defs/positive_count" },
+        "change": { "$ref": "#/$defs/change" }
+      },
+      "required": ["protocol", "sequence", "change"],
+      "additionalProperties": false
+    }
+  }
+}

@@ -1,0 +1,655 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "fabric-desktop/1 — the agent channel: tool arguments, actions, results and frames",
+  "$defs": {
+    "task": {
+      "description": "What the agent says it is trying to do. Untrusted text, shown to the owner as plain text.",
+      "type": "string",
+      "maxLength": 1000
+    },
+    "event_title": { "type": "string", "minLength": 1, "maxLength": 1024 },
+    "event_location": { "type": "string", "maxLength": 1024 },
+    "event_description": { "type": "string", "maxLength": 8192 },
+
+    "new_event": {
+      "description": "A new timed event with no attendees. Invitations are a separate proposal.",
+      "type": "object",
+      "properties": {
+        "title": { "$ref": "#/$defs/event_title" },
+        "start": { "$ref": "common.schema.json#/$defs/event_time" },
+        "end": { "$ref": "common.schema.json#/$defs/event_time" },
+        "description": { "oneOf": [{ "type": "null" }, { "$ref": "#/$defs/event_description" }] },
+        "location": { "oneOf": [{ "type": "null" }, { "$ref": "#/$defs/event_location" }] }
+      },
+      "required": ["title", "start", "end", "description", "location"],
+      "additionalProperties": false
+    },
+    "event_changes": {
+      "description": "The editable fields. A null leaves the field as it is; an empty string clears a description or a location.",
+      "type": "object",
+      "properties": {
+        "title": { "oneOf": [{ "type": "null" }, { "$ref": "#/$defs/event_title" }] },
+        "start": { "oneOf": [{ "type": "null" }, { "$ref": "common.schema.json#/$defs/event_time" }] },
+        "end": { "oneOf": [{ "type": "null" }, { "$ref": "common.schema.json#/$defs/event_time" }] },
+        "description": { "oneOf": [{ "type": "null" }, { "$ref": "#/$defs/event_description" }] },
+        "location": { "oneOf": [{ "type": "null" }, { "$ref": "#/$defs/event_location" }] }
+      },
+      "required": ["title", "start", "end", "description", "location"],
+      "additionalProperties": false
+    },
+    "response_target": {
+      "description": "What an invitation response answers: a single event, or one occurrence of a recurring invitation.",
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "kind": { "const": "event" },
+            "event": { "$ref": "common.schema.json#/$defs/event_ref" }
+          },
+          "required": ["kind", "event"],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": { "const": "occurrence" },
+            "occurrence": { "$ref": "common.schema.json#/$defs/occurrence_ref" }
+          },
+          "required": ["kind", "occurrence"],
+          "additionalProperties": false
+        }
+      ]
+    },
+
+    "arguments_calendar_list": {
+      "type": "object",
+      "properties": {},
+      "required": [],
+      "additionalProperties": false
+    },
+    "arguments_calendar_availability": {
+      "type": "object",
+      "properties": {
+        "account_id": { "$ref": "common.schema.json#/$defs/id" },
+        "calendar_ids": { "$ref": "common.schema.json#/$defs/calendar_ids" },
+        "window": { "$ref": "common.schema.json#/$defs/window" },
+        "task": { "$ref": "#/$defs/task" }
+      },
+      "required": ["account_id", "calendar_ids", "window", "task"],
+      "additionalProperties": false
+    },
+    "arguments_calendar_read": {
+      "type": "object",
+      "properties": {
+        "account_id": { "$ref": "common.schema.json#/$defs/id" },
+        "calendar_ids": { "$ref": "common.schema.json#/$defs/calendar_ids" },
+        "window": { "$ref": "common.schema.json#/$defs/window" },
+        "fields": { "$ref": "common.schema.json#/$defs/event_fields" },
+        "task": { "$ref": "#/$defs/task" }
+      },
+      "required": ["account_id", "calendar_ids", "window", "fields", "task"],
+      "additionalProperties": false
+    },
+    "arguments_propose_create": {
+      "type": "object",
+      "properties": {
+        "account_id": { "$ref": "common.schema.json#/$defs/id" },
+        "calendar_id": { "$ref": "common.schema.json#/$defs/id" },
+        "event": { "$ref": "#/$defs/new_event" },
+        "task": { "$ref": "#/$defs/task" }
+      },
+      "required": ["account_id", "calendar_id", "event", "task"],
+      "additionalProperties": false
+    },
+    "arguments_propose_update": {
+      "type": "object",
+      "properties": {
+        "account_id": { "$ref": "common.schema.json#/$defs/id" },
+        "calendar_id": { "$ref": "common.schema.json#/$defs/id" },
+        "event": { "$ref": "common.schema.json#/$defs/event_ref" },
+        "changes": { "$ref": "#/$defs/event_changes" },
+        "send_updates": { "$ref": "common.schema.json#/$defs/send_updates" },
+        "task": { "$ref": "#/$defs/task" }
+      },
+      "required": ["account_id", "calendar_id", "event", "changes", "send_updates", "task"],
+      "additionalProperties": false
+    },
+    "arguments_propose_invitation": {
+      "type": "object",
+      "properties": {
+        "account_id": { "$ref": "common.schema.json#/$defs/id" },
+        "calendar_id": { "$ref": "common.schema.json#/$defs/id" },
+        "event": { "$ref": "common.schema.json#/$defs/event_ref" },
+        "attendees": {
+          "description": "The complete attendee list the event has after the change.",
+          "type": "array",
+          "items": { "$ref": "common.schema.json#/$defs/email" },
+          "maxItems": 200,
+          "uniqueItems": true
+        },
+        "send_updates": { "$ref": "common.schema.json#/$defs/send_updates" },
+        "task": { "$ref": "#/$defs/task" }
+      },
+      "required": ["account_id", "calendar_id", "event", "attendees", "send_updates", "task"],
+      "additionalProperties": false
+    },
+    "arguments_propose_response": {
+      "type": "object",
+      "properties": {
+        "account_id": { "$ref": "common.schema.json#/$defs/id" },
+        "calendar_id": { "$ref": "common.schema.json#/$defs/id" },
+        "target": { "$ref": "#/$defs/response_target" },
+        "response": { "enum": ["accepted", "declined"] },
+        "send_updates": { "$ref": "common.schema.json#/$defs/send_updates" },
+        "task": { "$ref": "#/$defs/task" }
+      },
+      "required": ["account_id", "calendar_id", "target", "response", "send_updates", "task"],
+      "additionalProperties": false
+    },
+    "arguments_propose_delete": {
+      "description": "Deletes one event. The broker accepts it only for an event Fabric created, and always asks the owner (CD-Q05a).",
+      "type": "object",
+      "properties": {
+        "account_id": { "$ref": "common.schema.json#/$defs/id" },
+        "calendar_id": { "$ref": "common.schema.json#/$defs/id" },
+        "event": { "$ref": "common.schema.json#/$defs/event_ref" },
+        "send_updates": { "$ref": "common.schema.json#/$defs/send_updates" },
+        "task": { "$ref": "#/$defs/task" }
+      },
+      "required": ["account_id", "calendar_id", "event", "send_updates", "task"],
+      "additionalProperties": false
+    },
+    "arguments_request_status": {
+      "type": "object",
+      "properties": {
+        "request_id": { "$ref": "common.schema.json#/$defs/id" }
+      },
+      "required": ["request_id"],
+      "additionalProperties": false
+    },
+    "arguments_request_result": {
+      "type": "object",
+      "properties": {
+        "request_id": { "$ref": "common.schema.json#/$defs/id" }
+      },
+      "required": ["request_id"],
+      "additionalProperties": false
+    },
+
+    "action": {
+      "description": "One action an agent asked for: the tool and its exact arguments. This object is the subject of the action digest. fabric_request_status is not an action; it creates no request.",
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "tool": { "const": "fabric_calendar_list" },
+            "arguments": { "$ref": "#/$defs/arguments_calendar_list" }
+          },
+          "required": ["tool", "arguments"],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "tool": { "const": "fabric_calendar_availability" },
+            "arguments": { "$ref": "#/$defs/arguments_calendar_availability" }
+          },
+          "required": ["tool", "arguments"],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "tool": { "const": "fabric_calendar_read" },
+            "arguments": { "$ref": "#/$defs/arguments_calendar_read" }
+          },
+          "required": ["tool", "arguments"],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "tool": { "const": "fabric_calendar_propose_create" },
+            "arguments": { "$ref": "#/$defs/arguments_propose_create" }
+          },
+          "required": ["tool", "arguments"],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "tool": { "const": "fabric_calendar_propose_update" },
+            "arguments": { "$ref": "#/$defs/arguments_propose_update" }
+          },
+          "required": ["tool", "arguments"],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "tool": { "const": "fabric_calendar_propose_invitation" },
+            "arguments": { "$ref": "#/$defs/arguments_propose_invitation" }
+          },
+          "required": ["tool", "arguments"],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "tool": { "const": "fabric_calendar_propose_response" },
+            "arguments": { "$ref": "#/$defs/arguments_propose_response" }
+          },
+          "required": ["tool", "arguments"],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "tool": { "const": "fabric_calendar_propose_delete" },
+            "arguments": { "$ref": "#/$defs/arguments_propose_delete" }
+          },
+          "required": ["tool", "arguments"],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "tool": { "const": "fabric_request_result" },
+            "arguments": { "$ref": "#/$defs/arguments_request_result" }
+          },
+          "required": ["tool", "arguments"],
+          "additionalProperties": false
+        }
+      ]
+    },
+
+    "response_status": {
+      "enum": ["needs_action", "accepted", "declined", "tentative"]
+    },
+    "attendee": {
+      "type": "object",
+      "properties": {
+        "email": { "$ref": "common.schema.json#/$defs/email" },
+        "response": { "$ref": "#/$defs/response_status" }
+      },
+      "required": ["email", "response"],
+      "additionalProperties": false
+    },
+    "event_span": {
+      "description": "When an event happens. All-day events are read with date semantics and are never created or edited in version 1.",
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "kind": { "const": "timed" },
+            "start": { "$ref": "common.schema.json#/$defs/event_time" },
+            "end": { "$ref": "common.schema.json#/$defs/event_time" }
+          },
+          "required": ["kind", "start", "end"],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": { "const": "all_day" },
+            "start_date": { "$ref": "common.schema.json#/$defs/date" },
+            "end_date": { "$ref": "common.schema.json#/$defs/date" }
+          },
+          "required": ["kind", "start_date", "end_date"],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "event_view": {
+      "description": "One event as a read discloses it. Identity is always present. A content field is null when the proven grant does not cover it; a covered field that is empty is an empty string or an empty list.",
+      "type": "object",
+      "properties": {
+        "event_id": { "$ref": "common.schema.json#/$defs/provider_ref" },
+        "revision": { "$ref": "common.schema.json#/$defs/provider_ref" },
+        "calendar_id": { "$ref": "common.schema.json#/$defs/id" },
+        "fabric_created": { "type": "boolean" },
+        "occurrence": {
+          "description": "Set when the event is one occurrence of a recurring event. With `revision` it is the instance identity a response needs.",
+          "oneOf": [
+            { "type": "null" },
+            {
+              "type": "object",
+              "properties": {
+                "instance_id": { "$ref": "common.schema.json#/$defs/provider_ref" },
+                "original_start_time": { "$ref": "common.schema.json#/$defs/event_time" }
+              },
+              "required": ["instance_id", "original_start_time"],
+              "additionalProperties": false
+            }
+          ]
+        },
+        "time": { "oneOf": [{ "type": "null" }, { "$ref": "#/$defs/event_span" }] },
+        "title": { "oneOf": [{ "type": "null" }, { "type": "string", "maxLength": 1024 }] },
+        "location": { "oneOf": [{ "type": "null" }, { "$ref": "#/$defs/event_location" }] },
+        "description": { "oneOf": [{ "type": "null" }, { "$ref": "#/$defs/event_description" }] },
+        "attendees": {
+          "oneOf": [
+            { "type": "null" },
+            { "type": "array", "items": { "$ref": "#/$defs/attendee" }, "maxItems": 2000 }
+          ]
+        },
+        "organizer": { "oneOf": [{ "type": "null" }, { "$ref": "common.schema.json#/$defs/email" }] },
+        "own_response": { "oneOf": [{ "type": "null" }, { "$ref": "#/$defs/response_status" }] }
+      },
+      "required": [
+        "event_id",
+        "revision",
+        "calendar_id",
+        "fabric_created",
+        "occurrence",
+        "time",
+        "title",
+        "location",
+        "description",
+        "attendees",
+        "organizer",
+        "own_response"
+      ],
+      "additionalProperties": false
+    },
+
+    "result_calendars": {
+      "type": "object",
+      "properties": {
+        "kind": { "const": "calendars" },
+        "accounts": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "account_id": { "$ref": "common.schema.json#/$defs/id" },
+              "calendars": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "calendar_id": { "$ref": "common.schema.json#/$defs/id" },
+                    "name": { "$ref": "common.schema.json#/$defs/label" },
+                    "access": { "$ref": "common.schema.json#/$defs/calendar_access" },
+                    "agent_drafts": { "type": "boolean" }
+                  },
+                  "required": ["calendar_id", "name", "access", "agent_drafts"],
+                  "additionalProperties": false
+                }
+              }
+            },
+            "required": ["account_id", "calendars"],
+            "additionalProperties": false
+          }
+        }
+      },
+      "required": ["kind", "accounts"],
+      "additionalProperties": false
+    },
+    "result_availability": {
+      "type": "object",
+      "properties": {
+        "kind": { "const": "availability" },
+        "observed_at": { "$ref": "common.schema.json#/$defs/timestamp" },
+        "busy": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "calendar_id": { "$ref": "common.schema.json#/$defs/id" },
+              "start": { "$ref": "common.schema.json#/$defs/timestamp" },
+              "end": { "$ref": "common.schema.json#/$defs/timestamp" }
+            },
+            "required": ["calendar_id", "start", "end"],
+            "additionalProperties": false
+          }
+        }
+      },
+      "required": ["kind", "observed_at", "busy"],
+      "additionalProperties": false
+    },
+    "result_events": {
+      "type": "object",
+      "properties": {
+        "kind": { "const": "events" },
+        "observed_at": { "$ref": "common.schema.json#/$defs/timestamp" },
+        "events": { "type": "array", "items": { "$ref": "#/$defs/event_view" } }
+      },
+      "required": ["kind", "observed_at", "events"],
+      "additionalProperties": false
+    },
+    "result_effect": {
+      "description": "The outcome of an applied change: the event as the provider now has it, or null after a deletion.",
+      "type": "object",
+      "properties": {
+        "kind": { "const": "effect" },
+        "event": { "oneOf": [{ "type": "null" }, { "$ref": "common.schema.json#/$defs/event_ref" }] }
+      },
+      "required": ["kind", "event"],
+      "additionalProperties": false
+    },
+    "tool_result": {
+      "oneOf": [
+        { "$ref": "#/$defs/result_calendars" },
+        { "$ref": "#/$defs/result_availability" },
+        { "$ref": "#/$defs/result_events" },
+        { "$ref": "#/$defs/result_effect" }
+      ]
+    },
+
+    "agent_denial": {
+      "description": "The bounded explanation an agent gets for a blocked request: the failing rule and a sentence. The proof stays with the owner.",
+      "type": "object",
+      "properties": {
+        "rule": { "$ref": "common.schema.json#/$defs/name_token" },
+        "explanation": { "$ref": "common.schema.json#/$defs/explanation" }
+      },
+      "required": ["rule", "explanation"],
+      "additionalProperties": false
+    },
+    "agent_lifecycle_status": {
+      "description": "The lifecycle status an agent may see: the state and, for the three states that carry more, the card's expiry, the bounded denial, or the failure code.",
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "state": { "const": "pending_approval" },
+            "approval_expires_at": { "$ref": "common.schema.json#/$defs/timestamp" }
+          },
+          "required": ["state", "approval_expires_at"],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "state": { "const": "blocked" },
+            "denial": { "$ref": "#/$defs/agent_denial" }
+          },
+          "required": ["state", "denial"],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "state": { "const": "terminal_failure" },
+            "failure_code": { "$ref": "common.schema.json#/$defs/failure_code" }
+          },
+          "required": ["state", "failure_code"],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "state": { "$ref": "common.schema.json#/$defs/plain_request_state" }
+          },
+          "required": ["state"],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "request_status": {
+      "description": "Safe lifecycle metadata. It never carries a title, a description, an attendee, availability or a model summary.",
+      "type": "object",
+      "properties": {
+        "request_id": { "$ref": "common.schema.json#/$defs/id" },
+        "updated_at": { "$ref": "common.schema.json#/$defs/timestamp" },
+        "status": { "$ref": "#/$defs/agent_lifecycle_status" }
+      },
+      "required": ["request_id", "updated_at", "status"],
+      "additionalProperties": false
+    },
+    "tool_outcome": {
+      "description": "What every tool answers: the request's status and, only when a fresh proof released it, the result.",
+      "type": "object",
+      "properties": {
+        "request": { "$ref": "#/$defs/request_status" },
+        "result": { "oneOf": [{ "type": "null" }, { "$ref": "#/$defs/tool_result" }] }
+      },
+      "required": ["request", "result"],
+      "additionalProperties": false
+    },
+
+    "agent_request": {
+      "description": "A frame from an agent adapter to the broker. The method is the tool.",
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "protocol": { "$ref": "common.schema.json#/$defs/protocol" },
+            "id": { "$ref": "common.schema.json#/$defs/id" },
+            "method": { "const": "fabric_calendar_list" },
+            "params": { "$ref": "#/$defs/arguments_calendar_list" }
+          },
+          "required": ["protocol", "id", "method", "params"],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "protocol": { "$ref": "common.schema.json#/$defs/protocol" },
+            "id": { "$ref": "common.schema.json#/$defs/id" },
+            "method": { "const": "fabric_calendar_availability" },
+            "params": { "$ref": "#/$defs/arguments_calendar_availability" }
+          },
+          "required": ["protocol", "id", "method", "params"],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "protocol": { "$ref": "common.schema.json#/$defs/protocol" },
+            "id": { "$ref": "common.schema.json#/$defs/id" },
+            "method": { "const": "fabric_calendar_read" },
+            "params": { "$ref": "#/$defs/arguments_calendar_read" }
+          },
+          "required": ["protocol", "id", "method", "params"],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "protocol": { "$ref": "common.schema.json#/$defs/protocol" },
+            "id": { "$ref": "common.schema.json#/$defs/id" },
+            "method": { "const": "fabric_calendar_propose_create" },
+            "params": { "$ref": "#/$defs/arguments_propose_create" }
+          },
+          "required": ["protocol", "id", "method", "params"],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "protocol": { "$ref": "common.schema.json#/$defs/protocol" },
+            "id": { "$ref": "common.schema.json#/$defs/id" },
+            "method": { "const": "fabric_calendar_propose_update" },
+            "params": { "$ref": "#/$defs/arguments_propose_update" }
+          },
+          "required": ["protocol", "id", "method", "params"],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "protocol": { "$ref": "common.schema.json#/$defs/protocol" },
+            "id": { "$ref": "common.schema.json#/$defs/id" },
+            "method": { "const": "fabric_calendar_propose_invitation" },
+            "params": { "$ref": "#/$defs/arguments_propose_invitation" }
+          },
+          "required": ["protocol", "id", "method", "params"],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "protocol": { "$ref": "common.schema.json#/$defs/protocol" },
+            "id": { "$ref": "common.schema.json#/$defs/id" },
+            "method": { "const": "fabric_calendar_propose_response" },
+            "params": { "$ref": "#/$defs/arguments_propose_response" }
+          },
+          "required": ["protocol", "id", "method", "params"],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "protocol": { "$ref": "common.schema.json#/$defs/protocol" },
+            "id": { "$ref": "common.schema.json#/$defs/id" },
+            "method": { "const": "fabric_calendar_propose_delete" },
+            "params": { "$ref": "#/$defs/arguments_propose_delete" }
+          },
+          "required": ["protocol", "id", "method", "params"],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "protocol": { "$ref": "common.schema.json#/$defs/protocol" },
+            "id": { "$ref": "common.schema.json#/$defs/id" },
+            "method": { "const": "fabric_request_status" },
+            "params": { "$ref": "#/$defs/arguments_request_status" }
+          },
+          "required": ["protocol", "id", "method", "params"],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "protocol": { "$ref": "common.schema.json#/$defs/protocol" },
+            "id": { "$ref": "common.schema.json#/$defs/id" },
+            "method": { "const": "fabric_request_result" },
+            "params": { "$ref": "#/$defs/arguments_request_result" }
+          },
+          "required": ["protocol", "id", "method", "params"],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "agent_response": {
+      "description": "The broker's answer to an agent frame: the same id and method, and either a result or an error.",
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "protocol": { "$ref": "common.schema.json#/$defs/protocol" },
+            "id": { "$ref": "common.schema.json#/$defs/id" },
+            "method": { "$ref": "common.schema.json#/$defs/tool_name" },
+            "result": { "$ref": "#/$defs/tool_outcome" }
+          },
+          "required": ["protocol", "id", "method", "result"],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "protocol": { "$ref": "common.schema.json#/$defs/protocol" },
+            "id": { "$ref": "common.schema.json#/$defs/nullable_id" },
+            "method": { "$ref": "common.schema.json#/$defs/nullable_method" },
+            "error": { "$ref": "common.schema.json#/$defs/agent_error" }
+          },
+          "required": ["protocol", "id", "method", "error"],
+          "additionalProperties": false
+        }
+      ]
+    }
+  }
+}

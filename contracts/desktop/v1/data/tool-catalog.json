@@ -1,0 +1,75 @@
+{
+  "description": "The agent tools of fabric-desktop/1 (plan section 9.2). Each tool is a method of the agent channel; `arguments` names its argument schema. `creates_request` is false only for the status tool, which reads safe lifecycle metadata. `rows` lists the policy-matrix rows a call may fall under; it is informative, and the rule theory decides. No tool approves a request, creates a grant, edits a profile, deletes a calendar, changes sharing, reads a warning, or passes a URL to Google.",
+  "tools": [
+    {
+      "name": "fabric_calendar_list",
+      "description": "List the Google accounts and calendars this agent may use, with each calendar's access level. Use the returned account_id and calendar_id values in other tools.",
+      "arguments": "agent-channel.schema.json#/$defs/arguments_calendar_list",
+      "creates_request": true,
+      "rows": ["list_and_availability"]
+    },
+    {
+      "name": "fabric_calendar_availability",
+      "description": "Read busy intervals for calendars in one account over a date window. Returns times only, never event details.",
+      "arguments": "agent-channel.schema.json#/$defs/arguments_calendar_availability",
+      "creates_request": true,
+      "rows": ["list_and_availability"]
+    },
+    {
+      "name": "fabric_calendar_read",
+      "description": "Read events in calendars of one account over a date window. Name only the fields you need; a field the owner has not granted comes back as null.",
+      "arguments": "agent-channel.schema.json#/$defs/arguments_calendar_read",
+      "creates_request": true,
+      "rows": ["read_event_details"]
+    },
+    {
+      "name": "fabric_calendar_propose_create",
+      "description": "Propose a new timed event with no attendees. Give start and end as a local date-time with its UTC offset and an IANA time zone. To invite people, create the event first and then propose an invitation.",
+      "arguments": "agent-channel.schema.json#/$defs/arguments_propose_create",
+      "creates_request": true,
+      "rows": ["create_in_agent_drafts", "create_in_existing_calendar"]
+    },
+    {
+      "name": "fabric_calendar_propose_update",
+      "description": "Propose changes to the title, time, description or location of one non-recurring event, against the revision you read. Set a field to null to leave it as it is.",
+      "arguments": "agent-channel.schema.json#/$defs/arguments_propose_update",
+      "creates_request": true,
+      "rows": ["edit_fabric_created_event", "edit_preexisting_event", "send_or_change_invitations"]
+    },
+    {
+      "name": "fabric_calendar_propose_invitation",
+      "description": "Propose the complete attendee list for one non-recurring event and who is notified. Google and the attendees see the event's details.",
+      "arguments": "agent-channel.schema.json#/$defs/arguments_propose_invitation",
+      "creates_request": true,
+      "rows": ["send_or_change_invitations"]
+    },
+    {
+      "name": "fabric_calendar_propose_response",
+      "description": "Propose accepting or declining an invitation: a single event, or one occurrence of a recurring invitation named by its instance id, original start time and revision. The organizer may be notified.",
+      "arguments": "agent-channel.schema.json#/$defs/arguments_propose_response",
+      "creates_request": true,
+      "rows": ["respond_to_invitation"]
+    },
+    {
+      "name": "fabric_calendar_propose_delete",
+      "description": "Propose deleting one event that Fabric created. The owner is always asked.",
+      "arguments": "agent-channel.schema.json#/$defs/arguments_propose_delete",
+      "creates_request": true,
+      "rows": ["delete_event"]
+    },
+    {
+      "name": "fabric_request_status",
+      "description": "Read the state of a request you made. Returns lifecycle state only, never calendar content.",
+      "arguments": "agent-channel.schema.json#/$defs/arguments_request_status",
+      "creates_request": false,
+      "rows": []
+    },
+    {
+      "name": "fabric_request_result",
+      "description": "Ask for the result of a request you made, once it has been approved and applied. Releasing a result is itself checked, and may need the owner's approval again.",
+      "arguments": "agent-channel.schema.json#/$defs/arguments_request_result",
+      "creates_request": true,
+      "rows": []
+    }
+  ]
+}

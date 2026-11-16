@@ -1,0 +1,626 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "fabric-desktop/1 — shared scalars, event types, limits and the error grammar",
+  "$defs": {
+    "protocol": {
+      "description": "The protocol name and major version. Any other value is refused at the protocol layer.",
+      "const": "fabric-desktop/1"
+    },
+    "id": {
+      "description": "An opaque identifier issued by the broker, or a frame id chosen by the sender.",
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
+    },
+    "timestamp": {
+      "description": "A UTC instant with millisecond precision, in exactly this form.",
+      "type": "string",
+      "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])T([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]\\.[0-9]{3}Z$"
+    },
+    "digest": {
+      "description": "A domain-separated SHA-256 digest of a canonical form (README, section 4).",
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "count": {
+      "description": "A non-negative integer that every JSON implementation represents exactly.",
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 9007199254740991
+    },
+    "positive_count": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 9007199254740991
+    },
+    "label": {
+      "description": "A short display name. Rendered as plain text.",
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 200
+    },
+    "explanation": {
+      "description": "A bounded explanation written by the broker.",
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 1000
+    },
+    "name_token": {
+      "description": "A lowercase machine name: a rule of the broker theory, or a capability.",
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]{0,63}$"
+    },
+    "email": {
+      "description": "An address in normal form: the local part as written, the domain in lowercase ASCII. No alias equivalence is applied.",
+      "type": "string",
+      "maxLength": 320,
+      "pattern": "^[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]{1,64}@[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)+$"
+    },
+    "domain": {
+      "description": "A domain in lowercase ASCII, compared by exact equality.",
+      "type": "string",
+      "maxLength": 253,
+      "pattern": "^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)+$"
+    },
+    "iana_zone": {
+      "description": "An IANA time zone name. The contract checks its shape; the broker checks that the zone exists.",
+      "type": "string",
+      "maxLength": 64,
+      "pattern": "^[A-Za-z][A-Za-z0-9_+-]*(/[A-Za-z0-9_+-]+)*$"
+    },
+    "date": {
+      "description": "A calendar date, used only when an all-day event is read.",
+      "type": "string",
+      "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])$"
+    },
+    "local_time": {
+      "description": "A wall-clock time of day, to the minute.",
+      "type": "string",
+      "pattern": "^([01][0-9]|2[0-3]):[0-5][0-9]$"
+    },
+    "weekday": {
+      "enum": ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
+    },
+    "weekdays": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/weekday" },
+      "minItems": 1,
+      "maxItems": 7,
+      "uniqueItems": true
+    },
+    "offset_date_time": {
+      "description": "A local date and time with its numeric UTC offset, to the second. `Z` is not accepted.",
+      "type": "string",
+      "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])T([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9][+-]([01][0-9]|2[0-3]):[0-5][0-9]$"
+    },
+    "event_time": {
+      "description": "The start or end of a timed event: an unambiguous instant and the explicit IANA zone it is shown and stored in (CD-Q05c).",
+      "type": "object",
+      "properties": {
+        "date_time": { "$ref": "#/$defs/offset_date_time" },
+        "zone": { "$ref": "#/$defs/iana_zone" }
+      },
+      "required": ["date_time", "zone"],
+      "additionalProperties": false
+    },
+    "window": {
+      "description": "A half-open UTC interval, start inclusive and end exclusive.",
+      "type": "object",
+      "properties": {
+        "start": { "$ref": "#/$defs/timestamp" },
+        "end": { "$ref": "#/$defs/timestamp" }
+      },
+      "required": ["start", "end"],
+      "additionalProperties": false
+    },
+    "provider_ref": {
+      "description": "An opaque reference to something at the provider: an event, an occurrence, or a revision. Printable ASCII without spaces.",
+      "type": "string",
+      "pattern": "^[!-~]{1,1024}$"
+    },
+    "event_ref": {
+      "description": "One event and the revision the request was written against.",
+      "type": "object",
+      "properties": {
+        "event_id": { "$ref": "#/$defs/provider_ref" },
+        "revision": { "$ref": "#/$defs/provider_ref" }
+      },
+      "required": ["event_id", "revision"],
+      "additionalProperties": false
+    },
+    "occurrence_ref": {
+      "description": "The identity of one occurrence of a recurring invitation: instance id, original start time and revision (CD-Q05b).",
+      "type": "object",
+      "properties": {
+        "instance_id": { "$ref": "#/$defs/provider_ref" },
+        "original_start_time": { "$ref": "#/$defs/event_time" },
+        "revision": { "$ref": "#/$defs/provider_ref" }
+      },
+      "required": ["instance_id", "original_start_time", "revision"],
+      "additionalProperties": false
+    },
+    "event_field": {
+      "description": "A field of an event that a read may disclose. Identity fields are always returned.",
+      "enum": ["time", "title", "location", "description", "attendees", "organizer", "own_response"]
+    },
+    "event_fields": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/event_field" },
+      "minItems": 1,
+      "maxItems": 7,
+      "uniqueItems": true
+    },
+    "send_updates": {
+      "description": "Who the provider notifies about a change. Bound to the approval.",
+      "enum": ["all", "external_only", "none"]
+    },
+    "calendar_access": {
+      "description": "What the connected account may do in a calendar, as the provider reports it.",
+      "enum": ["owner", "writer", "reader", "free_busy_reader"]
+    },
+    "calendar_ref": {
+      "description": "One calendar, named together with its account: the same calendar shared into two accounts is two references.",
+      "type": "object",
+      "properties": {
+        "account_id": { "$ref": "#/$defs/id" },
+        "calendar_id": { "$ref": "#/$defs/id" }
+      },
+      "required": ["account_id", "calendar_id"],
+      "additionalProperties": false
+    },
+    "calendar_ids": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/id" },
+      "minItems": 1,
+      "maxItems": 50,
+      "uniqueItems": true
+    },
+    "addresses": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/email" },
+      "minItems": 1,
+      "maxItems": 200,
+      "uniqueItems": true
+    },
+    "tool_name": {
+      "description": "The agent tools, which are also the methods of the agent channel.",
+      "enum": [
+        "fabric_calendar_list",
+        "fabric_calendar_availability",
+        "fabric_calendar_read",
+        "fabric_calendar_propose_create",
+        "fabric_calendar_propose_update",
+        "fabric_calendar_propose_invitation",
+        "fabric_calendar_propose_response",
+        "fabric_calendar_propose_delete",
+        "fabric_request_status",
+        "fabric_request_result"
+      ]
+    },
+    "request_state": {
+      "description": "The states of one logical request. The legal transitions are in data/request-lifecycle.json.",
+      "enum": [
+        "received",
+        "validating",
+        "proving_classification",
+        "allowed",
+        "pending_approval",
+        "blocked",
+        "undecided",
+        "approved",
+        "denied",
+        "expired",
+        "cancelled",
+        "stale",
+        "proving_fresh_permit",
+        "queued",
+        "dispatching",
+        "applied",
+        "reconciled",
+        "retry_wait",
+        "outcome_unknown",
+        "terminal_failure",
+        "reconciling",
+        "absence_confirmed",
+        "needs_owner_resolution"
+      ]
+    },
+    "plain_request_state": {
+      "description": "The states in which a request's status carries nothing but the state: every state except pending_approval, blocked and terminal_failure.",
+      "enum": [
+        "received",
+        "validating",
+        "proving_classification",
+        "allowed",
+        "undecided",
+        "approved",
+        "denied",
+        "expired",
+        "cancelled",
+        "stale",
+        "proving_fresh_permit",
+        "queued",
+        "dispatching",
+        "applied",
+        "reconciled",
+        "retry_wait",
+        "outcome_unknown",
+        "reconciling",
+        "absence_confirmed",
+        "needs_owner_resolution"
+      ]
+    },
+    "failure_code": {
+      "description": "Why a request ended in terminal_failure.",
+      "enum": [
+        "invalid_arguments",
+        "revision_conflict",
+        "provider_rejected",
+        "retry_budget_exhausted",
+        "account_authentication_required"
+      ]
+    },
+    "limits": {
+      "description": "The numbers the broker enforces. The values frozen at CD-G0 are in data/limits.json; they are data, because CD-W03 re-sets the request limits after it measures the theory.",
+      "type": "object",
+      "properties": {
+        "max_frame_bytes": { "$ref": "#/$defs/positive_count" },
+        "subscriber_queue_notices": { "$ref": "#/$defs/positive_count" },
+        "open_requests_total": { "$ref": "#/$defs/positive_count" },
+        "open_requests_per_agent": { "$ref": "#/$defs/positive_count" },
+        "requests_per_minute_per_agent": { "$ref": "#/$defs/positive_count" },
+        "open_approval_cards_per_agent": { "$ref": "#/$defs/positive_count" },
+        "session_idle_timeout_seconds": { "$ref": "#/$defs/positive_count" },
+        "authorization_lifetime_seconds": { "$ref": "#/$defs/positive_count" },
+        "approval_expiry_seconds": { "$ref": "#/$defs/positive_count" }
+      },
+      "required": [
+        "max_frame_bytes",
+        "subscriber_queue_notices",
+        "open_requests_total",
+        "open_requests_per_agent",
+        "requests_per_minute_per_agent",
+        "open_approval_cards_per_agent",
+        "session_idle_timeout_seconds",
+        "authorization_lifetime_seconds",
+        "approval_expiry_seconds"
+      ],
+      "additionalProperties": false
+    },
+    "busy_limit": {
+      "description": "The limit a busy answer names.",
+      "enum": [
+        "open_requests_total",
+        "open_requests_per_agent",
+        "requests_per_minute_per_agent",
+        "open_approval_cards_per_agent"
+      ]
+    },
+    "nullable_id": {
+      "oneOf": [{ "type": "null" }, { "$ref": "#/$defs/id" }]
+    },
+    "nullable_timestamp": {
+      "oneOf": [{ "type": "null" }, { "$ref": "#/$defs/timestamp" }]
+    },
+    "nullable_digest": {
+      "oneOf": [{ "type": "null" }, { "$ref": "#/$defs/digest" }]
+    },
+    "nullable_method": {
+      "description": "The method an error reply answers, or null when the frame could not be read that far.",
+      "oneOf": [{ "type": "null" }, { "type": "string", "minLength": 1, "maxLength": 100 }]
+    },
+
+    "error_malformed_frame": {
+      "type": "object",
+      "properties": {
+        "code": { "const": "malformed_frame" },
+        "message": { "$ref": "#/$defs/explanation" },
+        "retryable": { "const": false },
+        "recovery": { "const": "report_problem" },
+        "correlation_id": { "$ref": "#/$defs/nullable_id" },
+        "detail": { "type": "null" }
+      },
+      "required": ["code", "message", "retryable", "recovery", "correlation_id", "detail"],
+      "additionalProperties": false
+    },
+    "error_unsupported_protocol": {
+      "type": "object",
+      "properties": {
+        "code": { "const": "unsupported_protocol" },
+        "message": { "$ref": "#/$defs/explanation" },
+        "retryable": { "const": false },
+        "recovery": { "const": "update_app" },
+        "correlation_id": { "$ref": "#/$defs/nullable_id" },
+        "detail": {
+          "type": "object",
+          "properties": {
+            "received": { "oneOf": [{ "type": "null" }, { "type": "string", "maxLength": 200 }] },
+            "supported": {
+              "type": "array",
+              "items": { "$ref": "#/$defs/protocol" },
+              "minItems": 1,
+              "maxItems": 1
+            }
+          },
+          "required": ["received", "supported"],
+          "additionalProperties": false
+        }
+      },
+      "required": ["code", "message", "retryable", "recovery", "correlation_id", "detail"],
+      "additionalProperties": false
+    },
+    "error_unsupported_schema_version": {
+      "type": "object",
+      "properties": {
+        "code": { "const": "unsupported_schema_version" },
+        "message": { "$ref": "#/$defs/explanation" },
+        "retryable": { "const": false },
+        "recovery": { "const": "update_app" },
+        "correlation_id": { "$ref": "#/$defs/nullable_id" },
+        "detail": {
+          "type": "object",
+          "properties": {
+            "received": { "$ref": "#/$defs/count" },
+            "supported": { "$ref": "#/$defs/positive_count" }
+          },
+          "required": ["received", "supported"],
+          "additionalProperties": false
+        }
+      },
+      "required": ["code", "message", "retryable", "recovery", "correlation_id", "detail"],
+      "additionalProperties": false
+    },
+    "error_unknown_method": {
+      "type": "object",
+      "properties": {
+        "code": { "const": "unknown_method" },
+        "message": { "$ref": "#/$defs/explanation" },
+        "retryable": { "const": false },
+        "recovery": { "const": "report_problem" },
+        "correlation_id": { "$ref": "#/$defs/nullable_id" },
+        "detail": { "type": "null" }
+      },
+      "required": ["code", "message", "retryable", "recovery", "correlation_id", "detail"],
+      "additionalProperties": false
+    },
+    "error_invalid_params": {
+      "type": "object",
+      "properties": {
+        "code": { "const": "invalid_params" },
+        "message": { "$ref": "#/$defs/explanation" },
+        "retryable": { "const": false },
+        "recovery": { "const": "report_problem" },
+        "correlation_id": { "$ref": "#/$defs/nullable_id" },
+        "detail": {
+          "type": "object",
+          "properties": {
+            "pointer": {
+              "description": "A JSON Pointer to the first value that was refused.",
+              "type": "string",
+              "maxLength": 500
+            }
+          },
+          "required": ["pointer"],
+          "additionalProperties": false
+        }
+      },
+      "required": ["code", "message", "retryable", "recovery", "correlation_id", "detail"],
+      "additionalProperties": false
+    },
+    "error_not_found": {
+      "type": "object",
+      "properties": {
+        "code": { "const": "not_found" },
+        "message": { "$ref": "#/$defs/explanation" },
+        "retryable": { "const": false },
+        "recovery": { "const": "none" },
+        "correlation_id": { "$ref": "#/$defs/nullable_id" },
+        "detail": { "type": "null" }
+      },
+      "required": ["code", "message", "retryable", "recovery", "correlation_id", "detail"],
+      "additionalProperties": false
+    },
+    "error_internal": {
+      "type": "object",
+      "properties": {
+        "code": { "const": "internal" },
+        "message": { "$ref": "#/$defs/explanation" },
+        "retryable": { "const": false },
+        "recovery": { "const": "report_problem" },
+        "correlation_id": { "$ref": "#/$defs/nullable_id" },
+        "detail": { "type": "null" }
+      },
+      "required": ["code", "message", "retryable", "recovery", "correlation_id", "detail"],
+      "additionalProperties": false
+    },
+    "error_conflict": {
+      "description": "A command named a revision that is no longer current. Nothing was overwritten.",
+      "type": "object",
+      "properties": {
+        "code": { "const": "conflict" },
+        "message": { "$ref": "#/$defs/explanation" },
+        "retryable": { "const": false },
+        "recovery": { "const": "refresh_snapshot" },
+        "correlation_id": { "$ref": "#/$defs/nullable_id" },
+        "detail": {
+          "type": "object",
+          "properties": {
+            "current_revision": { "$ref": "#/$defs/count" }
+          },
+          "required": ["current_revision"],
+          "additionalProperties": false
+        }
+      },
+      "required": ["code", "message", "retryable", "recovery", "correlation_id", "detail"],
+      "additionalProperties": false
+    },
+    "error_command_reused": {
+      "description": "A command id was sent again with a different body.",
+      "type": "object",
+      "properties": {
+        "code": { "const": "command_reused" },
+        "message": { "$ref": "#/$defs/explanation" },
+        "retryable": { "const": false },
+        "recovery": { "const": "report_problem" },
+        "correlation_id": { "$ref": "#/$defs/nullable_id" },
+        "detail": { "type": "null" }
+      },
+      "required": ["code", "message", "retryable", "recovery", "correlation_id", "detail"],
+      "additionalProperties": false
+    },
+    "error_stale_request": {
+      "description": "The request changed after the owner saw it. The approval is refused and the request must be reviewed again.",
+      "type": "object",
+      "properties": {
+        "code": { "const": "stale_request" },
+        "message": { "$ref": "#/$defs/explanation" },
+        "retryable": { "const": false },
+        "recovery": { "const": "review_request_again" },
+        "correlation_id": { "$ref": "#/$defs/nullable_id" },
+        "detail": { "type": "null" }
+      },
+      "required": ["code", "message", "retryable", "recovery", "correlation_id", "detail"],
+      "additionalProperties": false
+    },
+    "error_expansion_not_acknowledged": {
+      "description": "Saving this custom profile widens authority, and the owner has not confirmed this expansion.",
+      "type": "object",
+      "properties": {
+        "code": { "const": "expansion_not_acknowledged" },
+        "message": { "$ref": "#/$defs/explanation" },
+        "retryable": { "const": false },
+        "recovery": { "const": "acknowledge_expansion" },
+        "correlation_id": { "$ref": "#/$defs/nullable_id" },
+        "detail": {
+          "type": "object",
+          "properties": {
+            "expansion": { "$ref": "owner-channel.schema.json#/$defs/expansion" },
+            "expansion_digest": { "$ref": "#/$defs/digest" }
+          },
+          "required": ["expansion", "expansion_digest"],
+          "additionalProperties": false
+        }
+      },
+      "required": ["code", "message", "retryable", "recovery", "correlation_id", "detail"],
+      "additionalProperties": false
+    },
+    "error_snapshot_required": {
+      "description": "The cursor is older than the history the broker kept. Take a fresh snapshot.",
+      "type": "object",
+      "properties": {
+        "code": { "const": "snapshot_required" },
+        "message": { "$ref": "#/$defs/explanation" },
+        "retryable": { "const": false },
+        "recovery": { "const": "refresh_snapshot" },
+        "correlation_id": { "$ref": "#/$defs/nullable_id" },
+        "detail": { "type": "null" }
+      },
+      "required": ["code", "message", "retryable", "recovery", "correlation_id", "detail"],
+      "additionalProperties": false
+    },
+    "error_store_unavailable": {
+      "type": "object",
+      "properties": {
+        "code": { "const": "store_unavailable" },
+        "message": { "$ref": "#/$defs/explanation" },
+        "retryable": { "const": true },
+        "recovery": { "const": "unlock_store" },
+        "correlation_id": { "$ref": "#/$defs/nullable_id" },
+        "detail": {
+          "type": "object",
+          "properties": {
+            "reason": { "enum": ["locked", "keychain_refused"] }
+          },
+          "required": ["reason"],
+          "additionalProperties": false
+        }
+      },
+      "required": ["code", "message", "retryable", "recovery", "correlation_id", "detail"],
+      "additionalProperties": false
+    },
+    "error_busy": {
+      "description": "The retryable busy answer: a request limit was reached and no request was created.",
+      "type": "object",
+      "properties": {
+        "code": { "const": "busy" },
+        "message": { "$ref": "#/$defs/explanation" },
+        "retryable": { "const": true },
+        "recovery": { "const": "retry_later" },
+        "correlation_id": { "$ref": "#/$defs/nullable_id" },
+        "detail": {
+          "type": "object",
+          "properties": {
+            "limit": { "$ref": "#/$defs/busy_limit" },
+            "maximum": { "$ref": "#/$defs/positive_count" },
+            "retry_after_ms": { "$ref": "#/$defs/count" }
+          },
+          "required": ["limit", "maximum", "retry_after_ms"],
+          "additionalProperties": false
+        }
+      },
+      "required": ["code", "message", "retryable", "recovery", "correlation_id", "detail"],
+      "additionalProperties": false
+    },
+    "error_not_permitted": {
+      "description": "The caller is not an enrolled agent, or asked for something no agent may ask for.",
+      "type": "object",
+      "properties": {
+        "code": { "const": "not_permitted" },
+        "message": { "$ref": "#/$defs/explanation" },
+        "retryable": { "const": false },
+        "recovery": { "const": "none" },
+        "correlation_id": { "$ref": "#/$defs/nullable_id" },
+        "detail": { "type": "null" }
+      },
+      "required": ["code", "message", "retryable", "recovery", "correlation_id", "detail"],
+      "additionalProperties": false
+    },
+    "error_broker_not_running": {
+      "description": "Fabric is not running. The bridge answers this itself.",
+      "type": "object",
+      "properties": {
+        "code": { "const": "broker_not_running" },
+        "message": { "$ref": "#/$defs/explanation" },
+        "retryable": { "const": true },
+        "recovery": { "const": "start_fabric" },
+        "correlation_id": { "$ref": "#/$defs/nullable_id" },
+        "detail": { "type": "null" }
+      },
+      "required": ["code", "message", "retryable", "recovery", "correlation_id", "detail"],
+      "additionalProperties": false
+    },
+
+    "owner_error": {
+      "description": "Every error the broker may answer on the owner channel.",
+      "oneOf": [
+        { "$ref": "#/$defs/error_malformed_frame" },
+        { "$ref": "#/$defs/error_unsupported_protocol" },
+        { "$ref": "#/$defs/error_unsupported_schema_version" },
+        { "$ref": "#/$defs/error_unknown_method" },
+        { "$ref": "#/$defs/error_invalid_params" },
+        { "$ref": "#/$defs/error_not_found" },
+        { "$ref": "#/$defs/error_internal" },
+        { "$ref": "#/$defs/error_conflict" },
+        { "$ref": "#/$defs/error_command_reused" },
+        { "$ref": "#/$defs/error_stale_request" },
+        { "$ref": "#/$defs/error_expansion_not_acknowledged" },
+        { "$ref": "#/$defs/error_snapshot_required" },
+        { "$ref": "#/$defs/error_store_unavailable" }
+      ]
+    },
+    "agent_error": {
+      "description": "Every error an agent may receive.",
+      "oneOf": [
+        { "$ref": "#/$defs/error_malformed_frame" },
+        { "$ref": "#/$defs/error_unsupported_protocol" },
+        { "$ref": "#/$defs/error_unsupported_schema_version" },
+        { "$ref": "#/$defs/error_unknown_method" },
+        { "$ref": "#/$defs/error_invalid_params" },
+        { "$ref": "#/$defs/error_not_found" },
+        { "$ref": "#/$defs/error_internal" },
+        { "$ref": "#/$defs/error_busy" },
+        { "$ref": "#/$defs/error_not_permitted" },
+        { "$ref": "#/$defs/error_broker_not_running" }
+      ]
+    }
+  }
+}

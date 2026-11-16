@@ -1,0 +1,25 @@
+{
+  "description": "The limits frozen at gate CD-G0 on 2026-11-15, as the broker reports them in the hello result. The four request limits are re-set after CD-W03 measures the theory. The frame bound and the subscriber queue are the plan's proposed values (section 9.1).",
+  "limits": {
+    "max_frame_bytes": 1048576,
+    "subscriber_queue_notices": 256,
+    "open_requests_total": 100,
+    "open_requests_per_agent": 25,
+    "requests_per_minute_per_agent": 15,
+    "open_approval_cards_per_agent": 5,
+    "session_idle_timeout_seconds": 1800,
+    "authorization_lifetime_seconds": 60,
+    "approval_expiry_seconds": 86400
+  },
+  "sources": {
+    "max_frame_bytes": "plan 9.1, proposed 1 MiB",
+    "subscriber_queue_notices": "plan 9.1, proposed 256 notices",
+    "open_requests_total": "CD-Q11d, CD-Q11g",
+    "open_requests_per_agent": "CD-Q11d, CD-Q11g",
+    "requests_per_minute_per_agent": "CD-Q11d, CD-Q11g",
+    "open_approval_cards_per_agent": "CD-Q11d, CD-Q11g",
+    "session_idle_timeout_seconds": "CD-M-DUR, 30 minutes",
+    "authorization_lifetime_seconds": "CD-Q11f, 60 seconds",
+    "approval_expiry_seconds": "CD-Q11f, 24 hours"
+  }
+}
