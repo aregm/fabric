@@ -10,6 +10,10 @@
 //! key. No broker here opens a store with the Keychain: the only starts without
 //! `FABRIC_BROKER_KEY_SOURCE=test` are the configuration refusals, whose key source is unset,
 //! unknown, or `keychain` on a platform that has no Keychain.
+//!
+//! Bare numbers and the test ids p01 to p08 cite the CD-W04 design
+//! (`docs/plans/calendar-desktop-w04-design.md`); "PW" numbers, such as PW p40 to PW p45,
+//! cite the prover wiring's design (`docs/plans/calendar-desktop-prover-wiring-design.md`).
 
 use std::ffi::OsString;
 use std::io::{BufRead, BufReader, Read, Write};
@@ -45,6 +49,9 @@ const LAUNCH_AND_EXIT: Duration = Duration::from_secs(10);
 const DATA_DIR: &str = "FABRIC_BROKER_DATA_DIR";
 const KEY_SOURCE: &str = "FABRIC_BROKER_KEY_SOURCE";
 const SYNTHETIC_AGENT: &str = "FABRIC_BROKER_SYNTHETIC_AGENT";
+const ISABELLE_HOME: &str = "FABRIC_BROKER_ISABELLE_HOME";
+const ISABELLE_USER_HOME: &str = "FABRIC_BROKER_ISABELLE_USER_HOME";
+const RULES_DIR: &str = "FABRIC_BROKER_RULES_DIR";
 
 /// The title of every event the synthetic agent proposes (`fabric_broker::synthetic::TITLE`;
 /// the synthetic test checks they agree). It must never appear on stdout outside a full-detail
@@ -1082,6 +1089,96 @@ fn configuration_errors_exit_78_before_any_frame() {
             "FABRIC_BROKER_DATADIR",
         ),
     ];
+    // PW p40: the three Isabelle paths, each refused before any frame.
+    let fake = FakeIsabelle::new(&dir.0.join("fake"));
+    let (home, user, rules) = (
+        fake.home.as_os_str().to_owned(),
+        fake.user.as_os_str().to_owned(),
+        fake.rules.as_os_str().to_owned(),
+    );
+    let missing = dir.0.join("missing").into_os_string();
+    let isabelle = |h: &OsString, u: &OsString, r: &OsString| {
+        vec![
+            (DATA_DIR, data_os.clone()),
+            (KEY_SOURCE, os("test")),
+            (ISABELLE_HOME, h.clone()),
+            (ISABELLE_USER_HOME, u.clone()),
+            (RULES_DIR, r.clone()),
+        ]
+    };
+    let some = |set: &[(&'static str, &OsString)]| {
+        let mut variables = vec![(DATA_DIR, data_os.clone()), (KEY_SOURCE, os("test"))];
+        variables.extend(set.iter().map(|(name, value)| (*name, (*value).clone())));
+        variables
+    };
+    let together = "together, or none";
+    cases.extend([
+        (
+            "an Isabelle home alone",
+            some(&[(ISABELLE_HOME, &home)]),
+            together,
+        ),
+        (
+            "an Isabelle user home alone",
+            some(&[(ISABELLE_USER_HOME, &user)]),
+            together,
+        ),
+        (
+            "a rules directory alone",
+            some(&[(RULES_DIR, &rules)]),
+            together,
+        ),
+        (
+            "two of the three Isabelle paths",
+            some(&[(ISABELLE_HOME, &home), (RULES_DIR, &rules)]),
+            together,
+        ),
+        (
+            "a relative Isabelle home",
+            isabelle(&os("isabelle"), &user, &rules),
+            ISABELLE_HOME,
+        ),
+        (
+            "an Isabelle home with no bin/isabelle",
+            isabelle(&user, &user, &rules),
+            ISABELLE_HOME,
+        ),
+        (
+            "a relative Isabelle user home",
+            isabelle(&home, &os("user"), &rules),
+            ISABELLE_USER_HOME,
+        ),
+        (
+            "a missing Isabelle user home",
+            isabelle(&home, &missing, &rules),
+            ISABELLE_USER_HOME,
+        ),
+        (
+            "a relative rules directory",
+            isabelle(&home, &user, &os("isabelle")),
+            RULES_DIR,
+        ),
+        (
+            "a rules directory without the rule theory",
+            isabelle(&home, &user, &user),
+            RULES_DIR,
+        ),
+    ]);
+    #[cfg(unix)]
+    {
+        let fixed = FakeIsabelle::new(&dir.0.join("not executable"));
+        use std::os::unix::fs::PermissionsExt as _;
+        std::fs::set_permissions(
+            fixed.home.join("bin").join("isabelle"),
+            std::fs::Permissions::from_mode(0o644),
+        )
+        .unwrap();
+        cases.push((
+            "an Isabelle that may not be executed",
+            isabelle(&fixed.home.into_os_string(), &user, &rules),
+            ISABELLE_HOME,
+        ));
+    }
     #[cfg(unix)]
     cases.push((
         "a data directory that others may read",
@@ -1540,4 +1637,163 @@ fn stdout_and_stderr_carry_no_event_content() {
     }
     assert!(!stderr.contains(SYNTHETIC_TITLE), "{stderr}");
     assert!(!stderr.to_lowercase().contains(&key_hex), "{stderr}");
+}
+
+/// Paths laid out as the three Isabelle variables need them, under a directory the test keeps:
+/// `bin/isabelle` a script that exits 1 at once, an empty user home, and the repository's rule
+/// theory. No Isabelle runs from it, so the prover of a broker given these paths fails to start
+/// and nothing is ever proved.
+struct FakeIsabelle {
+    home: PathBuf,
+    user: PathBuf,
+    rules: PathBuf,
+}
+
+impl FakeIsabelle {
+    fn new(root: &Path) -> FakeIsabelle {
+        let home = root.join("isabelle");
+        let user = root.join("user");
+        std::fs::create_dir_all(home.join("bin")).unwrap();
+        std::fs::create_dir_all(&user).unwrap();
+        let program = home.join("bin").join("isabelle");
+        std::fs::write(&program, b"#!/bin/sh\nexit 1\n").unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt as _;
+            std::fs::set_permissions(&program, std::fs::Permissions::from_mode(0o755)).unwrap();
+        }
+        FakeIsabelle {
+            home,
+            user,
+            rules: Path::new(env!("CARGO_MANIFEST_DIR")).join("../../isabelle"),
+        }
+    }
+
+    /// The broker on `data_dir` with the test key, the synthetic agent and these paths: a
+    /// practice run whose prover cannot start.
+    #[cfg(unix)]
+    fn command(&self, data_dir: &Path) -> Command {
+        let mut command = command(data_dir, true);
+        command
+            .env(ISABELLE_HOME, &self.home)
+            .env(ISABELLE_USER_HOME, &self.user)
+            .env(RULES_DIR, &self.rules);
+        command
+    }
+}
+
+#[cfg(unix)]
+impl Broker {
+    /// Asks for snapshots until the prover's health is `health`, for up to `bound`.
+    fn prover_becomes(&mut self, health: &str, bound: Duration) -> Value {
+        let deadline = Instant::now() + bound;
+        loop {
+            let snapshot = self.snapshot();
+            if snapshot["health"]["prover"] == health {
+                return snapshot;
+            }
+            assert!(
+                Instant::now() < deadline,
+                "the prover was not {health} within {bound:?}: {}",
+                snapshot["health"]
+            );
+            thread::sleep(Duration::from_millis(100));
+        }
+    }
+}
+
+/// PW p41: an Isabelle that cannot start leaves the prover unavailable: the synthetic agent of the
+/// practice run proposes nothing, no request is made, stderr names no path, and after quit the
+/// prover's work directory is gone. (A request made while the prover is down ends `undecided`:
+/// the shell's unit test PW sh06, since the practice script never proposes then.)
+#[cfg(unix)]
+#[test]
+fn an_isabelle_that_cannot_start_leaves_the_prover_unavailable_and_proposes_nothing() {
+    let dir = TempDir::new("no-isabelle");
+    let fake = FakeIsabelle::new(&dir.0.join("fake"));
+    let mut broker = Broker::spawn_from(fake.command(&dir.data()), true);
+    let OwnerResult::Hello(hello) = broker.result(&hello(1)) else {
+        panic!()
+    };
+    assert_eq!(
+        hello.broker.build.as_str(),
+        format!("{} CD-W04 synthetic practice", env!("CARGO_PKG_VERSION"))
+    );
+    let snapshot = broker.snapshot();
+    broker.result(&subscribe(snapshot["cursor"].as_u64().unwrap()));
+    broker.prover_becomes("unavailable", PROMPT);
+    // Longer than the agent's pace: it would have proposed by now if it could.
+    thread::sleep(Duration::from_millis(2500));
+    let snapshot = broker.snapshot();
+    assert_eq!(snapshot["health"]["prover"], "unavailable");
+    assert_eq!(snapshot["requests"], json!([]));
+    assert!(broker.notices.iter().all(|n| n.change.kind() != "request"));
+    let stderr = broker.stderr.take().expect("stderr is read");
+    let (status, _, _) = broker.finish();
+    assert_eq!(status.code(), Some(0));
+    let stderr = stderr.join().expect("stderr was read");
+    assert!(
+        stderr.contains("fabric-broker: the rule prover could not start"),
+        "{stderr}"
+    );
+    assert!(!stderr.contains(&*dir.0.to_string_lossy()), "{stderr}");
+    assert!(!dir.data().join("prover").exists());
+}
+
+/// PW p44: a second broker on a directory whose store the first one holds never starts a prover,
+/// so it leaves the first one's work directory alone. The marker goes into that directory only
+/// after the first prover failed, and is checked before the first one's restart wait (10 s)
+/// could empty the directory again. `failed` lags the start of that wait by up to one poll and
+/// a snapshot, so the test concludes only with a second to spare.
+#[cfg(unix)]
+#[test]
+fn a_second_broker_on_a_locked_directory_leaves_the_first_brokers_prover_alone() {
+    let dir = TempDir::new("locked-prover");
+    let fake = FakeIsabelle::new(&dir.0.join("fake"));
+    let mut first = Broker::spawn_from(fake.command(&dir.data()), false);
+    first.prover_becomes("unavailable", PROMPT);
+    let failed = Instant::now();
+    let marker = dir.data().join("prover").join("marker");
+    std::fs::write(&marker, b"the first broker's").expect("the first broker's prover directory");
+    let mut second = Broker::spawn_from(fake.command(&dir.data()), false);
+    assert!(matches!(
+        second.ask(&hello(1)),
+        OwnerResponse::Result { .. }
+    ));
+    let (code, ..) = error_of(&second.ask(&request("snap-2", "get_snapshot", json!({}))));
+    assert_eq!(code, ErrorCode::StoreUnavailable);
+    let (status, _, _) = second.finish();
+    assert_eq!(status.code(), Some(0));
+    let elapsed = failed.elapsed();
+    assert!(
+        elapsed < fabric_broker::prover::RESTART_WAITS[0] - Duration::from_secs(1),
+        "too slow to conclude: {elapsed:?} since the first prover failed"
+    );
+    assert!(
+        marker.exists(),
+        "the second broker touched the first one's prover"
+    );
+    let (status, _, _) = first.finish();
+    assert_eq!(status.code(), Some(0));
+    assert!(!dir.data().join("prover").exists());
+}
+
+/// PW p45: a check theory a killed broker left in `<data_dir>/prover` is removed
+/// once the store is open, also by a broker started without the three Isabelle variables.
+#[test]
+fn a_start_without_isabelle_removes_a_check_theory_a_killed_broker_left() {
+    let dir = TempDir::new("left-check");
+    let (status, _, _) = Broker::on(&dir.data(), false).finish();
+    assert_eq!(status.code(), Some(0));
+    let work_dir = dir.data().join("prover");
+    std::fs::create_dir_all(&work_dir).unwrap();
+    let left = work_dir.join("Check_000001.thy");
+    std::fs::write(&left, "theory Check_000001 (* left by a killed broker *)").unwrap();
+    let mut broker = Broker::on(&dir.data(), false);
+    let OwnerResult::Hello(_) = broker.result(&hello(1)) else {
+        panic!()
+    };
+    assert!(!work_dir.exists(), "the left check theory stays");
+    let (status, _, _) = broker.finish();
+    assert_eq!(status.code(), Some(0));
 }
