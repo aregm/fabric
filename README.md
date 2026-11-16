@@ -20,7 +20,7 @@ Fabric is now the trust layer: the agreement protocol (Rendezvous), the policy g
 What exists on 2026-11-15:
 
 - the M0 agreement simulator (`fabric-core`, `fabric-cli`): done;
-- the Isabelle-gated calendar demo: built, with the macOS port on `main`; its gate DEMO-G3, the owner's run with Claude driving both agents, was run and closed on 2026-11-15, with one gap recorded: the dashboard does not name the failing rule for an action denied when authorizing;
+- the Isabelle-gated calendar demo: built, with the macOS port on `main`; its gate DEMO-G3, the owner's run with Claude driving both agents, was run and closed on 2026-11-15 with one exit check not met as written: the dashboard does not name the failing rule for an action denied when authorizing;
 - the paracels chat prototype: complete;
 - gate H0, hygiene: passed on 2026-11-15.
 
