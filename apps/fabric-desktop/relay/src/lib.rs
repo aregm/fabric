@@ -18,6 +18,9 @@ mod instance;
 mod line;
 mod session;
 
-pub use config::{BrokerConfig, ConfigError, ENVIRONMENT_ALLOWLIST, broker_beside};
+pub use config::{
+    BROKER_DATA_DIR, BROKER_KEY_SOURCE, BROKER_SYNTHETIC_AGENT, BROKER_VARIABLE_PREFIX,
+    BrokerConfig, ConfigError, ENVIRONMENT_ALLOWLIST, broker_beside, is_broker_variable, same_name,
+};
 pub use instance::{InstanceError, InstanceLock};
 pub use session::{Ending, Event, QUIT_DRAIN, SendError, Session};

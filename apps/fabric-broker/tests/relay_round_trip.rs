@@ -4,8 +4,15 @@
 //!
 //! The broker under test is `FABRIC_BROKER_UNDER_TEST` when it is set (an absolute path, for
 //! example the broker inside a packaged app) and otherwise the binary Cargo built.
+//!
+//! Like the host, each start takes the test's environment without any `FABRIC_BROKER_*` name
+//! and adds the broker's three variables: a new data directory of its own under the system's
+//! temporary directory, the public test key, and the synthetic agent. No broker here opens a
+//! store with the Keychain.
 
+use std::ffi::OsString;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError};
 use std::sync::{Mutex, MutexGuard, PoisonError};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
@@ -25,7 +32,7 @@ use serde_json::{Value, json};
 /// How long to wait for a frame that is due at once. The first answer of a broker also waits
 /// for its launch, which for a newly signed executable on macOS can take seconds.
 const PROMPT: Duration = Duration::from_secs(10);
-/// How long to wait for a script step, beyond its nominal time.
+/// How long to wait for a step of the synthetic agent, beyond its nominal time.
 const STEP: Duration = Duration::from_secs(6);
 
 /// Held across every process start in this file (each `Session::start`, and the `kill` or
@@ -47,12 +54,42 @@ fn broker_path() -> PathBuf {
     }
 }
 
+/// The test's environment without any `FABRIC_BROKER_*` name, then the broker's own three:
+/// `data_dir`, the test key and the synthetic agent.
+fn environment(data_dir: &Path) -> Vec<(OsString, OsString)> {
+    let mut environment: Vec<(OsString, OsString)> = std::env::vars_os()
+        .filter(|(name, _)| {
+            !name
+                .as_encoded_bytes()
+                .to_ascii_uppercase()
+                .starts_with(b"FABRIC_BROKER_")
+        })
+        .collect();
+    environment.extend([
+        (
+            OsString::from("FABRIC_BROKER_DATA_DIR"),
+            data_dir.as_os_str().to_owned(),
+        ),
+        (
+            OsString::from("FABRIC_BROKER_KEY_SOURCE"),
+            OsString::from("test"),
+        ),
+        (
+            OsString::from("FABRIC_BROKER_SYNTHETIC_AGENT"),
+            OsString::from("1"),
+        ),
+    ]);
+    environment
+}
+
 /// A relay session with the broker and the events its sink received.
 struct Relay {
     session: Session,
     events: Receiver<Event>,
     /// Every notice read so far, with the time it reached the test.
     notices: Vec<(Instant, OwnerNotice)>,
+    /// The broker's data directory, removed after the session.
+    _dir: TempDir,
 }
 
 impl Relay {
@@ -61,8 +98,18 @@ impl Relay {
     }
 
     fn start_at(program: &Path) -> Relay {
-        let config = BrokerConfig::check(program, ENVIRONMENT_ALLOWLIST, std::env::vars_os())
+        let dir = TempDir::new("fabric relay round trip");
+        let config = BrokerConfig::check(program, ENVIRONMENT_ALLOWLIST, environment(&dir.data()))
             .unwrap_or_else(|e| panic!("the broker configuration is refused: {e}"));
+        let names: Vec<&OsString> = config.environment().iter().map(|(n, _)| n).collect();
+        assert!(
+            names
+                .iter()
+                .filter(|n| n.as_encoded_bytes().starts_with(b"FABRIC_BROKER_"))
+                .count()
+                == 3,
+            "the broker gets its three variables and no other: {names:?}"
+        );
         let (sender, events) = mpsc::channel();
         let spawning = spawn_lock();
         let session = Session::start(&config, move |event| {
@@ -75,6 +122,7 @@ impl Relay {
             session,
             events,
             notices: Vec::new(),
+            _dir: dir,
         }
     }
 
@@ -142,6 +190,29 @@ impl Relay {
             Change::Request(r) => r,
             _ => unreachable!(),
         }
+    }
+
+    /// Waits for a request other than `except` to reach `pending_approval`.
+    fn pending(&mut self, except: &[&str]) -> Request {
+        let n = self.notice(|n| match &n.change {
+            Change::Request(r) => {
+                r.status.state() == RequestState::PendingApproval
+                    && !except.contains(&r.request_id.as_str())
+            }
+            _ => false,
+        });
+        match n.change {
+            Change::Request(r) => r,
+            _ => unreachable!(),
+        }
+    }
+
+    /// The sequences of every notice read so far rise by one from the first.
+    fn assert_consecutive(&self) {
+        let sequences: Vec<u64> = self.notices.iter().map(|(_, n)| n.sequence.get()).collect();
+        let first = sequences.first().copied().unwrap_or(1);
+        let expected: Vec<u64> = (first..first + sequences.len() as u64).collect();
+        assert_eq!(sequences, expected, "the notices do not rise by one");
     }
 
     /// The states request `request_id` went through, in the order of the notices.
@@ -225,7 +296,7 @@ fn echo(relay: &mut Relay) {
     };
     assert_eq!(result.limits, Limits::CD_G0);
     assert_eq!(result.schema_version.get(), SCHEMA_VERSION);
-    assert_eq!(result.broker.name.as_str(), "fabric-broker-spike");
+    assert_eq!(result.broker.name.as_str(), "fabric-broker");
 }
 
 #[test]
@@ -248,14 +319,11 @@ fn notices_are_pushed_over_time() {
         panic!()
     };
     assert_eq!(subscribed.cursor.get(), cursor);
-    relay.request_in("spike-request-1", RequestState::PendingApproval);
-    let sequences: Vec<u64> = relay
-        .notices
-        .iter()
-        .map(|(_, n)| n.sequence.get())
-        .collect();
-    assert_eq!(sequences, [1, 2, 3, 4, 5, 6]);
-    let states = relay.states_of("spike-request-1");
+    let pending = relay.pending(&[]);
+    let request_id = pending.request_id.as_str().to_owned();
+    relay.assert_consecutive();
+    assert_eq!(relay.notices[0].1.sequence.get(), cursor + 1);
+    let states = relay.states_of(&request_id);
     assert_eq!(
         states,
         [
@@ -266,27 +334,27 @@ fn notices_are_pushed_over_time() {
         ]
     );
     assert_eq!(first_invalid(&states), None);
-    let arrival = |state| {
-        relay
-            .notices
-            .iter()
-            .find(|(_, n)| is_request_in(n, "spike-request-1", state))
-            .map(|(at, _)| *at)
-            .unwrap()
-    };
-    let gap = arrival(RequestState::PendingApproval) - arrival(RequestState::Received);
-    assert!(
-        gap >= Duration::from_secs(1),
-        "the notices came {gap:?} apart"
-    );
+    // The synthetic agent asks about a second after the page subscribed, and the account it
+    // asks about came before its request.
+    let kinds: Vec<&str> = relay.notices.iter().map(|(_, n)| n.change.kind()).collect();
+    let account = kinds
+        .iter()
+        .position(|k| *k == "account")
+        .expect("an account");
+    let received = kinds
+        .iter()
+        .position(|k| *k == "request")
+        .expect("a request");
+    assert!(account < received, "{kinds:?}");
 }
 
 #[test]
 fn approval_then_denial() {
     let mut relay = Relay::start();
     relay.result(&subscribe(0));
-    let pending = relay.request_in("spike-request-1", RequestState::PendingApproval);
-    let read = details(&mut relay, "spike-request-1");
+    let pending = relay.pending(&[]);
+    let first = pending.request_id.as_str().to_owned();
+    let read = details(&mut relay, &first);
     assert!(read.card.is_some() && read.private.is_some());
 
     let approve = decide(
@@ -308,28 +376,31 @@ fn approval_then_denial() {
         panic!()
     };
     assert_eq!(grant.grant_id, approval.grant_id);
-    let approved = relay.notice(|n| is_request_in(n, "spike-request-1", RequestState::Approved));
+    let approved = relay.notice(|n| is_request_in(n, &first, RequestState::Approved));
     assert_eq!(decided.commit_sequence, approved.sequence);
-    relay.request_in("spike-request-1", RequestState::Undecided);
-    assert_eq!(first_invalid(&relay.states_of("spike-request-1")), None);
+    relay.request_in(&first, RequestState::Undecided);
+    assert_eq!(first_invalid(&relay.states_of(&first)), None);
 
-    relay.request_in("spike-request-2", RequestState::PendingApproval);
-    let second = details(&mut relay, "spike-request-2");
-    let deny = decide("decide-2", &second.request, "deny", Value::Null);
+    let second = relay.pending(&[&first]);
+    let second_id = second.request_id.as_str().to_owned();
+    let read = details(&mut relay, &second_id);
+    let deny = decide("decide-2", &read.request, "deny", Value::Null);
     let OwnerResult::DecideRequest(denied) = relay.result(&deny) else {
         panic!()
     };
     assert!(matches!(denied.approval, Approval::Deny(_)));
     assert_eq!(denied.request.status.state(), RequestState::Denied);
-    relay.request_in("spike-request-2", RequestState::Denied);
-    assert_eq!(first_invalid(&relay.states_of("spike-request-2")), None);
+    relay.request_in(&second_id, RequestState::Denied);
+    assert_eq!(first_invalid(&relay.states_of(&second_id)), None);
+    relay.assert_consecutive();
 }
 
 #[test]
 fn a_duplicate_command_is_answered_once() {
     let mut relay = Relay::start();
     relay.result(&subscribe(0));
-    let pending = relay.request_in("spike-request-1", RequestState::PendingApproval);
+    let pending = relay.pending(&[]);
+    let request_id = pending.request_id.as_str().to_owned();
     let approve = decide("decide-1", &pending, "approve", json!({"kind": "session"}));
     relay.send(&approve);
     relay.send(&approve);
@@ -337,12 +408,11 @@ fn a_duplicate_command_is_answered_once() {
     let second = relay.response();
     assert_eq!(first, second);
     assert!(matches!(first, OwnerResponse::Result { .. }));
-    // The step after the approval comes 300 ms later; by then a second approval would show.
-    relay.request_in("spike-request-1", RequestState::ProvingFreshPermit);
+    relay.request_in(&request_id, RequestState::Undecided);
     let approvals = relay
         .notices
         .iter()
-        .filter(|(_, n)| is_request_in(n, "spike-request-1", RequestState::Approved))
+        .filter(|(_, n)| is_request_in(n, &request_id, RequestState::Approved))
         .count();
     assert_eq!(approvals, 1);
     let grants = relay
@@ -451,8 +521,9 @@ fn the_death_of_the_broker_ends_the_session() {
 fn quit_stops_the_broker_without_a_kill() {
     let mut relay = Relay::start();
     echo(&mut relay);
-    // While the script runs, so that the broker has timers pending.
+    // While the synthetic agent runs, so that the broker has timers pending.
     relay.result(&subscribe(0));
+    relay.notice(|n| n.change.kind() == "account");
     // Only `stop` is timed: the broker has answered, so its launch is behind it, and `stop`
     // returns when the child is gone.
     let started = Instant::now();
@@ -466,6 +537,8 @@ fn quit_stops_the_broker_without_a_kill() {
     );
 }
 
+static NEXT_DIR: AtomicU64 = AtomicU64::new(0);
+
 /// A fresh directory under the system's temporary directory, removed on drop.
 struct TempDir(PathBuf);
 
@@ -474,9 +547,15 @@ impl TempDir {
         let nanos = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .map_or(0, |d| d.as_nanos());
-        let path = std::env::temp_dir().join(format!("{name} {} {nanos}", std::process::id()));
+        let n = NEXT_DIR.fetch_add(1, Ordering::Relaxed);
+        let path = std::env::temp_dir().join(format!("{name} {} {nanos} {n}", std::process::id()));
         std::fs::create_dir(&path).expect("a fresh temporary directory");
         TempDir(path)
+    }
+
+    /// The broker's data directory: a child that the store creates.
+    fn data(&self) -> PathBuf {
+        self.0.join("data")
     }
 }
 

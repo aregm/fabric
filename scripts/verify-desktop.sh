@@ -1,5 +1,5 @@
 #!/usr/bin/env sh
-# Checks the desktop application (work package CD-W02).
+# Checks the desktop application (work packages CD-W02 and CD-W04).
 #
 #   sh scripts/verify-desktop.sh              the sources
 #   sh scripts/verify-desktop.sh --packaged   the bundle that scripts/build-desktop.sh made
@@ -10,19 +10,27 @@
 # its own Cargo workspace, needs Node and builds only on macOS.
 #
 # Without a flag it installs the pinned npm development packages, typechecks the TypeScript, runs
-# its tests, builds the webview files, and on macOS formats, lints and tests the Tauri host.
+# its tests, builds the webview files, and on macOS builds the debug broker, compiles the release
+# broker (it is not run) and runs its configuration tests in release, and formats, lints and tests
+# the Tauri host. The host's tests start the
+# debug broker with the test key in temporary directories.
 #
 # With --packaged it copies the bundle to a directory whose path contains spaces and, from there:
-#   1. runs the broker's process tests and the relay round trip (echo, progress, approval) against
-#      the broker inside the bundle;
-#   2. starts the application and reads the host's trace: the webview's hello, snapshot and
-#      subscribe are answered and the first six notices arrive in order (echo and progress);
-#   3. starts the application a second time: the second one reports a conflict and starts no broker;
+#   1. runs the broker's process tests and the relay round trip against the broker inside the
+#      bundle; each test starts it with the test key in a temporary directory, and one of them
+#      kills it and checks that its store survives;
+#   2. starts the application with a scratch data directory, the test key and the synthetic agent,
+#      and reads the host's trace: the webview's hello, snapshot and subscribe are answered, a
+#      request notice arrives, and the notice sequences rise by one (echo and progress);
+#   3. starts the application a second time on the same directory: the second one reports a
+#      conflict and starts no broker;
 #   4. kills the broker: the host reports the disconnect and starts no new broker by itself;
 #   5. kills the host: the broker does not outlive it.
-# It opens the application's window on this Mac for a few seconds. It cannot press a key in the
-# webview, so the approval in the webview, the restart button, Quit and VoiceOver are checked by a
-# person (apps/fabric-desktop/README.md has the steps). The application must not be running.
+# No step opens the real store or the Keychain: every launch here names the scratch directory and
+# the test key. It opens the application's window on this Mac for a few seconds. It cannot press a
+# key in the webview, so the approval in the webview, the restart button, Quit and VoiceOver are
+# checked by a person (apps/fabric-desktop/README.md has the steps). The application must not be
+# running.
 set -eu
 
 die() {
@@ -40,6 +48,10 @@ done
 
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd -P)
 RUN="$ROOT/scripts/run.sh"
+
+# The broker's store is SQLCipher with Apple's CommonCrypto; an OpenSSL left in the environment
+# must not reach its build.
+unset OPENSSL_DIR OPENSSL_LIB_DIR OPENSSL_INCLUDE_DIR
 DESKTOP="$ROOT/apps/fabric-desktop"
 HOST_MANIFEST="$DESKTOP/src-tauri/Cargo.toml"
 TARGET_TRIPLE=aarch64-apple-darwin
@@ -76,6 +88,11 @@ sources() {
     sh "$RUN" cargo build --locked -p fabric-broker
     mkdir -p "$DESKTOP/src-tauri/binaries"
     cp "$ROOT/target/debug/fabric-broker" "$DESKTOP/src-tauri/binaries/fabric-broker-$TARGET_TRIPLE"
+    # The release broker, which drops the test key and the synthetic agent, must compile too, and
+    # its configuration must refuse them. The library tests only parse variables: they open no
+    # store and never reach the Keychain.
+    sh "$RUN" cargo check --release --locked -p fabric-broker
+    sh "$RUN" cargo test --release --locked -p fabric-broker --lib
     sh "$RUN" cargo fmt --manifest-path "$HOST_MANIFEST" -- --check
     sh "$RUN" cargo clippy --manifest-path "$HOST_MANIFEST" --all-targets --locked -- -D warnings
     sh "$RUN" cargo test --manifest-path "$HOST_MANIFEST" --all-targets --locked
@@ -133,8 +150,17 @@ packaged() {
     echo "[1/5] The packaged broker: its process tests and the relay round trip"
     FABRIC_BROKER_UNDER_TEST="$BROKER" sh "$RUN" cargo test --locked -p fabric-broker --tests
 
+    # Every launch below uses this scratch directory, the test key and the synthetic agent, so
+    # none opens the real store; the same directory each time, so the second launch meets the
+    # first one's lock.
+    DATA="$WORK/data"
+    launch() {
+        FABRIC_DESKTOP_DATA_DIR="$DATA" FABRIC_BROKER_KEY_SOURCE=test FABRIC_BROKER_SYNTHETIC_AGENT=1 \
+            FABRIC_DESKTOP_TRACE=1 "$HOST" 2>"$1" &
+    }
+
     echo "[2/5] The application: echo and progress through the webview"
-    FABRIC_DESKTOP_TRACE=1 "$HOST" 2>"$WORK/first.trace" &
+    launch "$WORK/first.trace"
     host_pid=$!
     wait_for "$WORK/first.trace" ' state run=[0-9]+ (connected|conflict|configuration_error)' 30
     if grep -q ' conflict' "$WORK/first.trace"; then
@@ -144,18 +170,24 @@ packaged() {
     wait_for "$WORK/first.trace" ' <- response hello id=[^ ]+ result ' 30
     wait_for "$WORK/first.trace" ' <- response get_snapshot id=[^ ]+ result ' 10
     wait_for "$WORK/first.trace" ' <- response subscribe id=[^ ]+ result ' 10
-    wait_for "$WORK/first.trace" ' <- notice sequence=6 change=request ' 20
-    sequences=$(sed -n 's/.* <- notice sequence=\([0-9]*\) .*/\1/p' "$WORK/first.trace" | head -n 6 | tr '\n' ' ')
-    [ "$sequences" = "1 2 3 4 5 6 " ] || die "the notices did not arrive in order: $sequences"
+    wait_for "$WORK/first.trace" ' <- notice sequence=[0-9]+ change=request ' 20
+    sequences=$(sed -n 's/.* <- notice sequence=\([0-9]*\) .*/\1/p' "$WORK/first.trace" | tr '\n' ' ')
+    previous=
+    for sequence in $sequences; do
+        if [ -n "$previous" ] && [ "$sequence" -ne $((previous + 1)) ]; then
+            die "the notice sequences do not rise by one: $sequences"
+        fi
+        previous=$sequence
+    done
     if grep -q ' refused ' "$WORK/first.trace"; then
         die "the host refused a frame that the webview built."
     fi
     broker_pid=$(sed -n 's/.* state run=1 connected pid=\([0-9]*\) .*/\1/p' "$WORK/first.trace" | head -n 1)
     [ "$(running "$BROKER" | tr '\n' ' ')" = "$broker_pid " ] || die "expected exactly one broker, with pid $broker_pid."
-    echo "ok: hello, snapshot and subscribe were answered and notices 1 to 6 arrived; the broker is pid $broker_pid"
+    echo "ok: hello, snapshot and subscribe were answered and notices $sequences arrived in order; the broker is pid $broker_pid"
 
     echo "[3/5] A second launch"
-    FABRIC_DESKTOP_TRACE=1 "$HOST" 2>"$WORK/second.trace" &
+    launch "$WORK/second.trace"
     second_pid=$!
     wait_for "$WORK/second.trace" ' state run=0 conflict' 30
     sleep 1
@@ -176,7 +208,7 @@ packaged() {
     host_pid=
 
     echo "[5/5] The host dies"
-    FABRIC_DESKTOP_TRACE=1 "$HOST" 2>"$WORK/third.trace" &
+    launch "$WORK/third.trace"
     host_pid=$!
     wait_for "$WORK/third.trace" ' state run=1 connected pid=[0-9]+ ' 30
     broker_pid=$(sed -n 's/.* state run=1 connected pid=\([0-9]*\) .*/\1/p' "$WORK/third.trace" | head -n 1)

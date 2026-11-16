@@ -5,23 +5,45 @@ use std::fmt;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
-/// The names of the host's environment variables that the broker child receives. Every other
-/// variable of the host is left out.
-///
-/// It is empty, except on Windows, where a process started with no `SystemRoot` can fail to
-/// start. The spike broker reads no variable; a later work package that needs one adds its name
-/// here with the reason.
-#[cfg(windows)]
-pub const ENVIRONMENT_ALLOWLIST: &[&str] = &["SystemRoot"];
+/// Every variable of the broker starts with this. The broker (`fabric-broker`'s `config`)
+/// refuses any other name under it.
+pub const BROKER_VARIABLE_PREFIX: &str = "FABRIC_BROKER_";
+/// The absolute path of the broker's data directory.
+pub const BROKER_DATA_DIR: &str = "FABRIC_BROKER_DATA_DIR";
+/// Where the broker's store key comes from: `keychain` or `test`.
+pub const BROKER_KEY_SOURCE: &str = "FABRIC_BROKER_KEY_SOURCE";
+/// `1` starts the broker's synthetic agent (a debug test run only).
+pub const BROKER_SYNTHETIC_AGENT: &str = "FABRIC_BROKER_SYNTHETIC_AGENT";
 
 /// The names of the host's environment variables that the broker child receives. Every other
 /// variable of the host is left out.
 ///
-/// It is empty, except on Windows, where a process started with no `SystemRoot` can fail to
-/// start. The spike broker reads no variable; a later work package that needs one adds its name
-/// here with the reason.
+/// The three variables the broker reads (CD-W04): `FABRIC_BROKER_DATA_DIR`, the absolute path
+/// of its data directory (with no `HOME` the broker could not find one); `FABRIC_BROKER_KEY_SOURCE`,
+/// where its store key comes from; and `FABRIC_BROKER_SYNTHETIC_AGENT`, which only a debug test
+/// run sets. The host sets these itself (the synthetic agent only in a test run) and drops any it
+/// inherited. On Windows also `SystemRoot`, without which a process can fail to start. A later
+/// work package that needs another variable adds its name here with the reason.
+#[cfg(windows)]
+pub const ENVIRONMENT_ALLOWLIST: &[&str] = &[
+    "SystemRoot",
+    BROKER_DATA_DIR,
+    BROKER_KEY_SOURCE,
+    BROKER_SYNTHETIC_AGENT,
+];
+
+/// The names of the host's environment variables that the broker child receives. Every other
+/// variable of the host is left out.
+///
+/// The three variables the broker reads (CD-W04): `FABRIC_BROKER_DATA_DIR`, the absolute path
+/// of its data directory (with no `HOME` the broker could not find one); `FABRIC_BROKER_KEY_SOURCE`,
+/// where its store key comes from; and `FABRIC_BROKER_SYNTHETIC_AGENT`, which only a debug test
+/// run sets. The host sets these itself (the synthetic agent only in a test run) and drops any it
+/// inherited. A later work package that needs another variable adds its name here with the
+/// reason.
 #[cfg(not(windows))]
-pub const ENVIRONMENT_ALLOWLIST: &[&str] = &[];
+pub const ENVIRONMENT_ALLOWLIST: &[&str] =
+    &[BROKER_DATA_DIR, BROKER_KEY_SOURCE, BROKER_SYNTHETIC_AGENT];
 
 /// The broker executable that ships beside the host executable: `fabric-broker` (with `.exe` on
 /// Windows) in the host's directory.
@@ -136,16 +158,31 @@ fn check_program(program: &Path) -> Result<(), ConfigError> {
     Ok(())
 }
 
-/// Whether an environment variable's name is the allowlisted `name`. Windows compares names
+/// Whether two names, as bytes, are the same by the platform's rule: Windows compares names
 /// without regard to case, as Windows itself does.
-fn same_name(variable: &OsStr, name: &str) -> bool {
+fn same_bytes(variable: &[u8], name: &[u8]) -> bool {
     if cfg!(windows) {
-        variable
-            .to_str()
-            .is_some_and(|v| v.eq_ignore_ascii_case(name))
+        variable.eq_ignore_ascii_case(name)
     } else {
-        variable == OsStr::new(name)
+        variable == name
     }
+}
+
+/// Whether an environment variable's name is `name`, by the platform's rule (Windows compares
+/// names without regard to case, as Windows itself does).
+#[must_use]
+pub fn same_name(variable: &OsStr, name: &str) -> bool {
+    same_bytes(variable.as_encoded_bytes(), name.as_bytes())
+}
+
+/// Whether an environment variable's name starts with [`BROKER_VARIABLE_PREFIX`], by the rule
+/// of [`same_name`].
+#[must_use]
+pub fn is_broker_variable(variable: &OsStr) -> bool {
+    variable
+        .as_encoded_bytes()
+        .get(..BROKER_VARIABLE_PREFIX.len())
+        .is_some_and(|start| same_bytes(start, BROKER_VARIABLE_PREFIX.as_bytes()))
 }
 
 /// The variables of `host_environment` whose names are in `allowlist`, in the order of the
@@ -175,12 +212,48 @@ mod tests {
     }
 
     #[test]
-    fn allowlist_is_empty_except_on_windows() {
+    fn allowlist_names_the_broker_variables() {
+        let broker = [
+            "FABRIC_BROKER_DATA_DIR",
+            "FABRIC_BROKER_KEY_SOURCE",
+            "FABRIC_BROKER_SYNTHETIC_AGENT",
+        ];
         if cfg!(windows) {
-            assert_eq!(ENVIRONMENT_ALLOWLIST, &["SystemRoot"]);
+            assert_eq!(ENVIRONMENT_ALLOWLIST[0], "SystemRoot");
+            assert_eq!(&ENVIRONMENT_ALLOWLIST[1..], &broker);
         } else {
-            assert!(ENVIRONMENT_ALLOWLIST.is_empty());
+            assert_eq!(ENVIRONMENT_ALLOWLIST, &broker);
         }
+        // Nothing that would let the broker find the owner's home or a key elsewhere.
+        for name in [
+            "HOME",
+            "USERPROFILE",
+            "TMPDIR",
+            "PATH",
+            "FABRIC_BROKER_UNDER_TEST",
+        ] {
+            assert!(!ENVIRONMENT_ALLOWLIST.contains(&name), "{name}");
+        }
+    }
+
+    #[test]
+    fn broker_variables_are_named_by_the_prefix() {
+        assert_eq!(BROKER_VARIABLE_PREFIX, "FABRIC_BROKER_");
+        for name in [BROKER_DATA_DIR, BROKER_KEY_SOURCE, BROKER_SYNTHETIC_AGENT] {
+            assert!(is_broker_variable(OsStr::new(name)), "{name}");
+            assert!(same_name(OsStr::new(name), name), "{name}");
+        }
+        assert!(is_broker_variable(OsStr::new("FABRIC_BROKER_UNDER_TEST")));
+        assert!(!is_broker_variable(OsStr::new("FABRIC_BROKER")));
+        assert!(!is_broker_variable(OsStr::new("FABRIC_DESKTOP_DATA_DIR")));
+        assert_eq!(
+            is_broker_variable(OsStr::new("fabric_broker_data_dir")),
+            cfg!(windows)
+        );
+        assert_eq!(
+            same_name(OsStr::new("fabric_broker_data_dir"), BROKER_DATA_DIR),
+            cfg!(windows)
+        );
     }
 
     #[test]
