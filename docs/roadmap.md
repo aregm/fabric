@@ -1,10 +1,10 @@
 # Fabric Roadmap — Restored on 2026-11-15
 
-**Status:** approved at gate `H0` on 2026-11-15, version 0.3. It records five decisions you made on 2026-11-15 and restores the order of work for this repository. The approval covers the order of work in section 4 and the parking in section 5. It does not cover the ownership table in section 3, the recommended outcomes in section 4.3, the decision defaults in section 7 or the baseline edits in section 10; each of those is put to you separately. It now takes precedence over section 16 of the PRD for the order of work, until the PRD itself is edited. Nothing in the PRD, the architecture document or the calendar specification has been edited.
+**Status:** approved at gate `H0` on 2026-11-15; version 0.4. It records five decisions you made on 2026-11-15 and restores the order of work for this repository. The approval covers the order of work in section 4 and the parking in section 5. It does not cover the ownership table in section 3, the recommended outcomes in section 4.3, the decision defaults in section 7 or the baseline edits in section 10; each of those is put to you separately. It now takes precedence over section 16 of the PRD for the order of work, until the PRD itself is edited. Nothing in the PRD, the architecture document or the calendar specification has been edited.
 
 **Prepared:** 2026-11-15, from a full re-read of `main` at `4fb3330`, the unmerged branch `codex/calendar-desktop-plan` at `5b310df`, the 2026-11-03 plan "iii in Fabric", and the documents of the PIM repository. Section 11 says how the facts were checked.
 
-**Updated:** 2026-11-15, after gate `H0`, with `main` at `7d12cf5`.
+**Updated:** 2026-11-15, after gate `H0`, with `main` at `7d12cf5`; and 2026-11-15, after gate `DEMO-G3`, with `main` at `5ff0e6b`.
 
 **Scope:** what Fabric is now, what exists, the order of work with a gate after each step, what is parked or has left this repository, and the decisions still open
 **Related:** [Product requirements](PRD.md) · [Technical architecture](architecture.md) · [Calendar vertical](calendar.md) · [Isabelle-gated calendar demo](isabelle-calendar-demo.md) · [Paracels chat prototype](paracels-chat.md) · [Agent Sandbox proposal](agent-sandbox.md) · [Requirements trace](requirements-trace.md) · [ADRs](adr/) · [Calendar Desktop plan](plans/calendar-desktop-plan.md)
@@ -35,7 +35,7 @@ You decided five things on 2026-11-15. Before gate `H0`, no file on `main` recor
 | 1 | **PIM owns the knowledge kernel.** PIM is a separate product in its own repository. It owns capture, knowledge and retrieval. | PRD Phase 1 and the kernel rows of PRD Phase 2 leave this roadmap. Fabric no longer waits for a kernel. |
 | 2 | **The 2026-11-03 plan to run Fabric on the iii engine is withdrawn.** | No bus and no `fabric-bus` crate. Fabric stays plain processes with no engine between them. Nothing had been started. |
 | 3 | **The permission broker leads**, once hygiene is done. | It is the first product built on the policy gate and the tokens. |
-| 4 | **Gate `DEMO-G3` has not been run and stays.** | Your own run of the calendar demo, with Claude driving both agents, is still to do. |
+| 4 | **Gate `DEMO-G3` has not been run and stays.** | Your own run of the calendar demo, with Claude driving both agents, was done on 2026-11-15; the gate closed with one exit check not met as written (section 4.2). |
 | 5 | **The Calendar Desktop plan governs the broker.** Its decisions `CD-C01` to `CD-C13` are yours. | Its gates `CD-G0` to `CD-G5` are the lead track. The Agent Sandbox proposal becomes its historical input. Mail follows later on the same broker. |
 
 **Fabric is the trust layer:** the agreement protocol (Rendezvous), the policy gate (Isabelle), per-action tokens, messaging and relay, sharing crypto, and the permission broker.
@@ -44,10 +44,11 @@ The PRD ordered the work as kernel, then policy and scoped agent access, then sy
 
 **Gate `H0` passed on 2026-11-15** (section 4.1): you approved this roadmap and the README change, pull request 9 was merged, and the Calendar Desktop plan was merged to `main`.
 
+**Gate `DEMO-G3` closed on 2026-11-15** (section 4.2), with one exit check not met as written: the dashboard does not name the rule for an action denied when authorizing (`DEF-7`). You chose to close it with that gap.
+
 **What you are asked to do, in order.**
 
-1. **Gate `DEMO-G3`** (section 4.2): one sitting at the machine, the preflight and then your run. Recommended before step 2, not required.
-2. **Gate `CD-G0`** (section 4.3): freeze the plan's policy matrix and defaults, answer the questions it dates at that gate, and settle the points this re-read adds. The baseline edits follow it (`BASE-1`, section 10).
+1. **Gate `CD-G0`** (section 4.3): freeze the plan's policy matrix and defaults, answer the questions it dates at that gate, and settle the points this re-read adds. The baseline edits follow it (`BASE-1`, section 10).
 
 Outside the gates, three decisions have a deadline set by PIM, not by Fabric: `RD-1`, `RD-2` and `RD-15` (section 7).
 
@@ -56,7 +57,7 @@ Outside the gates, three decisions have a deadline set by PIM, not by Fabric: `R
 | Line of work | State | What is open |
 |---|---|---|
 | M0 agreement simulator (`fabric-core`, `fabric-cli`) | Done. `fabric demo-meeting` reaches `Agreed` on `c3`. The exhaustive selection test is in `crates/fabric-core/tests/two_agent_meeting.rs`. | Nothing. Only the CLI uses `fabric-core`; the demo does not. |
-| Isabelle-gated calendar demo (`fabric-policy`, `fabric-token`, `fabric-wire`, `apps/fabric-demo`, the theory) | Built. The spec records Phases 0 to 9 done and gates `DEMO-G1`, `DEMO-G2` closed. The macOS port is on `main`. The theory, the spec and the Rust model hold the same 12 rules; the corpus has 39 cases. | `DEMO-G3`. No Claude-backed run exists on this Mac; the only Claude rehearsal was on Windows on 2026-10-19. |
+| Isabelle-gated calendar demo (`fabric-policy`, `fabric-token`, `fabric-wire`, `apps/fabric-demo`, the theory) | Built. The spec records Phases 0 to 9 done and gates `DEMO-G1`, `DEMO-G2` closed. The macOS port is on `main`. The theory, the spec and the Rust model hold the same 12 rules; the corpus has 39 cases. `DEMO-G3` closed on 2026-11-15, after two Claude-backed runs on this Mac. | `DEF-7`, recorded and not fixed. Whether the demo is frozen (`RD-11`). |
 | Paracels chat prototype (`apps/paracels`) | Complete. `PCL-G0` and `PCL-G1` closed on 2026-10-22, `PCL-G2` to `PCL-G6` on 2026-10-26. No commit to the app since. | Whether it graduates (ADR-014). Criterion `PCL-A10` (VoiceOver) has no recorded result. |
 | ADR-007, ADR-009, ADR-014 | Proposed since 2026-10-26. No decision in them is approved and no code exists for any of them. | Each has gaps the others expose (section 8.3). |
 | Agent Sandbox proposal v0.2 | Draft. Its section 11 additions are in the PRD and the architecture. | Superseded as the lead by decision 5. Its decisions `SBX-D1` to `SBX-D13` were never confirmed. |
@@ -154,21 +155,23 @@ Only the hygiene needed now. The rest is in section 5.
 
 **Gate `H0`:** the exit checks above are met, the roadmap and the README change are merged to `main`, and you approve both.
 
-Gate `H0` passed on 2026-11-15. Each of pull requests 9 to 13 had 12 of 12 CI checks green before it was merged. `HYG-7` and `HYG-8` belong to `DEMO-G3` and are not done.
+Gate `H0` passed on 2026-11-15. Each of pull requests 9 to 13 had 12 of 12 CI checks green before it was merged. `HYG-7` and `HYG-8` belong to `DEMO-G3` and were not done then; both are done (section 4.2).
 
 ### 4.2 Second: close the demo, gate DEMO-G3
 
-| Id | Work | Exit check |
-|---|---|---|
-| HYG-7 | Preflight, with you at the machine: create `.env` from `.env.example` with the Anthropic key; run, by name, the three ignored Keychain tests (`keys` in `fabric-token`; `calendar_command` and `messaging_commands` in `fabric-demo`) and `claude_plans_a_first_turn` (about 3 cents). This is the first Claude call from this Mac. | Those four tests pass. The Ollama test is recorded as not run if Ollama with `qwen3:4b` is not installed. The result is recorded in the demo spec, section 16. |
-| HYG-8 | Correct the stale lines in the demo spec, shown to you first: `DEMO-D28` and section 20 still say Windows only; one line says CI was never run; section 10.2 says HTTPS is "on Windows only"; `DEMO-D21` says every process runs under "your Windows user"; one line calls Isabelle2025-2 the current release; the Phase 5 heading says the remaining gates were approved automatically, which did not cover `DEMO-G3`. Mark `requirements-trace.md` as stale since 2026-10-26 at its top. | You approve the diff before your run, so the spec matches this Mac. |
-| DEMO-G3 | Your run: `sh scripts/demo.sh` with Claude for both agents and the happy path of the demo spec's section 14; then one run with one fault switch on in the dashboard. The 2026-10-19 rehearsal cost about $0.35. | A meeting is booked at one of the two mutual options only after both owners click yes. Every executed action shows a proof id and a token. With the fault switch on, the faulted action is denied, and the dashboard names the rule (the policy switches), or refused, and the dashboard shows the token error (the token switches). The date, machine, model and cost are in the spec. |
+| Id | Work | Exit check | Status |
+|---|---|---|---|
+| HYG-7 | Preflight, with you at the machine: create `.env` from `.env.example` with the Anthropic key; run, by name, the three ignored Keychain tests (`keys` in `fabric-token`; `calendar_command` and `messaging_commands` in `fabric-demo`) and `claude_plans_a_first_turn` (about 3 cents). This is the first Claude call from this Mac. | Those four tests pass. The Ollama test is recorded as not run if Ollama with `qwen3:4b` is not installed. The result is recorded in the demo spec, section 16. | Done, 2026-11-15: the three Keychain tests pass, and `claude_plans_a_first_turn` passes after a first attempt failed on an invalid key in `.env`; the model id was accepted. The Ollama test was not run: `qwen3:4b` is not installed. |
+| HYG-8 | Correct the stale lines in the demo spec, shown to you first: `DEMO-D28` and section 20 still say Windows only; one line says CI was never run; section 10.2 says HTTPS is "on Windows only"; `DEMO-D21` says every process runs under "your Windows user"; one line calls Isabelle2025-2 the current release; the Phase 5 heading says the remaining gates were approved automatically, which did not cover `DEMO-G3`. Mark `requirements-trace.md` as stale since 2026-10-26 at its top. | You approve the diff before your run, so the spec matches this Mac. | Done, pull request 15. |
+| DEMO-G3 | Your run: `sh scripts/demo.sh` with Claude for both agents and the happy path of the demo spec's section 14; then one run with one fault switch on in the dashboard. The 2026-10-19 rehearsal cost about $0.35. | A meeting is booked at one of the two mutual options only after both owners click yes. Every executed action shows a proof id and a token. With the fault switch on, the faulted action is denied, and the dashboard names the rule (the policy switches), or refused, and the dashboard shows the token error (the token switches). The date, machine, model and cost are in the spec. | Closed on 2026-11-15, with the exit check "the dashboard names the rule" not met as written (`DEF-7`). The other exit checks are met. |
 
 Nothing under `apps/fabric-demo/src` changes before your run. There is one stated exception: if the preflight fails because the model id is no longer accepted, the constant `CLAUDE_MODEL` in `apps/fabric-demo/src/agent/planner.rs` and `DEMO-D25` in the spec are changed, you see both diffs first, and the preflight is repeated. If the dashboard trace shows a gap, read the raw `.jsonl` files before failing the gate (`DEF-1`). If the run fails for another reason, the failure is recorded in the spec and you decide whether to repair the demo or close it as it stands.
 
+**Result, 2026-11-15.** Both runs used Claude for both agents on this Mac. In the happy path the meeting was booked at Thursday 14:30 only after both owners said yes, and all 11 executed actions carry a token and a proof id. In the fault run "Write without consent" was switched on for both agents; Isabelle denied each injected `add_meeting` on the `consent` rule, no token was issued, and the meeting was then booked as before. The two runs cost about $0.78 at $4 and $20 per million input and output tokens, a rate not checked against a current price list. The dashboard showed the switch as fired and the audit row as denied, but not the rule, so the exit check "the dashboard names the rule" was not met as written (`DEF-7`). You were offered to close the demo as it stands with that gap recorded, or to fix the dashboard and run again, and chose the first: "Close it, record the gap". The record is in the demo spec, Phase 9 results and sections 15 and 16.
+
 `DEMO-G3` closes the demo as a demo. It does not close calendar slice C2 or any release gate in the calendar specification.
 
-**Recommended order:** `DEMO-G3` before `CD-G0`. `CD-C05` requires a live proof on every broker action, and this run is your first-hand experience of one. It is not a dependency, and the two gates can share a sitting.
+**Order:** `DEMO-G3` was closed before `CD-G0`, as recommended. `CD-C05` requires a live proof on every broker action, and this run was your first-hand experience of one.
 
 ### 4.3 Third: the Calendar Desktop plan, gate CD-G0
 
@@ -181,7 +184,7 @@ Nothing under `apps/fabric-demo/src` changes before your run. There is one state
 | RD-7 | `DEMO-D28` keeps Isabelle tests out of CI, and CI runs none today. `CD-C05` makes the prover release-critical, and the plan requires a dedicated live-proof job or a release run that proves the corpus. | Whether `DEMO-D28` is reversed for the broker's theory (a CI job) or kept (a release run), and where it runs. |
 | RD-8 | The pinned Isabelle2025-2 has been superseded by Isabelle2026 and is served from one archived URL that has already moved once. The macOS archive is 1.7 GB and unsigned. | With `CD-Q09`: a second source for the pinned archive now; whether the broker moves to Isabelle2026 before `CD-G1`. |
 | RD-9 | `fabric-token` and `fabric-wire` both depend on `fabric-policy`, which holds the demo's calendar negotiation model. Any new crate that uses the CBOR and COSE code therefore links that model. The coupling is narrow: the CBOR and COSE modules do not import the policy crate. | Whether `CD-W01` first moves the codec into a crate of its own, or accepts the dependency. |
-| RD-10 | The demo's measured cost of a proof: about half a second per authorizing proof on this Mac today (93 proofs, 1.1 seconds at most); the Windows rehearsal measured 1.0 second. Starting the gate took 12.6 seconds on 2026-10-26, when it also built the session. The plan proves each request at least twice, and once more before a read result is released. | With `CD-Q11`: whether the plan's proposed targets (progress visible within 500 ms, a 30-second proof timeout) fit two or three proofs per agent read. |
+| RD-10 | The demo's measured cost of a proof: about half a second per authorizing proof on this Mac today (93 proofs, 1.1 seconds at most); the Windows rehearsal measured 1.0 second; the `DEMO-G3` runs on 2026-11-15 measured 0.71 and 0.62 seconds per check on average, screening included (1.39 seconds at most). Starting the gate took 12.6 seconds on 2026-10-26, when it also built the session. The plan proves each request at least twice, and once more before a read result is released. | With `CD-Q11`: whether the plan's proposed targets (progress visible within 500 ms, a 30-second proof timeout) fit two or three proofs per agent read. |
 | RD-11 | After `DEMO-G3`, the demo application can be frozen as a record or refactored to share new crates. The plan already keeps the demo's behaviour and puts new semantics in new namespaces. | Recommended: freeze `apps/fabric-demo` after `DEMO-G3` with a tag and a note of its known defects (section 8.1). The three crates it uses stay shared, and its tests are their regression contract. |
 
 **Gate `CD-G0`:** as the plan defines it: the decisions are written into the plan or an ADR, with an outcome there for `RD-5`, `RD-6`, `RD-9`, `RD-10` and `RD-11`, and a date for `RD-7` and `RD-8`, which close before `CD-G1c`.
@@ -230,7 +233,7 @@ Nothing below starts until you choose it. The Needs column lists what must be se
 
 | Gate | What you provide |
 |---|---|
-| `DEMO-G3` | An Anthropic API key in `.env`; about half an hour at the machine. |
+| `DEMO-G3` | Provided on 2026-11-15: an Anthropic API key in `.env`, and a sitting at the machine. |
 | `CD-G0` | Answers to `CD-Q01`, `CD-Q05` and `CD-Q11`, and to `RD-5`, `RD-6`, `RD-9`, `RD-10` and `RD-11`; the name of the reviewer who accepts evidence at the later gates. |
 | `CD-G1`, `CD-G5` | An Apple Developer team and Developer ID certificates, a product name and bundle id (`CD-Q07`). |
 | `CD-G2` | A Google Cloud project with a desktop OAuth client (`CD-C08`, `CD-Q08`); disposable Google accounts, calendars and recipients for live tests; Claude Desktop, Claude Code, Codex desktop and Ollama with a tool-capable model installed (`CD-C04`, `CD-Q10`). |
@@ -242,7 +245,7 @@ Nothing below starts until you choose it. The Needs column lists what must be se
 | The plan proves each agent request at least twice, and once more before a read result is released. At half a second to a second each, agent reads may feel slow. | `CD-G1c` | `RD-10`. Measured in `CD-W03` before any screen is built. |
 | Four agent clients are release gates, and three are products outside your control whose MCP configuration can change. | `CD-G2c`, `CD-G4` | The plan tests the exact installed clients and pins the MCP SDK and the negotiated protocol version. Which client versions to support is open (`CD-Q10`). |
 | Real calendar data reaches cloud models through the agents, and text inside events can steer an agent. | `CD-G2`, `CD-G4` | The broker bounds what a steered agent may do; the plan shows a destination notice per agent. The residual risk follows from `CD-C03` and `CD-C04`; you are asked to accept it at `CD-G0`. |
-| One owner decides everything, and PIM's repair plan and rewrite wait on the same person. | Every gate | `H0` is passed; `DEMO-G3` and `CD-G0` each ask for one sitting. The plan's later gates rest on evidence a reviewer accepts first. |
+| One owner decides everything, and PIM's repair plan and rewrite wait on the same person. | Every gate | `H0` is passed and `DEMO-G3` closed; `CD-G0` asks for one sitting. The plan's later gates rest on evidence a reviewer accepts first. |
 | CI cannot see a broken rule: no Isabelle job exists. | Any change to `fabric-policy`, `fabric-token` or a theory | Until `RD-7` is settled, the six Isabelle tests are run by hand on every such change. |
 
 ## 7. Decisions you still have to make
@@ -277,6 +280,7 @@ Each was found by reading and then checked by a second, independent reader. None
 - **DEF-4.** Used-token nonces and host state live in memory only. After a restart a used token is accepted again until it expires, up to 60 seconds.
 - **DEF-5.** The relay drops expired frames only when their mailbox is touched. The mailbox id is the only credential, and it is logged in full and streamed to the dashboard. The spec records this as intended for a loopback demo.
 - **DEF-6.** The gateway's delivery list and its set of seen calls never shrink, and any unreadable frame starts a planner turn. Harmless on loopback; a cost once others can reach a relay.
+- **DEF-7.** For an action denied when authorizing (the write-without-consent switch), the dashboard shows "fired when authorizing" and an audit row ending in "→ deny", but not the failing rule, and no proof link for the denied action; the rule is only in the raw audit files and the check report. For the two screening switches the rule stays in the plans panel only until the next turn replaces it. Found at `DEMO-G3` on 2026-11-15 by reading `demo/dashboard/app.js` and confirmed by a second reading of that file; you chose to close the demo with it. It matters for the broker: the Calendar Desktop interface should keep the failing rule on screen for a denial.
 - **What the demo does not conform to.** The calendar specification requires deterministic code to compute availability; in the demo the language model reads the busy intervals, picks the candidates and answers. The demo uses Noise IK where the specification requires MLS, a configured peer key where it requires a contact list with key pinning, and it carries a free-text note on the wire. Its consent rule checks only that both owners said yes to that slot (`DEMO-Q22`).
 
 ### 8.2 Between the demo and the calendar specification
