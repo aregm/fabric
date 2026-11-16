@@ -9,7 +9,7 @@ text \<open>
   sections 7 and 8; docs/adr/ADR-108). Before the broker lets an agent's action reach Google, or
   releases a result to an agent, it writes a check theory that imports this one, defines the
   concrete context and action, and asks Isabelle to prove, for every rule, either that it holds
-  or that it fails, and which of the three outcomes follows.
+  or that it fails. The outcome follows from those results.
 
   The outcomes are Permit, Need_approval and Block. A rule of the first group that fails
   blocks the action. Otherwise a rule of the second group that fails sends the request to the
@@ -633,6 +633,17 @@ lemma permit_iff:
 
 lemma block_iff: "outcome c a = Block \<longleftrightarrow> (\<exists>r \<in> set block_rules. \<not> holds r c a)"
   by (auto simp add: outcome_def)
+
+lemma need_approval_iff:
+  "outcome c a = Need_approval \<longleftrightarrow>
+     (\<forall>r \<in> set block_rules. holds r c a) \<and> (\<exists>r \<in> set approval_rules. \<not> holds r c a)"
+  by (auto simp add: outcome_def)
+
+text \<open>
+  These three lemmas are why a check proves each rule and not the outcome. A check theory
+  proves, for the concrete context and action, every rule or its negation. The outcome then
+  follows from those eighteen results by the lemmas above, which hold for every context.
+\<close>
 
 text \<open>The two fixed rows (CD-Q05a, CD-M10): no profile changes them.\<close>
 
