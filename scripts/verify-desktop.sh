@@ -40,9 +40,10 @@
 # with sh scripts/setup-demo.sh; this script never installs it. The live tests take Isabelle's
 # place from FABRIC_BROKER_ISABELLE_HOME, FABRIC_BROKER_ISABELLE_USER_HOME and
 # FABRIC_BROKER_RULES_DIR, all three or none; with none, the repository's development layout
-# (.tooling/isabelle and isabelle). The test that starts Isabelle from the broker's empty
-# environment runs first, by name. Every store uses the test key in a temporary directory; nothing
-# reaches the Keychain. The first run can build Isabelle's session heap for several minutes.
+# (.tooling/isabelle and isabelle). The test that starts Isabelle from the relay's environment
+# (its variables and a fixed PATH) runs first, by name. Every store uses the test key in a
+# temporary directory; nothing reaches the Keychain. The first run can build Isabelle's session
+# heap for several minutes.
 set -eu
 
 die() {

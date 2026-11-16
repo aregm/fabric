@@ -19,7 +19,8 @@
 //! No test here gives the core a proof it did not get from Isabelle.
 //!
 //! Run them on an otherwise idle Mac: the in-process stop must be acknowledged within
-//! `QUIT_BOUND` (1.5 s) and measured 0.9-1.3 s, and a failing assertion names the time it took.
+//! `QUIT_BOUND` (1.5 s) and measured 0.8 s to 1.3 s, and a failing assertion names the time it
+//! took.
 //!
 //! The test ids PW L1 to PW L19 are those of section 7.3 of the prover wiring's design,
 //! `docs/plans/calendar-desktop-prover-wiring-design.md`, not the CD-W04 design's package decisions

@@ -77,7 +77,7 @@ or block.
 | P2 | Smaller safeguards | `Gate`, the starter and `ProverOptions.starter` are crate-private, doubles only under `cfg(test)`; the observation hook returns `Option<ObservedEvent>`; health leaves `ready` while a check is past its deadline; `done_of` checks the check's action and context digests against the job's; Unix-only checks behind `cfg(unix)`, plain `is_file` elsewhere; the proposal limit is a field; the packaged check unsets the three Isabelle variables; practice updates and deletes notify nobody (`send_updates: none`) | Each is placed in the section it changes |
 | P3 | The page | Not built in this step. The screens of CD-W08 are the page; this step adds one static line under the build line, `#practice-line` in `ui/index.html` (6). Section 9.4 lists what the page still lacks for a practice run | Another work package owns the screens |
 | P4 | Owner questions | O1 to O7 stay open (9.3); the code runs on their defaults. O1: the practice calendar is built (debug builds only, only with the synthetic agent, the test key and a configured Isabelle; state in memory), and the amendment of W4D D13 and D26 is proposed with this step's pull request. O5: the synthetic classifier stays for synthetic runs without Isabelle, so the W04 process tests and CI are unchanged | The owner decides |
-| P5 | Requests to other owners | T1 to T8 (theory and policy) and E1 to E4 (contract) are requests (9.2); nothing under `crates/fabric-broker-policy`, `isabelle` or the contract changes | One owner per area |
+| P5 | Requests to other owners | T1 to T9 (theory and policy) and E1 to E4 (contract) are requests (9.2); nothing under `crates/fabric-broker-policy`, `isabelle` or the contract changes | One owner per area |
 | P6 | Live proofs | Never run by CI (PLAN RD-7). Each is `#[ignore]` with a reason and runs by name; `sh scripts/verify-desktop.sh --live-proofs` runs them on a developer's Mac. They take the Isabelle location from the same three variables, with the repository's development layout as the default when all three are absent | RM keeps Isabelle out of CI; PLAN 14 names the flag |
 
 ---------------------------------------------------------------------------------------------------------------------
@@ -794,7 +794,10 @@ crate-private gate seam needs `--document-private-items`), and `-p fabric-deskto
   broker could ensure before the gate starts, or `config.rs` could require and `scripts/setup-demo.sh` write. Not done.
 - K14 Under the Careful profile a grant until revoked does not serve a create (the theory's `standing_serves`), so
   approving a create with "Until I take it back" sends the request back to `pending_approval`; the page offers that
-  duration. Whether the core, the contract or the page should change is for their owners.
+  duration. The theory's owner answered on 2026-11-16 that the rule is deliberate, as that owner reads the frozen
+  matrix (the product owner has not confirmed the reading): under a row that asks, a standing grant serves only reading
+  event details (CD-M02) and editing a Fabric-created event in Agent Drafts (CD-M05). For every other row that asks, the
+  card should offer only "this request only"; the contract has no field for the durations a card may offer.
 - K15 The stop bound's margin is thin: the in-process stop took 0.8 s to 1.3 s against `QUIT_BOUND` of 1.5 s on an idle
   Mac (`BrokerGate::stop` is a session stop, a shutdown and a wait in the policy crate, not changeable here); the built
   broker's quit took 0.9 s to 1.2 s against the relay's 2 s drain. Past the bound the calling thread removes the work
@@ -803,6 +806,13 @@ crate-private gate seam needs `--document-private-items`), and `-p fabric-deskto
 - K16 Live proofs never run in CI (PLAN RD-7): CI compiles `tests/live.rs` on Unix and runs none of it, so a change
   that breaks the prover is found only when someone runs `--live-proofs` by hand. Windows and Linux builds were checked
   only by emulating their `cfg` on a Mac, not on those targets.
+- K17 The live test L14 `checks_are_timed` fails the live mode when the mean check exceeds 1.5 s, and its margin is
+  thin too: idle means were 1.22 s to 1.29 s, and one run on a loaded Mac (load average 6 to 10) failed at 1,529 ms
+  and passed when repeated. Like the stop bound (K15), it needs an otherwise idle Mac.
+- K18 Only the rule theory, `ROOTS` and `Fabric_Broker/ROOT` are pinned (2.1). The Isabelle distribution (`bin/isabelle`
+  and what it loads) and the Isabelle user home (its `etc/settings` and `etc/components`, which Isabelle sources) are
+  trusted as given, and a debug host forwards the three paths with any store (X16). A killed Isabelle also leaves its
+  scripts under its temporary prefix (K13); the live test L2 does so on every run.
 
 ### 9.2 Requests to other owners
 
@@ -812,9 +822,12 @@ To the owner of the rule theory and the policy crate (the design works without t
 - T3 `BrokerGate::start` removes stale `Check_*.thy` files itself;
 - T4 a `GateConfig` for a packaged layout, and a `ROOTS` that names only `Fabric_Broker`;
 - T5 a bounded `stop` and `Drop`;
-- T6 identifiers that admit `@` (CD-W05 calendar ids);
+- T6 identifiers that admit `@` (CD-W05 calendar ids); answered on 2026-11-16: not needed, because a `calendar_id` is
+  an opaque id issued by the broker, so CD-W05 issues a broker id for each Google calendar and keeps Google's id in its
+  store;
 - T7 export the expected theory hash, or make `BrokerGate::start` take one and refuse another theory;
-- T8 hash and load the theory from the same bytes (the window between the hash and `session_start`, 2.1).
+- T8 hash and load the theory from the same bytes (the window between the hash and `session_start`, 2.1);
+- T9 a private temporary prefix for Isabelle (K13).
 
 To the owner of the contract:
 - E1 a reason and a remedy beside `health.prover` (not configured, failed to start, wrong theory);
