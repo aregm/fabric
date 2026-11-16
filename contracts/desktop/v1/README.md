@@ -2,7 +2,7 @@
 
 This directory is the contract between the Fabric Calendar broker and everything that talks to it: the Tauri host and its webview on the owner channel, and the agent adapters (the MCP bridge and the embedded Ollama runtime) on the agent channel. It is work package CD-W01 of the [Calendar Desktop plan](../../../docs/plans/calendar-desktop-plan.md) and records the permission model of [ADR-108](../../../docs/adr/ADR-108-agent-and-mcp-permission-model.md).
 
-Schema version 1, written on 2026-11-15. One session writes this directory; other work packages ask for changes.
+Schema version 2, written on 2026-11-16. Version 1 was written on 2026-11-15. One session writes this directory; other work packages ask for changes.
 
 | Path | What it holds |
 |---|---|
@@ -101,14 +101,23 @@ The schemas are JSON Schema 2020-12 restricted to these keywords: `$schema`, `$d
 
 `data/owner-methods.json` lists the thirteen methods of plan section 9.1 with their parameter and result schemas.
 
-- **hello** reports the broker's build, `schema_version`, capabilities and limits. In version 1 the two sides must have the same `schema_version`; otherwise the broker answers `unsupported_schema_version`. No capability name is defined yet.
+- **hello** reports the broker's build, `schema_version`, capabilities and limits. Under `fabric-desktop/1` the two sides must have the same `schema_version`; otherwise the broker answers `unsupported_schema_version`. No capability name is defined yet.
 - **get_snapshot** returns the state at a cursor: health, profiles, accounts, agents, recipient sets, preferences, the open requests and the grants that have not ended.
 - **subscribe** asks for every change after a cursor. Notices then arrive with sequences rising by one. If the cursor is older than the history the broker kept, the answer is `snapshot_required`; if a subscriber falls more than `subscriber_queue_notices` behind, it receives the change `snapshot_required` and must take a snapshot and subscribe again.
 - **Commands** name the revision they were written against (`expected_revision`). A revision that is no longer current gets `conflict` and nothing is overwritten. A successful command returns `commit_sequence`, the sequence of the notice that carries its effect; the broker commits before it answers.
 - **decide_request** names the request, its revision and the `request_digest` the owner saw. If the request has changed, the answer is `stale_request`. `selected` is null to approve the scope as asked, or a scope that narrows it. A recipient rule may name recipient sets in place of exact addresses.
 - **save_profile** either puts a profile in force (`activate`) or saves a custom profile (`save_custom`). When a save makes a row more permissive, the broker answers `expansion_not_acknowledged` with the expansion and its digest; the interface shows it, and the owner's confirmation is a new command that carries that digest.
 - **pause_agent** pauses or resumes one agent or all of them.
-- **get_request_details** returns the request, its approval card, the approval, the proofs, the authorization and the attempts. With `redaction` `redacted`, `private` is null and no event content leaves the broker's store.
+- **get_request_details** returns the request, its approval card, the approval, the proofs, the authorization and the attempts. With `redaction` `redacted`, `private` is null and no event content leaves the broker's store. For a request that no proof decided, the details say why in `undecided_reason`: `prover_unavailable` when the rule prover was starting or not running, `out_of_time` when the proof did not finish within its time limit, and `failed` when the check ran and did not decide the request, or its report could not be used. It is null when the broker did not record why, and null for a request in any other state. The schema cannot state the tie to the state; the broker must uphold it.
+
+`health` says whether the rule prover and the store are ready. While `prover` is `unavailable`, `prover_problem` names the cause, or is null when the broker does not know it; while `prover` is `ready` or `starting`, it is null. The schema cannot state this rule; the broker must uphold it. What the owner can do follows from the value and is not sent:
+
+| `prover_problem` | Meaning | What the owner can do |
+|---|---|---|
+| `not_configured` | This run has no rule prover. | Nothing in this run. |
+| `failed_will_retry` | The prover could not start, or stopped; the broker starts it again by itself. | Wait. |
+| `failed` | The prover could not start, or stopped, and the broker will not try again in this run. | Quit Fabric Calendar and open it again. |
+| `wrong_rules` | The rule theory on this machine is not the one this broker was built with. | Install Fabric Calendar again. |
 
 Errors have a code, a message for the person, `retryable`, a recovery action, a correlation id and a typed detail. For each code the schema fixes `retryable`, the recovery action and the shape of the detail.
 
@@ -121,9 +130,11 @@ Every tool answers a `tool_outcome`: the request's status and, only when a fresh
 - When the owner must decide, the state is `pending_approval`, with the time the card expires, and the result is null. The agent polls `fabric_request_status` with the `request_id`.
 - When the request is blocked, the status carries `denial`: the failing rule with a bounded explanation.
 - A status never carries calendar content. Reading a result (`fabric_request_result`) is itself an action with its own proof.
+- When no proof decided the request, the state is `undecided` and the status carries nothing more. Why it is undecided is for the owner only (section 7).
 - Past a request limit the broker answers the error `busy`, which is retryable and names the limit, its maximum and a wait in milliseconds. No request is created.
+- While the rule prover is not ready the broker may refuse a tool call with the error `prover_unavailable`, which is retryable and carries no detail. No request is created. A request the broker accepted all the same ends `undecided`.
 
-No tool carries a warning: warnings are for the owner only in version 1. No tool approves, grants, edits a profile, deletes a calendar, changes sharing or reaches an arbitrary Google URL.
+No tool carries a warning: warnings are for the owner only in version 1 of Fabric Calendar. No tool approves, grants, edits a profile, deletes a calendar, changes sharing or reaches an arbitrary Google URL.
 
 ## 9. The request lifecycle
 
@@ -137,6 +148,8 @@ A request's `status` is its state and what that state always carries, and the sc
 - `terminal_failure` carries `failure` with a code.
 - `pending_approval` carries `approval_expires_at`. An unanswered card expires after `approval_expiry_seconds`.
 - Every other state carries nothing more.
+
+The reason a request is `undecided` is in its details (section 7), not in its status.
 
 ## 10. Profiles, grants and durations
 
@@ -157,6 +170,8 @@ It is the internal authorization type that plan section 8 allows. The CBOR token
 ## 12. Versions
 
 `data/version.json` holds the protocol name, the schema version and the authorization profile. A change that an older peer could not read needs a new protocol major. Every other change raises `schema_version`.
+
+Version 2 added why the rule prover is unavailable (`prover_problem` in `health`), why a request is undecided (`undecided_reason` in the request's details) and the agent error `prover_unavailable`. The protocol name stays `fabric-desktop/1`: `hello`, the frame format and the error envelope did not change, so a version 1 peer can still read the refusal `unsupported_schema_version`.
 
 ## 13. Fixtures and the contract suite
 
@@ -202,7 +217,7 @@ Encoding:
 4. Instants are UTC with milliseconds (`2026-11-20T16:00:00.000Z`). An event time is a local date-time with its offset plus an IANA zone, as Google stores it.
 5. Ids are at most 128 ASCII characters. An address has an ASCII local part and a lowercase ASCII domain. The schemas bound every string and most lists; accounts and agents are not capped.
 6. A response repeats the request's `method`, so that a frame can be checked on its own.
-7. `schema_version` must match exactly in version 1.
+7. `schema_version` must match exactly under `fabric-desktop/1`.
 8. The error codes, the recovery actions and the shape of the busy answer.
 9. A frame holds no line feed, so that one line is always one frame.
 
@@ -245,10 +260,23 @@ Authorization:
 
 33. An internal authorization record with a versioned profile, not a new token format (section 11).
 
+Version 2:
+
+34. The cause of an unavailable prover is one closed list (`prover_problem`). What the owner can do follows from the value and is not sent.
+35. `prover_problem` may be null while the prover is unavailable, for a cause the broker does not know.
+36. The reason of an undecided request is in the request's details and not in its status. The broker's store keeps statuses as they were written, and a status that changed shape could not be read back from an existing store.
+37. The reason of an undecided request may be null, for a request whose reason the broker did not record.
+38. Agents do not see why a request is undecided; they see the state only.
+39. There are three reasons. A check that ran and did not decide, and a report that could not be used, share the value `failed`.
+40. `prover_unavailable` carries no detail. The broker may answer it while the prover is not ready, but need not: it may accept the request, which then ends `undecided`.
+41. A change of this kind raises `schema_version` and not the protocol major (section 12).
+
 ## 15. Not covered
 
 - Commands that the plan's text needs and its method table does not list: selecting calendars and naming the Agent Drafts calendar, approving or removing an agent's enrollment, resolving an unknown outcome by hand, starting a People import, listing ended requests, the task composer for the embedded runtime, and the message that cancels a request. The snapshot can already show the state these would change.
 - The agent channel's connection handshake, which proves possession of the enrolled key (CD-W06).
 - Actions the broker starts itself, such as refresh and reconciliation reads, and the formal context with its digest (CD-W03, CD-W04).
+- A marker for practice accounts, attempts and reports.
+- Which durations an approval card may offer.
 - The names of the rules. The contract fixes their form; the rule theory names them. The rule names in the fixtures are examples.
 - Facts that tie several members together, which a schema cannot state and the broker must uphold: that a snapshot's requests are open and its grants have not ended, that an expansion names each row once, that the active profile exists, that an approval card expires 24 hours after it opens, and that an authorization expires 60 seconds after it is issued (the Rust crate offers a check for the last).

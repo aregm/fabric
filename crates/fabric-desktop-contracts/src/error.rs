@@ -33,6 +33,7 @@ pub enum ErrorCode {
     Busy,
     NotPermitted,
     BrokerNotRunning,
+    ProverUnavailable,
 }
 
 /// What the interface or the agent should do about an error.
@@ -67,7 +68,7 @@ impl Recovery {
 }
 
 impl ErrorCode {
-    pub const ALL: [ErrorCode; 16] = [
+    pub const ALL: [ErrorCode; 17] = [
         ErrorCode::MalformedFrame,
         ErrorCode::UnsupportedProtocol,
         ErrorCode::UnsupportedSchemaVersion,
@@ -84,6 +85,7 @@ impl ErrorCode {
         ErrorCode::Busy,
         ErrorCode::NotPermitted,
         ErrorCode::BrokerNotRunning,
+        ErrorCode::ProverUnavailable,
     ];
 
     #[must_use]
@@ -105,6 +107,7 @@ impl ErrorCode {
             ErrorCode::Busy => "busy",
             ErrorCode::NotPermitted => "not_permitted",
             ErrorCode::BrokerNotRunning => "broker_not_running",
+            ErrorCode::ProverUnavailable => "prover_unavailable",
         }
     }
 
@@ -113,13 +116,16 @@ impl ErrorCode {
         ErrorCode::ALL.into_iter().find(|c| c.as_str() == name)
     }
 
-    /// The fixed `retryable` of the code: only `store_unavailable`, `busy` and
-    /// `broker_not_running` may be retried.
+    /// The fixed `retryable` of the code: only `store_unavailable`, `busy`,
+    /// `broker_not_running` and `prover_unavailable` may be retried.
     #[must_use]
     pub const fn retryable(self) -> bool {
         matches!(
             self,
-            ErrorCode::StoreUnavailable | ErrorCode::Busy | ErrorCode::BrokerNotRunning
+            ErrorCode::StoreUnavailable
+                | ErrorCode::Busy
+                | ErrorCode::BrokerNotRunning
+                | ErrorCode::ProverUnavailable
         )
     }
 
@@ -140,7 +146,7 @@ impl ErrorCode {
             ErrorCode::StaleRequest => Recovery::ReviewRequestAgain,
             ErrorCode::ExpansionNotAcknowledged => Recovery::AcknowledgeExpansion,
             ErrorCode::StoreUnavailable => Recovery::UnlockStore,
-            ErrorCode::Busy => Recovery::RetryLater,
+            ErrorCode::Busy | ErrorCode::ProverUnavailable => Recovery::RetryLater,
             ErrorCode::BrokerNotRunning => Recovery::StartFabric,
         }
     }
@@ -357,6 +363,7 @@ pub enum AgentFault {
     Busy(Busy),
     NotPermitted,
     BrokerNotRunning,
+    ProverUnavailable,
 }
 
 impl Fault for AgentFault {
@@ -371,6 +378,7 @@ impl Fault for AgentFault {
         ErrorCode::Busy,
         ErrorCode::NotPermitted,
         ErrorCode::BrokerNotRunning,
+        ErrorCode::ProverUnavailable,
     ];
 
     fn code(&self) -> ErrorCode {
@@ -385,6 +393,7 @@ impl Fault for AgentFault {
             AgentFault::Busy(_) => ErrorCode::Busy,
             AgentFault::NotPermitted => ErrorCode::NotPermitted,
             AgentFault::BrokerNotRunning => ErrorCode::BrokerNotRunning,
+            AgentFault::ProverUnavailable => ErrorCode::ProverUnavailable,
         }
     }
 
@@ -413,6 +422,9 @@ impl Fault for AgentFault {
             ErrorCode::Busy => AgentFault::Busy(read(detail)?),
             ErrorCode::NotPermitted => null(&detail).map(|()| AgentFault::NotPermitted)?,
             ErrorCode::BrokerNotRunning => null(&detail).map(|()| AgentFault::BrokerNotRunning)?,
+            ErrorCode::ProverUnavailable => {
+                null(&detail).map(|()| AgentFault::ProverUnavailable)?
+            }
             other => return Err(format!("{} is not an agent error", other.as_str())),
         })
     }

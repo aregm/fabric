@@ -1,0 +1,38 @@
+{
+  "description": "Request details whose undecided_reason is not in the list.",
+  "schema": "owner-channel.schema.json#/$defs/owner_response",
+  "value": {
+    "protocol": "fabric-desktop/1",
+    "id": "details-30",
+    "method": "get_request_details",
+    "result": {
+      "request": {
+        "request_id": "request-30",
+        "revision": 3,
+        "agent_id": "agent-claude-desktop",
+        "tool": "fabric_calendar_propose_response",
+        "account_id": "acct-1",
+        "received_at": "2026-11-20T17:00:00.000Z",
+        "updated_at": "2026-11-20T17:00:30.000Z",
+        "request_digest": "sha256:9911dcca0cc270f88cbd3b82afc1ffe5c0dc4f41b2c3efc9398967d0c6740a56",
+        "status": {
+          "state": "undecided"
+        }
+      },
+      "redaction": "redacted",
+      "private": null,
+      "card": null,
+      "approval": null,
+      "proof_ids": [],
+      "authorization": null,
+      "attempts": [],
+      "provider_event": null,
+      "undecided_reason": "crashed"
+    }
+  },
+  "expect": {
+    "verdict": "reject",
+    "layer": "schema",
+    "error": "invalid_params"
+  }
+}

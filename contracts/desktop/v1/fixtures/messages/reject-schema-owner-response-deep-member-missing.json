@@ -9,6 +9,7 @@
       "cursor": 1287,
       "health": {
         "prover": "ready",
+        "prover_problem": null,
         "store": "ready"
       },
       "profiles": {

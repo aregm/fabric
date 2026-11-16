@@ -12,7 +12,7 @@ use crate::scalar::{
 pub const PROTOCOL: &str = "fabric-desktop/1";
 
 /// The schema version of this contract (`data/version.json`, README section 12).
-pub const SCHEMA_VERSION: u64 = 1;
+pub const SCHEMA_VERSION: u64 = 2;
 
 /// The marker for `common#/$defs/protocol`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -230,6 +230,18 @@ pub enum BusyLimit {
     OpenRequestsPerAgent,
     RequestsPerMinutePerAgent,
     OpenApprovalCardsPerAgent,
+}
+
+/// `common#/$defs/undecided_reason`: why no proof decided a request (README section 7).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum UndecidedReason {
+    /// The rule prover was starting or not running.
+    ProverUnavailable,
+    /// The proof did not finish within its time limit.
+    OutOfTime,
+    /// The check ran and did not decide the request, or its report could not be used.
+    Failed,
 }
 
 /// `common#/$defs/limits`: the numbers the broker enforces and reports in `hello`.

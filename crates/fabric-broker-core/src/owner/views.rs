@@ -158,6 +158,8 @@ fn read_details(
         authorization,
         attempts: List::new(attempts).map_err(|_| invariant("at most 20 attempts"))?,
         provider_event: None,
+        // The broker does not map its recorded reason to the contract's list yet.
+        undecided_reason: None,
     }))
 }
 

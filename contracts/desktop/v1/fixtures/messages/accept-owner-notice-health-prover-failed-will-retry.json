@@ -1,0 +1,22 @@
+{
+  "description": "The prover stopped and the broker starts it again by itself.",
+  "schema": "owner-channel.schema.json#/$defs/owner_notice",
+  "value": {
+    "protocol": "fabric-desktop/1",
+    "sequence": 1321,
+    "change": {
+      "kind": "health",
+      "health": {
+        "prover": "unavailable",
+        "prover_problem": "failed_will_retry",
+        "store": "ready"
+      }
+    }
+  },
+  "expect": {
+    "verdict": "accept",
+    "canonical": "{\"change\":{\"health\":{\"prover\":\"unavailable\",\"prover_problem\":\"failed_will_retry\",\"store\":\"ready\"},\"kind\":\"health\"},\"protocol\":\"fabric-desktop/1\",\"sequence\":1321}",
+    "command_digest": null,
+    "action_digest": null
+  }
+}

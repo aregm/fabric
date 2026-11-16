@@ -8,7 +8,8 @@ use serde_json::{Map, Value, json};
 use crate::agent::{Action, EventView};
 use crate::common::{
     AUTHORIZATION_LIFETIME_SECONDS, Addresses, CalendarAccess, CalendarRef, EventFields, EventRef,
-    FailureCode, Limits, PROTOCOL, Protocol, SendUpdates, ToolName, Weekdays, Window,
+    FailureCode, Limits, PROTOCOL, Protocol, SendUpdates, ToolName, UndecidedReason, Weekdays,
+    Window,
 };
 use crate::digest::to_value;
 use crate::error::OwnerError;
@@ -694,6 +695,20 @@ pub enum ProverHealth {
     Unavailable,
 }
 
+/// `owner#/$defs/prover_problem`: why the rule prover is unavailable (README section 7).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ProverProblem {
+    /// This run has no rule prover.
+    NotConfigured,
+    /// The prover could not start, or stopped; the broker starts it again by itself.
+    FailedWillRetry,
+    /// The prover could not start, or stopped, and the broker will not try again in this run.
+    Failed,
+    /// The rule theory on this machine is not the one this broker was built with.
+    WrongRules,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum StoreHealth {
@@ -707,6 +722,10 @@ pub enum StoreHealth {
 #[serde(deny_unknown_fields)]
 pub struct Health {
     pub prover: ProverHealth,
+    /// Null while the prover is ready or starting; names the cause while it is unavailable,
+    /// or is null when the broker does not know it.
+    #[serde(deserialize_with = "nullable")]
+    pub prover_problem: Option<ProverProblem>,
     pub store: StoreHealth,
 }
 
@@ -1169,6 +1188,10 @@ pub struct RequestDetails {
     pub attempts: List<Attempt, 0, 20, false>,
     #[serde(deserialize_with = "nullable")]
     pub provider_event: Option<EventRef>,
+    /// Why no proof decided the request: null unless its state is `undecided`, and null there
+    /// when the broker did not record why.
+    #[serde(deserialize_with = "nullable")]
+    pub undecided_reason: Option<UndecidedReason>,
 }
 
 /// `owner#/$defs/snapshot`: the broker's state at one cursor (README section 14).

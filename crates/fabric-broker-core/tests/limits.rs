@@ -364,9 +364,9 @@ fn an_answer_over_the_frame_bound_is_refused_and_the_broker_runs_on() {
 
     let hello = h.ok(
         "hello",
-        json!({"schema_version": 1, "client": {"name": "Test", "build": "1"}}),
+        json!({"schema_version": 2, "client": {"name": "Test", "build": "1"}}),
     );
-    assert_eq!(hello["schema_version"], json!(1));
+    assert_eq!(hello["schema_version"], json!(2));
     assert!(h.running());
     h.verify();
 }

@@ -62,6 +62,8 @@ test("vocabularies equal the schema enums", () => {
     ["plain_request_state", c.PLAIN_REQUEST_STATES, common.plain_request_state.enum],
     ["failure_code", c.FAILURE_CODES, common.failure_code.enum],
     ["busy_limit", c.BUSY_LIMITS, common.busy_limit.enum],
+    ["undecided_reason", c.UNDECIDED_REASONS, common.undecided_reason.enum],
+    ["prover_problem", c.PROVER_PROBLEMS, owner.prover_problem.enum],
     ["mode", c.MODES, owner.mode.enum],
     ["policy_row", c.POLICY_ROWS, owner.policy_row.enum],
     ["profile_rows", c.POLICY_ROWS, Object.keys(owner.profile_rows.properties)],

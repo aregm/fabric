@@ -10,12 +10,12 @@
         "name": "Fabric Calendar",
         "build": "0.1.0-dev+20261115"
       },
-      "schema_version": 1
+      "schema_version": 2
     }
   },
   "expect": {
     "verdict": "accept",
-    "canonical": "{\"id\":\"hello-1\",\"method\":\"hello\",\"params\":{\"client\":{\"build\":\"0.1.0-dev+20261115\",\"name\":\"Fabric Calendar\"},\"schema_version\":1},\"protocol\":\"fabric-desktop/1\"}",
+    "canonical": "{\"id\":\"hello-1\",\"method\":\"hello\",\"params\":{\"client\":{\"build\":\"0.1.0-dev+20261115\",\"name\":\"Fabric Calendar\"},\"schema_version\":2},\"protocol\":\"fabric-desktop/1\"}",
     "command_digest": null,
     "action_digest": null
   }

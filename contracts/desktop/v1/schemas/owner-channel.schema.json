@@ -486,13 +486,19 @@
       "additionalProperties": false
     },
     "health": {
+      "description": "The state of the rule prover and of the store. prover_problem is null while the prover is ready or starting; while it is unavailable it names the cause, or is null when the broker does not know it.",
       "type": "object",
       "properties": {
         "prover": { "enum": ["ready", "starting", "unavailable"] },
+        "prover_problem": { "oneOf": [{ "type": "null" }, { "$ref": "#/$defs/prover_problem" }] },
         "store": { "enum": ["ready", "locked", "keychain_refused"] }
       },
-      "required": ["prover", "store"],
+      "required": ["prover", "prover_problem", "store"],
       "additionalProperties": false
+    },
+    "prover_problem": {
+      "description": "Why the rule prover is unavailable. The meaning of each value is in README section 7.",
+      "enum": ["not_configured", "failed_will_retry", "failed", "wrong_rules"]
     },
 
     "time_range": {
@@ -867,7 +873,11 @@
         },
         "authorization": { "oneOf": [{ "type": "null" }, { "$ref": "#/$defs/authorization" }] },
         "attempts": { "type": "array", "items": { "$ref": "#/$defs/attempt" }, "maxItems": 20 },
-        "provider_event": { "oneOf": [{ "type": "null" }, { "$ref": "common.schema.json#/$defs/event_ref" }] }
+        "provider_event": { "oneOf": [{ "type": "null" }, { "$ref": "common.schema.json#/$defs/event_ref" }] },
+        "undecided_reason": {
+          "description": "Why no proof decided the request. Null unless the request is undecided, and null there when the broker did not record why.",
+          "oneOf": [{ "type": "null" }, { "$ref": "common.schema.json#/$defs/undecided_reason" }]
+        }
       },
       "required": [
         "request",
@@ -878,7 +888,8 @@
         "proof_ids",
         "authorization",
         "attempts",
-        "provider_event"
+        "provider_event",
+        "undecided_reason"
       ],
       "additionalProperties": false
     },

@@ -1,0 +1,22 @@
+{
+  "description": "The prover is unavailable because the rule theory on this machine is not the one the broker was built with.",
+  "schema": "owner-channel.schema.json#/$defs/owner_notice",
+  "value": {
+    "protocol": "fabric-desktop/1",
+    "sequence": 1323,
+    "change": {
+      "kind": "health",
+      "health": {
+        "prover": "unavailable",
+        "prover_problem": "wrong_rules",
+        "store": "ready"
+      }
+    }
+  },
+  "expect": {
+    "verdict": "accept",
+    "canonical": "{\"change\":{\"health\":{\"prover\":\"unavailable\",\"prover_problem\":\"wrong_rules\",\"store\":\"ready\"},\"kind\":\"health\"},\"protocol\":\"fabric-desktop/1\",\"sequence\":1323}",
+    "command_digest": null,
+    "action_digest": null
+  }
+}

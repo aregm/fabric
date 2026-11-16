@@ -1,0 +1,22 @@
+{
+  "description": "The prover stopped and the broker will not try again in this run.",
+  "schema": "owner-channel.schema.json#/$defs/owner_notice",
+  "value": {
+    "protocol": "fabric-desktop/1",
+    "sequence": 1322,
+    "change": {
+      "kind": "health",
+      "health": {
+        "prover": "unavailable",
+        "prover_problem": "failed",
+        "store": "ready"
+      }
+    }
+  },
+  "expect": {
+    "verdict": "accept",
+    "canonical": "{\"change\":{\"health\":{\"prover\":\"unavailable\",\"prover_problem\":\"failed\",\"store\":\"ready\"},\"kind\":\"health\"},\"protocol\":\"fabric-desktop/1\",\"sequence\":1322}",
+    "command_digest": null,
+    "action_digest": null
+  }
+}
