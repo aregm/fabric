@@ -3,12 +3,13 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
 import { ACCOUNT_STATES, CALENDAR_ACCESS, GRANT_END_REASONS } from "../../../contracts/desktop/v1/typescript/src/contract.ts";
-import type { Grant, ProofReport, RecipientSet, Snapshot } from "../../../contracts/desktop/v1/typescript/src/contract.ts";
+import type { Action, Grant, ProofReport, RecipientSet, RequestDetails, SendUpdates, Snapshot } from "../../../contracts/desktop/v1/typescript/src/contract.ts";
 import { CONTRACT_ROOT } from "../../../contracts/desktop/v1/typescript/src/judge.ts";
 import {
-  ACCESS_TEXT, ACCOUNT_TEXT, ATTEMPT_TEXT, GRANT_END_TEXT, PROOF_OUTCOME, PROOF_PURPOSE, PROVER_TEXT, STORE_TEXT, VERDICT_TEXT, cardFacts,
-  formatInstant, proofFacts, scopeFacts, termText,
+  ACCESS_TEXT, ACCOUNT_TEXT, ALLOWED_TEXT, ATTEMPT_TEXT, DURATION_TEXT, GRANT_END_TEXT, OWNER_CAN_DO, PROOF_OUTCOME, PROOF_PURPOSE, PROVER_TEXT,
+  STATE_TEXT, STORE_TEXT, VERDICT_TEXT, bannerText, cardFacts, formatInstant, proofFacts, scopeFacts, termText,
 } from "../ui/src/text.ts";
+import { assertValid, details, request } from "./support.ts";
 
 test("an instant is shown in the given zone, with the zone named", () => {
   assert.equal(formatInstant("2026-11-20T16:00:00.000Z", "America/Chicago"), "Friday, November 20, 2026 at 10:00 AM Central Standard Time");
@@ -25,7 +26,7 @@ test("the card's facts: who asks, the agent's words marked untrusted, the operat
   assert.equal(terms[3], "What it wants to do");
   assert.deepEqual(facts.find((f) => f.term === "Guests after the change")?.values, ["ally@example.net", "stranger@example.org"]);
   assert.equal(terms.at(-1), "Who is notified");
-  assert.deepEqual(facts.at(-1)?.values, ["Everyone invited gets an email from Google."]);
+  assert.deepEqual(facts.at(-1)?.values, ["Everyone invited gets an email."]);
 });
 
 test("every account state, calendar access and health value has words", () => {
@@ -76,7 +77,7 @@ test("a scope in words: calendars by name, dates, fields, groups by name, who is
   const words = (g: Grant) => Object.fromEntries(scopeFacts(g.scope, names, groups).map((f) => [f.term, f.values]));
   assert.deepEqual(words(grant("grant-6")), {
     Calendars: ["Team schedule (owner@example.com)"], Groups: ["Team", "Family (Google contacts)"],
-    "Who is notified": ["Everyone invited gets an email from Google."],
+    "Who is notified": ["Everyone invited gets an email."],
   });
   assert.deepEqual(words(grant("grant-5")), {
     Calendars: ["Owner (owner@example.com)"],
@@ -107,4 +108,107 @@ test("a proof without verdicts says so", () => {
   assert.deepEqual(facts.find((f) => f.term === "Rules")?.values, ["The check gave no verdict on any rule."]);
   const permit = proofFacts(message("accept-owner-response-get-proof-permit.json").result, "America/Chicago");
   assert.deepEqual(permit.find((f) => f.term === "What it was for")?.values, ["The check just before carrying it out"]);
+});
+
+// ---- Cards of a practice run: the broker sends no event as it is now ----
+
+const NAMES = { agents: new Map(), accounts: new Map(), zone: "America/Chicago" };
+const EVENT = { event_id: "evt-practice-1", revision: "3181161784712000" };
+const NO_CHANGES = { title: null, start: null, end: null, description: null, location: null };
+
+// Waiting details of this action, with `before` null; checked against the contract.
+function waiting(action: Action): RequestDetails {
+  const base = details({ ...request("pending_approval", 4), tool: action.tool });
+  const d: RequestDetails = { ...base, private: { action, before: null, warnings: [] } };
+  assertValid("owner_response", { protocol: "fabric-desktop/1", id: "details-1", method: "get_request_details", result: d });
+  return d;
+}
+
+const moveTime = (send_updates: SendUpdates): Action => ({
+  tool: "fabric_calendar_propose_update",
+  arguments: {
+    account_id: "spike-account", calendar_id: "spike-calendar", event: EVENT, send_updates, task: "Move the meeting.",
+    changes: {
+      ...NO_CHANGES,
+      start: { date_time: "2026-11-20T14:00:00-06:00", zone: "America/Chicago" },
+      end: { date_time: "2026-11-20T15:00:00-06:00", zone: "America/Chicago" },
+    },
+  },
+});
+
+const remove = (send_updates: SendUpdates): Action => ({
+  tool: "fabric_calendar_propose_delete",
+  arguments: { account_id: "spike-account", calendar_id: "spike-calendar", event: EVENT, send_updates, task: "Remove the meeting." },
+});
+
+// The terms from "What it wants to do" on.
+function asked(d: RequestDetails) {
+  const facts = cardFacts(d, NAMES);
+  return facts.slice(facts.findIndex((f) => f.term === "What it wants to do"));
+}
+
+test("the card of a change that moves an event's time, without the event as it is now", () => {
+  const facts = asked(waiting(moveTime("none")));
+  assert.deepEqual(facts.map((f) => f.term), [
+    "What it wants to do", "Account", "Calendar", "The event as it is now", "Event", "New start", "New end", "Who is notified",
+  ]);
+  const value = (term: string) => facts.find((f) => f.term === term)?.values;
+  assert.deepEqual(value("What it wants to do"), ["Change an event"]);
+  assert.deepEqual(value("The event as it is now"), ["The broker did not send it. Only the event's id is shown."]);
+  assert.deepEqual(value("Event"), ["evt-practice-1"]);
+  assert.deepEqual(value("New start"), ["Friday, November 20, 2026 at 2:00 PM Central Standard Time"]);
+  assert.deepEqual(value("Who is notified"), ["Nobody gets an email."]);
+  for (const term of ["New title", "New place", "New description"]) assert.equal(value(term), undefined, term);
+});
+
+test("the card of a delete, without the event as it is now", () => {
+  const facts = asked(waiting(remove("none")));
+  assert.deepEqual(facts.map((f) => f.term), ["What it wants to do", "Account", "Calendar", "The event as it is now", "Event", "Who is notified"]);
+  assert.deepEqual(facts[0]?.values, ["Delete an event"]);
+});
+
+test("an update that changes nothing says so; an answer to one occurrence names it; an event as it is now replaces the note", () => {
+  const empty = asked(waiting({ ...moveTime("none"), arguments: { ...moveTime("none").arguments, changes: NO_CHANGES } } as Action));
+  const terms = empty.map((f) => f.term);
+  assert.equal(terms.indexOf("What changes"), terms.indexOf("Event") + 1);
+  assert.deepEqual(empty.find((f) => f.term === "What changes")?.values, ["Nothing: the request names no new value."]);
+  const answer = asked(waiting({
+    tool: "fabric_calendar_propose_response",
+    arguments: {
+      account_id: "spike-account", calendar_id: "spike-calendar", response: "accepted", send_updates: "none", task: "Accept the next one.",
+      target: {
+        kind: "occurrence",
+        occurrence: { instance_id: "evt-weekly_20261127", revision: "3181161784712000", original_start_time: { date_time: "2026-11-27T10:00:00-06:00", zone: "America/Chicago" } },
+      },
+    },
+  }));
+  const answerTerms = answer.map((f) => f.term);
+  assert.equal(answerTerms.indexOf("Which occurrence"), answerTerms.indexOf("Event") + 1);
+  assert.ok(answerTerms.indexOf("The event as it is now") < answerTerms.indexOf("Event"));
+  assert.deepEqual(answer.find((f) => f.term === "Which occurrence")?.values,
+    ["The one planned for Friday, November 27, 2026 at 10:00 AM Central Standard Time"]);
+  const invitation = cardFacts(message("accept-owner-response-get-request-details-full-invitation.json").result, NAMES);
+  assert.equal(invitation.find((f) => f.term === "The event as it is now"), undefined);
+});
+
+test("no text that a practice run can show names Google", () => {
+  const { account_disconnected: _, ...ends } = GRANT_END_TEXT;
+  const texts: string[] = [
+    ...[STATE_TEXT, ALLOWED_TEXT, DURATION_TEXT, OWNER_CAN_DO, PROOF_PURPOSE, PROOF_OUTCOME, VERDICT_TEXT, ATTEMPT_TEXT, PROVER_TEXT, STORE_TEXT, ends]
+      .flatMap((words) => Object.values(words)),
+  ];
+  const create = details(request("pending_approval", 4));
+  const cards = [create, ...(["all", "external_only", "none"] as const).flatMap((u) => [waiting(moveTime(u)), waiting(remove(u))])];
+  for (const d of cards) {
+    for (const f of cardFacts(d, NAMES)) if (f.untrusted !== true) texts.push(f.term, ...f.values);
+  }
+  assert.ok(texts.length > 100);
+  for (const t of texts) assert.doesNotMatch(t, /google/i);
+});
+
+test("a configuration error: the app's settings or the installation", () => {
+  assert.deepEqual(bannerText({ name: "configuration_error", detail: "the broker is missing" }), {
+    title: "Fabric Calendar is not installed correctly.",
+    text: "The app found a problem before it started the broker, so nothing was started. If you started the app with settings of your own, as for a test run, correct them and start it again. Otherwise installing the app again may fix it.",
+  });
 });
