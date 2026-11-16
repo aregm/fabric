@@ -1,5 +1,7 @@
 # Requirements Traceability — Implementation Against the Specifications
 
+**Note:** stale since 2026-10-26. This is a snapshot from that date; for the current state see the [roadmap](roadmap.md).
+
 **Status:** snapshot taken 2026-10-26 on branch `claude/agent-sandbox` (which includes `cursor/paracels-chat`). Regenerate when a phase closes.
 
 **Scope:** every requirement with an ID in the [PRD](PRD.md) §7 and the [calendar vertical](calendar.md) §7.6, mapped to what the repository implements, with the evidence and the next step
