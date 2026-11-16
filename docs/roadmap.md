@@ -209,7 +209,7 @@ Nothing under `apps/fabric-demo/src` changes before your run. There is one state
 - **Desktop shell (`CD-Q01`).** A Tauri application now: static HTML and CSS with a small vanilla TypeScript layer, no framework, whose Rust host launches the broker as a child over private pipes and relays the plan's versioned JSON contract. The plan had recommended SwiftUI over a Rust broker; the process and authority boundary does not change.
 - **Reads under Careful.** You approve a grant limited to the requested fields and date window, and reads inside it run for the grant's duration; the default was to ask on each read.
 - **Edits to Fabric-created events**, as the plan words them: Flexible allows them inside an accepted scoped grant if there are no new recipients. `CD-W03` must state how this combines with the invitation rule, with negative cases, so that a change of time for existing attendees is caught.
-- **Custom profiles** may set any row to Allow except the Block rows, including editing a pre-existing event and responding to an invitation, which stay Ask in Careful and Flexible; saving such a profile shows the expansion first. The default was Flexible as the ceiling.
+- **Custom profiles** may set any row to Allow except the Block rows, including editing a pre-existing event and responding to an invitation, which stay Ask in Careful and Flexible; an invitation to an address outside every approved recipient set always asks (ruled on 2026-11-15); saving such a profile shows the expansion first. The default was Flexible as the ceiling.
 - **Event deletion:** only events Fabric created, and Ask in every profile; the default was off in version 1.
 - **Recurring events:** an agent may ask to accept or decline one occurrence of a recurring invitation, and nothing more on a series; the default was none.
 - **Authorization (`CD-W00`):** every work package up to `CD-G5` is authorized, and only your gate approvals stop the work; the default was `CD-W01` only.
@@ -349,7 +349,7 @@ The deterministic logic the calendar specification asks for exists in `fabric-co
 
 Your rule is that the PRD, the architecture and the calendar specification change only after you have seen the exact wording. This is the list. The exact diffs are work item `BASE-1`: they are shown to you in one pass after `CD-G0` and applied when you approve them. One edit waits and is shown later: Architecture edit 2, after `CD-G1`. Two edits are worded here because the direction depends on them: PRD edit 2 and Architecture edit 3.
 
-The exact wording was drafted on 2026-11-15 and shown to you as one pull request. Architecture edit 2 still waits for `CD-G1`. The list below is kept as the record of what was asked.
+The exact wording was drafted on 2026-11-15 and shown to you as one pull request. Architecture edit 2 still waits for `CD-G1`. On 2026-11-15 you ruled on the two open corrections of Calendar edit 6 (three rounds; sealing to the coordinator for groups of three or more only) and on strangers (an invitation to an address outside every approved recipient set always asks, in every profile). The list below is kept as the record of what was asked.
 
 **PRD**
 
