@@ -1,0 +1,19 @@
+[package]
+name = "fabric-desktop-relay"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+fabric-desktop-contracts = { path = "../../../crates/fabric-desktop-contracts" }
+
+[lints]
+workspace = true
+
+# A test target with its own `main`: called without the child variable it runs the cases;
+# re-executed by the cases as the broker child, it plays a scripted child.
+[[test]]
+name = "relay"
+path = "tests/relay.rs"
+harness = false

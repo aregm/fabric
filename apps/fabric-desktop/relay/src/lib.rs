@@ -1,0 +1,23 @@
+//! The Tauri host's relay to the broker child, without Tauri (work package CD-W02).
+//!
+//! The host starts one broker process and talks to it over the owner channel of
+//! `fabric-desktop/1`: one JSON frame per line on the child's stdin and stdout. This crate holds
+//! everything the host does that does not need Tauri:
+//!
+//! - [`BrokerConfig`] checks the broker's path before any process starts and builds the
+//!   command, with an environment that holds only the names of an allowlist.
+//! - [`Session`] runs the child, validates every frame in both directions with the contract
+//!   crate, forwards the valid ones, notices the child's death and stops it with a bounded drain.
+//! - [`InstanceLock`] keeps a second host from starting a second broker.
+//!
+//! The relay validates and forwards. It makes no policy decision, holds no state about
+//! requests, never builds a frame of its own and never answers for the broker.
+
+mod config;
+mod instance;
+mod line;
+mod session;
+
+pub use config::{BrokerConfig, ConfigError, ENVIRONMENT_ALLOWLIST, broker_beside};
+pub use instance::{InstanceError, InstanceLock};
+pub use session::{Ending, Event, QUIT_DRAIN, SendError, Session};
