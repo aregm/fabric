@@ -608,7 +608,7 @@ The owner gave these decisions on 2026-11-15, group by group, closing W00 (gate 
 
 Open value: the bundle-id prefix is on a domain the owner owns; the value has not been supplied yet. It is due before the shell work package (W02).
 
-Interpretations, stated for the owner to confirm when he reads the diff:
+Interpretations of the answers, which the owner confirmed on 2026-11-15:
 
 1. Event deletion asks in every profile, custom ones included, because the answer chosen was "Fabric-created only, always ask". So a custom profile can raise every row to Allow except: delete event (Ask), delete calendar and change sharing (Block).
 2. With People import required, local groups and exact or domain recipient sets remain, and import adds a source for them.

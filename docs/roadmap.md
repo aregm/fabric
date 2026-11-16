@@ -218,7 +218,7 @@ Nothing under `apps/fabric-demo/src` changes before your run. There is one state
 - **Contacts (`CD-Q06`):** version 1 imports contacts from Google People; the default was manual groups only.
 - **The codec (`RD-9`):** split later; the default was to split first.
 
-Three interpretations are stated for you to confirm when you read the diff:
+Three interpretations of your answers, which you confirmed on 2026-11-15:
 
 1. Event deletion asks in every profile, custom ones included. So a custom profile can raise every row to Allow except deleting an event (Ask), and deleting a calendar or changing sharing (Block).
 2. With People import required, local groups and exact or domain recipient sets remain, and import adds a source for them.

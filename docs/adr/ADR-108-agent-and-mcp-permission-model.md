@@ -69,7 +69,7 @@ A read profile alone never implies sending rights. A warning cannot turn Block i
 
 - Invitations use recipient sets (plan S04): every recipient is evaluated, and one recipient needing approval makes the whole request Ask.
 - **Version 1 requires Google People import.** It needs an extra Google scope and its verification, a new adapter and a later Google work package. The plan's rule that the manual contact UI needs no People permission (plan §10.2) changes.
-- Interpretation 2, stated as such: local groups and exact or domain recipient sets remain, and People import adds a source for them.
+- Interpretation 2, confirmed by the owner on 2026-11-15: local groups and exact or domain recipient sets remain, and People import adds a source for them.
 
 ### D6. Invitations are a compatibility mode
 
@@ -158,13 +158,13 @@ Baseline wording that must follow in `BASE-1` (named only, not drafted here): PR
 
 ## Open
 
-Interpretations for the owner to confirm:
+Interpretations of the answers. The owner confirmed all three on 2026-11-15:
 
 1. Event deletion asks in every profile, custom ones included, because the answer chosen was "Fabric-created only, always ask". So a custom profile can raise every row to Allow except "Delete event" (Ask) and "Delete calendar or change sharing" (Block).
 2. With People import required, local groups and exact or domain recipient sets remain, and import adds a source for them.
 3. "Everything to CD-G5" authorizes all work packages, but the plan's dependency order, the single contract owner for schemas, token format and rule theory, the independent reviewer, and the owner's approval at each gate in order all still apply.
 
-Also open:
+Still open:
 
 - Reconciling a deletion by reading the event back is to be confirmed in the W05 spike.
 - The extra Google scope for People import and its verification are not yet chosen; they belong to a later Google work package.
@@ -172,7 +172,7 @@ Also open:
 
 ## Action Items
 
-1. [ ] The owner confirms or corrects interpretations 1 to 3; record the outcome and bump this ADR to Accepted.
+1. [x] The owner confirmed interpretations 1 to 3 on 2026-11-15. This ADR stays Proposed until he accepts it.
 2. [ ] W03 writes `isabelle/Fabric_Broker` with the rows of D2, the `CD-M05` and invitation combination with negative cases, and re-measures the proof cost.
 3. [ ] W01 freezes the profile schema, duration kinds, instance identity, recipient sets and the denial's rule and proof-link fields.
 4. [ ] `BASE-1` shows the owner the wording for AIA-006, AIA-009 to AIA-013 and CAL-010.
