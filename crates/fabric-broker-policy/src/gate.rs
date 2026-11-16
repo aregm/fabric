@@ -12,7 +12,7 @@ use fabric_policy::server::{Connection, Server, ServerAddress, ServerOptions, pl
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
-use crate::check::{self, NodeReport, RuleResult, Verdict};
+use crate::check::{self, GrantResult, NodeReport, RuleResult, Verdict};
 use crate::model::{Action, Context, Rule};
 use crate::report::{context_digest, proof_id, sha256_hex};
 
@@ -72,6 +72,11 @@ pub struct Check {
     pub verdict: Verdict,
     pub failing_rule: Option<Rule>,
     pub rules: Vec<RuleResult>,
+    /// Every grant of the context in order, with what Isabelle proved about it.
+    pub grants: Vec<GrantResult>,
+    /// The ids of the grants proven to authorize the action, in context order; empty unless
+    /// decided. The broker names them in `ctx_relied` of the request's later checks.
+    pub authorizing_grants: Vec<String>,
     pub seconds: f64,
 }
 
@@ -224,12 +229,16 @@ impl BrokerGate {
             verdict: reading.verdict,
             failing_rule: reading.failing_rule,
             rules: reading.rules,
+            grants: reading.grants,
+            authorizing_grants: reading.authorizing_grants,
             seconds: elapsed.as_secs_f64(),
         })
     }
 
     fn run_theory(&mut self, name: &str, text: &str) -> Result<NodeReport, PolicyError> {
-        fs::write(self.config.work_dir.join(format!("{name}.thy")), text)?;
+        // The file holds calendar data in plain text: it is deleted when `_file` goes out of
+        // scope, however this function returns.
+        let _file = TheoryFile::write(&self.config.work_dir, name, text)?;
         let result = self.connection.task(
             "use_theories",
             &json!({
@@ -271,6 +280,35 @@ impl BrokerGate {
         let shutdown = self.connection.call("shutdown", &Value::Null);
         server.wait_or_kill(Duration::from_secs(20));
         shutdown.map(|_| ())
+    }
+}
+
+/// A check theory's file in the work directory, which exists only while the guard does: it
+/// is removed on drop, whatever the check's result, because it holds calendar data.
+#[derive(Debug)]
+pub struct TheoryFile {
+    path: PathBuf,
+}
+
+impl TheoryFile {
+    /// Writes `<dir>/<name>.thy`. A file left half-written by a failed write is removed.
+    pub fn write(dir: &Path, name: &str, text: &str) -> std::io::Result<Self> {
+        let file = TheoryFile {
+            path: dir.join(format!("{name}.thy")),
+        };
+        fs::write(&file.path, text)?;
+        Ok(file)
+    }
+
+    #[must_use]
+    pub fn path(&self) -> &Path {
+        &self.path
+    }
+}
+
+impl Drop for TheoryFile {
+    fn drop(&mut self) {
+        let _ = fs::remove_file(&self.path);
     }
 }
 

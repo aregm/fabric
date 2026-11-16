@@ -493,8 +493,10 @@ pub struct Context {
     /// The action digest of the action being checked, as 64 hex characters; for a disclosure,
     /// the digest of the action whose result is disclosed.
     pub digest: String,
-    /// The grant an allowed or approved request rests on, once it has one.
-    pub relied: Option<String>,
+    /// `ctx_relied`: the ids of the grants an allowed or approved request rests on, that is the
+    /// grants an earlier check of the same request proved to authorize it, or the grant the
+    /// owner's approval created. Empty for the first check of a request.
+    pub relied: Vec<String>,
     pub result_held: bool,
     pub pending_effects: Vec<PendingEffect>,
     pub pause_epoch: u64,
@@ -718,6 +720,28 @@ impl Action {
     #[must_use]
     pub fn disclosed(self) -> Action {
         Action::Disclose(Box::new(self))
+    }
+
+    /// `is_read`: listing calendars, reading availability, reading event details.
+    #[must_use]
+    pub const fn is_read(&self) -> bool {
+        matches!(
+            self,
+            Action::ListCalendars | Action::ReadAvailability { .. } | Action::ReadEvents { .. }
+        )
+    }
+
+    /// Whether a permit may rest on no grant: the broker's own reads (`is_system`), and the
+    /// release of anything but a read's result. A deliberately coarse stand-in for the
+    /// theory's `rows c a = []`, used only to cross-check a proof (lemma
+    /// `permit_rests_on_an_authorizing_grant`).
+    #[must_use]
+    pub fn needs_no_grant(&self) -> bool {
+        match self {
+            Action::SystemRefresh { .. } | Action::SystemReconcile { .. } => true,
+            Action::Disclose(inner) => !inner.is_read(),
+            _ => false,
+        }
     }
 }
 

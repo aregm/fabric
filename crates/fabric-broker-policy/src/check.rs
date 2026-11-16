@@ -8,6 +8,10 @@
 //! outcome only when every rule is decided; anything else fails closed as undecided (plan
 //! section 8).
 //!
+//! After the rule lemmas the theory states, for every grant of the context in order,
+//! `authorizes ctx act (ctx_grants ctx ! i)` and its negation, so the proof itself says which
+//! grants a permitted action rests on (lemma `permit_rests_on_an_authorizing_grant`).
+//!
 //! A check does not also prove `outcome ctx act = o` directly. One such lemma costs as much
 //! as all the rule lemmas together and cannot run in parallel; measured on 2026-11-16 it made
 //! a check take 2.5 s on average.
@@ -24,7 +28,7 @@ use crate::model::{Action, Context, Outcome, Rule};
 /// The session-qualified name of the rule theory every check imports.
 pub const BROKER_THEORY: &str = "Fabric_Broker.Fabric_Broker";
 
-/// The proof method of every lemma of a check theory.
+/// The proof method of every rule lemma of a check theory.
 pub const METHOD: &str = "(simp add: act_def ctx_def broker_simps)";
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -40,7 +44,16 @@ pub enum Polarity {
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Statement {
-    Rule { rule: Rule, polarity: Polarity },
+    Rule {
+        rule: Rule,
+        polarity: Polarity,
+    },
+    /// `authorizes ctx act (ctx_grants ctx ! index)`, or its negation when `authorizes` is
+    /// false.
+    Grant {
+        index: usize,
+        authorizes: bool,
+    },
 }
 
 /// Where a lemma sits in a check theory (1-based line).
@@ -55,6 +68,10 @@ pub struct CheckTheory {
     pub name: String,
     pub text: String,
     pub lemmas: Vec<LemmaLine>,
+    /// The ids of the context's grants, in order: grant `i` of the lemmas is `grant_ids[i]`.
+    pub grant_ids: Vec<String>,
+    /// [`Action::needs_no_grant`] of the checked action.
+    pub needs_no_grant: bool,
 }
 
 impl CheckTheory {
@@ -84,6 +101,16 @@ pub fn generate(
     if !valid_name {
         return Err(PolicyError::Render(format!(
             "theory name {name:?} must start with a letter and use only letters, digits and '_'"
+        )));
+    }
+
+    // Grant ids name grants in `ctx_relied` and in the result of a check, so two grants with
+    // one id would make both ambiguous. The broker keeps them unique; refuse anything else.
+    let mut seen = HashSet::new();
+    if let Some(grant) = context.grants.iter().find(|grant| !seen.insert(&grant.id)) {
+        return Err(PolicyError::Render(format!(
+            "two grants of the context have the id {:?}",
+            grant.id
         )));
     }
 
@@ -120,6 +147,21 @@ pub fn generate(
             });
         }
     }
+    for index in 0..context.grants.len() {
+        let statement = format!("authorizes ctx act (ctx_grants ctx ! {index})");
+        for (authorizes, suffix, text) in [
+            (true, "authorizes", statement.clone()),
+            (false, "refused", format!("\\<not> {statement}")),
+        ] {
+            lines.push(format!(
+                "lemma grant_{index}_{suffix}: \"{text}\" by {METHOD}"
+            ));
+            lemmas.push(LemmaLine {
+                line: lines.len(),
+                statement: Statement::Grant { index, authorizes },
+            });
+        }
+    }
     lines.push(String::new());
     lines.push("end".to_owned());
 
@@ -127,7 +169,21 @@ pub fn generate(
         name: name.to_owned(),
         text: lines.join("\n") + "\n",
         lemmas,
+        grant_ids: context
+            .grants
+            .iter()
+            .map(|grant| grant.id.clone())
+            .collect(),
+        needs_no_grant: action.needs_no_grant(),
     })
+}
+
+/// What Isabelle proved about one grant of the context.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct GrantResult {
+    pub id: String,
+    /// `Holds` when the grant authorizes the action, `Fails` when it is refused.
+    pub outcome: RuleOutcome,
 }
 
 /// One rule's result in a check.
@@ -174,6 +230,11 @@ pub struct Reading {
     pub failing_rule: Option<Rule>,
     /// Every rule in theory order, with what Isabelle proved about it.
     pub rules: Vec<RuleResult>,
+    /// Every grant of the context in order, with what Isabelle proved about it.
+    pub grants: Vec<GrantResult>,
+    /// The ids of the grants proven to authorize the action, in context order; empty when
+    /// undecided. The broker names them in `ctx_relied` of the request's later checks.
+    pub authorizing_grants: Vec<String>,
 }
 
 impl Reading {
@@ -185,6 +246,8 @@ impl Reading {
             verdict: Verdict::Undecided { reason },
             failing_rule: None,
             rules: self.rules,
+            grants: self.grants,
+            authorizing_grants: Vec::new(),
         }
     }
 }
@@ -208,8 +271,9 @@ pub fn implied_outcome(rules: &[RuleResult]) -> Outcome {
 }
 
 /// Reads Isabelle's report on a check theory. Fails closed: the verdict is undecided unless
-/// the node is complete, no error lies outside a lemma line, and every rule is decided. The
-/// outcome is then the one the rule results imply.
+/// the node is complete, no error lies outside a lemma line, and every rule and every grant is
+/// decided. The outcome is then the one the rule results imply; a permit that no grant
+/// authorizes is undecided too, unless the action needs no grant.
 #[must_use]
 pub fn read(theory: &CheckTheory, report: &NodeReport) -> Reading {
     let failed: HashSet<usize> = report.errors.iter().map(|(line, _)| *line).collect();
@@ -238,10 +302,37 @@ pub fn read(theory: &CheckTheory, report: &NodeReport) -> Reading {
         })
         .collect();
 
+    let grants: Vec<GrantResult> = theory
+        .grant_ids
+        .iter()
+        .enumerate()
+        .map(|(index, id)| {
+            let authorizes = proven(Statement::Grant {
+                index,
+                authorizes: true,
+            });
+            let refused = proven(Statement::Grant {
+                index,
+                authorizes: false,
+            });
+            let outcome = match (authorizes, refused) {
+                (Some(true), Some(false)) => RuleOutcome::Holds,
+                (Some(false), Some(true)) => RuleOutcome::Fails,
+                _ => RuleOutcome::Undecided,
+            };
+            GrantResult {
+                id: id.clone(),
+                outcome,
+            }
+        })
+        .collect();
+
     let undecided = |reason: String| Reading {
         verdict: Verdict::Undecided { reason },
         failing_rule: None,
         rules: rules.clone(),
+        grants: grants.clone(),
+        authorizing_grants: Vec::new(),
     };
     if !report.complete {
         return undecided("Isabelle did not finish the check".to_owned());
@@ -266,15 +357,39 @@ pub fn read(theory: &CheckTheory, report: &NodeReport) -> Reading {
             result.rule.name()
         ));
     }
+    if let Some((index, grant)) = grants
+        .iter()
+        .enumerate()
+        .find(|(_, grant)| grant.outcome == RuleOutcome::Undecided)
+    {
+        return undecided(format!(
+            "grant {index} ({}): Isabelle proved neither, or both, that it authorizes the \
+             action and that it does not",
+            grant.id
+        ));
+    }
+    let outcome = implied_outcome(&rules);
+    let authorizing_grants: Vec<String> = grants
+        .iter()
+        .filter(|grant| grant.outcome == RuleOutcome::Holds)
+        .map(|grant| grant.id.clone())
+        .collect();
+    if outcome == Outcome::Permit && authorizing_grants.is_empty() && !theory.needs_no_grant {
+        return undecided(
+            "the rules permit the action but no grant was proven to authorize it, and the \
+             action needs one"
+                .to_owned(),
+        );
+    }
     let failing_rule = rules
         .iter()
         .find(|result| result.outcome == RuleOutcome::Fails)
         .map(|result| result.rule);
     Reading {
-        verdict: Verdict::Decided {
-            outcome: implied_outcome(&rules),
-        },
+        verdict: Verdict::Decided { outcome },
         failing_rule,
         rules,
+        grants,
+        authorizing_grants,
     }
 }

@@ -15,7 +15,7 @@ pub mod hol;
 pub mod model;
 pub mod report;
 
-pub use check::{Reading, RuleOutcome, RuleResult, Verdict};
+pub use check::{GrantResult, Reading, RuleOutcome, RuleResult, Verdict};
 pub use fabric_policy::{PolicyError, ServerAddress};
 pub use gate::{BrokerGate, Check, GateConfig};
 pub use model::{

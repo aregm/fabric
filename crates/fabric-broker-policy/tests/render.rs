@@ -20,8 +20,9 @@ fn check_theory_matches_the_hand_written_fixture() {
 fn lemma_lines_point_at_the_right_statements() {
     let theory = check::generate("Check_000001", &common::context(), &common::action()).unwrap();
     let lines: Vec<&str> = theory.text.lines().collect();
-    assert_eq!(theory.lemmas.len(), 2 * Rule::ALL.len());
+    assert_eq!(theory.lemmas.len(), 2 * Rule::ALL.len() + 2 * 3);
     for lemma in &theory.lemmas {
+        let method = check::METHOD;
         let (prefix, statement) = match lemma.statement {
             Statement::Rule { rule, polarity } => {
                 let holds = format!("holds {} ctx act", rule.hol_constructor());
@@ -33,16 +34,60 @@ fn lemma_lines_point_at_the_right_statements() {
                     ),
                 }
             }
+            Statement::Grant { index, authorizes } => {
+                let statement = format!("authorizes ctx act (ctx_grants ctx ! {index})");
+                if authorizes {
+                    (format!("lemma grant_{index}_authorizes:"), statement)
+                } else {
+                    (
+                        format!("lemma grant_{index}_refused:"),
+                        format!("\\<not> {statement}"),
+                    )
+                }
+            }
         };
         let line = lines[lemma.line - 1];
         assert_eq!(
             line,
-            format!("{prefix} \"{statement}\" by {}", check::METHOD),
+            format!("{prefix} \"{statement}\" by {method}"),
             "line {}",
             lemma.line
         );
     }
     assert!(!theory.text.contains("outcome ctx act"));
+    for index in 0..3 {
+        for authorizes in [true, false] {
+            assert!(
+                theory
+                    .line_of(Statement::Grant { index, authorizes })
+                    .is_some()
+            );
+        }
+    }
+}
+
+#[test]
+fn hostile_relied_ids_are_refused_and_the_list_renders_as_identifiers() {
+    let mut context = common::context();
+    context.relied = vec!["g-edit".to_owned(), "g-invite".to_owned()];
+    let rendered = fabric_broker_policy::hol::context(&context).unwrap();
+    assert!(rendered.contains("ctx_relied = [''g-edit'', ''g-invite'']"));
+    context.relied = Vec::new();
+    let rendered = fabric_broker_policy::hol::context(&context).unwrap();
+    assert!(rendered.contains("ctx_relied = []"));
+    for hostile in HOSTILE {
+        context.relied = vec!["g-edit".to_owned(), hostile.to_owned()];
+        assert!(fabric_broker_policy::hol::context(&context).is_err());
+    }
+}
+
+#[test]
+fn two_grants_with_one_id_are_refused() {
+    let mut context = common::context();
+    let first = context.grants[0].id.clone();
+    context.grants[1].id = first;
+    let error = check::generate("Check_000001", &context, &common::action()).unwrap_err();
+    assert!(error.to_string().contains("two grants"), "{error}");
 }
 
 const HOSTILE: [&str; 9] = [
@@ -144,7 +189,7 @@ fn hostile_identifiers_are_refused_everywhere() {
             };
         }),
         ("set", |c, _, s| c.recipient_sets[0].id = s.to_owned()),
-        ("relied", |c, _, s| c.relied = Some(s.to_owned())),
+        ("relied", |c, _, s| c.relied = vec![s.to_owned()]),
         ("digest", |c, _, s| c.digest = s.to_owned()),
         ("one request digest", |c, _, s| {
             c.grants[1].duration = Duration::OneRequest {
@@ -290,4 +335,40 @@ fn every_action_constructor_renders_in_the_theorys_argument_order() {
             expected
         );
     }
+}
+
+#[test]
+fn a_theory_file_is_removed_however_the_check_ends() {
+    use fabric_broker_policy::gate::TheoryFile;
+    let dir = std::env::temp_dir().join(format!("fabric-broker-render-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = {
+        let file = TheoryFile::write(&dir, "Check_000001", "theory Check_000001\n").unwrap();
+        assert_eq!(
+            std::fs::read_to_string(file.path()).unwrap(),
+            "theory Check_000001\n"
+        );
+        file.path().to_owned()
+    };
+    assert!(!path.exists(), "removed when the guard is dropped");
+
+    // An early return through `?` drops the guard too.
+    let failing = || -> Result<(), String> {
+        let _file = TheoryFile::write(&dir, "Check_000002", "text").map_err(|e| e.to_string())?;
+        Err("Isabelle failed".to_owned())
+    };
+    assert!(failing().is_err());
+    assert!(!dir.join("Check_000002.thy").exists());
+
+    // So does a panic.
+    let panicked = std::panic::catch_unwind(|| {
+        let _file = TheoryFile::write(&dir, "Check_000003", "text").unwrap();
+        panic!("the check panicked");
+    });
+    assert!(panicked.is_err());
+    assert!(!dir.join("Check_000003.thy").exists());
+
+    // A file that cannot be written leaves nothing behind.
+    assert!(TheoryFile::write(&dir.join("missing"), "Check_000004", "text").is_err());
+    std::fs::remove_dir(&dir).unwrap();
 }

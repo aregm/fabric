@@ -241,10 +241,7 @@ pub fn context(value: &Context) -> Result<String, PolicyError> {
             option(value.event.as_ref().map(|e| format!("({})", event(e)))),
         ),
         ("ctx_digest", digest(&value.digest)?),
-        (
-            "ctx_relied",
-            option(value.relied.as_deref().map(identifier).transpose()?),
-        ),
+        ("ctx_relied", identifiers(&value.relied)?),
         ("ctx_result_held", boolean(value.result_held).to_owned()),
         (
             "ctx_pending_effects",

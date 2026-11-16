@@ -89,7 +89,7 @@ fn base() -> Context {
         recipient_sets: Vec::new(),
         event: None,
         digest: s(D_THIS),
-        relied: None,
+        relied: Vec::new(),
         result_held: false,
         pending_effects: Vec::new(),
         pause_epoch: 0,
@@ -146,6 +146,7 @@ fn standing_grant() -> Grant {
 
 fn availability_grant() -> Grant {
     Grant {
+        id: s("g-availability"),
         tools: vec![Tool::List, Tool::Availability],
         calendars: vec![key("primary")],
         window: Some(Window {
@@ -158,6 +159,7 @@ fn availability_grant() -> Grant {
 
 fn read_grant() -> Grant {
     Grant {
+        id: s("g-read"),
         tools: vec![Tool::Read],
         duration: Duration::Session {
             session_id: s("session-1"),
@@ -174,6 +176,7 @@ fn read_grant() -> Grant {
 
 fn create_grant() -> Grant {
     Grant {
+        id: s("g-create"),
         tools: vec![Tool::Create],
         calendars: vec![key("drafts"), key("team")],
         ..standing_grant()
@@ -397,6 +400,10 @@ struct Case {
     outcome: Option<Outcome>,
     /// The first failing rule the examples state, when they state one.
     failing: Option<Rule>,
+    /// For each grant of the context in order, whether it authorizes the action, when the
+    /// examples state it (or it follows from a stated permit with a single grant, by the
+    /// theory's lemma `permit_rests_on_an_authorizing_grant`).
+    authorizes: Option<Vec<bool>>,
 }
 
 #[allow(
@@ -413,6 +420,7 @@ fn cases() -> Vec<Case> {
             action,
             outcome,
             failing,
+            authorizes: None,
         });
     };
 
@@ -522,7 +530,7 @@ fn cases() -> Vec<Case> {
                 ended: true,
                 ..read_grant()
             }];
-            c.relied = Some(s("g-standing"));
+            c.relied = vec![s("g-read")];
         }),
         the_read(),
         Some(Block),
@@ -531,7 +539,7 @@ fn cases() -> Vec<Case> {
     add(
         "a_request_is_blocked_when_its_grant_is_revoked_or_expires (3)",
         with(reading(), |c| {
-            c.relied = Some(s("g-standing"));
+            c.relied = vec![s("g-read")];
             c.now_ms = 1_800_000;
         }),
         the_read(),
@@ -1250,7 +1258,207 @@ fn cases() -> Vec<Case> {
         None,
         Some(Rule::Actor),
     );
+
+    // Which grants a permitted action rests on.
+    let both_edit_grants = || {
+        editing(
+            Profile::FLEXIBLE,
+            vec![edit_grant(), invite_grant()],
+            vec![team()],
+            attended(vec![bob()]),
+        )
+    };
+    let relying_on_both =
+        |context: Context| with(context, |c| c.relied = vec![s("g-edit"), s("g-invite")]);
+    let mut new = vec![
+        (
+            "an_edit_that_reaches_attendees_rests_on_two_grants (1, 2, 3)",
+            both_edit_grants(),
+            edit_own(),
+            Some(Permit),
+            None,
+            Some(vec![true, true]),
+        ),
+        (
+            "only_the_grants_that_cover_the_action_authorize_it (1, 2)",
+            grants(vec![availability_grant(), read_grant()]),
+            the_read(),
+            None,
+            None,
+            Some(vec![false, true]),
+        ),
+        (
+            "only_the_grants_that_cover_the_action_authorize_it (3)",
+            grants(vec![create_grant()]),
+            create("acct-1", "team"),
+            None,
+            None,
+            Some(vec![false]),
+        ),
+        (
+            "only_the_grants_that_cover_the_action_authorize_it (4)",
+            creating(Profile::FLEXIBLE),
+            create("acct-1", "team"),
+            None,
+            None,
+            Some(vec![true]),
+        ),
+        (
+            "the_owners_approval_authorizes_until_it_is_used (1)",
+            answering(Profile::CAREFUL, vec![approval()], own_event()),
+            delete_own(),
+            None,
+            None,
+            Some(vec![true]),
+        ),
+        // The statement names a grant outside `ctx_grants`; `authorizes` does not read
+        // `ctx_grants`, so the grant is checked as the context's only grant.
+        (
+            "the_owners_approval_authorizes_until_it_is_used (2)",
+            answering(
+                Profile::CAREFUL,
+                vec![Grant {
+                    duration: one_request(D_THIS, true),
+                    ..approval()
+                }],
+                own_event(),
+            ),
+            delete_own(),
+            None,
+            None,
+            Some(vec![false]),
+        ),
+        (
+            "the_owners_approval_authorizes_until_it_is_used (3)",
+            answering(
+                Profile::CAREFUL,
+                vec![Grant {
+                    duration: one_request(D_OTHER, false),
+                    ..approval()
+                }],
+                own_event(),
+            ),
+            delete_own(),
+            None,
+            None,
+            Some(vec![false]),
+        ),
+        (
+            "releasing_the_outcome_of_a_change_rests_on_no_grant",
+            held(vec![approval()]),
+            create("acct-1", "team").disclosed(),
+            None,
+            None,
+            Some(vec![false]),
+        ),
+        (
+            "a_request_resting_on_two_grants_is_blocked_when_one_ends (1)",
+            relying_on_both(both_edit_grants()),
+            edit_own(),
+            Some(Permit),
+            None,
+            None,
+        ),
+        (
+            "a_request_resting_on_two_grants_is_blocked_when_one_ends (2, 3)",
+            relying_on_both(with(both_edit_grants(), |c| {
+                c.grants = vec![
+                    edit_grant(),
+                    Grant {
+                        ended: true,
+                        ..invite_grant()
+                    },
+                ];
+            })),
+            edit_own(),
+            Some(Block),
+            Some(Rule::ReliedGrantLive),
+            None,
+        ),
+    ];
+    for (name, context, action, outcome, failing, authorizes) in new.drain(..) {
+        cases.push(Case {
+            name: name.to_owned(),
+            context,
+            action,
+            outcome,
+            failing,
+            authorizes,
+        });
+    }
+
+    // Earlier cases whose authorizing grants the examples make plain.
+    for (name, authorizes) in [
+        ("availability_without_a_grant_asks", vec![]),
+        ("availability_inside_a_grant_is_permitted (1)", vec![true]),
+        ("availability_inside_a_grant_is_permitted (2)", vec![true]),
+        (
+            "an_availability_grant_does_not_cover_event_details",
+            vec![false],
+        ),
+        ("careful_reads_run_inside_the_approved_grant", vec![true]),
+        (
+            "careful_asks_for_each_create_in_an_existing_calendar (1)",
+            vec![false],
+        ),
+        (
+            "careful_asks_for_each_create_in_an_existing_calendar (2)",
+            vec![true],
+        ),
+        (
+            "flexible_allows_creates_in_the_calendars_a_grant_names (1)",
+            vec![true],
+        ),
+        (
+            "deleting_needs_the_owners_approval_each_time (1)",
+            vec![true],
+        ),
+        (
+            "deleting_needs_the_owners_approval_each_time (3)",
+            vec![false],
+        ),
+        (
+            "deleting_needs_the_owners_approval_each_time (4)",
+            vec![false],
+        ),
+        (
+            "the_outcome_of_a_change_is_released_to_its_agent (1)",
+            vec![],
+        ),
+        ("the_brokers_own_reads (1)", vec![]),
+    ] {
+        let case = cases
+            .iter_mut()
+            .find(|case| case.name == name)
+            .unwrap_or_else(|| panic!("{name} is a case"));
+        case.authorizes = Some(authorizes);
+    }
     cases
+}
+
+/// The check theory files left in a work directory.
+fn theory_files(dir: &Path) -> Vec<std::path::PathBuf> {
+    std::fs::read_dir(dir)
+        .map(|entries| {
+            entries
+                .filter_map(Result::ok)
+                .map(|entry| entry.path())
+                .filter(|path| {
+                    path.file_name()
+                        .and_then(|name| name.to_str())
+                        .is_some_and(|name| name.starts_with("Check_") && name.ends_with(".thy"))
+                })
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+/// Starts a gate on `config` after removing check theories an older build left behind.
+fn start(config: GateConfig) -> BrokerGate {
+    for path in theory_files(&config.work_dir) {
+        std::fs::remove_file(path).expect("an old check theory is removed");
+    }
+    BrokerGate::start(config).expect("the gate starts")
 }
 
 /// The outcome a first failing rule implies under the theory's `outcome`.
@@ -1267,7 +1475,9 @@ fn outcome_of_failing(rule: Rule) -> Outcome {
 fn every_case_is_decided_as_expected_by_isabelle() {
     let _live = LIVE.lock().unwrap_or_else(PoisonError::into_inner);
     let started = Instant::now();
-    let mut gate = BrokerGate::start(config("fabric-broker-corpus")).expect("the gate starts");
+    let config = config("fabric-broker-corpus");
+    let work_dir = config.work_dir.clone();
+    let mut gate = start(config);
     eprintln!(
         "gate started in {:.1}s ({}, theory {})",
         started.elapsed().as_secs_f64(),
@@ -1285,7 +1495,28 @@ fn every_case_is_decided_as_expected_by_isabelle() {
             .outcome
             .or_else(|| case.failing.map(outcome_of_failing));
         let outcome = check.verdict.outcome();
-        let mut as_expected = outcome.is_some() && outcome == expected;
+        let mut as_expected = outcome.is_some() && (expected.is_none() || outcome == expected);
+        if let Some(authorizes) = &case.authorizes {
+            let proven: Vec<Option<bool>> = check
+                .grants
+                .iter()
+                .map(|grant| match grant.outcome {
+                    RuleOutcome::Holds => Some(true),
+                    RuleOutcome::Fails => Some(false),
+                    RuleOutcome::Undecided => None,
+                })
+                .collect();
+            let expected_proven: Vec<Option<bool>> = authorizes.iter().map(|&a| Some(a)).collect();
+            let expected_ids: Vec<String> = case
+                .context
+                .grants
+                .iter()
+                .zip(authorizes)
+                .filter(|(_, authorizes)| **authorizes)
+                .map(|(grant, _)| grant.id.clone())
+                .collect();
+            as_expected &= proven == expected_proven && check.authorizing_grants == expected_ids;
+        }
         if let Some(rule) = case.failing {
             as_expected &= check.failing_rule == Some(rule);
         }
@@ -1303,6 +1534,7 @@ fn every_case_is_decided_as_expected_by_isabelle() {
             ),
             Verdict::Undecided { reason } => format!("undecided: {reason}"),
         };
+        let shown = format!("{shown} {:?}", check.authorizing_grants);
         eprintln!(
             "  {} {:<80} {shown} {:.2}s",
             if as_expected { "ok " } else { "BAD" },
@@ -1311,8 +1543,8 @@ fn every_case_is_decided_as_expected_by_isabelle() {
         );
         if !as_expected {
             failures.push(format!(
-                "{}: expected {:?} / {:?}, got {shown}",
-                case.name, case.outcome, case.failing
+                "{}: expected {:?} / {:?} / {:?}, got {shown}",
+                case.name, case.outcome, case.failing, case.authorizes
             ));
         }
     }
@@ -1321,8 +1553,13 @@ fn every_case_is_decided_as_expected_by_isabelle() {
     let golden = gate
         .check(&common::context(), &common::action())
         .expect("the check runs");
-    eprintln!("  golden fixture: {:?}", golden.verdict);
+    eprintln!(
+        "  golden fixture: {:?} {:?}",
+        golden.verdict, golden.authorizing_grants
+    );
     gate.stop().expect("the gate stops");
+    let left = theory_files(&work_dir);
+    assert!(left.is_empty(), "check theories left behind: {left:?}");
 
     assert!(
         failures.is_empty(),
@@ -1337,6 +1574,9 @@ fn every_case_is_decided_as_expected_by_isabelle() {
         golden.verdict
     );
     assert!(golden.rules.iter().all(|r| r.outcome == RuleOutcome::Holds));
+    // `g-invite` covers the invitation; `g-once` is an unused approval of exactly this
+    // digest; `g-standing` has ended.
+    assert_eq!(golden.authorizing_grants, ["g-invite", "g-once"]);
     eprintln!("\nall {} cases decided as expected", cases.len());
 }
 
@@ -1346,7 +1586,8 @@ fn a_check_that_runs_out_of_time_is_undecided() {
     let _live = LIVE.lock().unwrap_or_else(PoisonError::into_inner);
     let mut config = config("fabric-broker-timeout");
     config.check_timeout = StdDuration::from_millis(1);
-    let mut gate = BrokerGate::start(config).expect("the gate starts");
+    let work_dir = config.work_dir.clone();
+    let mut gate = start(config);
     for case in cases().iter().take(3) {
         let check = gate
             .check(&case.context, &case.action)
@@ -1362,8 +1603,11 @@ fn a_check_that_runs_out_of_time_is_undecided() {
             check.verdict
         );
         assert_eq!(check.failing_rule, None);
+        assert!(check.authorizing_grants.is_empty());
     }
     gate.stop().expect("the gate stops");
+    let left = theory_files(&work_dir);
+    assert!(left.is_empty(), "check theories left behind: {left:?}");
 }
 
 #[test]
@@ -1371,7 +1615,7 @@ fn a_check_that_runs_out_of_time_is_undecided() {
 fn checks_are_timed() {
     let _live = LIVE.lock().unwrap_or_else(PoisonError::into_inner);
     let started = Instant::now();
-    let mut gate = BrokerGate::start(config("fabric-broker-timing")).expect("the gate starts");
+    let mut gate = start(config("fabric-broker-timing"));
     let session_start = started.elapsed().as_secs_f64();
 
     // Every case of the corpus, of every kind: reads, creates, edits, invitations,

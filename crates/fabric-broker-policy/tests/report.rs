@@ -26,6 +26,8 @@ fn check_of(context: &Context, failing: &[Rule], outcome: Outcome, complete: boo
             Statement::Rule { rule, polarity } => {
                 failing.contains(&rule) == (polarity == Polarity::Holds)
             }
+            // The first grant, `g-invite`, authorizes; the others are refused.
+            Statement::Grant { index, authorizes } => (index == 0) != authorizes,
         })
         .map(|lemma| (lemma.line, "Failed to finish proof".to_owned()))
         .collect();
@@ -51,6 +53,8 @@ fn check_of(context: &Context, failing: &[Rule], outcome: Outcome, complete: boo
         verdict: reading.verdict,
         failing_rule: reading.failing_rule,
         rules: reading.rules,
+        grants: reading.grants,
+        authorizing_grants: reading.authorizing_grants,
         seconds: 0.4567,
     }
 }

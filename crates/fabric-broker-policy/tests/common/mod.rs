@@ -103,7 +103,7 @@ pub fn context() -> Context {
             occurrence: None,
         }),
         digest: DIGEST.to_owned(),
-        relied: Some("g-invite".to_owned()),
+        relied: vec!["g-invite".to_owned()],
         result_held: false,
         pending_effects: vec![PendingEffect {
             account: "acct-1".to_owned(),
