@@ -27,7 +27,7 @@ Constraints: the plan's settled `CD-C01` to `CD-C13` are not reopened. `CD-C03` 
 ### D1. Profiles
 
 - The built-in profiles are named **Careful** and **Flexible**, and the names are frozen. Agents are shown by their registered names. Careful is preselected at setup; selecting a profile creates no grant (plan S01).
-- Built-in profiles are immutable templates. A named custom profile may set any row up to Allow, wider than Flexible, except the rows that stay fixed in every profile: "Delete event" stays Ask, and "Delete calendar or change sharing" stays Block. Saving a custom profile that widens authority shows the expansion first.
+- Built-in profiles are immutable templates. A named custom profile may set any row up to Allow, wider than Flexible, except the rows that stay fixed in every profile: "Delete event" stays Ask, and "Delete calendar or change sharing" stays Block. An invitation to an address outside every approved recipient set also asks in every profile (D5). Saving a custom profile that widens authority shows the expansion first.
 - "Edit a pre-existing event" and "Respond to an invitation" are Ask in both built-in profiles and are **not locked**: a custom profile may set them to Allow.
 
 ### D2. Policy matrix
@@ -68,6 +68,7 @@ A read profile alone never implies sending rights. A warning cannot turn Block i
 ### D5. Recipient sets and contacts
 
 - Invitations use recipient sets (plan S04): every recipient is evaluated, and one recipient needing approval makes the whole request Ask.
+- Strangers always ask, as the owner ruled on 2026-11-15: in every profile, custom ones included, an invitation to an address outside every approved recipient set is held for the owner's approval.
 - **Version 1 requires Google People import.** It needs an extra Google scope and its verification, a new adapter and a later Google work package. The plan's rule that the manual contact UI needs no People permission (plan §10.2) changes.
 - Interpretation 2, confirmed by the owner on 2026-11-15: local groups and exact or domain recipient sets remain, and People import adds a source for them.
 
@@ -163,6 +164,8 @@ Interpretations of the answers. The owner confirmed all three on 2026-11-15:
 1. Event deletion asks in every profile, custom ones included, because the answer chosen was "Fabric-created only, always ask". So a custom profile can raise every row to Allow except "Delete event" (Ask) and "Delete calendar or change sharing" (Block).
 2. With People import required, local groups and exact or domain recipient sets remain, and import adds a source for them.
 3. "Everything to CD-G5" authorizes all work packages, but the plan's dependency order, the single contract owner for schemas, token format and rule theory, the independent reviewer, and the owner's approval at each gate in order all still apply.
+
+The owner also ruled on 2026-11-15, after the first `BASE-1` draft: strangers always ask (D5).
 
 Still open:
 

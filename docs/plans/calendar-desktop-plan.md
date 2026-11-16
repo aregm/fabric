@@ -248,7 +248,7 @@ G0 froze the following defaults on 2026-11-15 (section 15.1). They preserve safe
 
 Priority: paused/revoked/expired/unsupported → Block; explicit prohibition → Block; insufficient capability or required human approval → Ask; otherwise prove permission and Allow. A read profile alone never implies sending rights. A warning cannot convert Block to Allow or Allow to Block.
 
-Custom profiles (G0): a named custom profile may set any row up to Allow, and so may go wider than Flexible, except the blocked rows. "Edit pre-existing event" and "Respond to an invitation" are Ask in both built-in profiles and are not locked; a custom profile may set them to Allow, and saving such a profile shows the expansion first. "Delete event" stays Ask in every profile, and "Delete calendar or modify ACL/sharing" stays Block in every profile.
+Custom profiles (G0): a named custom profile may set any row up to Allow, and so may go wider than Flexible, except the blocked rows. "Edit pre-existing event" and "Respond to an invitation" are Ask in both built-in profiles and are not locked; a custom profile may set them to Allow, and saving such a profile shows the expansion first. "Delete event" stays Ask in every profile, and "Delete calendar or modify ACL/sharing" stays Block in every profile. An invitation to an address outside every approved recipient set is held for the owner's approval in every profile (strangers always ask, G0-STRANGERS).
 
 Work package W03 must state how the "Edit Fabric-created event" row combines with the "Send/change invitations" row, so that a change of time for existing attendees is caught, with negative cases.
 
@@ -570,6 +570,7 @@ The owner gave these decisions on 2026-11-15, group by group, closing W00 (gate 
 | CD-M10 | Delete calendar, change sharing | Block in every profile | None; as proposed |
 | G0-INVITE | Invitations | A compatibility mode outside CAL-010's private scheduling | `docs/calendar.md` wording follows in BASE-1 |
 | G0-CUSTOM | Reach of custom profiles | Any row up to Allow, except the blocked rows; custom may set Allow on CD-M06 and CD-M08; saving shows the expansion first. Not the recommended default | Section 7 custom-profile paragraph; with CD-Q05a, see interpretation 1 |
+| G0-STRANGERS | Invitations to addresses outside every approved recipient set | Strangers always ask: in every profile, custom ones included, such an invitation is held for the owner's approval (ruled on 2026-11-15, after the first BASE-1 draft) | Section 7 custom-profile paragraph; ADR-108 D1 and D5 |
 | CD-M-DUR | Grant durations | One request, one session, until revoked, for every grant kind; session idle timeout 30 minutes (the owner's value) | Section 7 durations |
 | CD-M-PROFILE | Profile preselected at setup | Careful | S01 |
 | G0-WARNDISC | Warnings disclosed to agents | Owner-only in v1 | None; S06 stands |
