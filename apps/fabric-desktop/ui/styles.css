@@ -50,10 +50,47 @@ body {
 }
 
 header,
-main {
+main,
+.attention {
   max-width: 48rem;
   margin: 0 auto;
   padding: 1rem;
+}
+
+.attention {
+  padding-top: 0;
+  padding-bottom: 0;
+}
+
+a {
+  color: var(--accent);
+}
+
+/* The screens: a list of links that wraps on a narrow window. */
+.nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 0.5rem;
+  list-style: none;
+  margin: 0.5rem 0 0;
+  padding: 0;
+}
+
+.nav a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 2.5rem;
+  padding: 0.25rem 0.75rem;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  color: var(--text);
+}
+
+/* The current screen: a border and bold text, not colour alone. */
+.nav a[aria-current="page"] {
+  border: 2px solid var(--accent);
+  font-weight: 700;
+  text-decoration: none;
 }
 
 h1 {
@@ -73,17 +110,46 @@ h3 {
   margin: 0 0 0.25rem;
 }
 
+h4 {
+  font-size: 1rem;
+  margin: 0 0 0.25rem;
+}
+
 p {
   margin: 0.25rem 0;
 }
 
-.spike {
-  background: var(--surface);
-  border-left: 4px solid var(--border);
-  padding: 0.5rem 0.75rem;
+/* One screen; only the current one is shown. */
+.screen {
+  margin-bottom: 2rem;
 }
 
-.banner {
+/* A part of a screen: an h3 and what belongs to it. */
+.part {
+  margin: 1.25rem 0;
+}
+
+/* A list of items: a ul or a div. */
+.list {
+  list-style: none;
+  margin: 0.5rem 0;
+  padding: 0;
+}
+
+/* One entry of a list. */
+.item {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.75rem;
+  margin: 0.75rem 0;
+}
+
+.item-waiting {
+  border-width: 3px;
+}
+
+/* A box that asks for a decision, and a quiet one that only tells. */
+.panel {
   background: var(--banner-bg);
   border: 2px solid var(--banner-border);
   border-radius: 6px;
@@ -91,8 +157,40 @@ p {
   margin: 0.5rem 0 1rem;
 }
 
-.banner-title {
+.notice {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.75rem;
+  margin: 0.5rem 0;
+}
+
+.title {
   font-weight: 700;
+}
+
+/* A small bordered label, text only. */
+.tag {
+  display: inline-block;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 0 0.4rem;
+  font-size: 0.9rem;
+}
+
+/* A setting that cannot be changed, with its reason. */
+.locked {
+  border-left: 4px solid var(--border);
+  padding: 0.25rem 0.75rem;
+  margin: 0.5rem 0;
+}
+
+/* The stored value beside a field the owner changed. */
+.stored {
+  color: var(--muted);
+  border-left: 4px solid var(--banner-border);
+  padding-left: 0.5rem;
+  margin: 0.25rem 0;
 }
 
 .detail,
@@ -137,13 +235,6 @@ p {
   }
 }
 
-.request {
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  padding: 0.75rem;
-  margin: 0.75rem 0;
-}
-
 .state {
   font-weight: 600;
 }
@@ -174,10 +265,29 @@ legend {
   padding: 0 0.25rem;
 }
 
+/* A label above its control. */
+.field {
+  margin: 0.75rem 0;
+}
+
+.field > label {
+  display: block;
+  font-weight: 600;
+  margin-bottom: 0.25rem;
+}
+
+/* Radios or checkboxes in a row that wraps. */
+.choices {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 1.25rem;
+}
+
 .choice {
   display: flex;
   align-items: center;
   gap: 0.5rem;
+  min-height: 2.5rem;
   padding: 0.25rem 0;
 }
 
@@ -227,6 +337,24 @@ button.primary {
   color: var(--on-accent);
 }
 
+input:not([type="radio"]):not([type="checkbox"]),
+textarea,
+select {
+  font: inherit;
+  color: var(--text);
+  background: var(--bg);
+  min-height: 2.5rem;
+  max-width: 100%;
+  padding: 0.4rem 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
+textarea {
+  width: 100%;
+  min-height: 6rem;
+}
+
 /* A button that does nothing yet keeps its focus; the text beside it says why. */
 button[aria-disabled="true"] {
   border-style: dashed;
@@ -242,11 +370,12 @@ button[aria-disabled="true"] {
 }
 
 h2:focus-visible,
-h3:focus-visible {
+h3:focus-visible,
+h4:focus-visible {
   border-radius: 2px;
 }
 
-#activity {
+.activity {
   padding-left: 1.25rem;
 }
 

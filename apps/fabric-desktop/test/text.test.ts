@@ -2,8 +2,9 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
+import { ACCOUNT_STATES, CALENDAR_ACCESS } from "../../../contracts/desktop/v1/typescript/src/contract.ts";
 import { CONTRACT_ROOT } from "../../../contracts/desktop/v1/typescript/src/judge.ts";
-import { cardFacts, formatInstant } from "../ui/src/text.ts";
+import { ACCESS_TEXT, ACCOUNT_TEXT, PROVER_TEXT, STORE_TEXT, cardFacts, formatInstant } from "../ui/src/text.ts";
 
 test("an instant is shown in the given zone, with the zone named", () => {
   assert.equal(formatInstant("2026-11-20T16:00:00.000Z", "America/Chicago"), "Friday, November 20, 2026 at 10:00 AM Central Standard Time");
@@ -21,4 +22,15 @@ test("the card's facts: who asks, the agent's words marked untrusted, the operat
   assert.deepEqual(facts.find((f) => f.term === "Guests after the change")?.values, ["ally@example.net", "stranger@example.org"]);
   assert.equal(terms.at(-1), "Who is notified");
   assert.deepEqual(facts.at(-1)?.values, ["Everyone invited gets an email from Google."]);
+});
+
+test("every account state, calendar access and health value has words", () => {
+  const all: [Record<string, string>, readonly string[]][] = [
+    [ACCOUNT_TEXT, ACCOUNT_STATES], [ACCESS_TEXT, CALENDAR_ACCESS],
+    [PROVER_TEXT, ["ready", "starting", "unavailable"]], [STORE_TEXT, ["ready", "locked", "keychain_refused"]],
+  ];
+  for (const [words, values] of all) {
+    assert.deepEqual(Object.keys(words).sort(), [...values].sort());
+    for (const v of values) assert.ok((words[v] ?? "").length > 0, v);
+  }
 });

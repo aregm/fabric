@@ -1,8 +1,8 @@
 // The words on the page: request states, operations, the facts of an approval card,
 // activity lines and dates. Pure functions; nothing here touches the page.
 import type {
-  Account, Action, Agent, CalendarRef, Change, DurationKind, EventField, EventTime, RequestDetails, RequestState,
-  SendUpdates, ToolName, Window as TimeWindow,
+  Account, AccountState, Action, Agent, CalendarAccess, CalendarRef, Change, DurationKind, EventField, EventTime, Health,
+  RequestDetails, RequestState, SendUpdates, ToolName, Window as TimeWindow,
 } from "../../../../contracts/desktop/v1/typescript/src/contract.ts";
 import type { HostState } from "./host.ts";
 
@@ -11,7 +11,7 @@ export const STATE_TEXT: Record<RequestState, string> = {
   received: "Received, checking",
   validating: "Received, checking",
   proving_classification: "Received, checking",
-  allowed: "Allowed by your settings",
+  allowed: "Allowed by your settings; Fabric checks it once more before it is done",
   pending_approval: "Waiting for your decision",
   blocked: "Blocked by your settings",
   undecided: "Not done: Fabric could not prove that it is allowed",
@@ -19,17 +19,17 @@ export const STATE_TEXT: Record<RequestState, string> = {
   denied: "You denied it",
   expired: "Not done: nobody decided in time",
   cancelled: "Cancelled",
-  stale: "Not done: the calendar changed after the request was made",
+  stale: "Not done: something changed after the request was made, so it is out of date",
   proving_fresh_permit: "Fabric checks it once more before it is done",
-  queued: "Waiting to be sent to Google",
-  dispatching: "Being sent to Google",
-  applied: "Done in Google Calendar; Fabric is confirming it",
+  queued: "Allowed; waiting to be sent to the calendar",
+  dispatching: "Being sent to the calendar",
+  applied: "Done: the calendar accepted it. Fabric has not confirmed it by reading it back yet",
   reconciled: "Done and confirmed",
-  retry_wait: "Waiting to try again",
-  outcome_unknown: "Not known whether Google did it",
+  retry_wait: "The calendar did not take it; waiting to try again",
+  outcome_unknown: "Not known whether the calendar took it",
   terminal_failure: "Failed",
-  reconciling: "Fabric is asking Google whether it was done",
-  absence_confirmed: "Not done: Google confirms that nothing changed",
+  reconciling: "Fabric is asking the calendar whether it was done",
+  absence_confirmed: "Not done: the calendar confirms that nothing changed",
   needs_owner_resolution: "Fabric cannot tell what happened and needs you to check",
 };
 
@@ -74,6 +74,42 @@ const FIELD_TEXT: Record<EventField, string> = {
   organizer: "organizer", own_response: "your answer",
 };
 
+export const ACCOUNT_TEXT: Record<AccountState, string> = {
+  awaiting_consent: "Waiting for you to finish connecting it",
+  connected: "Connected",
+  consent_denied: "Not connected: access was refused while connecting it",
+  partial_grant: "Connected, but with less access than Fabric needs",
+  cancelled: "Not connected: connecting it was cancelled",
+  account_mismatch: "Not connected: another account was signed in than the one expected",
+  reauthentication_required: "Needs you to sign in again",
+  disconnected: "Disconnected",
+};
+
+export const ACCESS_TEXT: Record<CalendarAccess, string> = {
+  owner: "you own it",
+  writer: "you can change its events",
+  reader: "you can see its events",
+  free_busy_reader: "you can see only when it is free or busy",
+};
+
+export const PROVER_TEXT: Record<Health["prover"], string> = {
+  ready: "Running",
+  starting: "Starting",
+  unavailable: "Not running",
+};
+
+export const STORE_TEXT: Record<Health["store"], string> = {
+  ready: "Open",
+  locked: "Cannot be opened: another broker process holds it",
+  keychain_refused: "Cannot be opened: macOS did not let the broker use the store key in the Keychain",
+};
+
+// What the owner is told when the broker cannot open its store, by the reason it gives.
+export const STORE_PROBLEM: Record<Exclude<Health["store"], "ready">, string> = {
+  locked: "The broker cannot open its store.",
+  keychain_refused: "macOS did not let the broker use the store key in the Keychain.",
+};
+
 // The zone the page shows times in. The caller may fix it (tests do).
 export function localZone(): string {
   return new Intl.DateTimeFormat().resolvedOptions().timeZone;
@@ -116,11 +152,11 @@ export function agentName(names: Names, agentId: string): string {
   return names.agents.get(agentId)?.registered_name ?? `An agent this app does not know (${agentId})`;
 }
 
-function accountName(names: Names, accountId: string): string {
+export function accountName(names: Names, accountId: string): string {
   return names.accounts.get(accountId)?.email ?? accountId;
 }
 
-function calendarName(names: Names, ref: CalendarRef): string {
+export function calendarName(names: Names, ref: CalendarRef): string {
   const calendar = names.accounts.get(ref.account_id)?.calendars.find((c) => c.calendar_id === ref.calendar_id);
   return calendar === undefined ? ref.calendar_id : `${calendar.name} (${accountName(names, ref.account_id)})`;
 }
@@ -223,7 +259,7 @@ export function cardFacts(details: RequestDetails, names: Names): Fact[] {
 // One line of the Activity list for a change.
 export function changeText(change: Change, names: Names): string {
   switch (change.kind) {
-    case "account": return `Account ${change.account.email ?? change.account.account_id}: ${change.account.state.replaceAll("_", " ")}`;
+    case "account": return `Account ${change.account.email ?? change.account.account_id}: ${ACCOUNT_TEXT[change.account.state]}`;
     case "agent": return `Agent ${change.agent.registered_name}${change.agent.paused ? " (paused)" : ""}`;
     case "profiles": return "Your permission profiles changed";
     case "recipient_set": return `Group ${change.recipient_set.definition.name} changed`;
@@ -231,12 +267,13 @@ export function changeText(change: Change, names: Names): string {
     case "preferences": return "Your calendar preferences changed";
     case "request": {
       const r = change.request;
-      return `${OPERATION[r.tool]}, from ${agentName(names, r.agent_id)}: ${STATE_TEXT[r.status.state]}`;
+      const rule = r.status.state === "blocked" ? ` (rule ${r.status.denial.rule})` : "";
+      return `${OPERATION[r.tool]}, from ${agentName(names, r.agent_id)}: ${STATE_TEXT[r.status.state]}${rule}`;
     }
     case "grant": return change.grant.ended === null
       ? `Permission given to ${agentName(names, change.grant.agent_id)}`
       : `Permission of ${agentName(names, change.grant.agent_id)} ended`;
-    case "health": return `Broker health: rule checker ${change.health.prover}, storage ${change.health.store}`;
+    case "health": return `Rule checker: ${PROVER_TEXT[change.health.prover]}. Store: ${STORE_TEXT[change.health.store]}`;
     case "snapshot_required": return "The broker asked this app to read everything again";
   }
 }

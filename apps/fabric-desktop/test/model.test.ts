@@ -1,177 +1,17 @@
-// The model against a fake host: no browser, no DOM. Every frame the model sends, and every
-// frame the tests feed it, is judged by the contract's own TypeScript checker.
+// The model against the fake host of support.ts: no browser, no DOM. Every frame the model
+// sends, and every frame the tests feed it, is judged by the contract's own TypeScript checker.
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
 import { REQUEST_STATES } from "../../../contracts/desktop/v1/typescript/src/contract.ts";
-import type {
-  Agent, ErrorCode, OwnerMethod, OwnerNotice, OwnerResponse, Request, RequestDetails, RequestState, Snapshot,
-} from "../../../contracts/desktop/v1/typescript/src/contract.ts";
-import { CONTRACT_ROOT, judge, loadContract } from "../../../contracts/desktop/v1/typescript/src/judge.ts";
-import type { Host, HostMessage, HostState, SendRefusal } from "../ui/src/host.ts";
-import { Model } from "../ui/src/model.ts";
+import type { Grant, Snapshot } from "../../../contracts/desktop/v1/typescript/src/contract.ts";
+import { CONTRACT_ROOT } from "../../../contracts/desktop/v1/typescript/src/judge.ts";
+import { ENDED_GRANT_LIMIT, ENDED_REQUEST_LIMIT } from "../ui/src/model.ts";
 import { STATE_TEXT, TERMINAL, bannerText } from "../ui/src/text.ts";
-
-const contract = loadContract();
-const ENTRY = "owner-channel.schema.json#/$defs/";
-const encoder = new TextEncoder();
-
-function assertValid(entry: string, frame: unknown): void {
-  const verdict = judge(contract, ENTRY + entry, encoder.encode(JSON.stringify(frame)));
-  assert.equal(verdict.verdict, "accept", `${entry} must be valid: ${JSON.stringify(frame)} ${JSON.stringify(verdict)}`);
-}
-
-const fixture = (name: string): any =>
-  JSON.parse(readFileSync(`${CONTRACT_ROOT}fixtures/messages/${name}`, "utf8")).value;
-
-// ---- Test data, all valid by the contract (the helpers check it) ----
-
-const RECEIVED_AT = "2026-11-20T16:00:00.000Z";
-const RECEIVED_MS = Date.parse(RECEIVED_AT);
-const DIGEST_A = `sha256:${"a".repeat(64)}` as const;
-const DIGEST_B = `sha256:${"b".repeat(64)}` as const;
-
-const AGENT: Agent = {
-  agent_id: "spike-agent", revision: 1, registered_name: "Synthetic agent (spike)",
-  destination: { kind: "local", endpoint: "inside the broker spike" }, paused: false,
-  session: { session_id: "spike-session", started_at: RECEIVED_AT, last_active_at: RECEIVED_AT }, last_tool_call_at: null,
-};
-
-function request(state: RequestState, revision: number, digest: `sha256:${string}` = DIGEST_A, id = "spike-request-1"): Request {
-  const status = state === "pending_approval" ? { state, approval_expires_at: "2026-11-21T16:00:00.000Z" } : { state } as Request["status"];
-  return {
-    request_id: id, revision, agent_id: "spike-agent", tool: "fabric_calendar_propose_create", account_id: "spike-account",
-    received_at: RECEIVED_AT, updated_at: RECEIVED_AT, request_digest: digest, status,
-  };
-}
-
-function details(r: Request): RequestDetails {
-  return {
-    request: r, redaction: "full",
-    private: {
-      action: {
-        tool: "fabric_calendar_propose_create",
-        arguments: {
-          account_id: "spike-account", calendar_id: "spike-calendar",
-          event: {
-            title: "Planning", description: null, location: null,
-            start: { date_time: "2026-11-20T10:00:00-06:00", zone: "America/Chicago" },
-            end: { date_time: "2026-11-20T11:00:00-06:00", zone: "America/Chicago" },
-          },
-          task: "Block time to plan next week.",
-        },
-      },
-      before: null, warnings: [],
-    },
-    card: {
-      scope: { calendars: [{ account_id: "spike-account", calendar_id: "spike-calendar" }], window: null, fields: null, recipients: null, send_updates: null },
-      proposed_duration: { kind: "one_request" },
-      insufficiency: { rule: "spike_no_rule_theory", explanation: "Synthetic: no rule theory.", proof_id: "spike-no-proof" },
-      expires_at: "2026-11-21T16:00:00.000Z",
-    },
-    approval: null, proof_ids: [], authorization: null, attempts: [], provider_event: null,
-  };
-}
-
-function snapshot(cursor: number, requests: Request[] = []): Snapshot {
-  const first: Snapshot = fixture("accept-owner-response-get-snapshot-first-run.json").result;
-  return { ...first, cursor, agents: [AGENT], requests };
-}
-
-// ---- The fake host ----
-
-class FakeHost implements Host {
-  listener: ((m: HostMessage) => void) | null = null;
-  readonly raw: string[] = [];
-  refusal: SendRefusal | null = null;
-  restarts = 0;
-  run = 0;
-
-  async attach(listener: (m: HostMessage) => void): Promise<void> {
-    this.listener = listener;
-  }
-  async send(frame: string): Promise<void> {
-    this.raw.push(frame);
-    if (this.refusal !== null) throw this.refusal;
-  }
-  async restart(): Promise<void> {
-    this.restarts += 1;
-  }
-
-  get sent(): any[] {
-    return this.raw.map((f) => JSON.parse(f));
-  }
-  methods(): string[] {
-    return this.sent.map((f) => f.method);
-  }
-  last(method: OwnerMethod): any {
-    const frame = this.sent.filter((f) => f.method === method).at(-1);
-    assert.ok(frame !== undefined, `the model sent no ${method}`);
-    return frame;
-  }
-  state(state: HostState, run = this.run): void {
-    this.run = run;
-    this.listener?.({ kind: "state", run, state });
-  }
-  frame(frame: OwnerResponse | OwnerNotice, run = this.run): void {
-    assertValid("sequence" in frame ? "owner_notice" : "owner_response", frame);
-    this.listener?.({ kind: "frame", run, frame });
-  }
-  reply(method: OwnerMethod, result: unknown, run = this.run): void {
-    this.frame({ protocol: "fabric-desktop/1", id: this.last(method).id, method, result } as OwnerResponse, run);
-  }
-  error(method: OwnerMethod, code: ErrorCode, run = this.run): void {
-    const errors: Partial<Record<ErrorCode, any>> = {
-      snapshot_required: { retryable: false, recovery: "refresh_snapshot", detail: null },
-      stale_request: { retryable: false, recovery: "review_request_again", detail: null },
-      not_found: { retryable: false, recovery: "none", detail: null },
-    };
-    const error = { code, message: "Refused by the test.", correlation_id: null, ...errors[code] };
-    this.frame({ protocol: "fabric-desktop/1", id: this.last(method).id, method, error } as OwnerResponse, run);
-  }
-  notice(sequence: number, change: OwnerNotice["change"]): void {
-    this.frame({ protocol: "fabric-desktop/1", sequence, change });
-  }
-}
-
-const HELLO_RESULT = fixture("accept-owner-response-hello.json").result;
-const flush = (): Promise<void> => new Promise((resolve) => setImmediate(resolve));
-
-function setup() {
-  const host = new FakeHost();
-  const clock = { now: RECEIVED_MS };
-  let ids = 0;
-  const announced: string[] = [];
-  const model = new Model({
-    host, now: () => clock.now, newId: () => `id-${++ids}`, zone: "America/Chicago",
-    changed: () => {}, announce: (text) => void announced.push(text),
-  });
-  model.start();
-  return { host, model, clock, announced };
-}
-
-// Runs hello, snapshot and subscribe for a new run.
-function connect(host: FakeHost, run: number, snap: Snapshot): void {
-  host.state({ name: "connected" }, run);
-  host.reply("hello", HELLO_RESULT);
-  host.reply("get_snapshot", snap);
-  host.reply("subscribe", { cursor: snap.cursor });
-}
-
-// A request waiting with its card read; returns the model ready to decide.
-function pendingCard() {
-  const s = setup();
-  connect(s.host, 1, snapshot(0));
-  s.host.notice(1, { kind: "request", request: request("pending_approval", 4) });
-  s.host.reply("get_request_details", details(request("pending_approval", 4)));
-  return s;
-}
-
-const entry = (model: Model, id = "spike-request-1") => {
-  const e = model.requests.get(id);
-  assert.ok(e !== undefined);
-  return e;
-};
+import {
+  AGENT, DIGEST_A, DIGEST_B, HELLO_RESULT, RECEIVED_AT, RECEIVED_MS, assertRequestsValid, connect, details, entry, fixture,
+  flush, pendingCard, request, setup, snapshot,
+} from "./support.ts";
 
 // ---- Tests ----
 
@@ -179,7 +19,7 @@ test("on connected: hello, then get_snapshot, then subscribe with the snapshot's
   const { host, model } = setup();
   host.state({ name: "connected" }, 1);
   assert.deepEqual(host.methods(), ["hello"]);
-  assert.deepEqual(host.last("hello").params, { client: { name: "Fabric Calendar", build: "CD-W02 webview" }, schema_version: 1 });
+  assert.deepEqual(host.last("hello").params, { client: { name: "Fabric Calendar", build: "CD-W08 webview" }, schema_version: 1 });
   host.reply("hello", HELLO_RESULT);
   assert.deepEqual(host.methods(), ["hello", "get_snapshot"]);
   host.reply("get_snapshot", snapshot(7));
@@ -459,9 +299,211 @@ test("every frame the model builds is a valid owner request", async () => {
   host.reply("get_request_details", details(request("pending_approval", 4)));
   model.decide("spike-request-1", "deny");
   assert.deepEqual(new Set(host.methods()), new Set(["hello", "get_snapshot", "subscribe", "get_request_details", "decide_request"]));
-  for (const raw of host.raw) {
-    const verdict = judge(contract, `${ENTRY}owner_request`, encoder.encode(raw));
-    assert.equal(verdict.verdict, "accept", `${raw} -> ${JSON.stringify(verdict)}`);
-  }
+  assertRequestsValid(host);
   await flush();
+});
+
+// ---- The state of the whole broker (CD-W08) ----
+
+const RICH: Snapshot = fixture("accept-owner-response-get-snapshot-rich.json").result;
+const change = (name: string): any => fixture(name).change;
+const ENDED: Grant = change("accept-owner-notice-grant-ended-consumed.json").grant;
+const PROVER_STOPPED = "The rule checker stopped. Requests end as not done until it runs again.";
+
+// A live model whose last snapshot was `snap`, with nothing announced yet.
+function live(snap: Snapshot = snapshot(0)) {
+  const s = setup();
+  connect(s.host, 1, snap);
+  s.announced.length = 0;
+  return s;
+}
+
+test("a snapshot replaces accounts, agents, profiles, preferences, groups, health and the live grants", () => {
+  const { model } = live(RICH);
+  assert.equal(model.phase, "live");
+  assert.deepEqual(model.health, { prover: "ready", store: "ready" });
+  assert.equal(model.profiles?.revision, 7);
+  assert.equal(model.preferences?.revision, RICH.preferences.revision);
+  assert.deepEqual([...model.accounts.keys()], ["acct-1", "acct-2"]);
+  assert.deepEqual([...model.agents.keys()], RICH.agents.map((a) => a.agent_id));
+  assert.deepEqual([...model.recipientSets.keys()], ["rset-team", "rset-people-family"]);
+  assert.deepEqual([...model.grants.keys()], ["grant-4", "grant-5", "grant-6"]);
+  assert.deepEqual([...model.requests.keys()], ["request-17", "request-18"]);
+});
+
+test("each kind of notice updates its state", () => {
+  const { host, model, announced } = live({ ...RICH, cursor: 0 });
+  const kinds = [
+    "profiles", "preferences", "recipient-set", "recipient-set-deleted", "grant-created", "grant-ended-consumed",
+    "grant-ended-session-idle-timeout", "account-reauthentication-required", "account-consent-denied", "agent",
+    "request-blocked", "health-prover-unavailable",
+  ];
+  kinds.forEach((kind, i) => host.notice(i + 1, change(`accept-owner-notice-${kind}.json`)));
+  assert.equal(model.cursor, kinds.length);
+  assert.deepEqual(model.profiles, change("accept-owner-notice-profiles.json").profiles);
+  assert.deepEqual(model.preferences, change("accept-owner-notice-preferences.json").preferences);
+  assert.deepEqual([...model.recipientSets.keys()], ["rset-people-family"], "rset-team was deleted");
+  assert.equal(model.grants.get("grant-4")?.ended?.reason, "consumed");
+  assert.equal(model.grants.get("grant-5")?.ended?.reason, "session_idle_timeout");
+  assert.equal(model.grants.get("grant-6")?.ended, null);
+  assert.equal(model.accounts.get("acct-2")?.state, "reauthentication_required");
+  assert.equal(model.accounts.get("acct-3")?.state, "consent_denied");
+  assert.equal(model.agents.get("agent-claude-code")?.revision, 5);
+  assert.equal(model.requests.get("request-22")?.request.status.state, "blocked");
+  assert.deepEqual(model.health, { prover: "unavailable", store: "ready" });
+  assert.deepEqual(announced, [PROVER_STOPPED]);
+  assert.match(model.activity.at(-2)?.text ?? "", /Blocked by your settings \(rule [a-z_]+\)$/);
+  assert.equal(model.activity.at(-1)?.text, "Rule checker: Not running. Store: Open");
+});
+
+test("a grant that ended stays; a live grant the next snapshot does not list is dropped", () => {
+  const { host, model } = live({ ...RICH, cursor: 0 });
+  host.notice(1, change("accept-owner-notice-grant-ended-consumed.json")); // grant-4 ended
+  host.notice(2, { kind: "snapshot_required" });
+  host.reply("get_snapshot", { ...RICH, cursor: 2, grants: RICH.grants.filter((g) => g.grant_id === "grant-6") });
+  host.reply("subscribe", { cursor: 2 });
+  assert.equal(model.grants.get("grant-4")?.ended?.reason, "consumed", "an ended grant stays");
+  assert.equal(model.grants.has("grant-5"), false, "its end was not seen, so it is dropped");
+  assert.equal(model.grants.get("grant-6")?.ended, null);
+});
+
+test(`at most ${ENDED_GRANT_LIMIT} ended grants are kept, the oldest end dropped first`, () => {
+  const { host, model } = live();
+  const start = Date.parse(ENDED.ended?.at ?? "");
+  for (let i = 0; i <= ENDED_GRANT_LIMIT; i++) {
+    // Newest end first, so the oldest arrives last and is the one dropped.
+    const at = new Date(start + (ENDED_GRANT_LIMIT - i) * 1000).toISOString();
+    host.notice(i + 1, { kind: "grant", grant: { ...ENDED, grant_id: `grant-${i}`, ended: { at, reason: "consumed" } } });
+  }
+  assert.equal(model.grants.size, ENDED_GRANT_LIMIT);
+  assert.equal(model.grants.has(`grant-${ENDED_GRANT_LIMIT}`), false);
+  assert.equal(model.grants.has("grant-0"), true);
+});
+
+test(`at most ${ENDED_REQUEST_LIMIT} ended requests are kept; open ones are never dropped`, () => {
+  const { host, model } = live();
+  const at = (s: number): string => new Date(RECEIVED_MS + s * 1000).toISOString();
+  host.notice(1, { kind: "request", request: { ...request("received", 1, DIGEST_A, "open-1"), updated_at: RECEIVED_AT } });
+  for (let i = 0; i <= ENDED_REQUEST_LIMIT; i++) {
+    host.notice(i + 2, { kind: "request", request: { ...request("denied", 2, DIGEST_A, `ended-${i}`), updated_at: at(i + 1) } });
+  }
+  assert.equal(model.requests.size, ENDED_REQUEST_LIMIT + 1);
+  assert.equal(model.requests.has("open-1"), true);
+  assert.equal(model.requests.has("ended-0"), false, "the oldest change is dropped");
+  assert.equal(model.requests.has(`ended-${ENDED_REQUEST_LIMIT}`), true);
+});
+
+test("command: no answer, then the same content reuses the id; an answer, or other content, gets a new id", async () => {
+  const { host, model } = live();
+  const params = { target: { kind: "agent", agent_id: "spike-agent", expected_revision: 1 }, paused: true } as const;
+  const failures: (string | null)[] = [];
+  const send = (p: typeof params | { target: { kind: "all_agents" }; paused: boolean } = params): string =>
+    model.command("pause_agent", p, () => {}, (f) => void failures.push(f.code));
+  host.refusal = { kind: "io", detail: "broken pipe" };
+  const first = send();
+  await flush();
+  assert.deepEqual(failures, [null]);
+  host.refusal = null;
+  assert.equal(send(), first, "no answer came: the retry is the same command");
+  host.reply("pause_agent", { commit_sequence: 1, agents: [{ ...AGENT, revision: 2, paused: true }] });
+  const afterResult = send();
+  assert.notEqual(afterResult, first, "answered with a result: a new command");
+  host.error("pause_agent", "internal");
+  assert.deepEqual(failures, [null, "internal"]);
+  const afterError = send();
+  assert.notEqual(afterError, afterResult, "answered with an error: a new command");
+  assert.notEqual(send({ target: { kind: "all_agents" }, paused: true }), afterError, "other content: a new command");
+  assertRequestsValid(host);
+});
+
+test("a command's failure carries the broker's whole error", () => {
+  const { host, model } = live();
+  let detail: unknown = null;
+  model.command("pause_agent", { target: { kind: "agent", agent_id: "spike-agent", expected_revision: 1 }, paused: true }, () => {}, (f) => {
+    detail = f.error?.code === "conflict" ? f.error.detail : null;
+  });
+  host.fail("pause_agent", fixture("accept-owner-response-error-conflict.json").error);
+  assert.deepEqual(detail, { current_revision: 8 });
+});
+
+for (const reason of ["locked", "keychain_refused"] as const) {
+  test(`store_unavailable (${reason}) fails the sync; retrySync reads everything again`, () => {
+    const { host, model, announced } = setup();
+    host.state({ name: "connected" }, 1);
+    host.reply("hello", HELLO_RESULT);
+    host.fail("get_snapshot", fixture(`accept-owner-response-error-store-unavailable-${reason.replace("_", "-")}.json`).error);
+    assert.equal(model.phase, "failed");
+    assert.equal(model.syncFailure?.code, "store_unavailable");
+    assert.equal(model.ready, false);
+    assert.equal(model.notReadyText, "Not available while the broker cannot open its store.");
+    const title = reason === "locked" ? "The broker cannot open its store." : "macOS did not let the broker use the store key in the Keychain.";
+    assert.equal(announced.at(-1), `${title} Nothing is read or written until the store opens.`);
+    assert.equal(model.refresh(), false);
+    const sent = host.raw.length;
+    assert.equal(model.retrySync(), true);
+    assert.deepEqual(host.methods().slice(sent), ["hello"]);
+    host.reply("hello", HELLO_RESULT);
+    host.reply("get_snapshot", snapshot(0));
+    host.reply("subscribe", { cursor: 0 });
+    assert.equal(model.phase, "live");
+    assert.equal(model.syncFailure, null);
+    assert.equal(model.retrySync(), false, "only after a failed sync");
+  });
+}
+
+test("refresh takes a new snapshot and subscribes again, only while live", () => {
+  const { host, model } = live(snapshot(3));
+  const sent = host.raw.length;
+  assert.equal(model.refresh(), true);
+  assert.deepEqual(host.methods().slice(sent), ["get_snapshot"]);
+  assert.equal(model.ready, false);
+  assert.equal(model.refresh(), false);
+  host.reply("get_snapshot", snapshot(5));
+  assert.deepEqual(host.last("subscribe").params, { cursor: 5 });
+  host.reply("subscribe", { cursor: 5 });
+  assert.equal(model.ready, true);
+});
+
+test("ready and notReadyText in each phase", () => {
+  const { host, model } = setup();
+  assert.equal(model.ready, false);
+  assert.equal(model.notReadyText, "Not available until this window has reached the broker.");
+  host.state({ name: "connected" }, 1);
+  assert.equal(model.notReadyText, "Not available until the broker's current state has been read.");
+  host.reply("hello", HELLO_RESULT);
+  assert.equal(model.phase, "snapshot");
+  host.error("get_snapshot", "internal");
+  assert.equal(model.notReadyText, "Not available: the broker's current state could not be read.");
+  model.retrySync();
+  host.reply("hello", HELLO_RESULT);
+  host.reply("get_snapshot", snapshot(0));
+  assert.equal(model.phase, "subscribe");
+  assert.equal(model.notReadyText, "Not available until the broker's current state has been read.");
+  host.reply("subscribe", { cursor: 0 });
+  assert.equal(model.ready, true);
+  assert.equal(model.notReadyText, null);
+  host.state({ name: "disconnected", reason: "exited", detail: "exit code 1" });
+  assert.equal(model.notReadyText, "Not available while the broker is not running.");
+  host.state({ name: "conflict", detail: "another instance" }, 2);
+  assert.equal(model.ready, false);
+  assert.equal(model.notReadyText, "Not available while the broker is not running.");
+});
+
+test("the rule checker's state is announced when it changes after the first snapshot of a run", () => {
+  const unavailable = { prover: "unavailable", store: "ready" } as const;
+  const { host, model, announced } = setup();
+  connect(host, 1, { ...snapshot(0), health: unavailable });
+  assert.deepEqual(announced, [], "the first snapshot of a run says nothing");
+  host.notice(1, { kind: "health", health: { prover: "starting", store: "ready" } });
+  host.notice(2, { kind: "health", health: { prover: "starting", store: "locked" } });
+  host.notice(3, { kind: "health", health: { prover: "ready", store: "ready" } });
+  assert.deepEqual(announced, ["The rule checker is starting.", "The rule checker is ready."]);
+  model.refresh();
+  host.reply("get_snapshot", { ...snapshot(3), health: unavailable });
+  assert.deepEqual(announced.at(-1), PROVER_STOPPED, "a later snapshot of the same run");
+  host.state({ name: "disconnected", reason: "exited", detail: "exit code 1" });
+  model.restart();
+  announced.length = 0;
+  connect(host, 2, snapshot(0));
+  assert.deepEqual(announced, ["The broker is running."], "a new run's first snapshot says nothing about the rule checker");
 });

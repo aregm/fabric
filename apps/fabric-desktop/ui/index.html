@@ -11,44 +11,37 @@
 <body>
 <header>
   <h1>Fabric Calendar</h1>
-  <p class="spike"><strong>Test build (CD-W04).</strong> The broker keeps its state in an encrypted store on this Mac. No rule prover runs yet, so nothing an agent asks is ever carried out. Synthetic requests appear only in a test run started from a terminal with a scratch data directory and the test key (see the README). Nothing here changes a real calendar.</p>
+  <p id="build-line" class="note">Development build.</p>
+  <nav aria-label="Screens">
+    <ul class="nav">
+      <li><a id="nav-review" href="#review">Review agent actions</a></li>
+      <li><a id="nav-permissions" href="#permissions">Agent permissions</a></li>
+      <li><a id="nav-contacts" href="#contacts">Contacts</a></li>
+      <li><a id="nav-preferences" href="#preferences">Calendar preferences</a></li>
+      <li><a id="nav-status" href="#status">Status</a></li>
+    </ul>
+  </nav>
 </header>
+<div id="attention" class="attention" role="region" aria-label="Needs your attention" hidden>
+  <ul id="attention-list" class="list"></ul>
+</div>
 <main>
-  <section id="broker" aria-labelledby="broker-heading">
-    <h2 id="broker-heading" tabindex="-1">Broker</h2>
-    <div id="banner" class="banner" hidden>
-      <p id="banner-title" class="banner-title"></p>
-      <p id="banner-text"></p>
-      <p id="banner-detail" class="detail"></p>
-      <div id="restart-row" class="actions">
-        <button type="button" id="restart" aria-describedby="restart-note">Restart broker</button>
-        <p id="restart-note" class="note"></p>
-      </div>
-    </div>
-    <dl class="facts">
-      <dt>Connection</dt><dd id="connection">Connecting to the broker…</dd>
-      <dt>Broker</dt><dd id="broker-name">Not known yet</dd>
-      <dt>Schema version</dt><dd id="schema-version">Not known yet</dd>
-      <dt>Last check</dt><dd id="last-check">None yet</dd>
-    </dl>
-    <p id="problem" class="problem" hidden></p>
-    <div class="actions">
-      <button type="button" id="check" aria-describedby="check-note">Check connection</button>
-      <p id="check-note" class="note"></p>
-    </div>
+  <section id="review" class="screen" aria-labelledby="review-heading">
+    <h2 id="review-heading" tabindex="-1">Review agent actions</h2>
   </section>
-  <section id="requests-section" aria-labelledby="requests-heading">
-    <h2 id="requests-heading">Requests</h2>
-    <p id="requests-empty">No agent has asked for anything yet.</p>
-    <div id="requests"></div>
+  <section id="permissions" class="screen" aria-labelledby="permissions-heading" hidden>
+    <h2 id="permissions-heading" tabindex="-1">Agent permissions</h2>
   </section>
-  <section id="activity-section" aria-labelledby="activity-heading">
-    <h2 id="activity-heading">Activity</h2>
-    <p>What the broker has reported, newest first.</p>
-    <p id="activity-empty">Nothing yet.</p>
-    <ul id="activity"></ul>
+  <section id="contacts" class="screen" aria-labelledby="contacts-heading" hidden>
+    <h2 id="contacts-heading" tabindex="-1">Contacts</h2>
   </section>
-  <div id="announcer" role="status" aria-live="polite" class="visually-hidden"></div>
+  <section id="preferences" class="screen" aria-labelledby="preferences-heading" hidden>
+    <h2 id="preferences-heading" tabindex="-1">Calendar preferences</h2>
+  </section>
+  <section id="status" class="screen" aria-labelledby="status-heading" hidden>
+    <h2 id="status-heading" tabindex="-1">Status</h2>
+  </section>
 </main>
+<div id="announcer" role="status" aria-live="polite" class="visually-hidden"></div>
 </body>
 </html>

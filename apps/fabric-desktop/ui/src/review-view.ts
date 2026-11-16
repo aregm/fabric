@@ -1,62 +1,13 @@
-// Puts the model on the page. Each request's article is made once and updated in place, so focus
+// The Review screen's requests. Each request's article is made once and updated in place, so focus
 // and a screen reader's place survive updates. Broker and agent text goes in with textContent only.
 import type { DurationKind } from "../../../../contracts/desktop/v1/typescript/src/contract.ts";
+import { byId, make, renderFacts, setDisabled, setText, show, textLine } from "./dom.ts";
 import type { Entry, Model } from "./model.ts";
-import { ACTIVITY_LIMIT } from "./model.ts";
-import { DURATION_TEXT, OPERATION, STATE_TEXT, agentName, bannerText, cardFacts, formatInstant, formatTimeOfDay } from "./text.ts";
+import { DURATION_TEXT, OPERATION, STATE_TEXT, agentName, cardFacts, formatInstant } from "./text.ts";
 import type { Fact } from "./text.ts";
 
 const DURATIONS: readonly DurationKind[] = ["one_request", "session", "until_revoked"];
 const CHECKING_TARGET_MS = 500;
-
-function byId<T extends HTMLElement = HTMLElement>(id: string): T {
-  const node = document.getElementById(id);
-  if (node === null) throw new Error(`index.html has no #${id}`);
-  return node as T;
-}
-
-function make<K extends keyof HTMLElementTagNameMap>(tag: K, className = "", text = ""): HTMLElementTagNameMap[K] {
-  const node = document.createElement(tag);
-  if (className !== "") node.className = className;
-  if (text !== "") node.textContent = text;
-  return node;
-}
-
-// Changes the page only when the text differs, so a screen reader is not made to read it again.
-function setText(node: HTMLElement, text: string): void {
-  if (node.textContent !== text) node.textContent = text;
-}
-
-// Hides or shows a node. A node that is hidden while it holds focus hands focus to `fallback`.
-function show(node: HTMLElement, visible: boolean, fallback: HTMLElement): void {
-  if (!visible && !node.hidden && node.contains(document.activeElement)) fallback.focus();
-  node.hidden = !visible;
-}
-
-function textLine(node: HTMLElement, text: string | null, fallback: HTMLElement): void {
-  setText(node, text ?? "");
-  show(node, text !== null && text !== "", fallback);
-}
-
-// aria-disabled, not disabled: the button keeps focus and stays in the tab order, and the text
-// beside it (aria-describedby) says why it does nothing.
-function setDisabled(button: HTMLButtonElement, disabled: boolean): void {
-  const value = String(disabled);
-  if (button.getAttribute("aria-disabled") !== value) button.setAttribute("aria-disabled", value);
-}
-
-function renderFacts(list: HTMLDListElement, facts: readonly Fact[]): void {
-  list.replaceChildren();
-  for (const f of facts) {
-    list.append(make("dt", "", f.term));
-    for (const v of f.values) {
-      const dd = make("dd", f.untrusted === true ? "untrusted" : "");
-      if (f.untrusted === true) dd.append(make("blockquote", "", v));
-      else dd.textContent = v;
-      list.append(dd);
-    }
-  }
-}
 
 interface RequestDom {
   readonly article: HTMLElement;
@@ -81,60 +32,50 @@ interface RequestDom {
   readonly outcome: HTMLParagraphElement;
 }
 
-export class View {
+export class ReviewView {
   private readonly cards = new Map<string, RequestDom>();
-  private readonly logged = new WeakSet<object>();
-  private readonly announcer = byId("announcer");
   private count = 0;
   private readonly model: Model;
+  private readonly heading: HTMLHeadingElement;
+  private readonly empty: HTMLParagraphElement;
+  private readonly list: HTMLDivElement;
 
   constructor(model: Model) {
     this.model = model;
-    byId("check").addEventListener("click", () => model.checkConnection());
-    byId("restart").addEventListener("click", () => model.restart());
-  }
-
-  announce(text: string): void {
-    // A trailing no-break space alternates so that the same sentence twice is still announced.
-    const same = this.announcer.textContent?.replace(/ $/, "") === text;
-    this.announcer.textContent = same && !this.announcer.textContent?.endsWith(" ") ? `${text} ` : text;
+    const section = byId("review");
+    this.heading = make("h3", "", "Requests");
+    this.heading.id = "requests-heading";
+    this.heading.tabIndex = -1;
+    this.empty = make("p", "", "No agent has asked for anything yet.");
+    this.list = make("div", "list");
+    this.list.id = "requests";
+    const part = make("div", "part");
+    part.append(this.heading, this.empty, this.list);
+    section.append(part);
   }
 
   render(): void {
-    this.renderBroker();
     for (const e of this.model.requests.values()) this.renderRequest(e);
-    show(byId("requests-empty"), this.model.requests.size === 0, byId("requests-heading"));
-    this.renderActivity();
+    // A request the model no longer keeps leaves the page.
+    for (const [id, dom] of this.cards) {
+      if (this.model.requests.has(id)) continue;
+      if (dom.article.contains(document.activeElement)) this.heading.focus();
+      dom.article.remove();
+      this.cards.delete(id);
+    }
+    show(this.empty, this.model.requests.size === 0, this.heading);
   }
 
-  private renderBroker(): void {
-    const m = this.model;
-    const heading = byId("broker-heading");
-    const state = m.connection;
-    const banner = bannerText(state);
-    show(byId("banner"), banner !== null, heading);
-    if (banner !== null) {
-      setText(byId("banner-title"), banner.title);
-      setText(byId("banner-text"), banner.text);
-      setText(byId("banner-detail"), state !== null && "detail" in state ? `Details: ${state.detail}` : "");
+  // Moves focus to the heading of the first request that waits for a decision.
+  focusFirstWaiting(): boolean {
+    for (const e of this.model.requests.values()) {
+      if (e.request.status.state !== "pending_approval") continue;
+      const dom = this.cards.get(e.request.request_id);
+      if (dom === undefined) continue;
+      dom.heading.focus();
+      return true;
     }
-    show(byId("restart-row"), state?.name === "disconnected", heading);
-    setDisabled(byId("restart"), m.restarting);
-    setText(byId("restart-note"), m.restarting ? "Starting the broker…" : "");
-
-    const connected = state?.name === "connected";
-    setText(byId("connection"), state === null ? "Connecting to the broker…"
-      : !connected ? (state.name === "disconnected" ? "Stopped" : "Not started")
-      : m.phase === "live" ? "Running and up to date"
-      : m.phase === "failed" ? "Running, but the current state could not be read"
-      : "Running; reading the current state…");
-    setText(byId("broker-name"), m.broker === null ? "Not known yet" : `${m.broker.broker.name}, build ${m.broker.broker.build}`);
-    setText(byId("schema-version"), m.broker === null ? "Not known yet" : String(m.broker.schema_version));
-    setText(byId("last-check"), m.lastCheck === null ? "None yet"
-      : `Answered in ${m.lastCheck.ms} ms, at ${formatTimeOfDay(m.lastCheck.at, m.names.zone)}`);
-    setDisabled(byId("check"), !connected || m.checking);
-    setText(byId("check-note"), !connected ? "Not available while the broker is not running." : m.checking ? "Checking…" : "");
-    textLine(byId("problem"), m.problem, heading);
+    return false;
   }
 
   private renderRequest(e: Entry): void {
@@ -186,8 +127,8 @@ export class View {
 
   private createRequest(id: string): RequestDom {
     const n = ++this.count;
-    const article = make("article", "request");
-    const heading = make("h3");
+    const article = make("article", "item");
+    const heading = make("h4");
     heading.id = `request-${n}-heading`;
     heading.tabIndex = -1;
     article.setAttribute("aria-labelledby", heading.id);
@@ -237,23 +178,12 @@ export class View {
     article.addEventListener("keydown", (event) => {
       if (event.key === "Escape") this.model.dismiss(id);
     });
-    byId("requests").append(article);
+    this.list.append(article);
     const dom: RequestDom = {
       article, heading, state, ruling, delay, note, card, facts, factsKey: "", fieldset, radios, why, whyKey: "",
       changed, changedText, controls, deny, allow, status, outcome,
     };
     this.cards.set(id, dom);
     return dom;
-  }
-
-  private renderActivity(): void {
-    const list = byId("activity");
-    for (const item of this.model.activity) {
-      if (this.logged.has(item)) continue;
-      this.logged.add(item);
-      list.prepend(make("li", "", `Notice ${item.sequence}: ${item.text}`));
-    }
-    while (list.children.length > ACTIVITY_LIMIT) list.lastElementChild?.remove();
-    show(byId("activity-empty"), this.model.activity.length === 0, byId("activity-heading"));
   }
 }
