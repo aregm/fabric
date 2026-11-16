@@ -1,6 +1,6 @@
 # Fabric Policy Demo — Isabelle-Gated Calendar Agents
 
-**Status:** approved on 2026-10-18; version 1.10 records gates G1 and G2, the choices of Phases 3–8, the Phase 9 results, the macOS port of 2026-10-26 (section 16), and corrections of 2026-11-15 to stale lines. Phases 0–9 are done; gate G3, your own run, is next.
+**Status:** approved on 2026-10-18; version 1.11 records gates G1 and G2, the choices of Phases 3–8, the Phase 9 results, the macOS port of 2026-10-26 (section 16), corrections of 2026-11-15 to stale lines, and the preflight and gate G3 of 2026-11-15. Phases 0–9 are done; gate G3, your own run, was run and closed on 2026-11-15, with one exit check not met as written: the dashboard does not name the rule for an action denied when authorizing (section 15).
 
 **Prepared:** 2026-10-18
 
@@ -662,6 +662,10 @@ What it does not protect (the dashboard says so too):
 - Peer notes can carry prompt injection. They can steer a plan but cannot get an action past Isabelle.
 - The cryptography has not been independently reviewed and is not production code.
 
+Known gap, found at gate G3 on 2026-11-15:
+
+- For an action denied when authorizing, as with the write-without-consent switch, the dashboard shows the switch as "fired when authorizing" and an audit row ending in "→ deny", but not the rule that failed, and it gives no proof link for the denied action. The rule is only in the raw audit files and the check report. For the two screening switches the plans panel shows the rule only until the next turn replaces it. You chose on 2026-11-15 to close the demo with this gap rather than fix the dashboard and run again.
+
 ## 16. Platform, setup and dependencies
 
 - Windows 11 on the machine the demo was built on, and since 2026-10-26 also macOS (built and tested on macOS 27.0.1, Apple Silicon). Rust 1.97.1 through `scripts/setup.ps1` or `scripts/setup.sh`, which download rustup and the toolchain into `.tooling/`.
@@ -714,6 +718,16 @@ The demo was written and verified on Windows 11. On 2026-10-26 it was brought to
 - **Keychain consent dialogs:** macOS binds a Keychain item to the binary that created it. Every demo process is the one `fabric-demo` binary, so a run does not prompt. A rebuilt binary (its ad-hoc code signature changes), or a test binary reading an item the demo created, makes macOS ask once per item whether to allow access; choosing Always Allow ends it for that build. `reset-keys` before a run avoids the dialogs altogether. The two tests that cross binaries, `calendar_command` and `messaging_commands`, therefore need a click on macOS; they say so in their headers.
 - **Results on this Mac:** `sh scripts/run.sh cargo test --workspace --all-targets --all-features --locked` passes 93 tests with 11 ignored. Of the ignored tests, run with `--ignored`: the policy corpus (gate started in 12.6 s, 22.5 s in all), `live_gate`, all four `live_negotiation` tests (29.7 s together), the credential-store `keys` test, `calendar_command` and `messaging_commands` all pass; `live_planners` was not run (it calls the Claude API or needs Ollama). Isabelle's first session build is included in those times, since the session heap was built by the corpus run.
 - **Launcher on this Mac:** `sh scripts/demo.sh up --alice scripted --bob scripted` built the release binary in 23 s, then started Isabelle, both calendar services, both hosts, both agents and the dashboard in 8 s; the dashboard answered on its loopback address, both people's keys were created in the login Keychain, and `sh scripts/demo.sh down` stopped everything with no error in any component log. Gate G3, your own run with Claude, remains yours.
+
+### Preflight for gate G3 (2026-11-15)
+
+You were at the machine, the same Mac (Apple Silicon, macOS 27.0.1). The four tests were run by name:
+
+- **`the_credential_store_keeps_the_keys`** (`fabric-token`, target `keys`): passed, 0.27 s.
+- **`the_calendar_command_keeps_its_store_key_in_the_credential_store`** (`fabric-demo`, target `calendar_command`): passed, 18.68 s.
+- **`two_hosts_connect_through_the_relay_and_exchange_a_proposal`** (`fabric-demo`, target `messaging_commands`): passed, 53.80 s.
+- **`claude_plans_a_first_turn`** (`fabric-demo`, target `live_planners`): the first attempt failed with HTTP 401 "invalid x-api-key", because the key in `.env` was not valid; it cost nothing. After you replaced the key it passed: `claude-opus-5-5`, 3,420 input and 427 output tokens, 6.2 s. This was the first Claude call from this Mac. The model ID was accepted, so `CLAUDE_MODEL` and D25 did not change.
+- **`ollama_plans_a_first_turn`:** not run. `qwen3:4b` is not installed on this Mac (`qwen3.5:4b` is).
 
 ## 17. Acceptance criteria
 
@@ -807,7 +821,7 @@ Results:
   - A4: across every kind of agent request and refusal, no response body, header or audit record contains a title or event ID. This holds for marker fixtures and for the demo fixtures.
 - One test runs locally only: it starts the real `fabric-demo calendar` command twice. The second start decrypts the store with the key from Credential Manager (under the test prefix, deleted afterwards), and the added meeting is still there.
 
-### Phase 5 — Messaging (done 2026-10-19; you asked on 2026-10-19 for the remaining gates to be approved automatically; this did not cover gate G3, your own run, which is still open)
+### Phase 5 — Messaging (done 2026-10-19; you asked on 2026-10-19 for the remaining gates to be approved automatically; this did not cover gate G3, your own run, which closed on 2026-11-15)
 
 | Task | Work | Size | Needs |
 |---|---|---|---|
@@ -895,14 +909,14 @@ Results:
   - The gateway did not log refusals. The page showed calendar requests as relay frames, and meeting lengths as dates.
 - The demo's keys are now in Credential Manager, as `fabric-demo/alice/…` and `fabric-demo/bob/…`. `fabric-demo reset-keys` deletes them.
 
-### Phase 9 — Verification and docs, then gate G3 (T9.1–T9.3 done 2026-10-19)
+### Phase 9 — Verification and docs, then gate G3 (T9.1–T9.3 done 2026-10-19; gate G3 closed 2026-11-15)
 
 | Task | Work | Size | Needs |
 |---|---|---|---|
 | T9.1 | Automated acceptance tests A3–A7 with scripted planners. | M | |
 | T9.2 | Live rehearsal with Claude for both agents, plus one run with Ollama for one agent; record the transcripts and timings, and fix what they find. | M | small API spend |
 | T9.3 | README section and docs updates; `scripts/verify.ps1` clean; existing CI still green. | S | |
-| G3 | You run the demo. | | your run |
+| G3 | You run the demo. Run on 2026-11-15 and closed, with one exit check not met as written (below). | | your run |
 
 Results:
 
@@ -936,6 +950,29 @@ Results:
 - **Live spend in Phase 9:** about $0.40 in all.
 - The transcripts, with each agent's turn inputs, plans and verdicts, are in `.local/rehearsal/`, which git ignores.
 - **CI.** At Phase 9 the branch had no upstream and was not pushed, so GitHub Actions had not run on it. It has run since: on 2026-11-15 the last five runs of the `verify` workflow had passed, the latest on `main` at `fb3a774`. CI runs only the Cargo workspace, so no Isabelle test and none of the ignored tests.
+
+Gate G3, 2026-11-15, your own run on the Mac of section 16 (Apple Silicon, macOS 27.0.1), after the preflight there:
+
+- **Setup.** `sh scripts/demo.sh reset-keys`, then `sh scripts/demo.sh up --alice claude --bob claude`. The release binary was not rebuilt: cargo reported it up to date, built on 2026-10-26. Both agents used `claude-opus-5-5`. Isabelle2025-2.
+- **Happy path,** about 20:04 to 20:07 local time:
+  - Alice's agent proposed Tuesday 14:00, Wednesday 15:00 and Thursday 14:30 (12 to 14 January 2027, demo clock), and Bob's agent answered yes, no, yes. The mutual options were Tuesday 14:00 and Thursday 14:30.
+  - Both owners said no to Tuesday and yes to Thursday. The second yes was recorded at 08:01:03.541 on the demo clock. The Thursday 14:30 meeting was added 34 s later in Alice's calendar (08:01:37.744) and 35 s later in Bob's (08:01:38.984). Alice's agent closed as agreed at 08:01:38.172, and Bob's side received the close.
+  - 11 executed actions, each with a token whose proof ID matches a recorded Isabelle permit. No plan was denied and none failed.
+  - 13 Claude calls (6 for Alice, 7 for Bob) used 63,231 input and 5,074 output tokens. That is about $0.35 at the rates the rehearsal used ($4 and $20 per million tokens), which were not checked against a current price list.
+  - 19 Isabelle checks, every verdict a permit, 0.71 s on average and 1.32 s at most. From the first agent turn to the close took about 73 s.
+- **Fault run,** started about 20:17 local time, after `sh scripts/demo.sh down`, with the same command:
+  - You switched on "Write without consent" on both Alice's and Bob's cards before starting the scenario. No other switch was armed.
+  - Each agent's plan got an `add_meeting` for 2027-01-12T08:00Z, which is not a candidate. Isabelle denied each when authorizing (`Check_000002` on each side, proof IDs `e7dd67569d` for Alice and `e81274ecde` for Bob): `consent` failed ("no valid yes from alice or bob for the meeting at 2027-01-12T08:00Z"), and the other 11 rules held. No token was issued, and neither write ran.
+  - Each agent re-planned once. The negotiation then ran as in the happy path: no to Tuesday and yes to Thursday from both owners; the Thursday 14:30 meeting was added 35 s (Bob) and 36 s (Alice) after the second yes; Alice's agent closed as agreed.
+  - 11 executed actions, each with a token and a matching proof ID. 23 Isabelle checks, 0.62 s on average and 1.39 s at most: 2 denials, 0 token refusals.
+  - 16 Claude calls (8 each) used 75,650 input and 6,145 output tokens, about $0.43 at the same rates. Both runs together: about $0.78.
+- **Both runs.** Every line of every audit file parses, so no line was spliced (roadmap `DEF-1`). Every component's error log was empty.
+- **Exit checks.** The meeting was booked at one of the two mutual options only after both owners said yes, and every executed action shows a proof ID and a token. With the switch on, the faulted action was denied. The check "the dashboard names the rule" was not met as written: for a denial when authorizing, the dashboard does not show the failing rule (section 15). Every other exit check was met.
+- **Observations.**
+  - The audit files show each consent answer arriving through the owner API, for which the agents hold no secret. They do not record that the answer was a click in the dashboard.
+  - Section 10.4 says only the coordinator closes the negotiation; section 14 and the Phase 7 results say both sides close. This run and the 2026-10-19 rehearsal show only the coordinator, Alice's agent, sending the close.
+- **Evidence.** The raw audit files and Isabelle check reports of both runs are in `.local/demo-g3/happy-path/` and `.local/demo-g3/fault-run/`, which git ignores, on that Mac only.
+- **Your decision, 2026-11-15:** "Close it, record the gap". You were offered closing the demo as it stands, with the missing rule name recorded as a known defect of the dashboard, or fixing the dashboard and running again, and you chose the first. Gate G3 is closed with one exit check not met as written. This does not close calendar slice C2 or any release gate of the calendar specification.
 
 ## 20. Out of scope
 
