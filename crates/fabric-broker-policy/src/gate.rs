@@ -1,10 +1,12 @@
 //! The broker's proof gate: it renders the trusted context and one action into a check
-//! theory, has a running Isabelle server prove every rule or its negation and the outcome,
-//! and returns the verdict with its proof id (plan section 8). It is modelled on
+//! theory, has a running Isabelle server prove every rule or its negation, and returns the
+//! verdict that follows with its proof id (plan section 8). It is modelled on
 //! [`fabric_policy::Gate`] and uses the same server and connection.
 
 use std::fs;
+use std::io;
 use std::path::{Path, PathBuf};
+use std::thread;
 use std::time::{Duration, Instant};
 
 use fabric_policy::PolicyError;
@@ -12,7 +14,7 @@ use fabric_policy::server::{Connection, Server, ServerAddress, ServerOptions, pl
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
-use crate::check::{self, GrantResult, NodeReport, RuleResult, Verdict};
+use crate::check::{self, CheckTheory, GrantResult, NodeReport, RuleResult, Verdict};
 use crate::model::{Action, Context, Rule};
 use crate::report::{context_digest, proof_id, sha256_hex};
 
@@ -20,11 +22,37 @@ use crate::report::{context_digest, proof_id, sha256_hex};
 pub const SESSION: &str = "Fabric_Broker";
 const SESSION_START_TIMEOUT: Duration = Duration::from_secs(600);
 
+/// How long after a check's limit the gate still waits for Isabelle's answers to
+/// `use_theories` and `purge_theories`. Isabelle ends the check at the limit itself and
+/// answers within a fraction of a second; a server that has not answered by then is taken
+/// to be stuck, and the gate is broken.
+pub const CHECK_GRACE: Duration = Duration::from_secs(5);
+
+/// How often Isabelle looks at a running check (`check_delay` of `use_theories`). The check's
+/// limit is given to Isabelle as a number of these looks.
+const CHECK_DELAY: Duration = Duration::from_millis(50);
+
+/// The bound of [`BrokerGate::stop`].
+pub const STOP_BOUND: Duration = Duration::from_secs(20);
+
+/// The bound of the stop a gate does when it is dropped without [`BrokerGate::stop`]: shorter,
+/// because a drop may happen on the way out of a failing caller.
+pub const DROP_STOP_BOUND: Duration = Duration::from_secs(5);
+
+/// How often [`BrokerGate::stop_within`] looks whether the server has exited.
+const EXIT_POLL: Duration = Duration::from_millis(10);
+
+/// The settings line that keeps Isabelle's temporary files in its user home.
+#[cfg(unix)]
+pub const TMP_PREFIX_SETTING: &str = "ISABELLE_TMP_PREFIX=\"$ISABELLE_HOME_USER/tmp\"";
+
 #[derive(Clone, Debug)]
 pub struct GateConfig {
     pub isabelle_home: PathBuf,
     pub user_home: PathBuf,
-    /// The directory with `ROOTS` and `Fabric_Broker/`.
+    /// The directory with `Fabric_Broker/`, which holds the session's `ROOT` and
+    /// `Fabric_Broker.thy`. The session is loaded from that directory alone, so no `ROOTS`
+    /// file is needed.
     pub rules_dir: PathBuf,
     /// Where check theories and server logs are written.
     pub work_dir: PathBuf,
@@ -80,11 +108,37 @@ pub struct Check {
     pub seconds: f64,
 }
 
+/// Whose fault an error of the gate is, and so what a caller does next.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum Fault {
+    /// The request could not be written for Isabelle; the gate is untouched and can check
+    /// the next request.
+    Request,
+    /// The gate cannot be relied on any more: stop it and start another.
+    Gate,
+}
+
+impl Fault {
+    /// [`PolicyError::Render`] is the request's fault; every other error is the gate's.
+    #[must_use]
+    pub fn of(error: &PolicyError) -> Fault {
+        match error {
+            PolicyError::Render(_) => Fault::Request,
+            PolicyError::Protocol(_)
+            | PolicyError::Isabelle(_)
+            | PolicyError::Io(_)
+            | PolicyError::Json(_) => Fault::Gate,
+        }
+    }
+}
+
 /// A running Isabelle session with the rule theory loaded.
 pub struct BrokerGate {
     config: GateConfig,
     /// The server, when this gate started it.
     server: Option<Server>,
+    /// Where the server listens, for a fresh connection when this one is broken.
+    address: ServerAddress,
     connection: Connection,
     session_id: String,
     master_dir: String,
@@ -92,11 +146,18 @@ pub struct BrokerGate {
     isabelle: String,
     next_check: u64,
     stopped: bool,
+    /// An exchange with the server, or the work directory, failed: the connection may hold
+    /// an answer nobody read, so no further check is sent on it.
+    broken: bool,
 }
 
 impl BrokerGate {
     /// Starts the Isabelle server and opens a `Fabric_Broker` session, building its heap if
     /// needed. Stopping the gate stops the server.
+    ///
+    /// On Unix the server runs in a process group of its own, so a stop that runs out of time
+    /// can end all of it, and Isabelle's temporary files go to a directory of the user home
+    /// only its owner can enter ([`prepare_private_tmp`]).
     pub fn start(config: GateConfig) -> Result<Self, PolicyError> {
         let valid_name = !config.server_name.is_empty()
             && config
@@ -109,17 +170,22 @@ impl BrokerGate {
                 config.server_name
             )));
         }
-        fs::create_dir_all(&config.work_dir)?;
-        let mut server = Server::start(&ServerOptions {
+        prepare_work_dir(&config.work_dir)?;
+        #[cfg(unix)]
+        require_private_tmp(&config)?;
+        let mut server = Server::start_in_group(&ServerOptions {
             isabelle_home: &config.isabelle_home,
             user_home: &config.user_home,
             name: &config.server_name,
             log_dir: &config.work_dir,
         })?;
         match Connection::open(server.port, &server.password, SESSION_START_TIMEOUT) {
-            Ok((connection, greeting)) => Self::open(config, Some(server), connection, &greeting),
+            Ok((connection, greeting)) => {
+                let address = server.address();
+                Self::open(config, Some(server), address, connection, &greeting)
+            }
             Err(error) => {
-                server.wait_or_kill(Duration::ZERO);
+                server.kill();
                 Err(error)
             }
         }
@@ -128,19 +194,19 @@ impl BrokerGate {
     /// Connects to a server someone else started and opens a session on it. Stopping the
     /// gate stops only that session.
     pub fn connect(config: GateConfig, address: &ServerAddress) -> Result<Self, PolicyError> {
-        fs::create_dir_all(&config.work_dir)?;
+        prepare_work_dir(&config.work_dir)?;
         let (connection, greeting) =
             Connection::open(address.port, &address.password, SESSION_START_TIMEOUT)?;
-        Self::open(config, None, connection, &greeting)
+        Self::open(config, None, address.clone(), connection, &greeting)
     }
 
     fn open(
         config: GateConfig,
         server: Option<Server>,
+        address: ServerAddress,
         connection: Connection,
         greeting: &Value,
     ) -> Result<Self, PolicyError> {
-        let theory = fs::read(config.rules_dir.join(SESSION).join("Fabric_Broker.thy"))?;
         let isabelle = greeting["isabelle_name"]
             .as_str()
             .map_or_else(|| greeting.to_string(), str::to_owned);
@@ -148,13 +214,15 @@ impl BrokerGate {
         let mut gate = Self {
             config,
             server,
+            address,
             connection,
             session_id: String::new(),
             master_dir,
-            theory_sha256: sha256_hex(&theory),
+            theory_sha256: String::new(),
             isabelle,
             next_check: 1,
             stopped: false,
+            broken: false,
         };
         if let Err(error) = gate.open_session() {
             let _ = gate.stop();
@@ -163,12 +231,18 @@ impl BrokerGate {
         Ok(gate)
     }
 
+    /// Opens the session from `<rules_dir>/Fabric_Broker` and records the hash of the theory
+    /// it loaded. The theory is hashed before `session_start` and again after it, and the
+    /// two must agree, so the hash names the text Isabelle read.
     fn open_session(&mut self) -> Result<(), PolicyError> {
+        let session_dir = self.config.rules_dir.join(SESSION);
+        let theory_path = session_dir.join("Fabric_Broker.thy");
+        let before = sha256_hex(&fs::read(&theory_path)?);
         let session = self.connection.task(
             "session_start",
             &json!({
                 "session": SESSION,
-                "dirs": [platform_path(&self.config.rules_dir)],
+                "dirs": [platform_path(&session_dir)],
                 "options": [format!(
                     "headless_consolidate_delay={}",
                     self.config.consolidate_delay_seconds
@@ -179,6 +253,14 @@ impl BrokerGate {
             .as_str()
             .ok_or_else(|| PolicyError::Protocol(format!("session_start returned {session}")))?
             .to_owned();
+        let after = sha256_hex(&fs::read(&theory_path)?);
+        if after != before {
+            return Err(PolicyError::Isabelle(format!(
+                "{} changed while the session started (SHA-256 {before} before, {after} after)",
+                theory_path.display()
+            )));
+        }
+        self.theory_sha256 = before;
         self.connection
             .set_timeout(self.config.check_timeout + Duration::from_secs(30))?;
         Ok(())
@@ -196,26 +278,68 @@ impl BrokerGate {
         &self.isabelle
     }
 
-    /// Checks one action in one context. A context or action that cannot be rendered is an
-    /// error; a check Isabelle did not finish, or finished out of time, is undecided.
+    /// The port of the server the gate talks to.
+    #[must_use]
+    pub fn port(&self) -> u16 {
+        self.address.port
+    }
+
+    /// Whether an earlier failure broke the gate: its checks then fail at once with
+    /// [`PolicyError::Protocol`] ([`Fault::Gate`]), and it should be stopped and replaced.
+    #[must_use]
+    pub fn is_broken(&self) -> bool {
+        self.broken
+    }
+
+    /// Checks one action in one context within `config.check_timeout`
+    /// ([`BrokerGate::check_within`]).
     pub fn check(&mut self, context: &Context, action: &Action) -> Result<Check, PolicyError> {
+        self.check_within(context, action, self.config.check_timeout)
+    }
+
+    /// Checks one action in one context within `limit`, or `config.check_timeout` if that is
+    /// smaller. A context or action that cannot be rendered is an error
+    /// ([`Fault::Request`]); a check Isabelle did not finish, or finished out of time, is
+    /// undecided. Isabelle is given the limit twice: as the number of times it looks at the
+    /// running check (`check_limit`), which bounds the whole check, and as its watchdog,
+    /// which ends a check that has made no progress for that long. Either way Isabelle
+    /// itself ends the check and the gate stays usable. A server that has not answered by
+    /// the limit and [`CHECK_GRACE`], or any other failure of the connection or the work
+    /// directory, breaks the gate ([`BrokerGate::is_broken`]).
+    pub fn check_within(
+        &mut self,
+        context: &Context,
+        action: &Action,
+        limit: Duration,
+    ) -> Result<Check, PolicyError> {
+        if self.broken {
+            return Err(PolicyError::Protocol(
+                "the gate is broken by an earlier failure; stop it and start another".to_owned(),
+            ));
+        }
+        let limit = limit.min(self.config.check_timeout);
         let name = format!("Check_{:06}", self.next_check);
         self.next_check += 1;
         let theory = check::generate(&name, context, action)?;
         let started = Instant::now();
-        let node = self.run_theory(&theory.name, &theory.text);
-        let elapsed = started.elapsed();
-        let mut reading = match node {
-            Ok(node) => check::read(&theory, &node),
-            Err(PolicyError::Isabelle(message)) => check::read(&theory, &NodeReport::default())
-                .undecided(format!("Isabelle failed the check: {message}")),
-            Err(error) => return Err(error),
+        // Isabelle reads a watchdog of 0 as "no limit", so a zero limit is not sent at all.
+        let mut reading = if limit.is_zero() {
+            check::read(&theory, &NodeReport::default())
+                .undecided("the check's time limit is zero, so Isabelle was not asked".to_owned())
+        } else {
+            match self.run_theory(&theory, limit, started) {
+                Ok(node) => check::read(&theory, &node),
+                Err(PolicyError::Isabelle(message)) => check::read(&theory, &NodeReport::default())
+                    .undecided(format!("Isabelle failed the check: {message}")),
+                Err(error) => return Err(error),
+            }
         };
-        if elapsed > self.config.check_timeout {
+        let elapsed = started.elapsed();
+        if !limit.is_zero() && elapsed > limit {
             reading = reading.undecided(format!(
                 "the check took {:.3}s, more than the {:.3}s limit",
                 elapsed.as_secs_f64(),
-                self.config.check_timeout.as_secs_f64()
+                limit.as_secs_f64()
             ));
         }
         Ok(Check {
@@ -235,51 +359,287 @@ impl BrokerGate {
         })
     }
 
-    fn run_theory(&mut self, name: &str, text: &str) -> Result<NodeReport, PolicyError> {
+    /// Has Isabelle process the check theory and end it at `limit`; both exchanges must be
+    /// over by `started + limit + CHECK_GRACE`. `Err(PolicyError::Isabelle)` is Isabelle
+    /// failing the check; any other error breaks the gate.
+    fn run_theory(
+        &mut self,
+        theory: &CheckTheory,
+        limit: Duration,
+        started: Instant,
+    ) -> Result<NodeReport, PolicyError> {
+        let deadline = started + limit + CHECK_GRACE;
+        let name = theory.name.as_str();
         // The file holds calendar data in plain text: it is deleted when `_file` goes out of
         // scope, however this function returns.
-        let _file = TheoryFile::write(&self.config.work_dir, name, text)?;
-        let result = self.connection.task(
+        let _file = match TheoryFile::write(&self.config.work_dir, name, &theory.text) {
+            Ok(file) => file,
+            Err(error) => {
+                self.broken = true;
+                return Err(error.into());
+            }
+        };
+        let result = self.connection.task_until(
             "use_theories",
             &json!({
                 "session_id": self.session_id,
                 "theories": [name],
                 "master_dir": self.master_dir,
-                "check_delay": 0.05,
-                "watchdog_timeout": self.config.check_timeout.as_secs_f64()
+                "check_delay": CHECK_DELAY.as_secs_f64(),
+                "check_limit": check_rounds(limit),
+                "watchdog_timeout": limit.as_secs_f64()
             }),
+            deadline,
         );
-        // A theory left behind only costs memory, so a failed purge does not fail the check.
-        let _ = self.connection.call(
+        let result = match result {
+            Err(error) if !matches!(error, PolicyError::Isabelle(_)) => {
+                // The answer may still arrive: nothing more is sent on this connection.
+                self.broken = true;
+                return Err(error);
+            }
+            result => result,
+        };
+        // A theory left behind only costs memory, so a failed purge does not fail the check;
+        // but a purge whose answer did not arrive leaves it in the stream, which breaks the gate.
+        let purge = self.connection.call_until(
             "purge_theories",
             &json!({
                 "session_id": self.session_id,
                 "theories": [name],
                 "master_dir": self.master_dir
             }),
+            deadline,
         );
+        if matches!(
+            purge,
+            Err(PolicyError::Io(_) | PolicyError::Protocol(_) | PolicyError::Json(_))
+        ) {
+            self.broken = true;
+        }
         Ok(node_report(&result?, name))
     }
 
-    /// Stops the session, and the server too when this gate started it. The result of
-    /// `session_stop` is ignored and an owned server always gets `shutdown`, as in
-    /// [`fabric_policy::Gate::stop`].
+    /// Stops the gate within [`STOP_BOUND`] ([`BrokerGate::stop_within`]).
     pub fn stop(&mut self) -> Result<(), PolicyError> {
+        self.stop_within(STOP_BOUND)
+    }
+
+    /// Stops the session, and the server too when this gate started it, within `bound`.
+    ///
+    /// On a server someone else started, the gate sends `session_stop` and ignores its
+    /// result (on a fresh connection when this one is broken). A server this gate started
+    /// gets `session_stop` and `shutdown` (only `shutdown`, on a fresh connection, when this
+    /// one is broken). `Ok` means the server acknowledged the shutdown and its process exited
+    /// within `bound`. If the process has not exited when `bound` is over, it is killed with
+    /// everything it started ([`Server::kill`]) and the stop is an error. A stopped gate stops
+    /// at once.
+    ///
+    /// `isabelle server` reuses a running server of the same name. The process this gate
+    /// holds then exits at once and the kill cannot reach that server, so only the
+    /// acknowledged shutdown says that it stopped.
+    pub fn stop_within(&mut self, bound: Duration) -> Result<(), PolicyError> {
         if self.stopped {
             return Ok(());
         }
         self.stopped = true;
-        if !self.session_id.is_empty() {
-            let _ = self
-                .connection
-                .task("session_stop", &json!({"session_id": self.session_id}));
-        }
+        let deadline = Instant::now() + bound;
         let Some(server) = &mut self.server else {
+            if !self.session_id.is_empty() {
+                let argument = json!({"session_id": self.session_id});
+                if self.broken {
+                    if let Ok(mut connection) = fresh_connection(&self.address, deadline) {
+                        let _ = connection.task_until("session_stop", &argument, deadline);
+                    }
+                } else {
+                    let _ = self
+                        .connection
+                        .task_until("session_stop", &argument, deadline);
+                }
+            }
             return Ok(());
         };
-        let shutdown = self.connection.call("shutdown", &Value::Null);
-        server.wait_or_kill(Duration::from_secs(20));
-        shutdown.map(|_| ())
+        // The session is stopped first, as before: `shutdown` alone was measured to be no
+        // faster. Its result is ignored, but a failed exchange leaves the connection unusable.
+        if !self.broken && !self.session_id.is_empty() {
+            let argument = json!({"session_id": self.session_id});
+            if let Err(error) = self
+                .connection
+                .task_until("session_stop", &argument, deadline)
+                && !matches!(error, PolicyError::Isabelle(_))
+            {
+                self.broken = true;
+            }
+        }
+        let shutdown = if self.broken {
+            fresh_connection(&self.address, deadline).and_then(|mut connection| {
+                connection.call_until("shutdown", &Value::Null, deadline)
+            })
+        } else {
+            self.connection
+                .call_until("shutdown", &Value::Null, deadline)
+        };
+        if shutdown.is_err() {
+            self.broken = true;
+        }
+        loop {
+            if server.has_exited() {
+                return shutdown.map(|_| ());
+            }
+            let now = Instant::now();
+            if now >= deadline {
+                break;
+            }
+            thread::sleep(EXIT_POLL.min(deadline - now));
+        }
+        server.kill();
+        Err(PolicyError::Isabelle(format!(
+            "the Isabelle server did not stop within {:.3}s and was killed{}",
+            bound.as_secs_f64(),
+            shutdown
+                .err()
+                .map(|error| format!(" (shutdown: {error})"))
+                .unwrap_or_default()
+        )))
+    }
+}
+
+/// The number of looks at a running check after which Isabelle ends it (`check_limit` of
+/// `use_theories`): the looks that fit into `limit`, and at least one, because Isabelle
+/// reads 0 as "no limit".
+#[must_use]
+pub fn check_rounds(limit: Duration) -> u64 {
+    let rounds = limit.as_millis().div_ceil(CHECK_DELAY.as_millis());
+    u64::try_from(rounds).unwrap_or(u64::MAX).max(1)
+}
+
+/// A new connection to `address` that waits for the greeting no longer than until `deadline`.
+fn fresh_connection(address: &ServerAddress, deadline: Instant) -> Result<Connection, PolicyError> {
+    let left = deadline.saturating_duration_since(Instant::now());
+    if left.is_zero() {
+        return Err(PolicyError::Io(io::Error::new(
+            io::ErrorKind::TimedOut,
+            "no time left to connect",
+        )));
+    }
+    Connection::open(address.port, &address.password, left).map(|(connection, _)| connection)
+}
+
+/// Creates the work directory and removes the check theories a killed process left in it.
+fn prepare_work_dir(work_dir: &Path) -> io::Result<()> {
+    fs::create_dir_all(work_dir)?;
+    remove_stale_checks(work_dir)?;
+    Ok(())
+}
+
+/// Removes every regular file named `Check_*.thy` directly in `dir`, and returns how many.
+/// Such files hold calendar data in plain text, and a process killed during a check leaves
+/// its theory behind.
+pub fn remove_stale_checks(dir: &Path) -> io::Result<usize> {
+    let mut removed = 0;
+    for entry in fs::read_dir(dir)? {
+        let entry = entry?;
+        let name = entry.file_name();
+        let stale = name
+            .to_str()
+            .is_some_and(|name| name.starts_with("Check_") && name.ends_with(".thy"));
+        if stale && entry.file_type()?.is_file() {
+            fs::remove_file(entry.path())?;
+            removed += 1;
+        }
+    }
+    Ok(removed)
+}
+
+/// Makes Isabelle keep its temporary files in `<ISABELLE_HOME_USER>/tmp` and returns that
+/// directory. Without `USER` and `LOGNAME`, Isabelle's default prefix is `/tmp/isabelle-`,
+/// shared by every account and created without an owner check.
+///
+/// `ISABELLE_HOME_USER` is `<user_home>/.isabelle/<identifier>`, with the identifier from
+/// `<isabelle_home>/etc/ISABELLE_IDENTIFIER` (no file: `<user_home>/.isabelle`). Its
+/// `etc/settings`, which Isabelle reads after its own, gets [`TMP_PREFIX_SETTING`] with a
+/// comment unless it holds that line already; nothing else in it changes. The directory is
+/// created if missing and its mode set to 0700. Running it again changes nothing.
+#[cfg(unix)]
+pub fn prepare_private_tmp(isabelle_home: &Path, user_home: &Path) -> io::Result<PathBuf> {
+    use std::io::Write as _;
+    use std::os::unix::fs::{DirBuilderExt as _, PermissionsExt as _};
+
+    let identifier = match fs::read_to_string(isabelle_home.join("etc").join("ISABELLE_IDENTIFIER"))
+    {
+        Ok(text) => text.trim().to_owned(),
+        Err(error) if error.kind() == io::ErrorKind::NotFound => String::new(),
+        Err(error) => return Err(error),
+    };
+    let mut home_user = user_home.join(".isabelle");
+    if !identifier.is_empty() {
+        home_user.push(identifier);
+    }
+    let etc = home_user.join("etc");
+    fs::create_dir_all(&etc)?;
+    let settings = etc.join("settings");
+    let existing = match fs::read_to_string(&settings) {
+        Ok(text) => Some(text),
+        Err(error) if error.kind() == io::ErrorKind::NotFound => None,
+        Err(error) => return Err(error),
+    };
+    if !existing
+        .as_deref()
+        .is_some_and(|text| text.lines().any(|line| line == TMP_PREFIX_SETTING))
+    {
+        let separator = match existing.as_deref() {
+            Some(text) if !text.is_empty() && !text.ends_with('\n') => "\n",
+            _ => "",
+        };
+        let mut file = fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&settings)?;
+        write!(
+            file,
+            "{separator}# Fabric: Isabelle's temporary files stay in this directory, private to its owner.\n\
+             {TMP_PREFIX_SETTING}\n"
+        )?;
+    }
+    let tmp = home_user.join("tmp");
+    match fs::symlink_metadata(&tmp) {
+        Ok(metadata) if metadata.is_dir() => {}
+        Ok(_) => {
+            return Err(io::Error::other(format!(
+                "{} exists and is not a directory",
+                tmp.display()
+            )));
+        }
+        Err(error) if error.kind() == io::ErrorKind::NotFound => {
+            fs::DirBuilder::new().mode(0o700).create(&tmp)?;
+        }
+        Err(error) => return Err(error),
+    }
+    // An existing directory, and one made under a narrower umask, get the mode too.
+    fs::set_permissions(&tmp, fs::Permissions::from_mode(0o700))?;
+    Ok(tmp)
+}
+
+/// [`prepare_private_tmp`], then refuses to go on unless Isabelle, asked with the
+/// environment the server gets, names that directory as its temporary prefix.
+#[cfg(unix)]
+fn require_private_tmp(config: &GateConfig) -> Result<(), PolicyError> {
+    let tmp = prepare_private_tmp(&config.isabelle_home, &config.user_home)?;
+    let prefix = fabric_policy::server::getenv(
+        &config.isabelle_home,
+        &config.user_home,
+        "ISABELLE_TMP_PREFIX",
+    )?;
+    let same = match (fs::canonicalize(&prefix), fs::canonicalize(&tmp)) {
+        (Ok(prefix), Ok(tmp)) => prefix == tmp,
+        _ => false,
+    };
+    if same {
+        Ok(())
+    } else {
+        Err(PolicyError::Isabelle(format!(
+            "Isabelle would keep its temporary files in {prefix:?}, not in {}",
+            tmp.display()
+        )))
     }
 }
 
@@ -314,7 +674,7 @@ impl Drop for TheoryFile {
 
 impl Drop for BrokerGate {
     fn drop(&mut self) {
-        let _ = self.stop();
+        let _ = self.stop_within(DROP_STOP_BOUND);
     }
 }
 
