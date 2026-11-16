@@ -379,7 +379,7 @@ Use an encrypted local database under macOS Application Support and Keychain-wra
 
 Minimum tables/record families: accounts/token references, selected calendars, agents/enrollments, sessions, immutable profile versions, recipient groups/versions, global preferences, grants/revocation epochs, requests/approvals, proof reports, provider observations, effects/attempts, consumed authorizations, command deduplication, audit lifecycle, and schema migrations.
 
-Append canonical state transitions with the selected single-device operation-envelope pattern, but do not make the entire future multi-device vault a prerequisite. Follow the distinction in proposed ADR-007: canonical mutations and higher-volume access audit are different records. A logical request has one correlated lifecycle with multiple append-only observations/attempts; do not confuse this with exactly one immutable audit row for its entire life.
+Append canonical state transitions with the selected single-device operation-envelope pattern, but do not make the entire future multi-device vault a prerequisite. Follow the distinction in proposed ADR-107: canonical mutations and higher-volume access audit are different records. A logical request has one correlated lifecycle with multiple append-only observations/attempts; do not confuse this with exactly one immutable audit row for its entire life.
 
 State grammar:
 

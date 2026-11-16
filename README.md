@@ -42,7 +42,7 @@ The order comes from the [roadmap](docs/roadmap.md), version 0.4. It was approve
 - [Roadmap](docs/roadmap.md) — what Fabric is now, what exists, the order of work with a gate after each step, what is parked, and the open decisions. Version 0.4, approved at gate H0 and updated after gate DEMO-G3.
 - [Agent Sandbox proposal](docs/agent-sandbox.md) — a permission broker between AI agents and your accounts, draft version 0.2. The roadmap makes it historical input to the Calendar Desktop plan.
 - [Requirements trace](docs/requirements-trace.md) — every requirement id in the PRD and the calendar vertical, mapped to what the repository implements. A snapshot from 2026-10-26; the roadmap calls it stale.
-- [Architecture decision records](docs/adr/) — ADR-007 (operation log and sync evolution), ADR-009 (sharing crypto and metadata model) and ADR-014 (mobile client and messaging relay) are drafted; the rest are listed in the architecture document, section 19.
+- [Architecture decision records](docs/adr/) — ADR-107 (operation log and sync evolution), ADR-109 (sharing crypto and metadata model) and ADR-114 (mobile client and messaging relay) are drafted; the rest are listed in the architecture document, section 19.
 
 ## Current executable slice
 
@@ -153,7 +153,7 @@ none of them: there is no TLS and no end-to-end encryption, and a shared room ke
 protection.
 
 Status: complete. All six phases are done and every gate, G0 through G6, is closed (2026-10-26).
-Whether the prototype graduates is ADR-014 in [docs/architecture.md](docs/architecture.md).
+Whether the prototype graduates is ADR-114 in [docs/architecture.md](docs/architecture.md).
 Setup and run steps are in [apps/paracels/README.md](apps/paracels/README.md).
 It needs macOS with Xcode, plus Node.js and npm, which are host prerequisites: the setup scripts
 here install only Rust.

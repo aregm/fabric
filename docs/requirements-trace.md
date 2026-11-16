@@ -42,12 +42,12 @@ What the numbers say: the repository has executed the two hardest *semantic* cla
 | M0 executable two-agent agreement semantics | **Done** | `fabric-core::rendezvous` and `::calendar`; `fabric demo-meeting` reaches `Agreed` on `c3`; exhaustive Boolean selection test (`apps/fabric-cli/tests/demo_meeting.rs`) |
 | Isabelle-gated calendar demo (between M0 and C2: policy proofs, tokens, Noise relay, consent, agents, dashboard) | **Built, phases 0 to 9 done; gate G3 (your own run) open** | demo §19; `fabric-policy`, `fabric-token`, `fabric-wire`, `apps/fabric-demo`; Windows 11 only |
 | Paracels chat prototype (message lifecycle, outbox, relay as cursor, attachments) | **Done, gates G0 to G6 closed 2026-10-26** | paracels §17; `apps/paracels`, 111 tests |
-| ADR-007, ADR-009, ADR-014 | **Drafted, Proposed** | `docs/adr/` |
+| ADR-107, ADR-109, ADR-114 | **Drafted, Proposed** | `docs/adr/` |
 | Agent Sandbox proposal | **Drafted; D1 to D13 await gate G0** | `docs/agent-sandbox.md` |
 | Phase 0 one-week reality test | Not started | |
-| Phase 1 kernel MVP (encrypted schema, blob store, operation log, capture, search, editor, export) | Not started; ADR-007 specifies the operation log | |
+| Phase 1 kernel MVP (encrypted schema, blob store, operation log, capture, search, editor, export) | Not started; ADR-107 specifies the operation log | |
 | Phase 2 trusted personal automation | Not started | |
-| Phase 3 first application plus encrypted sharing | Not started; ADR-009 specifies the crypto; C0 to C5 not started | |
+| Phase 3 first application plus encrypted sharing | Not started; ADR-109 specifies the crypto; C0 to C5 not started | |
 | Calendar C0 standards and Google spike | Not started | |
 
 ## 4. Capture and ingestion (PRD §7.1)
@@ -56,7 +56,7 @@ What the numbers say: the repository has executed the two hardest *semantic* cla
 |---|---|---|---|---|
 | CAP-001 | P0 | Universal capture with a durable receipt in ≤100 ms | Not started | No capture broker exists |
 | CAP-002 | P0 | Immutable raw source plus normalized representation | Not started | Blob store specified in architecture §9.3 and §14.2 |
-| CAP-003 | P0 | Idempotent ingestion by source ID and fingerprint | Not started | The idempotency pattern (client-chosen ID, one writer, at most one row) is proven in paracels and fixed as scoped idempotency keys in ADR-007 D2; no ingestion path uses it yet |
+| CAP-003 | P0 | Idempotent ingestion by source ID and fingerprint | Not started | The idempotency pattern (client-chosen ID, one writer, at most one row) is proven in paracels and fixed as scoped idempotency keys in ADR-107 D2; no ingestion path uses it yet |
 | CAP-004 | P0 | Resumable background processing with visible state | Not started | Job DAG described in architecture §13 |
 | CAP-005 | P1 | Email connectors (Gmail, Graph, IMAP, JMAP) | Not started | The Agent Sandbox proposal would add a Gmail connector for the broker, read-only first; it is not an ingestion connector |
 | CAP-006 | P1 | Web preservation modes | Not started | |
@@ -69,14 +69,14 @@ What the numbers say: the repository has executed the two hardest *semantic* cla
 
 | ID | P | Requirement | Status | Evidence and gap |
 |---|---|---|---|---|
-| KNO-001 | P0 | Stable items, immutable revisions, source artifacts, typed relations, evidence spans | Specified | Schema sketch in architecture §10.4; operation envelope in ADR-007. No `vault.db` exists |
+| KNO-001 | P0 | Stable items, immutable revisions, source artifacts, typed relations, evidence spans | Specified | Schema sketch in architecture §10.4; operation envelope in ADR-107. No `vault.db` exists |
 | KNO-002 | P0 | Markdown-compatible notes with block structure | Not started | Editor decision deferred to ADR-004 |
 | KNO-003 | P0 | Human and AI-derived content visibly distinct | Not started | Epistemic model in PRD §4.2 |
 | KNO-004 | P0 | Accept, reject, edit suggestions without overwriting them | Not started | |
 | KNO-005 | P1 | First-class people, projects, tasks, events, claims, decisions, sources | Not started | |
 | KNO-006 | P1 | Contradiction, support, refinement relations | Not started | |
 | KNO-007 | P1 | Templates and saved views as queries | Not started | |
-| KNO-008 | P1 | History, diff, restore, merge, tombstones | Not started | ADR-007 D5 fixes the conflict classes that merge and fork will use |
+| KNO-008 | P1 | History, diff, restore, merge, tombstones | Not started | ADR-107 D5 fixes the conflict classes that merge and fork will use |
 | KNO-009 | P0 | Independent intent field | Not started | |
 | KNO-010 | P1 | Learning mode | Not started | |
 | KNO-011 | P1 | Development mode with claims and belief revision | Not started | |
@@ -116,10 +116,10 @@ What the numbers say: the repository has executed the two hardest *semantic* cla
 | ID | P | Requirement | Status | Evidence and gap |
 |---|---|---|---|---|
 | SHR-001 | P1 | Export as Markdown plus JSON-LD with pseudonymous IDs | Not started | |
-| SHR-002 | P2 | E2EE spaces with per-space keys and device membership; relay cannot decrypt | Specified | ADR-009 D1 to D4; the demo relay and paracels relay are the two seeds (ADR-014 D2). The demo's relay capture test A5 is the evidence that a ciphertext-only relay is achievable |
+| SHR-002 | P2 | E2EE spaces with per-space keys and device membership; relay cannot decrypt | Specified | ADR-109 D1 to D4; the demo relay and paracels relay are the two seeds (ADR-114 D2). The demo's relay capture test A5 is the evidence that a ciphertext-only relay is achievable |
 | SHR-003 | P2 | Share a note, collection or subgraph with a preview of what leaves | Not started | Calendar disclosure receipts (§23.5) are the pattern |
-| SHR-004 | P2 | Revocation rotates future keys and explains its limits | Specified | ADR-009 D5 |
-| SHR-005 | P2 | Comments, mentions, tasks, collaborative editing | Specified | ADR-007 D3 stage S2; Automerge per document, pending ADR-004 |
+| SHR-004 | P2 | Revocation rotates future keys and explains its limits | Specified | ADR-109 D5 |
+| SHR-005 | P2 | Comments, mentions, tasks, collaborative editing | Specified | ADR-107 D3 stage S2; Automerge per document, pending ADR-004 |
 
 ## 9. Calendar and agentic scheduling (calendar §7.6)
 
@@ -142,10 +142,10 @@ What the numbers say: the repository has executed the two hardest *semantic* cla
 
 | Work | Why it exists | Where it lands in the specs |
 |---|---|---|
-| Paracels chat prototype | Exercise the message lifecycle and fix the seams for encryption, policy and local-first storage (architecture §9.6) | Evidence for ADR-007 D4 (relay as cursor) and ADR-009's seams; graduation is ADR-014. Feeds PRD §6.5 stages, not a numbered requirement |
+| Paracels chat prototype | Exercise the message lifecycle and fix the seams for encryption, policy and local-first storage (architecture §9.6) | Evidence for ADR-107 D4 (relay as cursor) and ADR-109's seams; graduation is ADR-114. Feeds PRD §6.5 stages, not a numbered requirement |
 | Isabelle policy theory and gate | Show that policy outside the model can be a proof per action (invariant 7) | AIA-004, AIA-008, CAL-006, CAL-012 above; the Agent Sandbox proposal reuses it (D2) |
-| Per-action tokens, Noise relay, signed messages | The authority and transport layer of the demo | CAL-005, CAL-012, SHR-002 above; `fabric-wire` frames are the seed of the ADR-009 relay message |
-| ADR-007, ADR-009, ADR-014 | Fix the operation envelope, the crypto and the mobile client before Phase 1 and Phase 3 code | KNO-001, SHR-002, SHR-004, SHR-005 above |
+| Per-action tokens, Noise relay, signed messages | The authority and transport layer of the demo | CAL-005, CAL-012, SHR-002 above; `fabric-wire` frames are the seed of the ADR-109 relay message |
+| ADR-107, ADR-109, ADR-114 | Fix the operation envelope, the crypto and the mobile client before Phase 1 and Phase 3 code | KNO-001, SHR-002, SHR-004, SHR-005 above |
 
 ## 11. Verification state on this Mac
 
@@ -157,7 +157,7 @@ What the numbers say: the repository has executed the two hardest *semantic* cla
 
 ## 12. Gaps that block the most rows
 
-1. **No kernel.** `vault.db`, the blob store, the operation log and capture do not exist; 28 unstarted rows across CAP, KNO and RET wait on PRD Phase 1. ADR-007 is the design for its log; ADR-001 to ADR-006 are still unwritten.
+1. **No kernel.** `vault.db`, the blob store, the operation log and capture do not exist; 28 unstarted rows across CAP, KNO and RET wait on PRD Phase 1. ADR-107 is the design for its log; ADR-001 to ADR-006 are still unwritten.
 2. **No provider.** Every calendar row past CAL-006 and every email row needs a Google adapter (calendar C0). The Agent Sandbox proposal's Gmail and Calendar connector would be the first provider code, scoped to the broker.
 3. **One platform.** The demo's keys and Isabelle setup are Windows-only (`keyring` stores, `setup-demo.ps1`). Nothing in the demo has been run on this Mac.
 4. **No MCP surface.** AIA-008 and the Agent Sandbox D1 both need an MCP server in Rust; none exists.
