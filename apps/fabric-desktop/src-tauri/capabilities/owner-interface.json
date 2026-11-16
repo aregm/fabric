@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "owner-interface",
+  "description": "The owner interface may call the host's three commands and nothing else: no window, event, path, shell or file command of Tauri is allowed.",
+  "windows": ["main"],
+  "permissions": ["allow-owner-attach", "allow-owner-send", "allow-broker-restart"]
+}

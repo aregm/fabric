@@ -1,0 +1,19 @@
+{
+  "name": "fabric-desktop-ui",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "The webview of Fabric Calendar: static HTML and CSS with a small TypeScript layer whose types Node strips at build time.",
+  "scripts": {
+    "build": "node build.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "node --test",
+    "tauri": "tauri",
+    "harness": "node harness/serve.ts"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "2.12.4",
+    "@types/node": "26.6.6",
+    "typescript": "7.0.2"
+  }
+}
