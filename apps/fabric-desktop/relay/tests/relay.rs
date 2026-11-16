@@ -17,8 +17,9 @@ use std::time::{Duration, Instant};
 
 use fabric_desktop_contracts::{Frame, Layer, MAX_FRAME_BYTES, canonical, parse_strict};
 use fabric_desktop_relay::{
-    BrokerConfig, ConfigError, ENVIRONMENT_ALLOWLIST, Ending, Event, InstanceError, InstanceLock,
-    QUIT_DRAIN, SendError, Session,
+    BROKER_ISABELLE_HOME, BROKER_ISABELLE_USER_HOME, BROKER_RULES_DIR, BrokerConfig, ConfigError,
+    ENVIRONMENT_ALLOWLIST, Ending, Event, InstanceError, InstanceLock, QUIT_DRAIN, SendError,
+    Session,
 };
 
 /// The mode the re-executed child plays.
@@ -111,12 +112,17 @@ fn child_echo() -> ! {
     std::process::exit(0)
 }
 
-/// Writes the names of its environment, one per line, to the record file, and exits 0.
+/// Writes the names of its environment, one per line, to the record file, and exits 0. `PATH`
+/// is written with its value, as `PATH=<value>`, so the test can see it is the relay's fixed one.
 fn child_env() -> ! {
     let path = std::env::var_os(OUT).expect("the record file is allowlisted");
     let mut text = String::new();
-    for (name, _) in std::env::vars_os() {
+    for (name, value) in std::env::vars_os() {
         text.push_str(&name.to_string_lossy());
+        if name == "PATH" {
+            text.push('=');
+            text.push_str(&value.to_string_lossy());
+        }
         text.push('\n');
     }
     std::fs::write(path, text).expect("write the record file");
@@ -228,6 +234,10 @@ fn run_cases() -> i32 {
         (
             "instance_lock_held_and_released",
             instance_lock_held_and_released,
+        ),
+        (
+            "prover_names_are_exported_and_allowlisted",
+            prover_names_are_exported_and_allowlisted,
         ),
     ];
     cases.extend(platform_cases());
@@ -430,10 +440,21 @@ fn environment_holds_only_allowlisted_names(directory: &Path) -> Outcome {
         !names.iter().any(|n| same(n, SECRET)),
         "{SECRET} reached the child"
     );
+    // On Unix the relay gives the child one fixed PATH, never the host's (the test's own PATH is
+    // in the host environment above).
+    let fixed_path = "PATH=/usr/bin:/bin:/usr/sbin:/sbin";
+    if cfg!(unix) {
+        ensure!(
+            names.contains(&fixed_path),
+            "the child's PATH is not the relay's fixed one: {names:?}"
+        );
+    }
     for name in &names {
         // Windows may list hidden per-drive variables whose names begin with `=`.
         ensure!(
-            name.starts_with('=') || allowed.iter().any(|a| same(name, a)),
+            name.starts_with('=')
+                || allowed.iter().any(|a| same(name, a))
+                || (cfg!(unix) && *name == fixed_path),
             "{name} reached the child but is not allowlisted"
         );
     }
@@ -794,6 +815,32 @@ fn program_path_with_spaces(directory: &Path) -> Outcome {
         ending == Ending::Stopped { killed: false },
         "ending: {ending:?}"
     );
+    Ok(())
+}
+
+/// The host takes the three prover names from the relay's crate root instead of spelling them
+/// again, so the root exports them, with the broker's spelling, and the allowlist holds them.
+fn prover_names_are_exported_and_allowlisted(_: &Path) -> Outcome {
+    let names = [
+        BROKER_ISABELLE_HOME,
+        BROKER_ISABELLE_USER_HOME,
+        BROKER_RULES_DIR,
+    ];
+    ensure!(
+        names
+            == [
+                "FABRIC_BROKER_ISABELLE_HOME",
+                "FABRIC_BROKER_ISABELLE_USER_HOME",
+                "FABRIC_BROKER_RULES_DIR",
+            ],
+        "the exported prover names are {names:?}"
+    );
+    for name in names {
+        ensure!(
+            ENVIRONMENT_ALLOWLIST.contains(&name),
+            "{name} is not in the allowlist"
+        );
+    }
     Ok(())
 }
 

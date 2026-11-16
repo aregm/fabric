@@ -14,6 +14,15 @@ pub const BROKER_DATA_DIR: &str = "FABRIC_BROKER_DATA_DIR";
 pub const BROKER_KEY_SOURCE: &str = "FABRIC_BROKER_KEY_SOURCE";
 /// `1` starts the broker's synthetic agent (a debug test run only).
 pub const BROKER_SYNTHETIC_AGENT: &str = "FABRIC_BROKER_SYNTHETIC_AGENT";
+// The three Isabelle names are defined by the broker in `apps/fabric-broker/src/config.rs`
+// (`ISABELLE_HOME`, `ISABELLE_USER_HOME`, `RULES_DIR`). The relay does not depend on the broker
+// crate, so it repeats them; the relay's tests pin the text.
+/// The root of the Isabelle distribution the broker's rule prover runs (`<it>/bin/isabelle`).
+pub const BROKER_ISABELLE_HOME: &str = "FABRIC_BROKER_ISABELLE_HOME";
+/// Isabelle's per-user directory (`USER_HOME`): its settings, heaps and server registry.
+pub const BROKER_ISABELLE_USER_HOME: &str = "FABRIC_BROKER_ISABELLE_USER_HOME";
+/// The directory that holds the rule theory: `ROOTS` and `Fabric_Broker/`.
+pub const BROKER_RULES_DIR: &str = "FABRIC_BROKER_RULES_DIR";
 
 /// The names of the host's environment variables that the broker child receives. Every other
 /// variable of the host is left out.
@@ -22,7 +31,10 @@ pub const BROKER_SYNTHETIC_AGENT: &str = "FABRIC_BROKER_SYNTHETIC_AGENT";
 /// of its data directory (with no `HOME` the broker could not find one); `FABRIC_BROKER_KEY_SOURCE`,
 /// where its store key comes from; and `FABRIC_BROKER_SYNTHETIC_AGENT`, which only a debug test
 /// run sets. The host sets these itself (the synthetic agent only in a test run) and drops any it
-/// inherited. On Windows also `SystemRoot`, without which a process can fail to start. A later
+/// inherited. Then the three that say where the rule prover is: `FABRIC_BROKER_ISABELLE_HOME`,
+/// `FABRIC_BROKER_ISABELLE_USER_HOME` and `FABRIC_BROKER_RULES_DIR`, absolute paths, all or none.
+/// The broker never looks for Isabelle by itself, so without them it runs no prover; only a debug
+/// host passes them, and only when all three are set. On Windows also `SystemRoot`, without which a process can fail to start. A later
 /// work package that needs another variable adds its name here with the reason.
 #[cfg(windows)]
 pub const ENVIRONMENT_ALLOWLIST: &[&str] = &[
@@ -30,6 +42,9 @@ pub const ENVIRONMENT_ALLOWLIST: &[&str] = &[
     BROKER_DATA_DIR,
     BROKER_KEY_SOURCE,
     BROKER_SYNTHETIC_AGENT,
+    BROKER_ISABELLE_HOME,
+    BROKER_ISABELLE_USER_HOME,
+    BROKER_RULES_DIR,
 ];
 
 /// The names of the host's environment variables that the broker child receives. Every other
@@ -39,11 +54,29 @@ pub const ENVIRONMENT_ALLOWLIST: &[&str] = &[
 /// of its data directory (with no `HOME` the broker could not find one); `FABRIC_BROKER_KEY_SOURCE`,
 /// where its store key comes from; and `FABRIC_BROKER_SYNTHETIC_AGENT`, which only a debug test
 /// run sets. The host sets these itself (the synthetic agent only in a test run) and drops any it
-/// inherited. A later work package that needs another variable adds its name here with the
+/// inherited. Then the three that say where the rule prover is: `FABRIC_BROKER_ISABELLE_HOME`,
+/// `FABRIC_BROKER_ISABELLE_USER_HOME` and `FABRIC_BROKER_RULES_DIR`, absolute paths, all or none.
+/// The broker never looks for Isabelle by itself, so without them it runs no prover; only a debug
+/// host passes them, and only when all three are set. A later work package that needs another variable adds its name here with the
 /// reason.
 #[cfg(not(windows))]
-pub const ENVIRONMENT_ALLOWLIST: &[&str] =
-    &[BROKER_DATA_DIR, BROKER_KEY_SOURCE, BROKER_SYNTHETIC_AGENT];
+pub const ENVIRONMENT_ALLOWLIST: &[&str] = &[
+    BROKER_DATA_DIR,
+    BROKER_KEY_SOURCE,
+    BROKER_SYNTHETIC_AGENT,
+    BROKER_ISABELLE_HOME,
+    BROKER_ISABELLE_USER_HOME,
+    BROKER_RULES_DIR,
+];
+
+/// The `PATH` the broker child gets on Unix, a fixed value that never comes from the host.
+///
+/// The broker runs no program by name itself, but the rule prover's Isabelle is a set of shell
+/// scripts that call system tools by name (`sysctl` in `/usr/sbin` among them); without a `PATH`
+/// their shell falls back to one without `/usr/sbin` and Isabelle's session start fails. The
+/// host's own `PATH` is never passed: it could name the owner's directories.
+#[cfg(unix)]
+const CHILD_PATH: &str = "/usr/bin:/bin:/usr/sbin:/sbin";
 
 /// The broker executable that ships beside the host executable: `fabric-broker` (with `.exe` on
 /// Windows) in the host's directory.
@@ -123,8 +156,9 @@ impl BrokerConfig {
         &self.environment
     }
 
-    /// `env_clear`, then exactly `environment`; stdin and stdout piped; stderr inherited; no
-    /// arguments.
+    /// `env_clear`, then exactly `environment`, and on Unix the fixed `PATH`
+    /// `/usr/bin:/bin:/usr/sbin:/sbin` (never the host's); stdin and stdout piped; stderr
+    /// inherited; no arguments.
     #[must_use]
     pub fn command(&self) -> Command {
         let mut command = Command::new(&self.program);
@@ -134,6 +168,8 @@ impl BrokerConfig {
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::inherit());
+        #[cfg(unix)]
+        command.env("PATH", CHILD_PATH);
         command
     }
 }
@@ -217,6 +253,9 @@ mod tests {
             "FABRIC_BROKER_DATA_DIR",
             "FABRIC_BROKER_KEY_SOURCE",
             "FABRIC_BROKER_SYNTHETIC_AGENT",
+            "FABRIC_BROKER_ISABELLE_HOME",
+            "FABRIC_BROKER_ISABELLE_USER_HOME",
+            "FABRIC_BROKER_RULES_DIR",
         ];
         if cfg!(windows) {
             assert_eq!(ENVIRONMENT_ALLOWLIST[0], "SystemRoot");
@@ -224,13 +263,16 @@ mod tests {
         } else {
             assert_eq!(ENVIRONMENT_ALLOWLIST, &broker);
         }
-        // Nothing that would let the broker find the owner's home or a key elsewhere.
+        // Nothing that would let the broker find the owner's home or a key elsewhere, and none
+        // of Isabelle's own names: the broker learns where Isabelle is only from its three.
         for name in [
             "HOME",
             "USERPROFILE",
             "TMPDIR",
             "PATH",
             "FABRIC_BROKER_UNDER_TEST",
+            "ISABELLE_HOME",
+            "USER_HOME",
         ] {
             assert!(!ENVIRONMENT_ALLOWLIST.contains(&name), "{name}");
         }
@@ -239,7 +281,14 @@ mod tests {
     #[test]
     fn broker_variables_are_named_by_the_prefix() {
         assert_eq!(BROKER_VARIABLE_PREFIX, "FABRIC_BROKER_");
-        for name in [BROKER_DATA_DIR, BROKER_KEY_SOURCE, BROKER_SYNTHETIC_AGENT] {
+        for name in [
+            BROKER_DATA_DIR,
+            BROKER_KEY_SOURCE,
+            BROKER_SYNTHETIC_AGENT,
+            BROKER_ISABELLE_HOME,
+            BROKER_ISABELLE_USER_HOME,
+            BROKER_RULES_DIR,
+        ] {
             assert!(is_broker_variable(OsStr::new(name)), "{name}");
             assert!(same_name(OsStr::new(name), name), "{name}");
         }
@@ -341,6 +390,35 @@ mod tests {
         let command = config.command();
         assert_eq!(command.get_program(), path.as_os_str());
         assert_eq!(command.get_args().count(), 0);
+    }
+
+    #[test]
+    fn the_child_gets_a_fixed_path_on_unix_and_never_the_hosts() {
+        let path = std::env::current_exe().unwrap();
+        let host = pairs(&[("PATH", "/owner/bin:/usr/bin"), ("A", "1")]);
+        let config = BrokerConfig::check(&path, &["A"], host).unwrap();
+        let command = config.command();
+        let envs: Vec<(&OsStr, Option<&OsStr>)> = command.get_envs().collect();
+        let paths: Vec<Option<&OsStr>> = envs
+            .iter()
+            .filter(|(name, _)| same_name(name, "PATH"))
+            .map(|(_, value)| *value)
+            .collect();
+        if cfg!(unix) {
+            assert_eq!(
+                paths,
+                vec![Some(OsStr::new("/usr/bin:/bin:/usr/sbin:/sbin"))]
+            );
+        } else {
+            assert!(paths.is_empty(), "{paths:?}");
+        }
+        let mut names: Vec<&OsStr> = envs.iter().map(|(name, _)| *name).collect();
+        names.sort();
+        let mut expected = vec![OsStr::new("A")];
+        if cfg!(unix) {
+            expected.push(OsStr::new("PATH"));
+        }
+        assert_eq!(names, expected);
     }
 
     #[test]
