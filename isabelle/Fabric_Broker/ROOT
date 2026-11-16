@@ -1,0 +1,5 @@
+session Fabric_Broker = HOL +
+  description "The rules of the Fabric Calendar permission broker (docs/plans/calendar-desktop-plan.md, sections 7 and 8; ADR-108)."
+  options [document = false]
+  theories
+    Fabric_Broker
