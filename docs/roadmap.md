@@ -55,7 +55,7 @@ The PRD ordered the work as kernel, then policy and scoped agent access, then sy
 1. **`BASE-1`** (section 10): the baseline diffs, drafted after your answers to `RD-3`, `RD-4` and `RD-12`, shown to you as one pull request on 2026-11-15 and applied with your approval. Architecture edit 2 still waits for `CD-G1`.
 2. **Gate `CD-G1`** (section 4.4): contracts, the Tauri shell spike and real proofs. The contracts are merged; `CD-G1a` waits for the reviewer and then for you, and the contract leaves choices that are yours.
 
-One value is still owed by you: the bundle-id prefix, on a domain you own, before work package `CD-W02`.
+The bundle-id prefix, the one value that was still owed, was given by you on 2026-11-15: `ai.paracels.fabric`.
 
 Outside the gates, three decisions have a deadline set by PIM, not by Fabric: `RD-1`, `RD-2` and `RD-15` (section 7).
 
@@ -68,7 +68,7 @@ Outside the gates, three decisions have a deadline set by PIM, not by Fabric: `R
 | Paracels chat prototype (`apps/paracels`) | Complete. `PCL-G0` and `PCL-G1` closed on 2026-10-22, `PCL-G2` to `PCL-G6` on 2026-10-26. No commit to the app since. | Whether it graduates (ADR-114). Criterion `PCL-A10` (VoiceOver) has no recorded result. |
 | ADR-107, ADR-109, ADR-114 | Proposed since 2026-10-26. No decision in them is approved and no code exists for any of them. | Each has gaps the others expose (section 8.3). |
 | Agent Sandbox proposal v0.2 | Historical input to the Calendar Desktop plan since 2026-11-15 (`RD-5`). Its section 11 additions are in the PRD and the architecture. | Its decisions `SBX-D1` to `SBX-D13` were never confirmed and are superseded. AIA-009 to AIA-013 are corrected in `BASE-1`. |
-| Calendar Desktop plan, with a build audit and `docs/system-design.md` | On `main` since 2026-11-15, through pull request 13: [the plan](plans/calendar-desktop-plan.md), [the build audit](plans/calendar-desktop-build-audit.md) and [the system design](system-design.md). `CD-G0` closed on 2026-11-15: the decisions are in the plan and in ADR-108 (Proposed), and every work package up to `CD-G5` is authorized (section 4.3). `system-design.md` is superseded as implementation baseline and kept as design background (`RD-6`). `CD-W01` was merged on 2026-11-15 through pull request 19: the contract in `contracts/desktop/v1`, the crate `fabric-desktop-contracts` and the suite `scripts/verify-contracts.sh` (section 4.4). | `BASE-1`, then `CD-G1`: `CD-G1a` waits for the reviewer's acceptance and your approval. The bundle-id prefix, before `CD-W02`. |
+| Calendar Desktop plan, with a build audit and `docs/system-design.md` | On `main` since 2026-11-15, through pull request 13: [the plan](plans/calendar-desktop-plan.md), [the build audit](plans/calendar-desktop-build-audit.md) and [the system design](system-design.md). `CD-G0` closed on 2026-11-15: the decisions are in the plan and in ADR-108 (Proposed), and every work package up to `CD-G5` is authorized (section 4.3). `system-design.md` is superseded as implementation baseline and kept as design background (`RD-6`). `CD-W01` was merged on 2026-11-15 through pull request 19: the contract in `contracts/desktop/v1`, the crate `fabric-desktop-contracts` and the suite `scripts/verify-contracts.sh` (section 4.4). | `BASE-1`, then `CD-G1`: `CD-G1a` waits for the reviewer's acceptance and your approval. The bundle-id prefix `ai.paracels.fabric` was given on 2026-11-15. |
 | Requirements trace | On `main` since 2026-11-10. | Stale: written before the macOS port, before decision 1 and before decision 5. |
 
 **Health, measured today.** `scripts/verify.sh` passes: 184 tests, 0 failed, 11 ignored (8 on Linux, where the three credential-store tests are compiled out); 91 of the tests are the contract crate's. `scripts/verify-contracts.sh` passes: 705 fixture checks and 45,260 mutants of the accepted messages, each computed equal by the Rust side, the TypeScript side and a Python reference. The six Isabelle-gated tests pass on this Mac when run with `--ignored`. `apps/paracels` passes 111 of 111 tests, the typecheck and lint. CI is green on `main` on three runners since 2026-11-15: macos-26, ubuntu-24.04 and windows-2025-vs2026.
@@ -226,7 +226,7 @@ Three interpretations of your answers, which you confirmed on 2026-11-15:
 2. With People import required, local groups and exact or domain recipient sets remain, and import adds a source for them.
 3. "Everything to `CD-G5`" authorizes all work packages, but the plan's dependency order, the single contract owner for schemas, token format and rule theory, the independent reviewer, and your approval at each gate in order all still apply.
 
-One value is open: the bundle-id prefix, on a domain you own. It has not been supplied yet and is due before `CD-W02`.
+The bundle-id prefix, on a domain you own, was given by you on 2026-11-15: `ai.paracels.fabric`.
 
 `CD-G0` authorizes all work packages up to `CD-G5` under the conditions of interpretation 3. Implementation starts from the `main` commit that records these decisions, with one branch and pull request per work package.
 
@@ -288,7 +288,7 @@ Nothing below starts until you choose it. The Needs column lists what must be se
 |---|---|
 | `DEMO-G3` | Provided on 2026-11-15: an Anthropic API key in `.env`, and a sitting at the machine. |
 | `CD-G0` | Provided on 2026-11-15: answers to `CD-Q01`, `CD-Q05` and `CD-Q11`, and to `RD-5`, `RD-6`, `RD-9`, `RD-10` and `RD-11`; the reviewer who accepts evidence at the later gates, a fresh session from the other model family. |
-| `CD-G1`, `CD-G5` | Settled on 2026-11-15: the product name is Fabric Calendar; an Apple Developer team exists and is used from the shell work package `CD-W02`; you are the distribution owner, as an individual, under your own Apple Developer membership. Still owed: the bundle-id prefix, on a domain you own, before `CD-W02`. Developer ID certificates at release (`CD-Q07`). |
+| `CD-G1`, `CD-G5` | Settled on 2026-11-15: the product name is Fabric Calendar; an Apple Developer team exists and is used from the shell work package `CD-W02`; you are the distribution owner, as an individual, under your own Apple Developer membership. The bundle-id prefix `ai.paracels.fabric`, on a domain you own, was given on 2026-11-15. Developer ID certificates at release (`CD-Q07`). |
 | `CD-G2` | A Google Cloud project with a desktop OAuth client (`CD-C08`, `CD-Q08`); disposable Google accounts, calendars and recipients for live tests; Claude Desktop, Claude Code, Codex desktop and Ollama with a tool-capable model installed (`CD-C04`, `CD-Q10`). |
 | `CD-G5` | A clean second Apple Silicon Mac; a Mac or virtual machine on macOS 15.0 for the minimum-version test; Google consent branding, a privacy policy and a support contact for verification (`CD-Q08`). |
 

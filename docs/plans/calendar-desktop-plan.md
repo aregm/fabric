@@ -540,7 +540,7 @@ These are deliberately unresolved, not assumptions implementers may fill silentl
 | Q02 | Validate selected macOS 15.0+ arm64 baseline against native/prover dependencies; actual minimum-version tests still needed | G1 native and prover packaging |
 | Q05 | Include event deletion and recurring/all-day mutations in v1? Proposed scope includes single non-recurring event edits and invitations; destructive/recurring scope needs explicit acceptance. Answered at G0 (2026-11-15): deletion of Fabric-created events (always Ask), replies to one occurrence of a recurring invitation, timed events only; see section 15.1. | W00/W03 |
 | Q06 | Accept manually curated contacts/groups and exact/domain recipient sets, or require Google People import? Answered at G0 (2026-11-15): People import required in version 1; see section 15.1. | W01/W08 |
-| Q07 | Product/app name, reverse-DNS bundle ID, Apple Developer team/Developer ID certificates, and distribution owner. Partly answered at G0 (2026-11-15): product name Fabric Calendar; distribution owner the owner as an individual; an Apple Developer Program team exists; bundle-id prefix open, due before W02; see section 15.1. | W02 identity, W11 signing |
+| Q07 | Product/app name, reverse-DNS bundle ID, Apple Developer team/Developer ID certificates, and distribution owner. Partly answered at G0 (2026-11-15): product name Fabric Calendar; distribution owner the owner as an individual; an Apple Developer Program team exists; bundle-id prefix `ai.paracels.fabric`, given by the owner on 2026-11-15; see section 15.1. | W02 identity, W11 signing |
 | Q08 | Google project owner, consent branding/domain/privacy policy/support contact, verification audience | W05 setup; external distribution before G5 |
 | Q09 | Bundled versus explicitly installed pinned Isabelle runtime; redistributed component licenses/signing and cache location. Dates set at G0: RD-8, a private byte-exact copy of the pinned Isabelle2025-2 archive before W03 starts, with a fallback URL in the setup script, the broker's Isabelle version chosen at G1 with Q09, no public mirror until the bundled licences are reviewed; RD-7, Isabelle in CI decided before W03 starts, release only until then. | G1 packaging |
 | Q10 | Ollama model/hardware budget and client versions to support; installed models have not been inspected | W07/G2d |
@@ -605,9 +605,9 @@ The owner gave these decisions on 2026-11-15, group by group, closing W00 (gate 
 | RD-7 | Isabelle in CI | Decision due before W03 starts; release only until then. Not the recommended default | Section 14; Q09 |
 | RD-8 | Isabelle second source and version | Private byte-exact copy of the pinned Isabelle2025-2 archive before W03 starts, with a fallback URL in the setup script; version chosen at G1 with Q09; no public mirror until the bundled licences are reviewed | Q09 |
 | CD-Q06 | Contacts | Require People import in version 1. Not the recommended default | S04, section 10.2; an extra Google scope and its verification, a new adapter, a later Google work package; see interpretation 2 |
-| Q07 | Product identity | Product name Fabric Calendar; an Apple Developer Program team exists and can be used; distribution owner: the owner, as an individual, under his own Apple Developer membership; bundle-id prefix on a domain the owner owns, value open | Section 2.3; Q07 partly answered |
+| Q07 | Product identity | Product name Fabric Calendar; an Apple Developer Program team exists and can be used; distribution owner: the owner, as an individual, under his own Apple Developer membership; bundle-id prefix on a domain the owner owns: `ai.paracels.fabric`, given by the owner on 2026-11-15 | Section 2.3; Q07 partly answered |
 
-Open value: the bundle-id prefix is on a domain the owner owns; the value has not been supplied yet. It is due before the shell work package (W02).
+Bundle-id prefix: the owner gave the value `ai.paracels.fabric` on 2026-11-15, before the shell work package (W02). It is on a domain the owner owns.
 
 Interpretations of the answers, which the owner confirmed on 2026-11-15:
 
