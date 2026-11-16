@@ -380,6 +380,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "fabric-broker-policy"
+version = "0.1.0"
+dependencies = [
+ "fabric-desktop-contracts",
+ "fabric-policy",
+ "serde",
+ "serde_json",
+ "sha2",
+]
+
+[[package]]
 name = "fabric-cli"
 version = "0.1.0"
 dependencies = [

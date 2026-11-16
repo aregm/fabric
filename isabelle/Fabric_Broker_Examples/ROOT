@@ -1,0 +1,5 @@
+session Fabric_Broker_Examples = Fabric_Broker +
+  description "Worked cases of the broker rules, proven when this session builds. The broker does not load it."
+  options [document = false]
+  theories
+    Broker_Examples
