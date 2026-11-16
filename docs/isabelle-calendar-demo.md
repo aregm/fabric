@@ -286,7 +286,7 @@ See section 13. Phase 8 details (`fabric-demo dashboard --config <file>`):
   - Checks that it runs from the repository root.
   - Creates both people's keys in the credential store on the first run.
   - Writes the per-run configuration and secrets to `.local/demo/run/` (git-ignored).
-  - Starts the Isabelle server, the relay, both calendar services, both trusted hosts, the dashboard and both agents. Each runs as a `fabric-demo` child process on a free loopback port. Its first output line names its address; the rest of its output goes to `<name>.log` in the run directory.
+  - Starts the Isabelle server, the relay, both calendar services, both trusted hosts, the dashboard and both agents. Each runs as a `fabric-demo` child process on a free loopback port. Its first output line names its address; the rest of its output goes to `<name>.log`, and its error output to `<name>.err.log`, in the run directory.
   - Prints the dashboard URL with its key.
 - A backend is `claude` (the default for both), `ollama:<model>` or `scripted` (tests only).
 - Every run starts from the fixtures, so the scenario is the same each time (D22). `up` deletes the previous run's calendar stores.
@@ -935,7 +935,7 @@ Results:
   - Bob's two Claude calls cost about $0.05.
 - **Live spend in Phase 9:** about $0.40 in all.
 - The transcripts, with each agent's turn inputs, plans and verdicts, are in `.local/rehearsal/`, which git ignores.
-- **CI.** At Phase 9 the branch had no upstream and was not pushed, so GitHub Actions had not run on it. It runs now: the last five runs of the `verify` workflow passed, the latest on `main` at `fb3a774`. CI runs only the Cargo workspace, so no Isabelle test and none of the ignored tests.
+- **CI.** At Phase 9 the branch had no upstream and was not pushed, so GitHub Actions had not run on it. It has run since: on 2026-11-15 the last five runs of the `verify` workflow had passed, the latest on `main` at `fb3a774`. CI runs only the Cargo workspace, so no Isabelle test and none of the ignored tests.
 
 ## 20. Out of scope
 
