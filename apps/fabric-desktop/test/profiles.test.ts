@@ -7,7 +7,9 @@ import { MODES as CONTRACT_MODES, POLICY_ROWS } from "../../../contracts/desktop
 import type { OwnerError, Profile, Profiles, Snapshot } from "../../../contracts/desktop/v1/typescript/src/contract.ts";
 import { CONTRACT_ROOT } from "../../../contracts/desktop/v1/typescript/src/judge.ts";
 import type { Model } from "../ui/src/model.ts";
-import { LOCKED, MEANING, MODES, MODE_NAME, NO_ANSWER, ProfilesModel, ROWS, ROW_NAME, STALE_TEXT } from "../ui/src/profiles.ts";
+import {
+  LOCKED, MEANING, MODES, MODE_NAME, NO_ANSWER, ProfilesModel, ROWS, ROW_NAME, STALE_ANNOUNCEMENT, STALE_TEXT,
+} from "../ui/src/profiles.ts";
 import type { EditableRow, Screen } from "../ui/src/profiles.ts";
 import { assertRequestsValid, connect, fixture, flush, setup, snapshot } from "./support.ts";
 import type { FakeHost } from "./support.ts";
@@ -148,11 +150,35 @@ test("a custom profile shows its name; changing the name alone is a draft of a n
   assert.equal(screen(pm).name?.value, "Assistant hours");
 });
 
+test("a space can be typed at the end of a name: the field keeps what the owner typed", () => {
+  const work = { ...RICH.profiles.items[2] as Profile & { kind: "custom" }, name: "Work" };
+  const { pm } = live(withProfiles(RICH, { ...RICH.profiles, items: [...RICH.profiles.items.slice(0, 2), work] }));
+  pm.choose("custom-assistant");
+  const typed: [string, boolean][] = [];
+  for (const value of ["Work", "Work ", "Work h"]) {
+    pm.setName(value);
+    typed.push([screen(pm).name?.value ?? "", screen(pm).dirty]);
+  }
+  assert.deepEqual(typed, [["Work", false], ["Work ", false], ["Work h", true]]);
+  assert.equal(screen(pm).name?.stored, "Now: Work");
+  pm.setName("Work ");
+  assert.equal(screen(pm).name?.value, "Work ");
+  assert.equal(screen(pm).save.disabled, "There are no changes to save.", "a trailing space is no change to save");
+  pm.setName("Work");
+  assert.equal(screen(pm).name?.value, "Work");
+  pm.choose("flexible");
+  pm.choose("custom-assistant");
+  assert.equal(screen(pm).name?.value, "Work", "a draft equal to the stored profile is none");
+});
+
 test("an empty or too long name is not sent and the field names the problem", () => {
-  const { host, pm } = live();
+  const { host, pm, announced } = live();
   pm.setMode("respond_to_invitation", "block");
+  const attention = screen(pm).nameAttention;
   assert.equal(pm.save(), false);
   assert.equal(screen(pm).name?.message, "Give the profile a name.");
+  assert.equal(announced.at(-1), "Give the profile a name.");
+  assert.equal(screen(pm).nameAttention, attention + 1, "the view moves focus to the name");
   pm.setName("   ");
   assert.equal(screen(pm).name?.message, null, "typing clears the message");
   assert.equal(pm.save(), false);
@@ -232,6 +258,38 @@ test("saving a narrower custom profile succeeds without a panel and selects the 
   assert.equal(screen(pm).dirty, false, "Careful's draft became the new profile");
 });
 
+test("the notice of the owner's own save, before its answer, does not make the draft stale", () => {
+  const { host, model, pm, announced } = live();
+  setRows(pm, ALL_BLOCK);
+  pm.setName("Lockdown");
+  pm.save();
+  const before = announced.length;
+  host.notice(model.cursor + 1, { kind: "profiles", profiles: SAVED }); // the broker's order: the notice first
+  let s = screen(pm);
+  assert.equal(s.stale, null);
+  assert.equal(s.dirty, true);
+  assert.equal(s.save.disabled, "Saving…");
+  pm.announceStale(); // what the view would do on a change to stale
+  assert.deepEqual(announced.slice(before), []);
+  host.reply("save_profile", { commit_sequence: model.cursor, profiles: SAVED });
+  s = screen(pm);
+  assert.equal(s.stale, null);
+  assert.equal(s.shown, "custom-lockdown");
+  assert.deepEqual(announced.slice(before), ["Lockdown is saved as a custom profile. Careful is in force for every agent."]);
+});
+
+test("after no answer the normal rule applies: a save that was applied leaves the draft stale", () => {
+  const { host, model, pm } = live();
+  setRows(pm, ALL_BLOCK);
+  pm.setName("Lockdown");
+  pm.save();
+  host.notice(model.cursor + 1, { kind: "profiles", profiles: SAVED });
+  assert.equal(screen(pm).stale, null);
+  host.state({ name: "disconnected", reason: "exited", detail: "exit code 1" });
+  assert.equal(screen(pm).saveNote, NO_ANSWER);
+  assert.equal(screen(pm).stale, STALE_TEXT);
+});
+
 test("saving a wider profile: the broker's expansion, confirm with its digest, and what drops the panel", () => {
   const { host, model, pm, announced } = live();
   setRows(pm, ALL_ALLOW);
@@ -276,7 +334,9 @@ test("the broker's refusal of a name is shown at the name field", () => {
   pm.setMode("read_event_details", "block");
   pm.setName("CAREFUL");
   pm.save();
+  const attention = screen(pm).nameAttention;
   host.fail("save_profile", NAME_TAKEN);
+  assert.equal(screen(pm).nameAttention, attention + 1, "the view moves focus to the name");
   assert.equal(screen(pm).name?.message, NAME_TAKEN.message);
   assert.equal(screen(pm).saveNote, null);
   assert.equal(announced.at(-1), NAME_TAKEN.message);
@@ -336,16 +396,20 @@ test("conflict: nothing saved, the state is read again, the draft is stale until
 });
 
 test("a profiles notice makes a dirty draft stale; a clean form follows it", () => {
-  const { host, model, pm } = live();
+  const { host, model, pm, announced } = live();
   pm.choose("custom-assistant");
   const changed: Profile = { ...RICH.profiles.items[2] as Profile & { kind: "custom" }, version: 3, rows: { ...ALL_ALLOW, read_event_details: "ask", delete_event: "ask", delete_calendar_or_change_sharing: "block" } };
   host.notice(model.cursor + 1, { kind: "profiles", profiles: { ...RICH.profiles, revision: 8, items: [...RICH.profiles.items.slice(0, 2), changed] } });
   assert.equal(modeOf(pm, "read_event_details"), "ask", "a clean form follows the stored profile");
   assert.equal(screen(pm).stale, null);
+  pm.announceStale();
+  assert.ok(!announced.includes(STALE_ANNOUNCEMENT), "nothing is stale: nothing is said");
   pm.choose("flexible");
   pm.setMode("respond_to_invitation", "block");
   host.notice(model.cursor + 1, { kind: "profiles", profiles: { ...RICH.profiles, revision: 9, active_profile_id: "custom-assistant", items: [...RICH.profiles.items.slice(0, 2), changed] } });
   assert.equal(screen(pm).stale, STALE_TEXT, "another profile was put in force: the whole revision moved");
+  pm.announceStale(); // the view calls it when the shown draft turns stale
+  assert.equal(announced.at(-1), "Your profiles changed while you were editing. Your changes are kept. Look at the current version before you save.");
   assert.equal(modeOf(pm, "respond_to_invitation"), "block");
 });
 

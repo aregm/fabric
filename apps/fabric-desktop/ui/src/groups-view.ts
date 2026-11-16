@@ -17,7 +17,6 @@ interface ItemDom {
   readonly confirmButton: HTMLButtonElement;
   readonly keep: HTMLButtonElement;
   readonly note: HTMLParagraphElement;
-  confirming: boolean;
 }
 
 interface FieldDom {
@@ -55,6 +54,7 @@ export class GroupsView {
   private readonly newReason: HTMLParagraphElement;
   private readonly items = new WeakMap<HTMLElement, ItemDom>();
   private readonly headings = new Map<string, HTMLHeadingElement>();
+  private readonly deleteButtons = new Map<string, HTMLButtonElement>();
   // The form.
   private readonly formPart: HTMLDivElement;
   private readonly formHeading: HTMLHeadingElement;
@@ -91,7 +91,10 @@ export class GroupsView {
     this.formPart.hidden = true;
     this.stale = make("div", "panel");
     this.staleText = make("p");
-    this.stale.append(this.staleText, button("I have seen the current version", () => this.groups.acknowledge()));
+    this.stale.append(this.staleText, button("I have seen the current version", () => {
+      this.groups.acknowledge();
+      this.save.focus();
+    }));
     this.deleted = make("p", "panel");
     this.fields = {
       name: this.field("name", "Name", make("input")),
@@ -110,16 +113,21 @@ export class GroupsView {
     this.note.id = uid("save-note");
     this.save.setAttribute("aria-describedby", `${this.widening.id} ${this.saveReason.id} ${this.note.id}`);
     formActions.append(this.save, button("Discard changes", () => this.groups.discard()), this.saveReason);
-    this.formPart.append(this.stale, this.deleted, this.fields.name.control.parentElement as HTMLElement,
+    // What stops the save stands right before the save button that names it.
+    this.formPart.append(this.fields.name.control.parentElement as HTMLElement,
       this.fields.addresses.control.parentElement as HTMLElement, this.fields.domains.control.parentElement as HTMLElement,
-      this.widening, formActions, this.note);
+      this.widening, this.deleted, this.stale, formActions, this.note);
   }
 
   render(): void {
     const g = this.groups;
     const items = g.groups;
     keyed(this.list, items, (i) => i.id, (i) => this.createItem(i), (node, i) => this.updateItem(node, i), this.listHeading);
-    for (const id of [...this.headings.keys()]) if (!items.some((i) => i.id === id)) this.headings.delete(id);
+    for (const id of [...this.headings.keys()]) {
+      if (items.some((i) => i.id === id)) continue;
+      this.headings.delete(id);
+      this.deleteButtons.delete(id);
+    }
     show(this.empty, items.length === 0, this.listHeading);
     const fresh = g.newGroup;
     setDisabled(this.newButton, !fresh.enabled);
@@ -131,9 +139,10 @@ export class GroupsView {
     } else {
       setText(this.formHeading, f.title);
       show(this.formPart, true, this.formHeading);
-      show(this.stale, f.stale !== null, this.formHeading);
+      show(this.stale, f.stale !== null, this.save);
       setText(this.staleText, f.stale ?? "");
-      textLine(this.deleted, f.deleted, this.formHeading);
+      textLine(this.deleted, f.deleted, this.save);
+      if (f.stale !== null || f.deleted !== null) g.sayChanged();
       for (const name of ["name", "addresses", "domains"] as const) {
         const dom = this.fields[name];
         if (dom.control.value !== f[name]) dom.control.value = f[name];
@@ -156,6 +165,7 @@ export class GroupsView {
     const focus = g.takeFocus();
     if (focus?.kind === "form") this.formHeading.focus();
     else if (focus?.kind === "group") (this.headings.get(focus.id) ?? this.newButton).focus();
+    else if (focus?.kind === "delete") (this.deleteButtons.get(focus.id) ?? this.newButton).focus();
     else if (focus?.kind === "new") this.newButton.focus();
   }
 
@@ -199,26 +209,27 @@ export class GroupsView {
     const del = named("Delete", () => {
       if (this.groups.askDelete(item.id)) dom.keep.focus();
     });
-    const confirmButton = named("Delete the group", () => this.groups.confirmDelete(), "primary");
-    for (const b of [edit.node, del.node, confirmButton.node]) b.setAttribute("aria-describedby", reason.id);
+    const confirmButton = button("", () => this.groups.confirmDelete(), "primary");
+    for (const b of [edit.node, del.node, confirmButton]) b.setAttribute("aria-describedby", reason.id);
     const actions = make("div", "actions");
     actions.append(edit.node, del.node, reason);
+    // The second step: the question, then "Keep it" (it takes focus), then the confirming button.
     const confirm = make("div", "panel");
     confirm.hidden = true;
     const question = make("p", "title");
     const keep = button("Keep it", () => this.groups.cancelDelete());
     const confirmActions = make("div", "actions");
-    confirmActions.append(confirmButton.node, keep);
+    confirmActions.append(keep, confirmButton);
     confirm.append(question, confirmActions);
     const note = make("p", "problem");
     note.hidden = true;
     node.append(heading, counts, source, actions, confirm, note);
     const dom: ItemDom = {
-      heading, counts, source, edit: edit.node, del: del.node, reason, confirm, question, confirmButton: confirmButton.node, keep, note,
-      confirming: false,
+      heading, counts, source, edit: edit.node, del: del.node, reason, confirm, question, confirmButton, keep, note,
     };
     this.items.set(node, dom);
     this.headings.set(item.id, heading);
+    this.deleteButtons.set(item.id, del.node);
     return node;
   }
 
@@ -235,13 +246,17 @@ export class GroupsView {
     };
     rest(dom.edit, item.editLabel, "Edit");
     rest(dom.del, item.deleteLabel, "Delete");
-    rest(dom.confirmButton, item.confirmLabel, "Delete the group");
+    setText(dom.confirmButton, item.confirmLabel);
     setDisabled(dom.edit, !item.edit.enabled);
     setDisabled(dom.del, !item.del.enabled);
     setText(dom.reason, item.edit.reason ?? item.del.reason ?? "");
     setText(dom.question, item.confirming ?? "");
     setDisabled(dom.confirmButton, !item.del.enabled);
-    show(dom.confirm, item.confirming !== null, dom.heading);
+    // While the second step is open, the first step's buttons are hidden: no two buttons share a name.
+    const confirming = item.confirming !== null;
+    show(dom.confirm, confirming, dom.heading);
+    show(dom.edit, !confirming, dom.keep);
+    show(dom.del, !confirming, dom.keep);
     textLine(dom.note, item.note, dom.heading);
   }
 }

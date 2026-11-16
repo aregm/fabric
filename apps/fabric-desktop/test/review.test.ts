@@ -39,6 +39,12 @@ test("a blocked request keeps its rule, the broker's explanation and its proof i
     proofId: "proof-22-classification", reason: null, help: null,
   });
   assert.equal(count(host, "get_request_details"), 1, "a blocked request is not read unless its details are opened");
+  // A request without a card: the details say what was asked.
+  review.toggleDetails("request-22");
+  host.reply("get_request_details", result("accept-owner-response-get-request-details-blocked.json"));
+  const asked = review.details(e)?.asked ?? [];
+  assert.equal(asked.find((f) => f.untrusted === true)?.values[0], "Rename the event.");
+  assert.deepEqual(asked.find((f) => f.term === "New title")?.values, ["Shared with everyone"]);
 });
 
 test("Show the proof sends get_proof and gives the report's facts, failing rule first; a proof is read once", () => {
@@ -91,7 +97,7 @@ test("an applied request's details: the decision, the proofs in the broker's ord
   const terms = (facts: readonly { term: string }[]) => facts.map((f) => f.term);
   assert.deepEqual(terms(d.general), ["Received", "Last change", "Account", "Request digest"]);
   assert.deepEqual(d.general[2]?.values, ["owner@example.com"]);
-  assert.equal(d.asked.find((f) => f.untrusted === true)?.values[0], "Block time to plan next week.");
+  assert.deepEqual(d.asked, [], "the approval card on the page shows what was asked");
   assert.deepEqual(d.decision.find((f) => f.term === "Decision")?.values, ["You allowed it"]);
   assert.deepEqual(d.decision.find((f) => f.term === "How long it lasts")?.values, ["Only this request"]);
   assert.deepEqual(d.decision.find((f) => f.term === "Approved: calendars")?.values, ["Owner (owner@example.com)"]);
@@ -166,9 +172,15 @@ test("revoke: the frame, in flight once, success announced and the grant kept as
   assert.equal(model.grants.get("grant-6")?.ended?.reason, "revoked_by_owner");
   assert.equal(review.revoke("grant-6"), false, "an ended grant has no button");
   const facts = review.grantFacts(revoked.grant);
+  assert.deepEqual(facts.map((f) => f.term).filter((t) => /^(What it|How long)/.test(t)), ["What it allowed", "How long it was given for"]);
+  assert.deepEqual(facts.find((f) => f.term === "Given for request")?.values, ["request-9"], "a request the page does not hold: its id");
+  const live6 = review.grantFacts({ ...revoked.grant, ended: null, origin: { ...revoked.grant.origin, request_id: "request-17" } });
+  assert.deepEqual(live6.map((f) => f.term).filter((t) => /^(What it|How long)/.test(t)), ["What it may do", "How long it lasts"]);
+  assert.deepEqual(live6.find((f) => f.term === "Given for request")?.values,
+    ["Change who is invited to an event, from Claude Desktop (request request-17)"]);
   assert.match(facts.find((f) => f.term === "Ended")?.values[0] ?? "", /You took it back\.$/);
   assert.deepEqual(facts.find((f) => f.term === "Given under")?.values, ["The profile Assistant hours, version 2"]);
-  assert.deepEqual(facts.find((f) => f.term === "How long it lasts")?.values, ["Until you take it back. It has no end date."]);
+  assert.deepEqual(facts.find((f) => f.term === "How long it was given for")?.values, ["Until you take it back. It has no end date."]);
   assert.deepEqual(facts.find((f) => f.term === "Groups")?.values, ["Team", "Family (Google contacts)"]);
   assert.equal(facts[0]?.untrusted, true);
 });

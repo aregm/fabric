@@ -80,6 +80,7 @@ export interface PreferencesForm {
   readonly refusal: Problem | null; // the broker's refusal of a part, from its pointer
   readonly note: string | null; // the result of the last save that did not succeed
   readonly save: Availability;
+  readonly discard: Availability;
   readonly add: Availability;
   readonly calendars: readonly CalendarChoice[];
   readonly zoneButton: string;
@@ -162,6 +163,7 @@ export class PreferencesModel {
   private inFlight = false;
   private note: string | null = null;
   private refusal: Problem | null = null;
+  private said: number | null = null; // the stored revision whose staleness was last announced
 
   constructor(model: Model) {
     this.model = model;
@@ -178,7 +180,9 @@ export class PreferencesModel {
     if (d === null || base === null || current === null) return null;
     const built = this.build();
     const dirty = PARTS.some((p) => this.partDiffers(built, base, p));
-    const stale = dirty && current.revision !== this.baseRevision
+    // While the owner's own save is awaited, its notice (which the broker sends before the answer)
+    // is not a change made by someone else: no staleness is reported until the save ends.
+    const stale = !this.inFlight && dirty && current.revision !== this.baseRevision
       ? "The preferences were changed while you were editing them. Your changes are kept. The stored version is shown in each part that differs."
       : null;
     const stored: Partial<Record<PartId, string>> = {};
@@ -201,10 +205,20 @@ export class PreferencesModel {
       refusal: this.refusal,
       note: this.note,
       save: { enabled: reason === null, reason },
+      discard: { enabled: dirty, reason: dirty ? null : "There are no changes to discard." },
       add: { enabled: !full, reason: full ? `At most ${MAX_PROTECTED} protected times can be kept.` : null },
       calendars: this.calendarChoices(d),
       zoneButton: `Use this computer's zone (${this.model.zone})`,
     };
+  }
+
+  // Says once that the form became stale. The view calls it while it shows the stale notice;
+  // the same stored revision is not said twice.
+  sayStale(): void {
+    const current = this.model.preferences;
+    if (current === null || this.form?.stale == null || this.said === current.revision) return;
+    this.said = current.revision;
+    this.model.announce("Your calendar preferences changed while you were editing. Your changes are kept. Look at the current version before you save.");
   }
 
   // The settings the draft would save, or what stops it, each problem tied to its part.
@@ -297,7 +311,7 @@ export class PreferencesModel {
 
   discard(): void {
     const current = this.model.preferences;
-    if (current === null) return;
+    if (current === null || this.form?.discard.enabled !== true) return;
     this.load(current.revision, current.settings);
     this.model.changed();
   }

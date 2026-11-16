@@ -115,6 +115,14 @@ h4 {
   margin: 0 0 0.25rem;
 }
 
+/* Subheadings inside an item (the parts of a request's details, one attempt). */
+h5,
+h6 {
+  font-size: 1rem;
+  font-weight: 600;
+  margin: 0.75rem 0 0.25rem;
+}
+
 p {
   margin: 0.25rem 0;
 }
@@ -365,6 +373,15 @@ button[aria-disabled="true"] {
 }
 
 :focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 2px;
+}
+
+/* A field shows the ring whenever it holds focus, also while one of its inner parts has it
+   (a time field's hours or minutes), where :focus-visible does not match. */
+input:focus,
+textarea:focus,
+select:focus {
   outline: 3px solid var(--focus);
   outline-offset: 2px;
 }

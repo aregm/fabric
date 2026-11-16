@@ -126,6 +126,8 @@ export class PreferencesView {
   // Save.
   private readonly save: HTMLButtonElement;
   private readonly saveReason: HTMLParagraphElement;
+  private readonly discard: HTMLButtonElement;
+  private readonly discardReason: HTMLParagraphElement;
   private readonly note: HTMLParagraphElement;
 
   constructor(model: Model) {
@@ -141,9 +143,11 @@ export class PreferencesView {
 
     this.stale = make("div", "panel");
     this.staleText = make("p");
-    this.stale.append(this.staleText, button("I have seen the current version", () => p.acknowledge()));
+    this.stale.append(this.staleText, button("I have seen the current version", () => {
+      p.acknowledge();
+      this.save.focus();
+    }));
     this.stale.hidden = true;
-    this.form.append(this.stale);
 
     const parts = {} as Record<PartId, PartDom>;
     const part = (id: PartId, title: string): PartDom => {
@@ -254,8 +258,13 @@ export class PreferencesView {
     this.note.id = uid("save-note");
     this.note.hidden = true;
     describe(this.save, this.saveReason.id, this.note.id);
-    actions.append(this.save, button("Discard changes", () => p.discard()), this.saveReason);
-    this.form.append(actions, this.note);
+    this.discardReason = make("p", "note");
+    this.discardReason.id = uid("discard-reason");
+    this.discard = button("Discard changes", () => p.discard());
+    describe(this.discard, this.discardReason.id);
+    actions.append(this.save, this.saveReason, this.discard, this.discardReason);
+    // The stale notice stands right before the buttons whose reason sends the owner to it.
+    this.form.append(this.stale, actions, this.note);
   }
 
   render(): void {
@@ -268,6 +277,7 @@ export class PreferencesView {
 
     show(this.stale, f.stale !== null, this.save);
     setText(this.staleText, f.stale ?? "");
+    if (f.stale !== null) this.prefs.sayStale();
     for (const [id, dom] of Object.entries(this.parts) as [PartId, PartDom][]) {
       textLine(dom.stored, f.stored[id] ?? null, dom.heading);
       const lines = f.problems.filter((x) => x.part === id && x.entry === null).map((x) => x.text);
@@ -304,6 +314,8 @@ export class PreferencesView {
 
     setDisabled(this.save, !f.save.enabled);
     setText(this.saveReason, f.save.reason ?? "");
+    setDisabled(this.discard, !f.discard.enabled);
+    setText(this.discardReason, f.discard.reason ?? "");
     textLine(this.note, f.note, this.save);
   }
 

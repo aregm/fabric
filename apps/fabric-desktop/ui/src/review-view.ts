@@ -258,6 +258,7 @@ export class ReviewView {
     const r = e.request;
     const title = requestTitle(m, e);
     setText(dom.heading, title);
+    dom.article.classList.toggle("item-waiting", e.available && r.status.state === "pending_approval");
     setText(dom.state, e.available ? `State: ${STATE_TEXT[r.status.state]}.` : "Not available: the broker no longer lists this request.");
     const lines = this.review.lines(e);
     textLine(dom.ruling, lines.ruling, dom.heading);

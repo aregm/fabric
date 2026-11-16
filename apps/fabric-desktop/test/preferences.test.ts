@@ -47,6 +47,7 @@ test("first run: an empty form that cannot be saved unchanged", () => {
   });
   assert.equal(f.dirty, false);
   assert.deepEqual(f.save, { enabled: false, reason: "Nothing has changed." });
+  assert.deepEqual(f.discard, { enabled: false, reason: "There are no changes to discard." });
   assert.deepEqual(f.calendars, []);
   assert.deepEqual(settingsOf(prefs), fixture("accept-owner-request-save-preferences-not-configured.json").params.settings);
   assert.equal(prefs.save(), false);
@@ -139,6 +140,35 @@ test("a full form builds exactly the expected settings", () => {
   assert.deepEqual(form(prefs).draft.protectedTimes.map((p) => p.key), [first, second], "the entries keep their keys");
 });
 
+test("the owner's own save: its notice before the answer is not a change by someone else", () => {
+  const { host, prefs, announced } = screen();
+  prefs.setZone("Europe/Berlin");
+  prefs.save();
+  const saved = { revision: 1, settings: settingsOf(prefs) };
+  prefs.setMinutes("buffer", "x"); // a part switched off: no change to what is saved
+  host.notice(RICH.cursor + 1, { kind: "preferences", preferences: saved });
+  const between = form(prefs);
+  assert.equal(between.stale, null);
+  assert.deepEqual(between.stored, {});
+  assert.equal(between.save.reason, "Saving…");
+  prefs.sayStale();
+  host.reply("save_preferences", { commit_sequence: RICH.cursor + 1, preferences: saved });
+  assert.equal(form(prefs).stale, null);
+  assert.deepEqual(announced, ["Your calendar preferences are saved."]);
+});
+
+test("after no answer the rule applies again for preferences", () => {
+  const { host, prefs, announced } = screen();
+  prefs.setZone("Europe/Berlin");
+  prefs.save();
+  host.notice(RICH.cursor + 1, { kind: "preferences", preferences: { revision: 1, settings: { ...RICH.preferences.settings, zone: "Europe/Berlin" } } });
+  prefs.setZone("Europe/Rome");
+  host.state({ name: "disconnected", reason: "exited", detail: "exit code 1" });
+  assert.notEqual(form(prefs).stale, null);
+  prefs.sayStale();
+  assert.equal(announced.filter((a) => a.startsWith("Your calendar preferences changed")).length, 1);
+});
+
 test("switching a part off sends null", () => {
   const { host, prefs } = screen(withPreferences(CONFIGURED));
   assert.equal(form(prefs).dirty, false);
@@ -217,7 +247,7 @@ test("the broker's refusal of a warning calendar is shown at the calendars", () 
 });
 
 test("conflict: nothing saved, the state is read again, stale until the owner has seen it, then the save carries the new revision", () => {
-  const { host, prefs, saves } = screen();
+  const { host, prefs, saves, announced } = screen();
   prefs.setZone("Europe/Berlin");
   prefs.save();
   assert.equal(host.last("save_preferences").params.expected_revision, 0);
@@ -234,6 +264,11 @@ test("conflict: nothing saved, the state is read again, stale until the owner ha
   assert.equal(f.stored.buffer, "Stored now: on, 10 minutes");
   assert.equal(f.save.enabled, false);
   assert.equal(prefs.save(), false);
+  prefs.sayStale();
+  prefs.sayStale();
+  assert.deepEqual(announced.filter((a) => a.startsWith("Your calendar preferences changed")),
+    ["Your calendar preferences changed while you were editing. Your changes are kept. Look at the current version before you save."], "said once");
+  assert.deepEqual(f.discard, { enabled: true, reason: null });
   prefs.acknowledge();
   assert.equal(form(prefs).stale, null);
   assert.equal(prefs.save(), true);
@@ -256,6 +291,10 @@ test("a preferences notice: a form with changes becomes stale, one without follo
   prefs.discard();
   assert.equal(form(prefs).draft.zone, "Europe/Paris");
   assert.equal(form(prefs).dirty, false);
+  assert.equal(form(prefs).discard.enabled, false);
+  prefs.setZone("Europe/Rome");
+  prefs.setZone("Europe/Paris");
+  assert.equal(form(prefs).discard.enabled, false, "back to the stored value is no change");
 });
 
 test("no answer: the draft stays and the same save reuses its command id", () => {

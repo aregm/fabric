@@ -79,6 +79,8 @@ export class ProfilesView {
   private readonly panelList: HTMLUListElement;
   private readonly confirm: ActionDom;
   private panelShown = false;
+  private staleShown = false;
+  private nameAttention = 0;
 
   constructor(model: Model) {
     this.profiles = new ProfilesModel(model);
@@ -127,8 +129,9 @@ export class ProfilesView {
     this.nameInput.addEventListener("input", () => this.profiles.setName(this.nameInput.value));
     this.nameField.append(this.nameLabel, this.nameInput, this.nameStored, this.nameMessage);
     this.nameField.hidden = true;
-    calendar.part.append(this.stale, this.nameField);
     for (const row of ROWS) calendar.part.append(this.createRow(row));
+    // After the rows, right before the buttons: the name, then why Save may wait.
+    calendar.part.append(this.nameField, this.stale);
 
     this.save = actionButton(() => this.profiles.save());
     this.save.button.className = "primary";
@@ -195,6 +198,10 @@ export class ProfilesView {
     show(this.panel, s.panel !== null, this.save.button);
     if (s.panel !== null && !this.panelShown) this.panelHeading.focus();
     this.panelShown = s.panel !== null;
+    if (s.stale !== null && !this.staleShown) this.profiles.announceStale();
+    this.staleShown = s.stale !== null;
+    if (s.nameAttention !== this.nameAttention && s.name !== null) this.nameInput.focus();
+    this.nameAttention = s.nameAttention;
   }
 
   private createRow(row: PolicyRow): HTMLElement {

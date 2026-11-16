@@ -34,7 +34,7 @@ export interface RequestLines {
 // The details of a request, in the parts the view shows.
 export interface DetailsParts {
   readonly general: readonly Fact[]; // received, last change, account, request digest
-  readonly asked: readonly Fact[];
+  readonly asked: readonly Fact[]; // empty while the approval card shows them
   readonly decision: readonly Fact[]; // empty when nobody decided
   readonly proofIds: readonly string[]; // in the broker's order, newest first
   readonly authorization: readonly Fact[]; // empty when there is none
@@ -134,7 +134,7 @@ export class ReviewModel {
         { term: "Account", values: [r.account_id === null ? "None" : names.accounts.get(r.account_id)?.email ?? r.account_id] },
         { term: "Request digest", values: [r.request_digest] },
       ],
-      asked: askedFacts(d, names),
+      asked: d.card === null ? askedFacts(d, names) : [], // the card shows them
       decision: d.approval === null ? [] : approvalFacts(d.approval, names, m.recipientSets),
       proofIds: d.proof_ids,
       authorization: d.authorization === null ? [] : authorizationFacts(d.authorization, z),
@@ -204,7 +204,10 @@ export class ReviewModel {
   grantFacts(g: Grant): Fact[] {
     const p = this.model.profiles?.items.find((x) => x.profile_id === g.policy.profile_id);
     const profile = p === undefined ? `The profile ${g.policy.profile_id}` : `The profile ${p.name}`;
-    return grantFacts(g, this.model.names, this.model.recipientSets, profile);
+    const id = g.origin.request_id;
+    const e = this.model.requests.get(id);
+    const origin = e === undefined ? id : `${requestTitle(this.model, e)} (request ${id})`;
+    return grantFacts(g, this.model.names, this.model.recipientSets, profile, origin);
   }
 
   revokeState(grantId: string): CommandState | null {

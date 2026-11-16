@@ -71,6 +71,7 @@ export const LOCKED: Record<LockedRow, string> = {
 const isLocked = (row: PolicyRow): row is LockedRow => Object.hasOwn(LOCKED, row);
 
 export const STALE_TEXT = "Your profiles changed while you were editing: one was saved or put in force. Your changes are kept.";
+export const STALE_ANNOUNCEMENT = "Your profiles changed while you were editing. Your changes are kept. Look at the current version before you save.";
 export const ONE_IN_FORCE = "One profile is in force for every agent. Putting another in force does not widen a permission you already gave.";
 export const EMAIL_TEXT = "Rules for email are planned for a later version. There is nothing to set here yet.";
 export const LOADING_TEXT = "The profiles have not been read from the broker yet.";
@@ -129,6 +130,7 @@ export interface Screen {
   readonly shown: string;
   readonly rows: readonly RowState[];
   readonly name: NameField | null;
+  readonly nameAttention: number; // rises each time the name needs the owner: focus goes to the field
   readonly dirty: boolean;
   readonly stale: string | null;
   readonly save: Action;
@@ -150,6 +152,7 @@ export class ProfilesModel {
   private saving: string | null = null; // the base of the draft whose save is awaited
   private activating = false;
   private activateNote: { readonly id: string; readonly text: string } | null = null;
+  private nameAttention = 0; // raised each time the name needs the owner; the view then moves focus to it
 
   constructor(model: Model) {
     this.model = model;
@@ -168,8 +171,10 @@ export class ProfilesModel {
     const shown = this.shownProfile();
     if (profiles === null || shown === null) return null;
     const draft = this.draft(shown.profile_id);
+    const held = this.draft(shown.profile_id, true);
     const rows = draft?.rows ?? shown.rows;
-    const stale = draft !== null && draft.baseRevision !== profiles.revision;
+    // A draft whose own save is awaited is not stale: the broker's notice of that save comes before its answer.
+    const stale = draft !== null && this.saving !== draft.base && draft.baseRevision !== profiles.revision;
     const inForce = shown.profile_id === profiles.active_profile_id;
     const custom = shown.kind === "custom";
     const notReady = this.model.notReadyText;
@@ -189,10 +194,11 @@ export class ProfilesModel {
       }),
       name: custom || draft !== null ? {
         label: custom ? "Name of this profile" : "Name of the new profile",
-        value: draft?.name ?? shown.name,
+        value: held?.name ?? shown.name, // as typed, also while it differs only by spaces
         stored: custom && draft !== null && draft.name.trim() !== shown.name ? `Now: ${shown.name}` : null,
-        message: draft?.nameNote ?? null,
+        message: held?.nameNote ?? null,
       } : null,
+      nameAttention: this.nameAttention,
       dirty: draft !== null,
       stale: stale ? STALE_TEXT : null,
       save: {
@@ -261,6 +267,8 @@ export class ProfilesModel {
     const name = d.name.trim();
     if (!isLabel(name)) {
       d.nameNote = name === "" ? "Give the profile a name." : "The name is too long: at most 200 characters.";
+      this.nameAttention += 1;
+      this.model.announce(d.nameNote);
       this.model.changed();
       return false;
     }
@@ -279,6 +287,11 @@ export class ProfilesModel {
     if (p === null || d === null || p.base !== this.shownId || p.params.change.kind !== "save_custom" || this.screen?.confirm.disabled !== null) return false;
     this.send(d, { ...p.params, change: { ...p.params.change, acknowledged_expansion: p.digest } });
     return true;
+  }
+
+  // Said by the view when the shown draft has just become stale (the model cannot see that moment).
+  announceStale(): void {
+    if ((this.screen?.stale ?? null) !== null) this.model.announce(STALE_ANNOUNCEMENT);
   }
 
   goBack(): void {
@@ -323,12 +336,14 @@ export class ProfilesModel {
     return this.model.profiles?.items.find((p) => p.profile_id === id) ?? null;
   }
 
-  // The draft of this profile while it differs from the stored profile; a draft equal to it is none.
-  private draft(id: string): Draft | null {
+  // The draft of this profile while it differs from the stored profile ("dirty": the name trimmed);
+  // a draft equal to it is none. `asTyped`: the name as typed, so that a draft whose name differs
+  // only by spaces is still held while the owner types.
+  private draft(id: string, asTyped = false): Draft | null {
     const d = this.drafts.get(id);
     const stored = this.model.profiles?.items.find((p) => p.profile_id === id);
     if (d === undefined || stored === undefined) return null;
-    const nameDiffers = stored.kind === "custom" && d.name.trim() !== stored.name;
+    const nameDiffers = stored.kind === "custom" && (asTyped ? d.name : d.name.trim()) !== stored.name;
     return nameDiffers || !sameRows(d.rows, stored.rows) ? d : null;
   }
 
@@ -342,7 +357,7 @@ export class ProfilesModel {
     const profiles = this.model.profiles;
     const shown = this.shownProfile();
     if (profiles === null || shown === null) return null;
-    const held = this.draft(shown.profile_id);
+    const held = this.draft(shown.profile_id, true);
     if (held !== null) return held;
     const custom = shown.kind === "custom";
     const d: Draft = {
@@ -357,7 +372,7 @@ export class ProfilesModel {
   private edited(d: Draft): void {
     if (this.panel?.base === d.base) this.panel = null;
     d.note = null;
-    if (this.draft(d.base) === null) this.drafts.delete(d.base);
+    if (this.draft(d.base, true) === null) this.drafts.delete(d.base);
     this.model.changed();
   }
 
@@ -386,6 +401,7 @@ export class ProfilesModel {
       }
       if (f.error?.code === "invalid_params" && f.error.detail.pointer === NAME_POINTER) {
         d.nameNote = f.text;
+        this.nameAttention += 1;
         this.model.announce(f.text);
         return;
       }

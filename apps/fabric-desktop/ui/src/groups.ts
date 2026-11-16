@@ -19,7 +19,11 @@ export interface Availability {
 export type GroupField = "name" | "addresses" | "domains";
 
 // Where focus goes after an action the owner started.
-export type GroupFocus = { readonly kind: "form" } | { readonly kind: "group"; readonly id: string } | { readonly kind: "new" };
+export type GroupFocus =
+  | { readonly kind: "form" }
+  | { readonly kind: "group"; readonly id: string } // the group's heading
+  | { readonly kind: "delete"; readonly id: string } // the group's "Delete" button
+  | { readonly kind: "new" };
 
 export interface GroupItem {
   readonly id: string;
@@ -31,7 +35,7 @@ export interface GroupItem {
   readonly del: Availability;
   readonly deleteLabel: string;
   readonly confirming: string | null; // the second step of delete: its question, or null
-  readonly confirmLabel: string;
+  readonly confirmLabel: string; // "Yes, delete the group Family": a name of its own, not the first step's
   readonly note: string | null; // the last problem of a delete of this group
 }
 
@@ -122,6 +126,7 @@ export class GroupsModel {
   private note: string | null = null;
   private deleteNote: { readonly id: string; readonly text: string } | null = null;
   private focus: GroupFocus | null = null;
+  private said: string | null = null; // the stale or deleted state last announced
 
   constructor(model: Model) {
     this.model = model;
@@ -146,7 +151,7 @@ export class GroupsModel {
         del: { enabled: other === null && busy === null, reason: other ?? busy },
         deleteLabel: `Delete the group ${name}`,
         confirming: this.confirming === set.recipient_set_id ? `Delete ${name}? Permissions that name it end.` : null,
-        confirmLabel: `Delete the group ${name}`,
+        confirmLabel: `Yes, delete the group ${name}`,
         note: this.deleteNote?.id === set.recipient_set_id ? this.deleteNote.text : null,
       };
     });
@@ -165,10 +170,13 @@ export class GroupsModel {
     const p = parse(d);
     const dirty = this.isDirty(d, p);
     const current = d.id === null ? null : this.model.recipientSets.get(d.id) ?? null;
-    const deleted = d.id !== null && current === null
+    // While the owner's own save or delete is awaited, its notice (which the broker sends before
+    // the answer) is not a change made by someone else: no staleness is reported until it ends.
+    const awaited = this.inFlight !== null;
+    const deleted = !awaited && d.id !== null && current === null
       ? `The group ${d.base.name} was deleted while you were editing it. Your text stays here so that you can copy it; it cannot be saved.`
       : null;
-    const stale = deleted === null && current !== null && current.revision !== d.baseRevision
+    const stale = !awaited && deleted === null && current !== null && current.revision !== d.baseRevision
       ? `The group ${current.definition.name} was changed while you were editing it. Your changes are kept. The stored version is shown beside each field that differs.`
       : null;
     let stored: Record<GroupField, string | null> | null = null;
@@ -205,6 +213,21 @@ export class GroupsModel {
       save: { enabled: reason === null, reason },
       saveLabel: d.id === null ? "Save the new group" : `Save the group ${d.base.name}`,
     };
+  }
+
+  // Says once that the form became stale, or that its group was deleted meanwhile. The view
+  // calls it when it shows either; the same state is not said twice.
+  sayChanged(): void {
+    const d = this.draft;
+    const f = this.form;
+    if (d === null || f === null || (f.stale === null && f.deleted === null)) return;
+    const current = d.id === null ? undefined : this.model.recipientSets.get(d.id);
+    const key = `${d.id ?? ""}:${current?.revision ?? "deleted"}`;
+    if (this.said === key) return;
+    this.said = key;
+    this.model.announce(f.deleted !== null
+      ? `The group ${d.base.name} was deleted while you were editing. Your text stays so that you can copy it; it cannot be saved.`
+      : "The group changed while you were editing. Your changes are kept. Look at the current version before you save.");
   }
 
   // The focus an action asked for, once.
@@ -310,7 +333,7 @@ export class GroupsModel {
     const id = this.confirming;
     if (id === null) return;
     this.confirming = null;
-    this.focus = { kind: "group", id };
+    this.focus = { kind: "delete", id };
     this.model.changed();
   }
 

@@ -19,6 +19,10 @@
 // answers `store_unavailable`. `POST /harness/release-store` ends that process (end of input,
 // then a kill after 2 s). Stopping the harness ends it too.
 //
+// To look at what the real broker cannot show yet (a blocked request with its proof, a request that
+// was carried out), `--broker harness/replay-broker.ts` runs a stand-in that replays the
+// contract's fixtures and changes nothing; the held-store switch has no meaning with it.
+//
 //   node harness/serve.ts --broker <path to fabric-broker> [--port 4317]
 import { spawn } from "node:child_process";
 import type { ChildProcess } from "node:child_process";
@@ -71,7 +75,10 @@ function setState(next: State): void {
 function startBroker(): void {
   run += 1;
   const thisRun = run;
-  const c = spawn(BROKER, [], { stdio: ["pipe", "pipe", "inherit"], env: BROKER_ENV });
+  // A stand-in written in TypeScript (harness/replay-broker.ts) is run by this Node: the broker's
+  // environment has no PATH, so a script could not find one itself.
+  const script = BROKER.endsWith(".ts");
+  const c = spawn(script ? process.execPath : BROKER, script ? [BROKER] : [], { stdio: ["pipe", "pipe", "inherit"], env: BROKER_ENV });
   child = c;
   c.on("error", (e) => {
     if (child === c) child = null;

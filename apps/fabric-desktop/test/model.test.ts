@@ -561,3 +561,43 @@ test("without a live session of the agent, the session duration is not taken and
   model.chooseDuration("spike-request-1", "until_revoked");
   assert.equal(model.duration(e), "until_revoked");
 });
+
+test("a card says so when the broker's state could not be read, and is ready again after a new sync", () => {
+  const { host, model } = pendingCard();
+  model.refresh();
+  host.error("get_snapshot", "internal");
+  assert.equal(model.phase, "failed");
+  assert.deepEqual(model.cardStatus(entry(model)), {
+    kind: "waiting", text: "The broker's current state could not be read. This request is read again when it can be.",
+  });
+  assert.equal(model.decide("spike-request-1", "approve"), false);
+  model.retrySync();
+  host.reply("hello", HELLO_RESULT);
+  host.reply("get_snapshot", snapshot(0, [request("pending_approval", 4)]));
+  host.reply("subscribe", { cursor: 0 });
+  assert.equal(model.cardStatus(entry(model)).kind, "ready");
+});
+
+test("the decision is said in one whole sentence per duration", () => {
+  const sentences = {
+    one_request: "You allowed this, for this one request.",
+    session: "You allowed this. The permission lasts until this agent's current session ends.",
+    until_revoked: "You allowed this. The permission lasts until you take it back.",
+  } as const;
+  for (const kind of ["one_request", "session", "until_revoked"] as const) {
+    const { host, model, announced } = pendingCard();
+    model.chooseDuration("spike-request-1", kind);
+    model.decide("spike-request-1", "approve");
+    const approved = request("approved", 5);
+    host.reply("decide_request", {
+      commit_sequence: 3, request: approved,
+      approval: {
+        decision: "approve", command_id: host.last("decide_request").id, decided_at: RECEIVED_AT, approval_digest: DIGEST_B,
+        scope: details(approved).card?.scope, duration: { kind }, effective_request_digest: DIGEST_A, grant_id: "spike-grant-1",
+      },
+    });
+    assert.equal(announced.at(-1), sentences[kind]);
+    const status = model.cardStatus(entry(model));
+    assert.equal(status.kind === "closed" ? status.text : null, sentences[kind]);
+  }
+});

@@ -7,7 +7,7 @@ import type {
   Request, RequestDetails, ResultHello, SCHEMA_VERSION as SchemaVersion, Snapshot,
 } from "../../../../contracts/desktop/v1/typescript/src/contract.ts";
 import type { Host, HostMessage, HostState, SendRefusal } from "./host.ts";
-import { CHECKING_STATES, DURATION_TEXT, OPERATION, STATE_TEXT, STORE_PROBLEM, TERMINAL, agentName, changeText } from "./text.ts";
+import { ALLOWED_TEXT, CHECKING_STATES, OPERATION, STATE_TEXT, STORE_PROBLEM, TERMINAL, agentName, changeText } from "./text.ts";
 import type { Names } from "./text.ts";
 
 const PROTOCOL: Protocol = "fabric-desktop/1";
@@ -325,6 +325,9 @@ export class Model {
       return { kind: "waiting", text: "The broker is not running. When it runs again, this request is read again before you can decide." };
     }
     if (e.command?.inFlight === true) return { kind: "waiting", text: "Sending your decision…" };
+    if (this.phase === "failed") {
+      return { kind: "waiting", text: "The broker's current state could not be read. This request is read again when it can be." };
+    }
     const d = e.details.request;
     if (e.reading || e.detailsRun !== this.run || d.revision !== e.request.revision || d.request_digest !== e.request.request_digest) {
       return { kind: "waiting", text: "Reading this request again before you can decide…" };
@@ -349,7 +352,7 @@ export class Model {
   decisionText(e: Entry): string | null {
     const a = e.approval;
     if (a === null) return null;
-    return a.decision === "approve" ? `You allowed this. It lasts: ${DURATION_TEXT[a.duration.kind].toLowerCase()}.` : "You denied this.";
+    return a.decision === "approve" ? ALLOWED_TEXT[a.duration.kind] : "You denied this.";
   }
 
   // ---- The host and the broker ----

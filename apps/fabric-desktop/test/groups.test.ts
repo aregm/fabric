@@ -125,6 +125,49 @@ test("an update carries the set's id and revision", () => {
   assert.deepEqual(host.last("save_group").params, fixture("accept-owner-request-save-group-update.json").params);
 });
 
+test("the owner's own save: its notice before the answer is not a change by someone else", () => {
+  const { host, groups, announced } = screen();
+  groups.openEdit("rset-team");
+  groups.edit("addresses", "ally@example.net\nsam.lee@example.org\nkim@example.net");
+  groups.save();
+  const saved: RecipientSet = { ...TEAM, revision: 3, definition: { ...TEAM.definition, members: ["ally@example.net", "sam.lee@example.org", "kim@example.net"] } };
+  host.notice(RICH.cursor + 1, { kind: "recipient_set", recipient_set: saved });
+  const between = form(groups);
+  assert.equal(between.stale, null);
+  assert.equal(between.stored, null);
+  assert.equal(between.save.reason, "Saving…");
+  groups.sayChanged();
+  host.reply("save_group", { commit_sequence: RICH.cursor + 1, recipient_set: saved });
+  assert.equal(groups.form, null);
+  assert.deepEqual(announced, ["The group Team is saved."]);
+});
+
+test("the owner's own delete of the group being edited: its notice is not \"deleted while you were editing\"", () => {
+  const { host, groups, announced } = screen();
+  groups.openEdit("rset-team");
+  groups.edit("name", "Team (old)");
+  groups.askDelete("rset-team");
+  groups.confirmDelete();
+  host.notice(RICH.cursor + 1, fixture("accept-owner-notice-recipient-set-deleted.json").change);
+  assert.equal(form(groups).deleted, null);
+  groups.sayChanged();
+  host.reply("save_group", fixture("accept-owner-response-save-group-deleted.json").result);
+  assert.equal(groups.form, null);
+  assert.deepEqual(announced, ["The group Team is deleted."]);
+});
+
+test("after no answer the rule applies again: the save may have been applied, so the form is stale", () => {
+  const { host, groups, announced } = screen();
+  groups.openEdit("rset-team");
+  groups.edit("name", "Core team");
+  groups.save();
+  host.notice(RICH.cursor + 1, { kind: "recipient_set", recipient_set: { ...TEAM, revision: 3, definition: { ...TEAM.definition, name: "Core team" } } });
+  host.state({ name: "disconnected", reason: "exited", detail: "exit code 1" });
+  assert.notEqual(form(groups).stale, null);
+  groups.sayChanged();
+  assert.equal(announced.filter((a) => a.startsWith("The group changed")).length, 1);
+});
+
 test("the widening line appears only when the draft adds an address or a domain", () => {
   const { groups } = screen();
   groups.openEdit("rset-team");
@@ -145,10 +188,11 @@ test("delete takes two steps and sends the set's revision", () => {
   const { host, groups, announced, saves } = screen();
   assert.equal(groups.askDelete("rset-team"), true);
   assert.equal(item(groups, "rset-team").confirming, "Delete Team? Permissions that name it end.");
+  assert.equal(item(groups, "rset-team").confirmLabel, "Yes, delete the group Team", "not the name of the first step's button");
   assert.equal(saves().length, 0, "the first step sends nothing");
   groups.cancelDelete();
   assert.equal(item(groups, "rset-team").confirming, null);
-  assert.deepEqual(groups.takeFocus(), { kind: "group", id: "rset-team" });
+  assert.deepEqual(groups.takeFocus(), { kind: "delete", id: "rset-team" }, "back to the Delete button");
   groups.askDelete("rset-team");
   assert.equal(groups.confirmDelete(), true);
   assert.deepEqual(host.last("save_group").params, { expected_revision: 2, change: { kind: "delete", recipient_set_id: "rset-team" } });
@@ -187,7 +231,7 @@ test("one form at a time: while it has changes, the other groups and New group w
 });
 
 test("conflict: nothing saved, the state is read again, the form is stale until the owner has seen it, then the save carries the new revision", () => {
-  const { host, groups, saves } = screen();
+  const { host, groups, saves, announced } = screen();
   groups.openEdit("rset-team");
   groups.edit("addresses", "ally@example.net\nsam.lee@example.org\nkim@example.net");
   groups.save();
@@ -203,7 +247,13 @@ test("conflict: nothing saved, the state is read again, the form is stale until 
   assert.equal(f.addresses, "ally@example.net\nsam.lee@example.org\nkim@example.net", "the owner's edits stay");
   assert.equal(f.save.enabled, false);
   assert.equal(groups.save(), false);
+  groups.sayChanged();
+  groups.sayChanged();
+  assert.deepEqual(announced.filter((a) => a.startsWith("The group changed")),
+    ["The group changed while you were editing. Your changes are kept. Look at the current version before you save."], "said once");
   groups.acknowledge();
+  groups.sayChanged();
+  assert.equal(announced.filter((a) => a.startsWith("The group changed")).length, 1, "nothing to say once seen");
   assert.equal(form(groups).stale, null);
   assert.equal(groups.save(), true);
   assert.equal(saves().length, 2);
@@ -227,7 +277,7 @@ test("a notice for the edited group: a form with changes becomes stale, one with
 });
 
 test("the edited group deleted meanwhile: the text stays to copy and cannot be saved", () => {
-  const { host, groups } = screen();
+  const { host, groups, announced } = screen();
   groups.openEdit("rset-team");
   groups.edit("name", "Team (old)");
   host.notice(RICH.cursor + 1, fixture("accept-owner-notice-recipient-set-deleted.json").change);
@@ -236,6 +286,10 @@ test("the edited group deleted meanwhile: the text stays to copy and cannot be s
   assert.equal(f.name, "Team (old)");
   assert.equal(f.save.reason, "This group no longer exists, so it cannot be saved.");
   assert.equal(groups.save(), false);
+  groups.sayChanged();
+  groups.sayChanged();
+  assert.deepEqual(announced.filter((a) => a.includes("was deleted while you were editing")),
+    ["The group Team was deleted while you were editing. Your text stays so that you can copy it; it cannot be saved."]);
   groups.discard();
   assert.deepEqual(groups.takeFocus(), { kind: "new" });
 
@@ -291,11 +345,15 @@ test("every command of the screen sends a valid owner request", () => {
   host.error("save_group", "internal");
   assert.equal(form(groups).note, "The broker did not save this: Refused by the test.");
   groups.save();
-  host.reply("save_group", fixture("accept-owner-response-save-group-saved.json").result);
+  const created = fixture("accept-owner-response-save-group-saved.json").result;
+  host.notice(RICH.cursor + 1, { kind: "recipient_set", recipient_set: created.recipient_set });
+  host.reply("save_group", created);
   groups.openEdit("rset-team");
   groups.edit("addresses", "ally@example.net");
   groups.save();
-  host.reply("save_group", { commit_sequence: RICH.cursor + 1, recipient_set: { ...TEAM, revision: 3, definition: { ...TEAM.definition, members: ["ally@example.net"] } } });
+  const narrowed: RecipientSet = { ...TEAM, revision: 3, definition: { ...TEAM.definition, members: ["ally@example.net"] } };
+  host.notice(RICH.cursor + 2, { kind: "recipient_set", recipient_set: narrowed });
+  host.reply("save_group", { commit_sequence: RICH.cursor + 2, recipient_set: narrowed });
   assert.equal(groups.askDelete("rset-people-family"), true);
   groups.confirmDelete();
   host.error("save_group", "not_found");

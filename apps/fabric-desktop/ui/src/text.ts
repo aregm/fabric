@@ -58,6 +58,13 @@ export const OPERATION: Record<ToolName, string> = {
   fabric_request_result: "Read the result of an earlier request",
 };
 
+// What the owner is told after allowing a request, by the duration chosen.
+export const ALLOWED_TEXT: Record<DurationKind, string> = {
+  one_request: "You allowed this, for this one request.",
+  session: "You allowed this. The permission lasts until this agent's current session ends.",
+  until_revoked: "You allowed this. The permission lasts until you take it back.",
+};
+
 export const DURATION_TEXT: Record<DurationKind, string> = {
   one_request: "Only this request",
   session: "Until this agent's current session ends",
@@ -427,15 +434,17 @@ export function grantTitle(g: Grant, names: Names): string {
 
 // A permission: the agent's purpose (untrusted), the operations, the scope, how long it lasts, when
 // and under which profile it was given, the request it came from, and when and why it ended.
-export function grantFacts(g: Grant, names: Names, groups: ReadonlyMap<string, RecipientSet>, profile: string): Fact[] {
+// `origin` names the request it was given for.
+export function grantFacts(g: Grant, names: Names, groups: ReadonlyMap<string, RecipientSet>, profile: string, origin: string): Fact[] {
+  const over = g.ended !== null;
   const facts: Fact[] = [
     { term: "Its purpose, in the agent's own words (not checked by Fabric)", values: [g.purpose], untrusted: true },
-    { term: "What it may do", values: g.tools.map((t) => OPERATION[t]) },
+    { term: over ? "What it allowed" : "What it may do", values: g.tools.map((t) => OPERATION[t]) },
     ...scopeFacts(g.scope, names, groups),
-    { term: "How long it lasts", values: [termText(g.term, agentName(names, g.agent_id))] },
+    { term: over ? "How long it was given for" : "How long it lasts", values: [termText(g.term, agentName(names, g.agent_id))] },
     { term: "Given", values: [formatInstant(g.created_at, names.zone)] },
     { term: "Given under", values: [`${profile}, version ${g.policy.version}`] },
-    { term: "Given for request", values: [g.origin.request_id] },
+    { term: "Given for request", values: [origin] },
   ];
   if (g.ended !== null) facts.push({ term: "Ended", values: [`${formatInstant(g.ended.at, names.zone)}. ${GRANT_END_TEXT[g.ended.reason]}`] });
   return facts;
