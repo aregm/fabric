@@ -8,6 +8,7 @@ The scaffold begins as a small modular monolith:
 - apps/fabric-cli — diagnostic CLI plus the `demo-meeting` executable fixture;
 - crates/fabric-core — shared domain library, including checked calendar intervals and Rendezvous agreement semantics;
 - apps/fabric-demo, crates/fabric-policy, crates/fabric-token, crates/fabric-wire and isabelle/ — the Isabelle-gated calendar demo below;
+- contracts/desktop/v1 and crates/fabric-desktop-contracts — the `fabric-desktop/1` contract between the Calendar Desktop broker, its owner interface and the agents: JSON Schemas, golden fixtures, the Rust transport types and a small TypeScript check (work package CD-W01);
 - apps/paracels — an Expo (React Native) iOS app outside the Cargo workspace, where the chat prototype is being built;
 - scripts — isolated setup, command runner, and verification for Windows and macOS/Linux.
 
@@ -230,7 +231,13 @@ macOS or Linux:
 
 Verification runs formatting, check, Clippy with warnings denied, tests, and documentation for the entire locked workspace.
 
-The included GitHub Actions workflow runs the same bootstrap on three runners: `macos-26`, `ubuntu-24.04` and `windows-2025-vs2026`.
+The desktop contract has its own cross-language suite. It needs Node 22.18 or later, runs the Rust and the TypeScript side against the same fixtures, and fails on any disagreement:
+
+    sh scripts/verify-contracts.sh
+
+Add `--typecheck` to also check the TypeScript types with the compiler; this installs two npm packages. [contracts/desktop/v1/README.md](contracts/desktop/v1/README.md) describes the contract and the suite.
+
+The included GitHub Actions workflow runs the same bootstrap on three runners: `macos-26`, `ubuntu-24.04` and `windows-2025-vs2026`. The two POSIX runners also run the contract suite; the Windows runner runs the TypeScript fixture tests.
 
 ## Update the compiler
 
