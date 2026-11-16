@@ -198,7 +198,7 @@ Example request: “Find 30 minutes with Bob next week about Atlas. Prefer after
 8. After all required devices report prepared, each writes its own private/Fabric/provider event idempotently. A second click is not needed because the user’s yes was the narrow, exact commit grant.
 9. Both users receive “Scheduled,” or a truthful partial/recovery state. The event links locally to people, project, request, agenda, notes, tasks, and follow-up.
 
-If no option receives unanimous yes, the protocol emits only `NO_MATCH`. It does not announce who declined what. One bounded counterproposal round may follow; otherwise the negotiation expires.
+If no option receives unanimous yes, the protocol emits only `NO_MATCH`. It does not announce who declined what. Counterproposal rounds may follow, up to the limit of three rounds in section 23.7; otherwise the negotiation expires.
 
 ## 23.4 Component and trust architecture
 
@@ -387,7 +387,7 @@ The proposer chooses a diverse bounded set `C_r` contained in `F_proposer` for r
 e_i(c) = \mathbf{1}[c \subseteq F_i]
 \]
 
-and sends the fixed-length vector sealed to the coordinator. The coordinator publishes only:
+and sends the fixed-length vector to the coordinator, sealed in groups of three or more (section 23.6). The coordinator publishes only:
 
 \[
 M_r = \{c \in C_r \mid e_i(c)=1\ \text{for every required }i\}
@@ -401,7 +401,7 @@ A_r = \{c \in M_r \mid d_i(c)=yes\ \text{for every required }i\}
 
 If `A_r` is non-empty, choose the first candidate under the selection order committed in `NEGOTIATION_CREATE`. The strict-binary MVP shares no preference weight or rejection reason. A later opt-in profile may reveal a coarse `preferred | acceptable | costly` band and use maximin-before-sum fairness, but it must be a visibly more revealing privacy profile.
 
-To prevent a participant from adapting an answer after seeing another’s, every participant first broadcasts a salted commitment to its decision vector, then HPKE-seals the vector and salt to the coordinator. Candidate times and yes/no values are enumerable; the commitment requires a fresh 32-byte random salt. The coordinator can still omit an option and harm liveness, so every device verifies the candidate/options transcript and no product claim promises Byzantine fairness.
+To prevent a participant from adapting an answer after seeing another’s, every participant first broadcasts a salted commitment to its decision vector, then sends the vector and salt to the coordinator, HPKE-sealed in groups of three or more. Candidate times and yes/no values are enumerable; the commitment requires a fresh 32-byte random salt. The coordinator can still omit an option and harm liveness, so every device verifies the candidate/options transcript and no product claim promises Byzantine fairness.
 
 The event template and ordered candidate round are independently canonicalized so
 an approval cannot be moved to a different projection or proposal order:
@@ -482,7 +482,7 @@ sequenceDiagram
     AF->>Relay: MLS-encrypted candidate round
     Relay->>BF: Deliver ciphertext
     BF->>BF: Evaluate exact candidates locally
-    BF->>Relay: MLS + coordinator-only sealed eligibility
+    BF->>Relay: MLS-encrypted eligibility, no extra seal
     Relay->>AF: Deliver ciphertext
     AF->>Relay: Publish encrypted mutual options
     Relay->>BF: Deliver mutual options
@@ -495,8 +495,8 @@ sequenceDiagram
     Relay-->>AF: All commitments observed
     Relay-->>BF: All commitments observed
     AF->>Relay: Coordinator-sealed decisions + salt
-    BF->>Relay: Coordinator-sealed decisions + salt
-    Relay->>AF: Coordinator receives sealed decisions
+    BF->>Relay: MLS-encrypted decisions + salt
+    Relay->>AF: Coordinator receives decisions
     AF->>Relay: Selected option + exact meeting digest
     Relay->>BF: Deliver selected option
     AF->>AC: Refresh and revalidate owner replica
@@ -618,7 +618,7 @@ Canonical domain events include `calendar_event_upserted`, `calendar_event_delet
 
 The protocol structures support two or more participants; the first operational release requires all participants. Required/optional roles, quorums, and resource calendars are subsequent profiles because they change selection and consent semantics.
 
-- Individual eligibility and decisions are coordinator-only inner ciphertext; other participants receive mutual options, a generic `NO_MATCH`, and the final affirmative proof—not per-person negative vectors.
+- In groups of three or more, individual eligibility and decisions are coordinator-only inner ciphertext; other participants receive mutual options, a generic `NO_MATCH`, and the final affirmative proof—not per-person negative vectors.
 - Candidate rounds are group broadcasts with one canonical digest. Every response binds that digest; every final approval binds the same roster and meeting digest.
 - Adding/removing a participant advances MLS membership, invalidates candidates, decisions, and approvals, and restarts discovery with the new roster. Removed members cannot read future epochs but cannot be made to forget past candidates.
 - MLS membership is per client, while consent is per logical person. Each user has one elected approval device or an explicit local device quorum; two devices cannot accidentally supply two participant votes.
