@@ -27,10 +27,10 @@ the session what differed.
 | 3 | The consent screen: app name Fabric Calendar, user type External, publishing status Testing, two test users, five scopes | What the test accounts see when they connect. |
 | 4 | One OAuth client of type Desktop app, and its client file saved outside the repository | The broker's identity towards Google. |
 | 5 | Two disposable Gmail accounts, A and B | The accounts Fabric Calendar connects in tests. |
-| 6 | In each test account: a calendar it owns, shared with write access to the other account | Acceptance needs an owned and a writable shared calendar per account (CD-W00b). |
+| 6 | In each test account: a calendar it owns, shared with write access to the other account. In account B also: its main calendar and three small calendars shared with A, one at each other level | Acceptance needs an owned and a writable shared calendar per account (CD-W00b). The other levels show how Fabric reads each kind of access. |
 | 7 | A calendar named Agent Drafts in account A | The owner creates it; Fabric never creates a calendar (CD-Q05f). |
 | 8 | One mailbox you own that may receive test invitations | The only outside recipient a test may invite. |
-| 9 | Five test events made by hand (section 8) | The rows of gate `CD-G2b` that need existing data. |
+| 9 | Six test events made by hand (section 8) | The rows of gate `CD-G2b` that need existing data. |
 
 Nothing in this list costs money. If any page asks for a billing account or a payment method, stop and tell the
 session (see step 2.3).
@@ -65,8 +65,11 @@ Sign in to the Google Cloud console (`https://console.cloud.google.com/`) as the
 The project ID cannot be changed later. In Location keep what the console proposes (for a personal account that is
 no organization) unless you want the project inside an organization you own. Click Create. Google says the project is created "within a few minutes".
 
-2.3 Do not add a billing account. The Calendar API has no charge at these volumes. If the console asks for billing
-at any step, stop there and tell the session: the plan has no paid service, and adding one is your decision alone.
+2.3 Do not add a billing account. Google says "all standard use of the Google Calendar API is available at no
+additional cost". It also says that going over the request limits "is planned to incur charges to your Google Cloud
+billing account later in 2026"; a project with no billing account has nothing to charge. If the console asks for
+billing at any step, stop there and tell the session: the plan has no paid service, and adding one is your decision
+alone.
 
 2.4 Make sure the new project is the one selected in the project picker at the top of the console before every step
 below.
@@ -217,16 +220,24 @@ mix.
 | 8.1.4 | B | Create a calendar `Fabric Test Shared B` the same way and share it with A, again **Make changes and see event details**. |
 | 8.1.5 | A | Open the email and click the link to add `Fabric Test Shared B`. |
 | 8.1.6 | A | Create one more calendar named `Agent Drafts`. Do not share it. |
+| 8.1.7 | B | Create three more calendars and share each with A at one level: `Fabric Test Busy Only` with **See only free/busy (hide details)**, `Fabric Test Read Only` with **See event details**, `Fabric Test Write No Private` with **Make changes (see private events as free/busy)**. |
+| 8.1.8 | B | Share B's own main calendar with A: **Make changes and see event details**. |
+| 8.1.9 | A | Open the four emails and click each link to add the calendars. |
 
-Choose "Make changes and see event details", not "Make changes and manage sharing": Fabric Calendar never needs the
-right to change sharing, and the tests should show that write access alone is enough. Do not choose "Make changes
-(see private events as free/busy)"; that is a third kind of write access, noted in section 10.
+For the two writable test calendars choose "Make changes and see event details", not "Make changes and manage
+sharing": Fabric Calendar never needs the right to change sharing, and the tests should show that write access
+alone is enough.
 
-After this, account A sees: its own main calendar, `Fabric Test Shared A` (owned), `Fabric Test Shared B` (may
-write), `Agent Drafts` (owned). Account B sees its own main calendar, `Fabric Test Shared B` (owned) and
-`Fabric Test Shared A` (may write).
+Steps 8.1.7 to 8.1.9 are for two checks of the live run. The three small calendars show how Fabric reads each
+level of access; the third level is one the contract does not know yet, and Fabric must treat it as read-only.
+B's main calendar is there so that A can see an invitation that is addressed to B: Fabric must refuse to answer
+it, because it is not A's own.
 
-### 8.2 The five test events
+After this, account A sees: its own main calendar, `Fabric Test Shared A` (owned), `Agent Drafts` (owned),
+`Fabric Test Shared B` and B's main calendar (may write), and the three small calendars of B. Account B sees its
+own main calendar, the four calendars it made (owned) and `Fabric Test Shared A` (may write).
+
+### 8.2 The six test events
 
 Create them by hand, with these titles, on days within the next two weeks. If the test runs later than that, move
 them or make them again. Put nothing private into them.
@@ -238,9 +249,10 @@ them or make them again. Put nothing private into them.
 | 3 | B | B's main calendar | `G2b weekly invitation`: one hour, repeats weekly, guest: A's address | A recurring invitation: A answers one occurrence only. |
 | 4 | A | A's main calendar | `G2b all-day`: the "All day" box ticked, one day | An all-day event: read with its date, never changed. |
 | 5 | A | A's main calendar | `G2b weekly`: one hour, repeats weekly, no guests | A recurring event: read as single occurrences, and a change is refused. |
+| 6 | A | A's main calendar | `G2b invitation to B`: one hour, on one day, guest: B's address | An invitation to another person, which A can see on B's shared main calendar: Fabric must not answer it for B. |
 
-For events 2 and 3, save with "Send" when Google asks whether to notify the guest, so that A really receives an
-invitation.
+For events 2, 3 and 6, save with "Send" when Google asks whether to notify the guest, so that the guest really
+receives an invitation.
 
 ---------------------------------------------------------------------------------------------------------------------
 
@@ -253,7 +265,7 @@ tried in a console: no session may sign in to Google.
 |---|---|---|---|
 | 1.2 | 2-Step Verification is required to sign in to the Cloud console | Confirmed that the requirement exists. Not confirmed: the date it is enforced for a given account | `docs.cloud.google.com/docs/authentication/mfa-requirement` |
 | 2.1, 2.2 | Menu > IAM & Admin > Create a Project; Project Name; Location; Create; the project ID cannot be changed | Confirmed. Not stated: what Location shows for a personal account | `developers.google.com/workspace/guides/create-project` |
-| 2.3 | The Calendar API asks for no billing account | **Not confirmed.** Google's pages say only "If prompted, enable billing" and that billing "might" be needed for some APIs | the same page; `developers.google.com/identity/protocols/oauth2/native-app` |
+| 2.3 | The Calendar API costs nothing in standard use; charges for going over the limits are planned for later in 2026 | Confirmed. **Not confirmed:** that the console never asks for a billing account when the API is enabled | `developers.google.com/workspace/calendar/api/guides/quota` |
 | 3.1 to 3.3 | Menu > APIs & Services > Library > Google Workspace; click the API; Enable | Confirmed | `developers.google.com/workspace/guides/enable-apis` |
 | 4.1 to 4.5 | Branding page, Get Started, App name, User support email, Audience External, Contact Information, the policy tick box, Create | Confirmed | `developers.google.com/workspace/guides/configure-oauth-consent` |
 | 4.3 | Internal is limited to one organization | Confirmed | `support.google.com/cloud/answer/15549945` |
@@ -286,12 +298,19 @@ These do not change what you do. They are recorded here because they came out of
 design takes them up.
 
 - Google now has a fifth access role on a shared calendar, `writerWithoutPrivateAccess` ("Make changes (see private
-  events as free/busy)"). The contract `fabric-desktop/1` knows four. The design proposes how to treat it.
+  events as free/busy)"). The contract `fabric-desktop/1` knows four. Until it has a fifth, the design shows such a
+  calendar as read-only and never writes to it.
+- Google marks one attendee of an event as `self`. The mark names the calendar the event copy is on, not the
+  account that is signed in. So on a calendar another person shared, the marked attendee is that person. The
+  design answers invitations only on an account's own main calendar.
 - Free/busy needs its own scope: the free/busy call does not accept `calendar.events`.
 - Google's pages mark the client secret as optional at the token endpoint and say PKCE should always be used.
   Whether Google accepts a Desktop app client without its secret is not stated; the live test settles it.
-- Google's page on conditional changes names update and delete for the `If-Match` header and says inserts have no
-  conditional form. It does not name patch. The live test settles that too.
+- Google's page on conditional changes names update and delete for the `If-Match` header and its 412 answer, and
+  says inserts have no conditional form. Its performance page says a patch must carry `If-Match` too, and that
+  `If-Match: *` forces a change through. That a patch on another revision is refused is settled by the live test.
+- Whether revoking one sign-in at Google ends every sign-in of that account for this client is not documented. The
+  design assumes it does, and revokes only when you ask for it at disconnect.
 - Google now offers its own hosted Calendar MCP server. Fabric Calendar does not use it: it would put Google, not
   the broker, between the agent and the calendar.
 
