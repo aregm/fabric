@@ -437,6 +437,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "fabric-mcp-bridge"
+version = "0.1.0"
+dependencies = [
+ "ed25519-dalek",
+ "fabric-desktop-contracts",
+ "getrandom 0.3.4",
+ "rustix",
+ "serde_json",
+ "sha2",
+ "zeroize",
+]
+
+[[package]]
 name = "fabric-policy"
 version = "0.1.0"
 dependencies = [
