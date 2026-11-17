@@ -46,7 +46,7 @@ pub(crate) fn move_request(
             .filter(|g| {
                 g.ended.is_none()
                     && matches!(g.term, GrantTerm::OneRequest { .. })
-                    && &g.origin.request_id == request_id
+                    && g.origin.request_id() == Some(request_id)
             })
             .map(|g| g.grant_id)
             .collect();

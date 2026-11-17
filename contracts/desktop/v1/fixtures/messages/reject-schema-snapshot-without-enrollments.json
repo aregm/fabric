@@ -1,0 +1,80 @@
+{
+  "description": "A snapshot without its enrollments.",
+  "schema": "owner-channel.schema.json#/$defs/owner_response",
+  "value": {
+    "protocol": "fabric-desktop/1",
+    "id": "snapshot-0",
+    "method": "get_snapshot",
+    "result": {
+      "cursor": 0,
+      "health": {
+        "prover": "starting",
+        "prover_problem": null,
+        "store": "ready"
+      },
+      "profiles": {
+        "revision": 0,
+        "active_profile_id": "careful",
+        "items": [
+          {
+            "kind": "built_in",
+            "profile_id": "careful",
+            "name": "Careful",
+            "version": 1,
+            "rows": {
+              "list_and_availability": "allow",
+              "read_event_details": "ask",
+              "create_in_agent_drafts": "allow",
+              "create_in_existing_calendar": "ask",
+              "edit_fabric_created_event": "ask",
+              "edit_preexisting_event": "ask",
+              "send_or_change_invitations": "ask",
+              "respond_to_invitation": "ask",
+              "delete_event": "ask",
+              "delete_calendar_or_change_sharing": "block"
+            }
+          },
+          {
+            "kind": "built_in",
+            "profile_id": "flexible",
+            "name": "Flexible",
+            "version": 1,
+            "rows": {
+              "list_and_availability": "allow",
+              "read_event_details": "allow",
+              "create_in_agent_drafts": "allow",
+              "create_in_existing_calendar": "allow",
+              "edit_fabric_created_event": "allow",
+              "edit_preexisting_event": "ask",
+              "send_or_change_invitations": "allow",
+              "respond_to_invitation": "ask",
+              "delete_event": "ask",
+              "delete_calendar_or_change_sharing": "block"
+            }
+          }
+        ]
+      },
+      "accounts": [],
+      "agents": [],
+      "recipient_sets": [],
+      "preferences": {
+        "revision": 0,
+        "settings": {
+          "zone": null,
+          "workday": null,
+          "protected_times": [],
+          "uninterrupted": null,
+          "buffer": null,
+          "warning_calendars": []
+        }
+      },
+      "requests": [],
+      "grants": []
+    }
+  },
+  "expect": {
+    "verdict": "reject",
+    "layer": "schema",
+    "error": "invalid_params"
+  }
+}

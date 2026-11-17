@@ -12,7 +12,7 @@ use crate::scalar::{
 pub const PROTOCOL: &str = "fabric-desktop/1";
 
 /// The schema version of this contract (`data/version.json`, README section 12).
-pub const SCHEMA_VERSION: u64 = 2;
+pub const SCHEMA_VERSION: u64 = 3;
 
 /// The marker for `common#/$defs/protocol`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

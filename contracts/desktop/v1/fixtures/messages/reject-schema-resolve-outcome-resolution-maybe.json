@@ -1,0 +1,19 @@
+{
+  "description": "resolve_outcome with a resolution that is neither applied nor absent.",
+  "schema": "owner-channel.schema.json#/$defs/owner_request",
+  "value": {
+    "protocol": "fabric-desktop/1",
+    "id": "command-73",
+    "method": "resolve_outcome",
+    "params": {
+      "request_id": "request-34",
+      "expected_revision": 11,
+      "resolution": "maybe"
+    }
+  },
+  "expect": {
+    "verdict": "reject",
+    "layer": "schema",
+    "error": "invalid_params"
+  }
+}

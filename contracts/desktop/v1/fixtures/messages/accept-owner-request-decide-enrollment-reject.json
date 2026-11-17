@@ -1,0 +1,20 @@
+{
+  "description": "decide_enrollment rejects a waiting enrollment.",
+  "schema": "owner-channel.schema.json#/$defs/owner_request",
+  "value": {
+    "protocol": "fabric-desktop/1",
+    "id": "command-76",
+    "method": "decide_enrollment",
+    "params": {
+      "enrollment_id": "enrollment-4",
+      "expected_revision": 1,
+      "decision": "reject"
+    }
+  },
+  "expect": {
+    "verdict": "accept",
+    "canonical": "{\"id\":\"command-76\",\"method\":\"decide_enrollment\",\"params\":{\"decision\":\"reject\",\"enrollment_id\":\"enrollment-4\",\"expected_revision\":1},\"protocol\":\"fabric-desktop/1\"}",
+    "command_digest": "sha256:47991761692d1362aae4054b27311d7e89f4f9f9d6390ac0e32423c3bddb2066",
+    "action_digest": null
+  }
+}

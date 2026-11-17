@@ -1,0 +1,19 @@
+{
+  "description": "A waiting enrollment was rejected.",
+  "schema": "owner-channel.schema.json#/$defs/owner_notice",
+  "value": {
+    "protocol": "fabric-desktop/1",
+    "sequence": 1335,
+    "change": {
+      "kind": "enrollment_closed",
+      "enrollment_id": "enrollment-4",
+      "agent_id": null
+    }
+  },
+  "expect": {
+    "verdict": "accept",
+    "canonical": "{\"change\":{\"agent_id\":null,\"enrollment_id\":\"enrollment-4\",\"kind\":\"enrollment_closed\"},\"protocol\":\"fabric-desktop/1\",\"sequence\":1335}",
+    "command_digest": null,
+    "action_digest": null
+  }
+}

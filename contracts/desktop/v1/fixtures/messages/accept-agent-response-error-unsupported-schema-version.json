@@ -13,13 +13,13 @@
       "correlation_id": "corr-0001",
       "detail": {
         "received": 0,
-        "supported": 2
+        "supported": 3
       }
     }
   },
   "expect": {
     "verdict": "accept",
-    "canonical": "{\"error\":{\"code\":\"unsupported_schema_version\",\"correlation_id\":\"corr-0001\",\"detail\":{\"received\":0,\"supported\":2},\"message\":\"Update the adapter.\",\"recovery\":\"update_app\",\"retryable\":false},\"id\":\"call-25\",\"method\":\"fabric_calendar_list\",\"protocol\":\"fabric-desktop/1\"}",
+    "canonical": "{\"error\":{\"code\":\"unsupported_schema_version\",\"correlation_id\":\"corr-0001\",\"detail\":{\"received\":0,\"supported\":3},\"message\":\"Update the adapter.\",\"recovery\":\"update_app\",\"retryable\":false},\"id\":\"call-25\",\"method\":\"fabric_calendar_list\",\"protocol\":\"fabric-desktop/1\"}",
     "command_digest": null,
     "action_digest": null
   }

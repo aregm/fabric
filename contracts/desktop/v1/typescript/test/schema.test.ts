@@ -87,10 +87,10 @@ test("vocabularies equal the schema enums", () => {
   assert.deepEqual(sorted(c.ERROR_CODES), sorted(defined), "error_* definitions");
 });
 
-test("the plain states and the three carrying states are exactly the 23 states", () => {
+test("the plain states and the three carrying states are exactly the 25 states", () => {
   const carrying = ["pending_approval", "blocked", "terminal_failure"];
   const all = sorted([...c.PLAIN_REQUEST_STATES, ...carrying]);
-  assert.equal(all.length, 23);
+  assert.equal(all.length, 25);
   assert.deepEqual(all, sorted(common.request_state.enum));
   assert.deepEqual(all, sorted(data("request-lifecycle.json").states.map((s: any) => s.state)));
   for (const d of [owner.lifecycle_status, agent.agent_lifecycle_status]) {

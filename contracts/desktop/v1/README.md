@@ -2,7 +2,7 @@
 
 This directory is the contract between the Fabric Calendar broker and everything that talks to it: the Tauri host and its webview on the owner channel, and the agent adapters (the MCP bridge and the embedded Ollama runtime) on the agent channel. It is work package CD-W01 of the [Calendar Desktop plan](../../../docs/plans/calendar-desktop-plan.md) and records the permission model of [ADR-108](../../../docs/adr/ADR-108-agent-and-mcp-permission-model.md).
 
-Schema version 2, written on 2026-11-16. Version 1 was written on 2026-11-15. One session writes this directory; other work packages ask for changes.
+Schema version 3, written on 2026-11-17. Version 1 was written on 2026-11-15 and version 2 on 2026-11-16. One session writes this directory; other work packages ask for changes.
 
 | Path | What it holds |
 |---|---|
@@ -99,15 +99,19 @@ The schemas are JSON Schema 2020-12 restricted to these keywords: `$schema`, `$d
 
 ## 7. The owner channel
 
-`data/owner-methods.json` lists the thirteen methods of plan section 9.1 with their parameter and result schemas.
+`data/owner-methods.json` lists the methods with their parameter and result schemas: the thirteen of plan section 9.1, and five that the plan's text needs and its table does not list (`select_calendars`, `resolve_outcome`, `decide_enrollment`, `remove_agent`, `list_ended_requests`).
 
 - **hello** reports the broker's build, `schema_version`, capabilities and limits. Under `fabric-desktop/1` the two sides must have the same `schema_version`; otherwise the broker answers `unsupported_schema_version`. No capability name is defined yet.
-- **get_snapshot** returns the state at a cursor: health, profiles, accounts, agents, recipient sets, preferences, the open requests and the grants that have not ended.
+- **get_snapshot** returns the state at a cursor: health, profiles, accounts, agents, the enrollments that wait for the owner, recipient sets, preferences, the open requests and the grants that have not ended.
 - **subscribe** asks for every change after a cursor. Notices then arrive with sequences rising by one. If the cursor is older than the history the broker kept, the answer is `snapshot_required`; if a subscriber falls more than `subscriber_queue_notices` behind, it receives the change `snapshot_required` and must take a snapshot and subscribe again.
 - **Commands** name the revision they were written against (`expected_revision`). A revision that is no longer current gets `conflict` and nothing is overwritten. A successful command returns `commit_sequence`, the sequence of the notice that carries its effect; the broker commits before it answers.
 - **decide_request** names the request, its revision and the `request_digest` the owner saw. If the request has changed, the answer is `stale_request`. `selected` is null to approve the scope as asked, or a scope that narrows it. `duration` is the card's `proposed_duration` or a shorter one (section 10); a longer one gets `invalid_params`. A recipient rule may name recipient sets in place of exact addresses.
-- **save_profile** either puts a profile in force (`activate`) or saves a custom profile (`save_custom`). When a save makes a row more permissive, the broker answers `expansion_not_acknowledged` with the expansion and its digest; the interface shows it, and the owner's confirmation is a new command that carries that digest.
+- **save_profile** either puts a profile in force (`activate`) or saves a custom profile (`save_custom`). When a save makes a row more permissive, the broker answers `expansion_not_acknowledged` with the expansion and its digest; the interface shows it, and the owner's confirmation is a new command that carries that digest. `delete_custom` deletes a custom profile; the broker refuses to delete the profile in force with `invalid_params`. A grant made under a deleted profile keeps naming its id and version.
 - **pause_agent** pauses or resumes one agent or all of them.
+- **select_calendars** sets, for one account, which calendars the owner has selected and which of them is Agent Drafts (CD-Q05f). `selected` is the whole selection: a calendar of the account that it does not name is no longer selected. `agent_drafts` names the Agent Drafts calendar, or is null for none; an account has at most one. The broker answers `invalid_params` when that calendar is not in `selected` or the account cannot write to it, and `not_found` when it does not know the account or a calendar. Nothing changes at Google: the owner creates the calendar there.
+- **decide_enrollment** approves or rejects an agent that asked to be enrolled, and **remove_agent** removes an enrolled agent. Both are described below.
+- **resolve_outcome** is the owner's own statement about a request in `needs_owner_resolution`: the change is at Google (`applied`) or it is not (`absent`). The request ends in `resolved_as_applied` or `resolved_as_absent` (section 9). The broker sends nothing to Google and starts no new attempt. If the request has changed or is in another state, the answer is `stale_request`.
+- **list_ended_requests** returns requests that have ended, newest first and at most `limit` at a time, without private event details. `before` is null for the first page and otherwise the id of the last request of the page before; `more` says whether older ones remain.
 - **get_request_details** returns the request, its approval card, the approval, the proofs, the authorization and the attempts. With `redaction` `redacted`, `private` is null and no event content leaves the broker's store. For a request that no proof decided, the details say why in `undecided_reason`: `prover_unavailable` when the rule prover was starting or not running, `out_of_time` when the proof did not finish within its time limit, and `failed` when the check ran and did not decide the request, or its report could not be used. It is null when the broker did not record why, and null for a request in any other state. The schema cannot state the tie to the state; the broker must uphold it.
 
 `health` says whether the rule prover and the store are ready. While `prover` is `unavailable`, `prover_problem` names the cause, or is null when the broker does not know it; while `prover` is `ready` or `starting`, it is null. The schema cannot state this rule; the broker must uphold it. What the owner can do follows from the value and is not sent:
@@ -115,9 +119,18 @@ The schemas are JSON Schema 2020-12 restricted to these keywords: `$schema`, `$d
 | `prover_problem` | Meaning | What the owner can do |
 |---|---|---|
 | `not_configured` | This run has no rule prover. | Nothing in this run. |
+| `not_installed` | The rule prover is not installed on this machine. | Run Fabric Calendar's installer for the rule prover, then quit Fabric Calendar and open it again. |
 | `failed_will_retry` | The prover could not start, or stopped; the broker starts it again by itself. | Wait. |
 | `failed` | The prover could not start, or stopped, and the broker will not try again in this run. | Quit Fabric Calendar and open it again. |
 | `wrong_rules` | The rule theory on this machine is not the one this broker was built with. | Install Fabric Calendar again. |
+
+An agent that asked to be enrolled is in the snapshot's `enrollments` and is announced by the change `enrollment`. It is not an agent yet: it has no session, makes no request and holds no grant. `registered_name` and `destination` are what its record will carry if the owner approves. How an enrollment comes to wait, and how the agent proves its key, belong to the agent channel's handshake (section 15).
+
+- When the owner approves (`decide_enrollment`), the broker creates the agent and, in the same commit, a grant until revoked for the calendar list (section 10).
+- When the owner rejects, nothing is created.
+- Either way the change `enrollment_closed` follows. After an approval it names the new agent.
+
+`remove_agent` ends the agent's session and ends its grants with the reason `agent_removed`. Its requests that were not yet handed to Google are cancelled. A request that was handed over runs to its end, because cancelling after dispatch would be a false rollback (plan section 9.2). The change `agent_removed` follows, and the agent is no longer in the snapshot. A request of a removed agent still names its id.
 
 Errors have a code, a message for the person, `retryable`, a recovery action, a correlation id and a typed detail. For each code the schema fixes `retryable`, the recovery action and the shape of the detail.
 
@@ -138,9 +151,9 @@ No tool carries a warning: warnings are for the owner only in version 1 of Fabri
 
 ## 9. The request lifecycle
 
-`data/request-lifecycle.json` lists the 23 states and the legal transitions. A request starts in `received`. It is open while its state is not terminal; the open-request limits count open requests, and an open approval card is a request in `pending_approval`.
+`data/request-lifecycle.json` lists the 25 states and the legal transitions. A request starts in `received`. It is open while its state is not terminal; the open-request limits count open requests, and an open approval card is a request in `pending_approval`.
 
-The 24 transitions marked `plan` are the state grammar of plan section 11. The 15 marked `added` close it, and each cites the plan text it rests on.
+The 24 transitions marked `plan` are the state grammar of plan section 11. The 17 marked `added` close it, and each cites the plan text it rests on.
 
 A request's `status` is its state and what that state always carries, and the schema will not accept one without the other:
 
@@ -150,6 +163,8 @@ A request's `status` is its state and what that state always carries, and the sc
 - Every other state carries nothing more.
 
 The reason a request is `undecided` is in its details (section 7), not in its status.
+
+A request in `needs_owner_resolution` is open: it stays in the snapshot until the owner resolves it (`resolve_outcome`, section 7), and it counts against the open-request limits. `resolved_as_applied` and `resolved_as_absent` record the owner's statement, not an observation of the broker. The interface must not show them as confirmed by Google.
 
 ## 10. Profiles, grants and durations
 
@@ -161,7 +176,11 @@ A recipient rule names exact addresses or recipient sets. No rule covers everyon
 
 An approval has one of three durations: `one_request`, `session`, `until_revoked`. A grant's `term` binds it: to one action digest, to one agent session, or to nothing but revocation, in which case it carries `"expires_at": null`. A session ends on disconnect, on app quit, on broker restart, or after `session_idle_timeout_seconds` without activity.
 
-The durations are ordered from shortest to longest: `one_request`, `session`, `until_revoked`. A card's `proposed_duration` is the longest one the owner may choose for that request. The interface offers it and the shorter ones: the owner can narrow a duration, like a scope, and cannot widen it.
+A grant's `origin` names what created it: the owner's approval of a request (`request_id` and `approval_digest`), or the owner's approval of the agent's enrollment (`enrollment_id`).
+
+The calendar list (`fabric_calendar_list`) names no calendar. Its permission comes with the enrollment: when the owner approves an agent, the broker creates a grant until revoked whose only tool is `fabric_calendar_list` and whose scope names no calendar (the owner's answer of 2026-11-17). To the rules it is a grant like any other. Under a row whose mode is `allow` it permits the list; revoking it, or removing the agent, ends it. A scope that names no calendar covers no calendar, so such a grant serves no tool that names one. A calendar list request that needs the owner's approval, for example after the owner revoked that grant, gets a card whose scope names no calendar.
+
+The durations are ordered from shortest to longest: `one_request`, `session`, `until_revoked`. A card's `proposed_duration` is the longest one the owner may choose for that request. The interface offers it and the shorter ones: the owner can narrow a duration, like a scope, and cannot widen it. When a card opens, the interface selects the shortest duration, `one_request`; a longer one is the owner's own choice (the owner's answer of 2026-11-17).
 
 The broker does not propose a duration whose grant would not serve the request. Under a row whose mode is `ask`, every request needs the owner's own approval, so a grant for a session or until revoked does not serve it and the card proposes `one_request`. The matrix states two exceptions, where such a grant does serve: a read of event details (CD-M02), and an edit of an event Fabric created in Agent Drafts (CD-M05). This is the rule theory's reading of the matrix; the owner confirmed it on 2026-11-16.
 
@@ -176,6 +195,8 @@ It is the internal authorization type that plan section 8 allows. The CBOR token
 `data/version.json` holds the protocol name, the schema version and the authorization profile. A change that an older peer could not read needs a new protocol major. Every other change raises `schema_version`.
 
 Version 2 added why the rule prover is unavailable (`prover_problem` in `health`), why a request is undecided (`undecided_reason` in the request's details) and the agent error `prover_unavailable`. The protocol name stays `fabric-desktop/1`: `hello`, the frame format and the error envelope did not change, so a version 1 peer can still read the refusal `unsupported_schema_version`.
+
+Version 3 added the commands that the plan's text needs and its method table does not list: selecting calendars and naming Agent Drafts, deciding an enrollment, removing an agent, and resolving an unknown outcome by hand. With them came the waiting enrollments in the snapshot, three changes, two request states, a second origin of a grant, and a scope that names no calendar. It also added the list of ended requests, the deletion of a custom profile, and the prover problem `not_installed`. Every request, card, grant and account that was valid under version 2 is valid under version 3, so what a broker stored stays readable.
 
 ## 13. Fixtures and the contract suite
 
@@ -257,7 +278,7 @@ Policy:
 
 Lifecycle:
 
-31. The 15 added transitions, and the terminal states. `undecided`, `absence_confirmed` and `needs_owner_resolution` are terminal in this version.
+31. The 15 transitions added in version 1, and the terminal states. `undecided` and `absence_confirmed` are terminal. `needs_owner_resolution` was terminal until version 3 (choice 54).
 32. The failure codes of `terminal_failure`.
 
 Authorization:
@@ -277,14 +298,33 @@ Version 2:
 42. A card's `proposed_duration` is the longest duration the owner may choose, not only the one shown first. The plan says the owner can narrow the duration and the interface cannot widen a request (its section 6, S03). No member is added for it.
 43. The durations are ordered `one_request`, `session`, `until_revoked`.
 44. A decision with a longer duration than the card proposes gets `invalid_params`.
-45. The broker does not propose a duration whose grant would not serve the request. Which of the durations that would serve it the broker proposes, and which one the interface selects at first, are not fixed (section 15).
+45. The broker does not propose a duration whose grant would not serve the request. Which of the durations that would serve it the broker proposes is not fixed (section 15).
+
+Version 3:
+
+46. `select_calendars` sets the whole selection of one account. The Agent Drafts calendar is named per account, and an account has at most one.
+47. Whether a change of selection ends a grant is left to the broker. A grant that ends is announced by its own notice.
+48. A waiting enrollment is a record of its own beside the agents, not an agent in a waiting state. The owner approves or rejects the name and the destination as shown and cannot edit them.
+49. Approving an enrollment gives the calendar list as a grant until revoked. The plan binds an "allowed tool scope" to the agent at enrollment (its section 4.3), and the owner's answer says what that scope holds. As a grant it is shown with the others and can be revoked alone, and the rule theory needs no change.
+50. That grant's scope names no calendar, so a scope's list of calendars may be empty. Such a scope covers no calendar. A calendar list request that needs approval gets a card with such a scope.
+51. A grant's origin has two forms that are told apart by their members, with no `kind` member, so that a grant stored under version 2 keeps its form.
+52. Removing an agent cancels its requests that were not handed to Google and lets the others run to their end. The removed agent leaves the snapshot, and the contract keeps no record of its name.
+53. The owner can resolve an outcome by hand only in `needs_owner_resolution`, after the broker's own reconciliation gave up. The request ends in one of two new states, which say that the owner settled the outcome and the broker did not observe it.
+54. `needs_owner_resolution` is no longer terminal, so that the request stays in the snapshot until it is resolved. It then counts against the open-request limits.
+55. `resolve_outcome` answers `stale_request`, as `decide_request` does, when the request changed or is in another state.
+56. `list_ended_requests`: newest first, at most 100 at a time, the next page named by the id of the last request seen. The request for version 3 did not name it; plan section S05 needs it to show ended requests.
+57. `delete_custom` in `save_profile`, and that the profile in force cannot be deleted. The request for version 3 did not name it.
+58. `not_installed` is a prover problem of its own, because the owner can act on it and cannot act on `not_configured`.
+59. The interface selects `one_request` first (the owner's answer of 2026-11-17).
 
 ## 15. Not covered
 
-- Commands that the plan's text needs and its method table does not list: selecting calendars and naming the Agent Drafts calendar, approving or removing an agent's enrollment, resolving an unknown outcome by hand, starting a People import, listing ended requests, the task composer for the embedded runtime, and the message that cancels a request. The snapshot can already show the state these would change.
-- The agent channel's connection handshake, which proves possession of the enrolled key (CD-W06).
+- Commands that the plan's text needs and its method table does not list: starting a People import, the task composer for the embedded runtime, and the message that cancels a request.
+- The agent channel's connection handshake, which proves possession of the enrolled key (CD-W06), and with it how an enrollment comes to wait for the owner and how many may wait. The owner's answer of 2026-11-17 fixes one point: the bridge proves its key once per connection and signs no single request.
+- What an account must carry for a partial grant (CD-W05).
+- How long the broker keeps ended requests.
 - Actions the broker starts itself, such as refresh and reconciliation reads, and the formal context with its digest (CD-W03, CD-W04).
 - A marker for practice accounts, attempts and reports.
-- Which of the durations that would serve a request the broker proposes on its card, and which duration the interface selects at first.
+- Which of the durations that would serve a request the broker proposes on its card.
 - The names of the rules. The contract fixes their form; the rule theory names them. The rule names in the fixtures are examples.
-- Facts that tie several members together, which a schema cannot state and the broker must uphold: that a snapshot's requests are open and its grants have not ended, that an expansion names each row once, that the active profile exists, that an approval card expires 24 hours after it opens, that a card proposes no duration whose grant would not serve its request, and that an authorization expires 60 seconds after it is issued (the Rust crate offers a check for the last).
+- Facts that tie several members together, which a schema cannot state and the broker must uphold: that a snapshot's requests are open and its grants have not ended, that an expansion names each row once, that the active profile exists, that an approval card expires 24 hours after it opens, that a card proposes no duration whose grant would not serve its request, that a scope for a tool that names calendars names at least one, that the Agent Drafts calendar of an account is selected and writable, that a grant made by an enrollment covers the calendar list alone, and that an authorization expires 60 seconds after it is issued (the Rust crate offers a check for the last).

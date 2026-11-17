@@ -16,7 +16,7 @@ use fabric_desktop_contracts::scalar::{CustomProfileId, Digest, Id, PositiveCoun
 use fabric_storage::{Counter, Mutation, StoreFault, TxError, WriteTx};
 
 use super::commands::{conflict, not_found, refused, within_budget};
-use super::frames::invalid_params;
+use super::frames::{NOT_IN_THIS_BUILD_MESSAGE, invalid_params};
 use super::views::owner_state_bytes;
 use crate::service::{Cx, OwnerRefusal, epochs, invariant};
 
@@ -46,6 +46,10 @@ pub(crate) fn save_profile(
             profile,
             acknowledged_expansion,
         } => save_custom(tx, cx, profile, acknowledged_expansion.as_ref())?,
+        // not implemented in this build (contract schema version 3)
+        ProfileChange::DeleteCustom { .. } => {
+            return refused(OwnerFault::UnknownMethod, NOT_IN_THIS_BUILD_MESSAGE);
+        }
     };
     tx.apply(Mutation::ProfileStateSet {
         active_profile_id: active_id,

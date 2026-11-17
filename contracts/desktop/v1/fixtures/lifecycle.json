@@ -772,5 +772,111 @@
     ],
     "valid": false,
     "first_invalid": 4
+  },
+  {
+    "name": "unknown-outcome-resolved-as-applied",
+    "states": [
+      "received",
+      "validating",
+      "proving_classification",
+      "allowed",
+      "proving_fresh_permit",
+      "queued",
+      "dispatching",
+      "outcome_unknown",
+      "reconciling",
+      "needs_owner_resolution",
+      "resolved_as_applied"
+    ],
+    "valid": true,
+    "first_invalid": null
+  },
+  {
+    "name": "unknown-outcome-resolved-as-absent",
+    "states": [
+      "received",
+      "validating",
+      "proving_classification",
+      "allowed",
+      "proving_fresh_permit",
+      "queued",
+      "dispatching",
+      "outcome_unknown",
+      "reconciling",
+      "needs_owner_resolution",
+      "resolved_as_absent"
+    ],
+    "valid": true,
+    "first_invalid": null
+  },
+  {
+    "name": "absent-then-resolved-as-applied",
+    "states": [
+      "received",
+      "validating",
+      "proving_classification",
+      "allowed",
+      "proving_fresh_permit",
+      "queued",
+      "dispatching",
+      "outcome_unknown",
+      "reconciling",
+      "absence_confirmed",
+      "resolved_as_applied"
+    ],
+    "valid": false,
+    "first_invalid": 10
+  },
+  {
+    "name": "resolved-as-applied-then-applied",
+    "states": [
+      "received",
+      "validating",
+      "proving_classification",
+      "allowed",
+      "proving_fresh_permit",
+      "queued",
+      "dispatching",
+      "outcome_unknown",
+      "reconciling",
+      "needs_owner_resolution",
+      "resolved_as_applied",
+      "applied"
+    ],
+    "valid": false,
+    "first_invalid": 11
+  },
+  {
+    "name": "unknown-outcome-resolved-without-the-owner",
+    "states": [
+      "received",
+      "validating",
+      "proving_classification",
+      "allowed",
+      "proving_fresh_permit",
+      "queued",
+      "dispatching",
+      "outcome_unknown",
+      "resolved_as_absent"
+    ],
+    "valid": false,
+    "first_invalid": 8
+  },
+  {
+    "name": "reconciled-then-resolved-as-applied",
+    "states": [
+      "received",
+      "validating",
+      "proving_classification",
+      "allowed",
+      "proving_fresh_permit",
+      "queued",
+      "dispatching",
+      "applied",
+      "reconciled",
+      "resolved_as_applied"
+    ],
+    "valid": false,
+    "first_invalid": 9
   }
 ]

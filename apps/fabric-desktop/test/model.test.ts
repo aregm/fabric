@@ -19,7 +19,7 @@ test("on connected: hello, then get_snapshot, then subscribe with the snapshot's
   const { host, model } = setup();
   host.state({ name: "connected" }, 1);
   assert.deepEqual(host.methods(), ["hello"]);
-  assert.deepEqual(host.last("hello").params, { client: { name: "Fabric Calendar", build: "CD-W08 webview" }, schema_version: 2 });
+  assert.deepEqual(host.last("hello").params, { client: { name: "Fabric Calendar", build: "CD-W08 webview" }, schema_version: 3 });
   host.reply("hello", HELLO_RESULT);
   assert.deepEqual(host.methods(), ["hello", "get_snapshot"]);
   host.reply("get_snapshot", snapshot(7));
@@ -98,8 +98,8 @@ test("'Received, checking' and how long after received_at it was first shown", (
   assert.equal(entry(model).checkingDelayMs, 137, "measured once, when the text was first shown");
 });
 
-test("all 23 states have a text, and TERMINAL equals the lifecycle data", () => {
-  assert.equal(REQUEST_STATES.length, 23);
+test("all 25 states have a text, and TERMINAL equals the lifecycle data", () => {
+  assert.equal(REQUEST_STATES.length, 25);
   for (const s of REQUEST_STATES) assert.ok(STATE_TEXT[s].length > 0, s);
   assert.deepEqual(Object.keys(STATE_TEXT).sort(), [...REQUEST_STATES].sort());
   const lifecycle = JSON.parse(readFileSync(`${CONTRACT_ROOT}data/request-lifecycle.json`, "utf8"));

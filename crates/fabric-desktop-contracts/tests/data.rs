@@ -238,7 +238,7 @@ fn lifecycle_transitions_match_exactly() {
         }
     }
     assert_eq!(rust, listed);
-    assert_eq!(rust.len(), 39);
+    assert_eq!(rust.len(), 41);
 }
 
 #[test]
@@ -249,14 +249,14 @@ fn request_state_enum_matches_the_schema() {
 }
 
 #[test]
-fn plain_and_carrying_states_are_the_23_states() {
+fn plain_and_carrying_states_are_the_25_states() {
     let schema = schema_def("common.schema.json#/$defs/plain_request_state").unwrap();
     let plain: Vec<&str> = PlainRequestState::ALL
         .iter()
         .map(|p| p.state().as_str())
         .collect();
     assert_eq!(names(&schema["enum"]), plain);
-    assert_eq!(plain.len(), 20);
+    assert_eq!(plain.len(), 22);
     let carrying = ["pending_approval", "blocked", "terminal_failure"];
     let mut all: BTreeSet<&str> = plain.iter().copied().collect();
     for c in carrying {

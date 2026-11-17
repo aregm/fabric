@@ -7,7 +7,7 @@ import type {
 } from "../../../../contracts/desktop/v1/typescript/src/contract.ts";
 import type { HostState } from "./host.ts";
 
-// Every one of the 23 states has a text; the Record type makes the compiler check that.
+// Every one of the 25 states has a text; the Record type makes the compiler check that.
 export const STATE_TEXT: Record<RequestState, string> = {
   received: "Received, checking",
   validating: "Received, checking",
@@ -32,6 +32,8 @@ export const STATE_TEXT: Record<RequestState, string> = {
   reconciling: "Fabric is asking the calendar whether it was done",
   absence_confirmed: "Not done: the calendar confirms that nothing changed",
   needs_owner_resolution: "Fabric cannot tell what happened and needs you to check",
+  resolved_as_applied: "Resolved by you: the change is in the calendar",
+  resolved_as_absent: "Resolved by you: the change is not in the calendar",
 };
 
 // The states after which a request never changes (data/request-lifecycle.json; a test compares them).
@@ -40,7 +42,7 @@ export const TERMINAL: Record<RequestState, boolean> = {
   blocked: true, undecided: true, approved: false, denied: true, expired: true, cancelled: true, stale: true,
   proving_fresh_permit: false, queued: false, dispatching: false, applied: false, reconciled: true,
   retry_wait: false, outcome_unknown: false, terminal_failure: true, reconciling: false, absence_confirmed: true,
-  needs_owner_resolution: true,
+  needs_owner_resolution: false, resolved_as_applied: true, resolved_as_absent: true,
 };
 
 export const CHECKING_STATES: readonly RequestState[] = ["received", "validating", "proving_classification"];
@@ -475,6 +477,11 @@ export function changeText(change: Change, names: Names): string {
   switch (change.kind) {
     case "account": return `Account ${change.account.email ?? change.account.account_id}: ${ACCOUNT_TEXT[change.account.state]}`;
     case "agent": return `Agent ${change.agent.registered_name}${change.agent.paused ? " (paused)" : ""}`;
+    case "agent_removed": return `Agent ${agentName(names, change.agent_id)} was removed`;
+    case "enrollment": return `${change.enrollment.registered_name} asks to be added as an agent`;
+    case "enrollment_closed": return change.agent_id === null
+      ? "A request to be added as an agent was closed"
+      : `Agent ${agentName(names, change.agent_id)} was added`;
     case "profiles": return "Your permission profiles changed";
     case "recipient_set": return `Group ${change.recipient_set.definition.name} changed`;
     case "recipient_set_deleted": return "A group was deleted";

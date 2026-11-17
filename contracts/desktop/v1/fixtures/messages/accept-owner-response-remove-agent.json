@@ -1,0 +1,23 @@
+{
+  "description": "remove_agent answers with the agent's id and the grants it ended.",
+  "schema": "owner-channel.schema.json#/$defs/owner_response",
+  "value": {
+    "protocol": "fabric-desktop/1",
+    "id": "command-77",
+    "method": "remove_agent",
+    "result": {
+      "commit_sequence": 1303,
+      "agent_id": "agent-codex-desktop",
+      "ended_grant_ids": [
+        "grant-13",
+        "grant-14"
+      ]
+    }
+  },
+  "expect": {
+    "verdict": "accept",
+    "canonical": "{\"id\":\"command-77\",\"method\":\"remove_agent\",\"protocol\":\"fabric-desktop/1\",\"result\":{\"agent_id\":\"agent-codex-desktop\",\"commit_sequence\":1303,\"ended_grant_ids\":[\"grant-13\",\"grant-14\"]}}",
+    "command_digest": null,
+    "action_digest": null
+  }
+}

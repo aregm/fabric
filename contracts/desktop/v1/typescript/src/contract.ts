@@ -8,7 +8,7 @@
 
 export const PROTOCOL = "fabric-desktop/1";
 export type Protocol = typeof PROTOCOL;
-export const SCHEMA_VERSION = 2;
+export const SCHEMA_VERSION = 3;
 export const AUTHORIZATION_PROFILE = "fabric-broker-authorization/1";
 
 export interface Limits {
@@ -87,7 +87,7 @@ export const REQUEST_STATES = [
   "received", "validating", "proving_classification", "allowed", "pending_approval", "blocked", "undecided",
   "approved", "denied", "expired", "cancelled", "stale", "proving_fresh_permit", "queued", "dispatching", "applied",
   "reconciled", "retry_wait", "outcome_unknown", "terminal_failure", "reconciling", "absence_confirmed",
-  "needs_owner_resolution",
+  "needs_owner_resolution", "resolved_as_applied", "resolved_as_absent",
 ] as const;
 export type RequestState = (typeof REQUEST_STATES)[number];
 
@@ -95,7 +95,8 @@ export type RequestState = (typeof REQUEST_STATES)[number];
 export const PLAIN_REQUEST_STATES = [
   "received", "validating", "proving_classification", "allowed", "undecided", "approved", "denied", "expired",
   "cancelled", "stale", "proving_fresh_permit", "queued", "dispatching", "applied", "reconciled", "retry_wait",
-  "outcome_unknown", "reconciling", "absence_confirmed", "needs_owner_resolution",
+  "outcome_unknown", "reconciling", "absence_confirmed", "needs_owner_resolution", "resolved_as_applied",
+  "resolved_as_absent",
 ] as const;
 export type PlainRequestState = (typeof PLAIN_REQUEST_STATES)[number];
 
@@ -124,13 +125,14 @@ export type ErrorCode = (typeof ERROR_CODES)[number];
 export const OWNER_METHODS = [
   "hello", "get_snapshot", "connect_google", "save_profile", "save_preferences", "save_group", "decide_request",
   "pause_agent", "revoke_grant", "get_request_details", "get_proof", "subscribe", "disconnect_google",
+  "select_calendars", "resolve_outcome", "decide_enrollment", "remove_agent", "list_ended_requests",
 ] as const;
 export type OwnerMethod = (typeof OWNER_METHODS)[number];
 
 // Owner methods that change broker state. Their frame id is the command id.
 export const OWNER_COMMANDS = [
   "connect_google", "save_profile", "save_preferences", "save_group", "decide_request", "pause_agent",
-  "revoke_grant", "disconnect_google",
+  "revoke_grant", "disconnect_google", "select_calendars", "resolve_outcome", "decide_enrollment", "remove_agent",
 ] as const;
 export type OwnerCommand = (typeof OWNER_COMMANDS)[number];
 
@@ -344,8 +346,9 @@ export type RecipientRule =
   | { readonly kind: "recipient_sets"; readonly recipient_set_ids: readonly Id[] };
 
 // A member that does not apply to the tools is null; one that applies and is null covers nothing.
+// A scope that names no calendar covers no calendar: the scope of a calendar list grant.
 export interface Scope {
-  readonly calendars: readonly CalendarRef[]; // 1..=200, unique
+  readonly calendars: readonly CalendarRef[]; // 0..=200, unique
   readonly window: Window | null;
   readonly fields: readonly EventField[] | null;
   readonly recipients: RecipientRule | null;
@@ -362,6 +365,10 @@ export interface GrantEnd {
   readonly at: Timestamp;
   readonly reason: GrantEndReason;
 }
+// What created a grant: the approval of a request, or the approval of the agent's enrollment.
+export type GrantOrigin =
+  | { readonly request_id: Id; readonly approval_digest: Digest }
+  | { readonly enrollment_id: Id };
 export interface Grant {
   readonly grant_id: Id;
   readonly revision: PositiveCount;
@@ -370,7 +377,7 @@ export interface Grant {
   readonly tools: readonly ToolName[];
   readonly scope: Scope;
   readonly term: GrantTerm;
-  readonly origin: { readonly request_id: Id; readonly approval_digest: Digest };
+  readonly origin: GrantOrigin;
   readonly policy: { readonly profile_id: Id; readonly version: PositiveCount };
   readonly revocation_epoch: Count;
   readonly created_at: Timestamp;
@@ -396,6 +403,14 @@ export interface Agent {
   readonly session: Session | null;
   readonly last_tool_call_at: Timestamp | null;
 }
+// An agent that asked to be enrolled and waits for the owner's decision.
+export interface Enrollment {
+  readonly enrollment_id: Id;
+  readonly revision: PositiveCount;
+  readonly registered_name: Label;
+  readonly destination: Destination;
+  readonly requested_at: Timestamp;
+}
 export interface Calendar {
   readonly calendar_id: Id;
   readonly name: Label;
@@ -410,7 +425,9 @@ export interface Account {
   readonly email: Email | null;
   readonly calendars: readonly Calendar[];
 }
-export const PROVER_PROBLEMS = ["not_configured", "failed_will_retry", "failed", "wrong_rules"] as const;
+export const PROVER_PROBLEMS = [
+  "not_configured", "not_installed", "failed_will_retry", "failed", "wrong_rules",
+] as const;
 export type ProverProblem = (typeof PROVER_PROBLEMS)[number];
 // `prover_problem` is null while the prover is ready or starting.
 export interface Health {
@@ -564,6 +581,7 @@ export interface Snapshot {
   readonly profiles: Profiles;
   readonly accounts: readonly Account[];
   readonly agents: readonly Agent[];
+  readonly enrollments: readonly Enrollment[];
   readonly recipient_sets: readonly RecipientSet[];
   readonly preferences: Preferences;
   readonly requests: readonly Request[];
@@ -572,6 +590,9 @@ export interface Snapshot {
 export type Change =
   | { readonly kind: "account"; readonly account: Account }
   | { readonly kind: "agent"; readonly agent: Agent }
+  | { readonly kind: "agent_removed"; readonly agent_id: Id }
+  | { readonly kind: "enrollment"; readonly enrollment: Enrollment }
+  | { readonly kind: "enrollment_closed"; readonly enrollment_id: Id; readonly agent_id: Id | null }
   | { readonly kind: "profiles"; readonly profiles: Profiles }
   | { readonly kind: "recipient_set"; readonly recipient_set: RecipientSet }
   | { readonly kind: "recipient_set_deleted"; readonly recipient_set_id: Id }
@@ -609,7 +630,8 @@ export interface ParamsSaveProfile {
   readonly expected_revision: Count;
   readonly change:
     | { readonly kind: "activate"; readonly profile_id: Id }
-    | { readonly kind: "save_custom"; readonly profile: CustomProfileDraft; readonly acknowledged_expansion: Digest | null };
+    | { readonly kind: "save_custom"; readonly profile: CustomProfileDraft; readonly acknowledged_expansion: Digest | null }
+    | { readonly kind: "delete_custom"; readonly profile_id: CustomProfileId };
 }
 export interface ResultSaveProfile {
   readonly commit_sequence: PositiveCount;
@@ -697,6 +719,58 @@ export interface ResultDisconnectGoogle {
   readonly account: Account;
   readonly ended_grant_ids: readonly Id[];
 }
+// `selected` is the whole selection; `agent_drafts` must be in it, or is null for none.
+export interface ParamsSelectCalendars {
+  readonly account_id: Id;
+  readonly expected_revision: Count;
+  readonly selected: readonly Id[]; // 0..=200, unique
+  readonly agent_drafts: Id | null;
+}
+export interface ResultSelectCalendars {
+  readonly commit_sequence: PositiveCount;
+  readonly account: Account;
+}
+export type Resolution = "applied" | "absent";
+// The owner's own statement about a request in needs_owner_resolution. Nothing is sent to Google.
+export interface ParamsResolveOutcome {
+  readonly request_id: Id;
+  readonly expected_revision: Count;
+  readonly resolution: Resolution;
+}
+export interface ResultResolveOutcome {
+  readonly commit_sequence: PositiveCount;
+  readonly request: Request;
+}
+export type EnrollmentDecision = "approve" | "reject";
+export interface ParamsDecideEnrollment {
+  readonly enrollment_id: Id;
+  readonly expected_revision: Count;
+  readonly decision: EnrollmentDecision;
+}
+// `agent` is the agent an approval created, and null for a rejection.
+export interface ResultDecideEnrollment {
+  readonly commit_sequence: PositiveCount;
+  readonly agent: Agent | null;
+}
+export interface ParamsRemoveAgent {
+  readonly agent_id: Id;
+  readonly expected_revision: Count;
+}
+export interface ResultRemoveAgent {
+  readonly commit_sequence: PositiveCount;
+  readonly agent_id: Id;
+  readonly ended_grant_ids: readonly Id[];
+}
+// `before` is null for the first page, or the id of the last request of the page before.
+export interface ParamsListEndedRequests {
+  readonly before: Id | null;
+  readonly limit: number; // 1..=100
+}
+// `more` is true when older ended requests remain.
+export interface ResultListEndedRequests {
+  readonly requests: readonly Request[]; // ..=100
+  readonly more: boolean;
+}
 
 // The params and result of each owner method (data/owner-methods.json).
 export interface OwnerMethods {
@@ -713,6 +787,11 @@ export interface OwnerMethods {
   readonly get_proof: { readonly params: ParamsGetProof; readonly result: ProofReport };
   readonly subscribe: { readonly params: ParamsSubscribe; readonly result: ResultSubscribe };
   readonly disconnect_google: { readonly params: ParamsDisconnectGoogle; readonly result: ResultDisconnectGoogle };
+  readonly select_calendars: { readonly params: ParamsSelectCalendars; readonly result: ResultSelectCalendars };
+  readonly resolve_outcome: { readonly params: ParamsResolveOutcome; readonly result: ResultResolveOutcome };
+  readonly decide_enrollment: { readonly params: ParamsDecideEnrollment; readonly result: ResultDecideEnrollment };
+  readonly remove_agent: { readonly params: ParamsRemoveAgent; readonly result: ResultRemoveAgent };
+  readonly list_ended_requests: { readonly params: ParamsListEndedRequests; readonly result: ResultListEndedRequests };
 }
 
 // ---- Owner frames ----

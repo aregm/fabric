@@ -17,7 +17,8 @@ use crate::frame::{Entry, Frame, Layer, decode, decode_record};
 use crate::json::{MAX_SAFE_INTEGER, canonical, parse_strict, write_string};
 use crate::lifecycle::{RequestState, first_invalid};
 use crate::owner::{
-    Authorization, Grant, Preferences, Profile, ProofReport, RecipientSet, Request,
+    Authorization, Enrollment, Grant, Preferences, Profile, ProofReport, RecipientSet, Request,
+    Scope,
 };
 use crate::scalar::{
     CustomProfileId, Date, Digest, DomainName, Email, EventTitle, Explanation, IanaZone, Id, Label,
@@ -43,9 +44,11 @@ pub enum Judgment {
 }
 
 /// The record references a message fixture may name besides the five frame entries.
-pub const RECORD_REFERENCES: [&str; 10] = [
+pub const RECORD_REFERENCES: [&str; 12] = [
     "owner-channel.schema.json#/$defs/profile",
     "owner-channel.schema.json#/$defs/grant",
+    "owner-channel.schema.json#/$defs/scope",
+    "owner-channel.schema.json#/$defs/enrollment",
     "owner-channel.schema.json#/$defs/authorization",
     "owner-channel.schema.json#/$defs/recipient_set",
     "owner-channel.schema.json#/$defs/request",
@@ -105,6 +108,8 @@ pub fn judge(reference: &str, bytes: &[u8]) -> Result<Judgment, String> {
     Ok(match reference {
         r if r == o("profile") => record::<Profile>(bytes),
         r if r == o("grant") => record::<Grant>(bytes),
+        r if r == o("scope") => record::<Scope>(bytes),
+        r if r == o("enrollment") => record::<Enrollment>(bytes),
         r if r == o("authorization") => record::<Authorization>(bytes),
         r if r == o("recipient_set") => record::<RecipientSet>(bytes),
         r if r == o("request") => record::<Request>(bytes),

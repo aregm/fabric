@@ -1,0 +1,47 @@
+{
+  "description": "select_calendars answers with the account and its new selection.",
+  "schema": "owner-channel.schema.json#/$defs/owner_response",
+  "value": {
+    "protocol": "fabric-desktop/1",
+    "id": "command-71",
+    "method": "select_calendars",
+    "result": {
+      "commit_sequence": 1299,
+      "account": {
+        "account_id": "acct-1",
+        "revision": 5,
+        "state": "connected",
+        "email": "owner@example.com",
+        "calendars": [
+          {
+            "calendar_id": "cal-primary",
+            "name": "Owner",
+            "access": "owner",
+            "selected": true,
+            "agent_drafts": false
+          },
+          {
+            "calendar_id": "cal-drafts",
+            "name": "Agent Drafts",
+            "access": "owner",
+            "selected": true,
+            "agent_drafts": true
+          },
+          {
+            "calendar_id": "cal-team-shared",
+            "name": "Team schedule",
+            "access": "writer",
+            "selected": false,
+            "agent_drafts": false
+          }
+        ]
+      }
+    }
+  },
+  "expect": {
+    "verdict": "accept",
+    "canonical": "{\"id\":\"command-71\",\"method\":\"select_calendars\",\"protocol\":\"fabric-desktop/1\",\"result\":{\"account\":{\"account_id\":\"acct-1\",\"calendars\":[{\"access\":\"owner\",\"agent_drafts\":false,\"calendar_id\":\"cal-primary\",\"name\":\"Owner\",\"selected\":true},{\"access\":\"owner\",\"agent_drafts\":true,\"calendar_id\":\"cal-drafts\",\"name\":\"Agent Drafts\",\"selected\":true},{\"access\":\"writer\",\"agent_drafts\":false,\"calendar_id\":\"cal-team-shared\",\"name\":\"Team schedule\",\"selected\":false}],\"email\":\"owner@example.com\",\"revision\":5,\"state\":\"connected\"},\"commit_sequence\":1299}}",
+    "command_digest": null,
+    "action_digest": null
+  }
+}

@@ -221,7 +221,9 @@
         "terminal_failure",
         "reconciling",
         "absence_confirmed",
-        "needs_owner_resolution"
+        "needs_owner_resolution",
+        "resolved_as_applied",
+        "resolved_as_absent"
       ]
     },
     "plain_request_state": {
@@ -246,7 +248,9 @@
         "outcome_unknown",
         "reconciling",
         "absence_confirmed",
-        "needs_owner_resolution"
+        "needs_owner_resolution",
+        "resolved_as_applied",
+        "resolved_as_absent"
       ]
     },
     "failure_code": {

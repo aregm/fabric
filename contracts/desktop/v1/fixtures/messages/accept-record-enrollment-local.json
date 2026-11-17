@@ -1,0 +1,20 @@
+{
+  "description": "A waiting enrollment of a local agent.",
+  "schema": "owner-channel.schema.json#/$defs/enrollment",
+  "value": {
+    "enrollment_id": "enrollment-4",
+    "revision": 1,
+    "registered_name": "Fabric local assistant",
+    "destination": {
+      "kind": "local",
+      "endpoint": "Embedded Ollama runtime on this Mac"
+    },
+    "requested_at": "2026-11-20T15:30:00.000Z"
+  },
+  "expect": {
+    "verdict": "accept",
+    "canonical": "{\"destination\":{\"endpoint\":\"Embedded Ollama runtime on this Mac\",\"kind\":\"local\"},\"enrollment_id\":\"enrollment-4\",\"registered_name\":\"Fabric local assistant\",\"requested_at\":\"2026-11-20T15:30:00.000Z\",\"revision\":1}",
+    "command_digest": null,
+    "action_digest": null
+  }
+}

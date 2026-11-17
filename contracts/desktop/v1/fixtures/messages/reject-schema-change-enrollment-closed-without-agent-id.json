@@ -1,0 +1,17 @@
+{
+  "description": "An enrollment_closed change without its agent_id.",
+  "schema": "owner-channel.schema.json#/$defs/owner_notice",
+  "value": {
+    "protocol": "fabric-desktop/1",
+    "sequence": 1334,
+    "change": {
+      "kind": "enrollment_closed",
+      "enrollment_id": "enrollment-3"
+    }
+  },
+  "expect": {
+    "verdict": "reject",
+    "layer": "schema",
+    "error": "invalid_params"
+  }
+}

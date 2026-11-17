@@ -1,0 +1,15 @@
+{
+  "description": "An enrollment without its destination.",
+  "schema": "owner-channel.schema.json#/$defs/enrollment",
+  "value": {
+    "enrollment_id": "enrollment-4",
+    "revision": 1,
+    "registered_name": "Fabric local assistant",
+    "requested_at": "2026-11-20T15:30:00.000Z"
+  },
+  "expect": {
+    "verdict": "reject",
+    "layer": "schema",
+    "error": "invalid_params"
+  }
+}

@@ -150,6 +150,17 @@ impl OwnerChannel {
                 OwnerFault::UnknownMethod,
                 frames::CONNECT_GOOGLE_MESSAGE,
             )),
+            // not implemented in this build (contract schema version 3)
+            OwnerCall::SelectCalendars(_)
+            | OwnerCall::ResolveOutcome(_)
+            | OwnerCall::DecideEnrollment(_)
+            | OwnerCall::RemoveAgent(_)
+            | OwnerCall::ListEndedRequests(_) => out.push(frames::refuse(
+                &frame_id,
+                request.call.method(),
+                OwnerFault::UnknownMethod,
+                frames::NOT_IN_THIS_BUILD_MESSAGE,
+            )),
             OwnerCall::SaveProfile(_)
             | OwnerCall::SavePreferences(_)
             | OwnerCall::SaveGroup(_)

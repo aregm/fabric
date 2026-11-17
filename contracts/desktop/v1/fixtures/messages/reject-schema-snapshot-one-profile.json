@@ -150,6 +150,7 @@
           "last_tool_call_at": null
         }
       ],
+      "enrollments": [],
       "recipient_sets": [
         {
           "recipient_set_id": "rset-team",

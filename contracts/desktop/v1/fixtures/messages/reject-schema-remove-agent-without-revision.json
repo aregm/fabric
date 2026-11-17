@@ -1,0 +1,17 @@
+{
+  "description": "remove_agent without its expected revision.",
+  "schema": "owner-channel.schema.json#/$defs/owner_request",
+  "value": {
+    "protocol": "fabric-desktop/1",
+    "id": "command-77",
+    "method": "remove_agent",
+    "params": {
+      "agent_id": "agent-codex-desktop"
+    }
+  },
+  "expect": {
+    "verdict": "reject",
+    "layer": "schema",
+    "error": "invalid_params"
+  }
+}

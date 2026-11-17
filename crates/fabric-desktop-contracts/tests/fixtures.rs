@@ -163,8 +163,8 @@ fn message_fixtures_match_their_expectations() {
 
 #[test]
 fn an_unknown_reference_fails_loudly() {
-    let err = suite::judge("owner-channel.schema.json#/$defs/scope", b"{}").unwrap_err();
-    assert!(err.contains("scope"), "{err}");
+    let err = suite::judge("owner-channel.schema.json#/$defs/session", b"{}").unwrap_err();
+    assert!(err.contains("session"), "{err}");
 }
 
 #[test]

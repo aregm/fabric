@@ -1,0 +1,18 @@
+{
+  "description": "An agent asks for the owner method remove_agent.",
+  "schema": "agent-channel.schema.json#/$defs/agent_request",
+  "value": {
+    "protocol": "fabric-desktop/1",
+    "id": "call-31",
+    "method": "remove_agent",
+    "params": {
+      "agent_id": "agent-claude-code",
+      "expected_revision": 5
+    }
+  },
+  "expect": {
+    "verdict": "reject",
+    "layer": "schema",
+    "error": "unknown_method"
+  }
+}

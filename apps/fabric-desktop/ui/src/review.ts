@@ -225,9 +225,14 @@ export class ReviewModel {
   grantFacts(g: Grant): Fact[] {
     const p = this.model.profiles?.items.find((x) => x.profile_id === g.policy.profile_id);
     const profile = p === undefined ? `The profile ${g.policy.profile_id}` : `The profile ${p.name}`;
-    const id = g.origin.request_id;
-    const e = this.model.requests.get(id);
-    const origin = e === undefined ? id : `${requestTitle(this.model, e)} (request ${id})`;
+    const o = g.origin;
+    let origin: string;
+    if ("enrollment_id" in o) {
+      origin = `enrollment ${o.enrollment_id}`;
+    } else {
+      const e = this.model.requests.get(o.request_id);
+      origin = e === undefined ? o.request_id : `${requestTitle(this.model, e)} (request ${o.request_id})`;
+    }
     return grantFacts(g, this.model.names, this.model.recipientSets, profile, origin);
   }
 

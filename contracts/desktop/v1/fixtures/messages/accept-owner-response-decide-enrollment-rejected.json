@@ -1,0 +1,19 @@
+{
+  "description": "decide_enrollment answers a rejection with no agent.",
+  "schema": "owner-channel.schema.json#/$defs/owner_response",
+  "value": {
+    "protocol": "fabric-desktop/1",
+    "id": "command-76",
+    "method": "decide_enrollment",
+    "result": {
+      "commit_sequence": 1302,
+      "agent": null
+    }
+  },
+  "expect": {
+    "verdict": "accept",
+    "canonical": "{\"id\":\"command-76\",\"method\":\"decide_enrollment\",\"protocol\":\"fabric-desktop/1\",\"result\":{\"agent\":null,\"commit_sequence\":1302}}",
+    "command_digest": null,
+    "action_digest": null
+  }
+}

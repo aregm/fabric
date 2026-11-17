@@ -1,0 +1,22 @@
+{
+  "description": "The prover is unavailable because the rule checker is not installed on this machine.",
+  "schema": "owner-channel.schema.json#/$defs/owner_notice",
+  "value": {
+    "protocol": "fabric-desktop/1",
+    "sequence": 1336,
+    "change": {
+      "kind": "health",
+      "health": {
+        "prover": "unavailable",
+        "prover_problem": "not_installed",
+        "store": "ready"
+      }
+    }
+  },
+  "expect": {
+    "verdict": "accept",
+    "canonical": "{\"change\":{\"health\":{\"prover\":\"unavailable\",\"prover_problem\":\"not_installed\",\"store\":\"ready\"},\"kind\":\"health\"},\"protocol\":\"fabric-desktop/1\",\"sequence\":1336}",
+    "command_digest": null,
+    "action_digest": null
+  }
+}

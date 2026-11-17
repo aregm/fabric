@@ -452,7 +452,7 @@ impl<'de> Deserialize<'de> for RecipientRule {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Scope {
-    pub calendars: List<CalendarRef, 1, 200, true>,
+    pub calendars: List<CalendarRef, 0, 200, true>,
     #[serde(deserialize_with = "nullable")]
     pub window: Option<Window>,
     #[serde(deserialize_with = "nullable")]
@@ -553,12 +553,76 @@ pub struct GrantEnd {
     pub reason: GrantEndReason,
 }
 
-/// The approval that created a grant.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+/// `owner#/$defs/grant_origin`: what created a grant. The two branches have no tag member;
+/// they differ by their members.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum GrantOrigin {
+    /// The owner's approval of a request.
+    Approval {
+        request_id: Id,
+        approval_digest: Digest,
+    },
+    /// The owner's approval of the agent's enrollment, which gives the agent the calendar list.
+    Enrollment { enrollment_id: Id },
+}
+
+impl GrantOrigin {
+    /// The request whose approval created the grant; `None` for a grant made by an
+    /// enrollment approval.
+    #[must_use]
+    pub fn request_id(&self) -> Option<&Id> {
+        match self {
+            GrantOrigin::Approval { request_id, .. } => Some(request_id),
+            GrantOrigin::Enrollment { .. } => None,
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct GrantOrigin {
-    pub request_id: Id,
-    pub approval_digest: Digest,
+struct ApprovalOriginBody {
+    request_id: Id,
+    approval_digest: Digest,
+}
+
+#[derive(Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct EnrollmentOriginBody {
+    enrollment_id: Id,
+}
+
+impl Serialize for GrantOrigin {
+    fn serialize<S: Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+        match self {
+            GrantOrigin::Approval {
+                request_id,
+                approval_digest,
+            } => json!({ "request_id": request_id, "approval_digest": approval_digest }),
+            GrantOrigin::Enrollment { enrollment_id } => json!({ "enrollment_id": enrollment_id }),
+        }
+        .serialize(s)
+    }
+}
+
+impl<'de> Deserialize<'de> for GrantOrigin {
+    fn deserialize<D: Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        let Value::Object(members) = Value::deserialize(d)? else {
+            return Err(de::Error::custom("expected an object"));
+        };
+        // Each branch denies unknown members, so at most one of them can hold.
+        if members.contains_key("enrollment_id") {
+            let b: EnrollmentOriginBody = tagged::body(members)?;
+            Ok(GrantOrigin::Enrollment {
+                enrollment_id: b.enrollment_id,
+            })
+        } else {
+            let b: ApprovalOriginBody = tagged::body(members)?;
+            Ok(GrantOrigin::Approval {
+                request_id: b.request_id,
+                approval_digest: b.approval_digest,
+            })
+        }
+    }
 }
 
 /// The profile version in force when a grant was created.
@@ -649,6 +713,18 @@ pub struct Agent {
     pub last_tool_call_at: Option<Timestamp>,
 }
 
+/// `owner#/$defs/enrollment`: an agent that asked to be enrolled and waits for the owner.
+/// `registered_name` and `destination` are what the agent's record will carry if approved.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Enrollment {
+    pub enrollment_id: Id,
+    pub revision: PositiveCount,
+    pub registered_name: Label,
+    pub destination: Destination,
+    pub requested_at: Timestamp,
+}
+
 /// `owner#/$defs/calendar`.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -701,6 +777,8 @@ pub enum ProverHealth {
 pub enum ProverProblem {
     /// This run has no rule prover.
     NotConfigured,
+    /// The rule checker is not installed on this machine.
+    NotInstalled,
     /// The prover could not start, or stopped; the broker starts it again by itself.
     FailedWillRetry,
     /// The prover could not start, or stopped, and the broker will not try again in this run.
@@ -1203,6 +1281,7 @@ pub struct Snapshot {
     pub profiles: Profiles,
     pub accounts: AnyList<Account>,
     pub agents: AnyList<Agent>,
+    pub enrollments: AnyList<Enrollment>,
     pub recipient_sets: AnyList<RecipientSet>,
     pub preferences: Preferences,
     pub requests: AnyList<Request>,
@@ -1214,6 +1293,15 @@ pub struct Snapshot {
 pub enum Change {
     Account(Account),
     Agent(Agent),
+    /// The owner removed the agent. It is no longer in the snapshot.
+    AgentRemoved(Id),
+    Enrollment(Enrollment),
+    /// A waiting enrollment was decided or withdrawn. `agent_id` names the agent an approval
+    /// created, and is `None` otherwise.
+    EnrollmentClosed {
+        enrollment_id: Id,
+        agent_id: Option<Id>,
+    },
     Profiles(Profiles),
     RecipientSet(RecipientSet),
     RecipientSetDeleted(Id),
@@ -1231,6 +1319,9 @@ impl Change {
         match self {
             Change::Account(_) => "account",
             Change::Agent(_) => "agent",
+            Change::AgentRemoved(_) => "agent_removed",
+            Change::Enrollment(_) => "enrollment",
+            Change::EnrollmentClosed { .. } => "enrollment_closed",
             Change::Profiles(_) => "profiles",
             Change::RecipientSet(_) => "recipient_set",
             Change::RecipientSetDeleted(_) => "recipient_set_deleted",
@@ -1249,6 +1340,12 @@ impl Serialize for Change {
         let body = match self {
             Change::Account(v) => json!({ "account": v }),
             Change::Agent(v) => json!({ "agent": v }),
+            Change::AgentRemoved(v) => json!({ "agent_id": v }),
+            Change::Enrollment(v) => json!({ "enrollment": v }),
+            Change::EnrollmentClosed {
+                enrollment_id,
+                agent_id,
+            } => json!({ "enrollment_id": enrollment_id, "agent_id": agent_id }),
             Change::Profiles(v) => json!({ "profiles": v }),
             Change::RecipientSet(v) => json!({ "recipient_set": v }),
             Change::RecipientSetDeleted(v) => json!({ "recipient_set_id": v }),
@@ -1269,6 +1366,12 @@ impl<'de> Deserialize<'de> for Change {
         let change = match kind.as_str() {
             "account" => Change::Account(tagged::read(member("account")?)?),
             "agent" => Change::Agent(tagged::read(member("agent")?)?),
+            "agent_removed" => Change::AgentRemoved(tagged::read(member("agent_id")?)?),
+            "enrollment" => Change::Enrollment(tagged::read(member("enrollment")?)?),
+            "enrollment_closed" => Change::EnrollmentClosed {
+                enrollment_id: tagged::read(member("enrollment_id")?)?,
+                agent_id: tagged::read::<Option<Id>, _>(member("agent_id")?)?,
+            },
             "profiles" => Change::Profiles(tagged::read(member("profiles")?)?),
             "recipient_set" => Change::RecipientSet(tagged::read(member("recipient_set")?)?),
             "recipient_set_deleted" => {
@@ -1343,6 +1446,9 @@ pub enum ProfileChange {
         profile: CustomProfileDraft,
         acknowledged_expansion: Option<Digest>,
     },
+    /// Deletes a custom profile. The profile in force cannot be deleted; a grant made under
+    /// it keeps naming its id and version.
+    DeleteCustom { profile_id: CustomProfileId },
 }
 
 #[derive(Serialize, Deserialize)]
@@ -1368,6 +1474,12 @@ impl Serialize for ProfileChange {
                 "save_custom",
                 &json!({ "profile": profile, "acknowledged_expansion": acknowledged_expansion }),
             ),
+            ProfileChange::DeleteCustom { profile_id } => tagged::join(
+                s,
+                "kind",
+                "delete_custom",
+                &json!({ "profile_id": profile_id }),
+            ),
         }
     }
 }
@@ -1387,6 +1499,11 @@ impl<'de> Deserialize<'de> for ProfileChange {
                     profile: b.profile,
                     acknowledged_expansion: b.acknowledged_expansion,
                 })
+            }
+            "delete_custom" => {
+                let profile_id = tagged::read(tagged::take(&mut rest, "profile_id")?)?;
+                tagged::nothing(&rest)?;
+                Ok(ProfileChange::DeleteCustom { profile_id })
             }
             other => Err(tagged::unknown("kind", other)),
         }
@@ -1738,7 +1855,118 @@ pub struct DisconnectGoogleResult {
     pub ended_grant_ids: List<Id, 0, { usize::MAX }, true>,
 }
 
-/// The thirteen owner methods of `data/owner-methods.json` (plan section 9.1).
+/// `owner#/$defs/params_select_calendars`: the whole selection of one account's calendars,
+/// and its Agent Drafts calendar, which must be in `selected`, or `None` for none.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SelectCalendarsParams {
+    pub account_id: Id,
+    pub expected_revision: Count,
+    pub selected: List<Id, 0, 200, true>,
+    #[serde(deserialize_with = "nullable")]
+    pub agent_drafts: Option<Id>,
+}
+
+/// `owner#/$defs/result_select_calendars`.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SelectCalendarsResult {
+    pub commit_sequence: PositiveCount,
+    pub account: Account,
+}
+
+/// The owner's statement in `resolve_outcome`: the change is at Google, or it is not.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Resolution {
+    Applied,
+    Absent,
+}
+
+/// `owner#/$defs/params_resolve_outcome`: the owner's own statement about a request in
+/// `needs_owner_resolution`. Nothing is sent to Google.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ResolveOutcomeParams {
+    pub request_id: Id,
+    pub expected_revision: Count,
+    pub resolution: Resolution,
+}
+
+/// `owner#/$defs/result_resolve_outcome`.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ResolveOutcomeResult {
+    pub commit_sequence: PositiveCount,
+    pub request: Request,
+}
+
+/// The owner's decision in `decide_enrollment`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum EnrollmentDecision {
+    Approve,
+    Reject,
+}
+
+/// `owner#/$defs/params_decide_enrollment`: an approval creates the agent and, in the same
+/// commit, a grant until revoked for the calendar list.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct DecideEnrollmentParams {
+    pub enrollment_id: Id,
+    pub expected_revision: Count,
+    pub decision: EnrollmentDecision,
+}
+
+/// `owner#/$defs/result_decide_enrollment`: `agent` is the agent an approval created, and
+/// `None` for a rejection.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct DecideEnrollmentResult {
+    pub commit_sequence: PositiveCount,
+    #[serde(deserialize_with = "nullable")]
+    pub agent: Option<Agent>,
+}
+
+/// `owner#/$defs/params_remove_agent`: ends the agent's session and its grants, and cancels
+/// its requests that were not yet handed to Google.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct RemoveAgentParams {
+    pub agent_id: Id,
+    pub expected_revision: Count,
+}
+
+/// `owner#/$defs/result_remove_agent`.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct RemoveAgentResult {
+    pub commit_sequence: PositiveCount,
+    pub agent_id: Id,
+    pub ended_grant_ids: List<Id, 0, { usize::MAX }, true>,
+}
+
+/// `owner#/$defs/params_list_ended_requests`: requests that have ended, newest first.
+/// `before` is `None` for the first page, or the id of the last request of the page before.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ListEndedRequestsParams {
+    #[serde(deserialize_with = "nullable")]
+    pub before: Option<Id>,
+    pub limit: Integer<1, 100>,
+}
+
+/// `owner#/$defs/result_list_ended_requests`: `more` is true when older ended requests remain.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ListEndedRequestsResult {
+    pub requests: List<Request, 0, 100, false>,
+    pub more: bool,
+}
+
+/// The owner methods of `data/owner-methods.json`: the thirteen of plan section 9.1 and five
+/// that the plan's text needs (README section 7).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum OwnerMethod {
     Hello,
@@ -1754,11 +1982,16 @@ pub enum OwnerMethod {
     GetProof,
     Subscribe,
     DisconnectGoogle,
+    SelectCalendars,
+    ResolveOutcome,
+    DecideEnrollment,
+    RemoveAgent,
+    ListEndedRequests,
 }
 
 impl OwnerMethod {
     /// Every method, in the order of `data/owner-methods.json`.
-    pub const ALL: [OwnerMethod; 13] = [
+    pub const ALL: [OwnerMethod; 18] = [
         OwnerMethod::Hello,
         OwnerMethod::GetSnapshot,
         OwnerMethod::ConnectGoogle,
@@ -1772,6 +2005,11 @@ impl OwnerMethod {
         OwnerMethod::GetProof,
         OwnerMethod::Subscribe,
         OwnerMethod::DisconnectGoogle,
+        OwnerMethod::SelectCalendars,
+        OwnerMethod::ResolveOutcome,
+        OwnerMethod::DecideEnrollment,
+        OwnerMethod::RemoveAgent,
+        OwnerMethod::ListEndedRequests,
     ];
 
     #[must_use]
@@ -1790,6 +2028,11 @@ impl OwnerMethod {
             OwnerMethod::GetProof => "get_proof",
             OwnerMethod::Subscribe => "subscribe",
             OwnerMethod::DisconnectGoogle => "disconnect_google",
+            OwnerMethod::SelectCalendars => "select_calendars",
+            OwnerMethod::ResolveOutcome => "resolve_outcome",
+            OwnerMethod::DecideEnrollment => "decide_enrollment",
+            OwnerMethod::RemoveAgent => "remove_agent",
+            OwnerMethod::ListEndedRequests => "list_ended_requests",
         }
     }
 
@@ -1812,6 +2055,10 @@ impl OwnerMethod {
                 | OwnerMethod::PauseAgent
                 | OwnerMethod::RevokeGrant
                 | OwnerMethod::DisconnectGoogle
+                | OwnerMethod::SelectCalendars
+                | OwnerMethod::ResolveOutcome
+                | OwnerMethod::DecideEnrollment
+                | OwnerMethod::RemoveAgent
         )
     }
 
@@ -1832,6 +2079,11 @@ impl OwnerMethod {
             OwnerMethod::GetProof => "params_get_proof",
             OwnerMethod::Subscribe => "params_subscribe",
             OwnerMethod::DisconnectGoogle => "params_disconnect_google",
+            OwnerMethod::SelectCalendars => "params_select_calendars",
+            OwnerMethod::ResolveOutcome => "params_resolve_outcome",
+            OwnerMethod::DecideEnrollment => "params_decide_enrollment",
+            OwnerMethod::RemoveAgent => "params_remove_agent",
+            OwnerMethod::ListEndedRequests => "params_list_ended_requests",
         }
     }
 
@@ -1852,6 +2104,11 @@ impl OwnerMethod {
             OwnerMethod::GetProof => "proof_report",
             OwnerMethod::Subscribe => "result_subscribe",
             OwnerMethod::DisconnectGoogle => "result_disconnect_google",
+            OwnerMethod::SelectCalendars => "result_select_calendars",
+            OwnerMethod::ResolveOutcome => "result_resolve_outcome",
+            OwnerMethod::DecideEnrollment => "result_decide_enrollment",
+            OwnerMethod::RemoveAgent => "result_remove_agent",
+            OwnerMethod::ListEndedRequests => "result_list_ended_requests",
         }
     }
 }
@@ -1872,6 +2129,11 @@ pub enum OwnerCall {
     GetProof(GetProofParams),
     Subscribe(SubscribeParams),
     DisconnectGoogle(DisconnectGoogleParams),
+    SelectCalendars(SelectCalendarsParams),
+    ResolveOutcome(ResolveOutcomeParams),
+    DecideEnrollment(DecideEnrollmentParams),
+    RemoveAgent(RemoveAgentParams),
+    ListEndedRequests(ListEndedRequestsParams),
 }
 
 impl OwnerCall {
@@ -1891,6 +2153,11 @@ impl OwnerCall {
             OwnerCall::GetProof(_) => OwnerMethod::GetProof,
             OwnerCall::Subscribe(_) => OwnerMethod::Subscribe,
             OwnerCall::DisconnectGoogle(_) => OwnerMethod::DisconnectGoogle,
+            OwnerCall::SelectCalendars(_) => OwnerMethod::SelectCalendars,
+            OwnerCall::ResolveOutcome(_) => OwnerMethod::ResolveOutcome,
+            OwnerCall::DecideEnrollment(_) => OwnerMethod::DecideEnrollment,
+            OwnerCall::RemoveAgent(_) => OwnerMethod::RemoveAgent,
+            OwnerCall::ListEndedRequests(_) => OwnerMethod::ListEndedRequests,
         }
     }
 
@@ -1910,6 +2177,11 @@ impl OwnerCall {
             OwnerCall::GetProof(p) => to_value(p),
             OwnerCall::Subscribe(p) => to_value(p),
             OwnerCall::DisconnectGoogle(p) => to_value(p),
+            OwnerCall::SelectCalendars(p) => to_value(p),
+            OwnerCall::ResolveOutcome(p) => to_value(p),
+            OwnerCall::DecideEnrollment(p) => to_value(p),
+            OwnerCall::RemoveAgent(p) => to_value(p),
+            OwnerCall::ListEndedRequests(p) => to_value(p),
         }
     }
 
@@ -1929,6 +2201,11 @@ impl OwnerCall {
             OwnerMethod::GetProof => OwnerCall::GetProof(read(params)?),
             OwnerMethod::Subscribe => OwnerCall::Subscribe(read(params)?),
             OwnerMethod::DisconnectGoogle => OwnerCall::DisconnectGoogle(read(params)?),
+            OwnerMethod::SelectCalendars => OwnerCall::SelectCalendars(read(params)?),
+            OwnerMethod::ResolveOutcome => OwnerCall::ResolveOutcome(read(params)?),
+            OwnerMethod::DecideEnrollment => OwnerCall::DecideEnrollment(read(params)?),
+            OwnerMethod::RemoveAgent => OwnerCall::RemoveAgent(read(params)?),
+            OwnerMethod::ListEndedRequests => OwnerCall::ListEndedRequests(read(params)?),
         })
     }
 }
@@ -2000,6 +2277,11 @@ pub enum OwnerResult {
     GetProof(ProofReport),
     Subscribe(SubscribeResult),
     DisconnectGoogle(DisconnectGoogleResult),
+    SelectCalendars(SelectCalendarsResult),
+    ResolveOutcome(ResolveOutcomeResult),
+    DecideEnrollment(DecideEnrollmentResult),
+    RemoveAgent(RemoveAgentResult),
+    ListEndedRequests(ListEndedRequestsResult),
 }
 
 impl OwnerResult {
@@ -2019,6 +2301,11 @@ impl OwnerResult {
             OwnerResult::GetProof(_) => OwnerMethod::GetProof,
             OwnerResult::Subscribe(_) => OwnerMethod::Subscribe,
             OwnerResult::DisconnectGoogle(_) => OwnerMethod::DisconnectGoogle,
+            OwnerResult::SelectCalendars(_) => OwnerMethod::SelectCalendars,
+            OwnerResult::ResolveOutcome(_) => OwnerMethod::ResolveOutcome,
+            OwnerResult::DecideEnrollment(_) => OwnerMethod::DecideEnrollment,
+            OwnerResult::RemoveAgent(_) => OwnerMethod::RemoveAgent,
+            OwnerResult::ListEndedRequests(_) => OwnerMethod::ListEndedRequests,
         }
     }
 
@@ -2038,6 +2325,11 @@ impl OwnerResult {
             OwnerResult::GetProof(r) => to_value(r),
             OwnerResult::Subscribe(r) => to_value(r),
             OwnerResult::DisconnectGoogle(r) => to_value(r),
+            OwnerResult::SelectCalendars(r) => to_value(r),
+            OwnerResult::ResolveOutcome(r) => to_value(r),
+            OwnerResult::DecideEnrollment(r) => to_value(r),
+            OwnerResult::RemoveAgent(r) => to_value(r),
+            OwnerResult::ListEndedRequests(r) => to_value(r),
         }
     }
 
@@ -2057,6 +2349,11 @@ impl OwnerResult {
             OwnerMethod::GetProof => OwnerResult::GetProof(read(result)?),
             OwnerMethod::Subscribe => OwnerResult::Subscribe(read(result)?),
             OwnerMethod::DisconnectGoogle => OwnerResult::DisconnectGoogle(read(result)?),
+            OwnerMethod::SelectCalendars => OwnerResult::SelectCalendars(read(result)?),
+            OwnerMethod::ResolveOutcome => OwnerResult::ResolveOutcome(read(result)?),
+            OwnerMethod::DecideEnrollment => OwnerResult::DecideEnrollment(read(result)?),
+            OwnerMethod::RemoveAgent => OwnerResult::RemoveAgent(read(result)?),
+            OwnerMethod::ListEndedRequests => OwnerResult::ListEndedRequests(read(result)?),
         })
     }
 }

@@ -43,7 +43,13 @@ fn operation_type(method: OwnerMethod) -> Option<&'static str> {
         | OwnerMethod::ConnectGoogle
         | OwnerMethod::GetRequestDetails
         | OwnerMethod::GetProof
-        | OwnerMethod::Subscribe => return None,
+        | OwnerMethod::Subscribe
+        // not implemented in this build (contract schema version 3)
+        | OwnerMethod::SelectCalendars
+        | OwnerMethod::ResolveOutcome
+        | OwnerMethod::DecideEnrollment
+        | OwnerMethod::RemoveAgent
+        | OwnerMethod::ListEndedRequests => return None,
     })
 }
 
@@ -93,7 +99,13 @@ fn execute(
         | OwnerCall::ConnectGoogle(_)
         | OwnerCall::GetRequestDetails(_)
         | OwnerCall::GetProof(_)
-        | OwnerCall::Subscribe(_) => {
+        | OwnerCall::Subscribe(_)
+        // not implemented in this build (contract schema version 3): answered before dedup
+        | OwnerCall::SelectCalendars(_)
+        | OwnerCall::ResolveOutcome(_)
+        | OwnerCall::DecideEnrollment(_)
+        | OwnerCall::RemoveAgent(_)
+        | OwnerCall::ListEndedRequests(_) => {
             return Err(TxError::Fault(invariant("only a command is executed")));
         }
     })

@@ -1,0 +1,18 @@
+{
+  "description": "The owner removed an agent.",
+  "schema": "owner-channel.schema.json#/$defs/owner_notice",
+  "value": {
+    "protocol": "fabric-desktop/1",
+    "sequence": 1332,
+    "change": {
+      "kind": "agent_removed",
+      "agent_id": "agent-codex-desktop"
+    }
+  },
+  "expect": {
+    "verdict": "accept",
+    "canonical": "{\"change\":{\"agent_id\":\"agent-codex-desktop\",\"kind\":\"agent_removed\"},\"protocol\":\"fabric-desktop/1\",\"sequence\":1332}",
+    "command_digest": null,
+    "action_digest": null
+  }
+}
