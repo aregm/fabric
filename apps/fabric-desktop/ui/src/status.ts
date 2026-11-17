@@ -16,7 +16,7 @@ const NO_ACCOUNT_CONNECT = "This build cannot connect or reconnect a Google acco
 const ACCOUNT_NEEDS_OWNER = new Set(["reauthentication_required", "consent_denied", "partial_grant", "account_mismatch", "cancelled"]);
 
 // Health is what the broker of this run said; it is not shown for an earlier run.
-function currentHealth(m: Model) {
+export function currentHealth(m: Model) {
   return m.connection?.name === "connected" && m.healthRun === m.run ? m.health : null;
 }
 

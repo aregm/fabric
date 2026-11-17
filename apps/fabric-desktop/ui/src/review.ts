@@ -4,6 +4,7 @@
 // the owner's commands through `model.command`.
 import type { Agent, Grant, ProofReport } from "../../../../contracts/desktop/v1/typescript/src/contract.ts";
 import type { Entry, Failure, Model } from "./model.ts";
+import { currentHealth } from "./status.ts";
 import {
   NO_PROOF, OPERATION, OWNER_CAN_DO, TERMINAL, agentFacts, agentName, approvalFacts, askedFacts, attemptFacts, authorizationFacts,
   formatInstant, grantFacts, proofFacts,
@@ -27,7 +28,7 @@ export interface CommandState {
 export interface RequestLines {
   readonly ruling: string | null; // "Rule <rule>: <explanation>"
   readonly proofId: string | null; // the proof of the ruling
-  readonly reason: string | null; // why it failed
+  readonly reason: string | null; // why it failed, or for an undecided one that the rule checker is not ready now
   readonly help: string | null; // what the owner can do for an unknown outcome
 }
 
@@ -100,9 +101,16 @@ export class ReviewModel {
     return {
       ruling: "denial" in s ? `Rule ${s.denial.rule}: ${s.denial.explanation}` : null,
       proofId: "denial" in s ? s.denial.proof_id : null,
-      reason: "failure" in s ? `Reason: ${s.failure.explanation}` : null,
+      reason: "failure" in s ? `Reason: ${s.failure.explanation}` : s.state === "undecided" ? this.proverReason() : null,
       help: OWNER_CAN_DO[s.state] ?? null,
     };
+  }
+
+  // Why an undecided request may not have been decided: the rule checker of this run is not ready.
+  private proverReason(): string | null {
+    const prover = currentHealth(this.model)?.prover;
+    return prover === "unavailable" ? "The rule checker is not running now."
+      : prover === "starting" ? "The rule checker is starting now." : null;
   }
 
   // Why the card asks, and while it is open when it expires; a closed card says why the owner was asked.

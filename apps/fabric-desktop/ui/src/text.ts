@@ -72,8 +72,8 @@ export const DURATION_TEXT: Record<DurationKind, string> = {
 };
 
 const NOTIFIED: Record<SendUpdates, string> = {
-  all: "Everyone invited gets an email from Google.",
-  external_only: "Only guests outside your organization get an email from Google.",
+  all: "Everyone invited gets an email.",
+  external_only: "Only guests outside your organization get an email.",
   none: "Nobody gets an email.",
 };
 
@@ -200,6 +200,12 @@ function beforeFacts(e: EventView, zone: string): Fact[] {
   return facts;
 }
 
+// The tools whose request names an event that exists in the calendar.
+const NAMES_EVENT: ReadonlySet<Action["tool"]> = new Set([
+  "fabric_calendar_propose_update", "fabric_calendar_propose_invitation", "fabric_calendar_propose_response",
+  "fabric_calendar_propose_delete",
+]);
+
 function actionFacts(action: Action, before: EventView | null, names: Names): Fact[] {
   const a = action.arguments;
   const z = names.zone;
@@ -209,6 +215,7 @@ function actionFacts(action: Action, before: EventView | null, names: Names): Fa
   if ("calendar_id" in a) add("Calendar", calendarName(names, { account_id: a.account_id, calendar_id: a.calendar_id }));
   if ("calendar_ids" in a) add("Calendars", ...a.calendar_ids.map((id) => calendarName(names, { account_id: a.account_id, calendar_id: id })));
   if (before !== null) facts.push(...beforeFacts(before, z));
+  else if (NAMES_EVENT.has(action.tool)) add("The event as it is now", "The broker did not send it. Only the event's id is shown.");
   switch (action.tool) {
     case "fabric_calendar_availability":
       add("Time span", formatWindow(action.arguments.window, z));
@@ -229,6 +236,7 @@ function actionFacts(action: Action, before: EventView | null, names: Names): Fa
     case "fabric_calendar_propose_update": {
       const c = action.arguments.changes;
       add("Event", action.arguments.event.event_id);
+      if (Object.values(c).every((v) => v === null)) add("What changes", "Nothing: the request names no new value.");
       if (c.title !== null) add("New title", c.title);
       if (c.start !== null) add("New start", formatEventTime(c.start, z));
       if (c.end !== null) add("New end", formatEventTime(c.end, z));
@@ -243,6 +251,7 @@ function actionFacts(action: Action, before: EventView | null, names: Names): Fa
     case "fabric_calendar_propose_response": {
       const t = action.arguments.target;
       add("Event", t.kind === "event" ? t.event.event_id : `One occurrence of ${t.occurrence.instance_id}`);
+      if (t.kind === "occurrence") add("Which occurrence", `The one planned for ${formatEventTime(t.occurrence.original_start_time, z)}`);
       add("Answer", action.arguments.response === "accepted" ? "Accept" : "Decline");
       break;
     }
@@ -495,7 +504,7 @@ export function bannerText(state: HostState | null): { readonly title: string; r
   if (state.name === "configuration_error") {
     return {
       title: "Fabric Calendar is not installed correctly.",
-      text: "The app found a problem before it started the broker, so nothing was started. Installing the app again may fix it.",
+      text: "The app found a problem before it started the broker, so nothing was started. If you started the app with settings of your own, as for a test run, correct them and start it again. Otherwise installing the app again may fix it.",
     };
   }
   const titles = {
