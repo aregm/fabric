@@ -707,7 +707,7 @@ The scenarios the "Plan" columns name: S1 to S6 are rows of PLAN 14's required s
 | w27 | `the_bounds_fit_the_core_and_the_relay` | X9, X11: `QUIT_BOUND` is under the relay's `QUIT_DRAIN`, `KILL_ALLOWANCE` under `QUIT_BOUND`, and `CHECK_TIMEOUT` plus `CHECK_GRACE` at most the core's `PROOF_WATCHDOG_MS` | - |
 | w28 | `no_start_begins_once_a_stop_was_sent` | 2.5, X8: a retry due when the stop is sent starts no gate; a sent stop makes a due retry neither waited for nor due | - |
 | w29 | `a_stop_sent_before_the_first_start_starts_nothing` | 2.5, X8: a worker whose stop was sent before it ran acknowledges it, never calls the starter, spawns no starter thread and makes no work directory | - |
-| w30 | `a_stop_while_starting_kills_the_start` (`cfg(unix)`) | 2.5, K1 case 2: a stop while the starter is inside its start is acknowledged, and by then the kill handle that start was given is killed | - |
+| w30 | `a_stop_while_starting_kills_the_start` | 2.5, K1 case 2: a stop while the starter is inside its start is acknowledged, and by then the kill handle that start was given is killed on Unix and not killed elsewhere | - |
 | w31 | `a_check_still_running_at_the_stop_instant_is_killed` (`cfg(unix)`) | 2.5, K1 case 3: a check still running at the stop's instant has its handle killed; the stop is acknowledged at least `GATE_STOP_BOUND` and less than `GATE_STOP_BOUND` plus 700 ms after it began, and the broken gate's stop runs once | - |
 | w32 | `a_stop_kills_no_server_whose_check_is_not_running` | 2.5: an idle gate whose stop returns 200 ms after its bound: the stop is acknowledged, not before `GATE_STOP_BOUND`, and the handle is not killed | - |
 | w33 | `each_start_gets_its_own_kill_handle` | 2.2 step 3, X7: after a start whose handle was killed, the retry's starter is given a handle that is not killed | - |
@@ -1123,23 +1123,26 @@ For the owner of the screens (CD-W08); nothing here is built in this step:
 ### 9.5 Not checked
 
 Windows and Linux targets (only this Mac; their `cfg` was emulated for clippy). That L1's scan fails on a real leak
-(K7). Which W04 core tests cover S5.
-The edge of p44's bound and the drop of a failing live process (both timing). The page's cards for update and delete
-(9.4 item 9). The `Ok`-and-broken path with a real Isabelle (a purge that fails after a complete `use_theories`; only
-w22's double shows the restart). The kill at the bound at quit with a slow but answering server: no test asserts it, and
-it was seen once, by its time only (K15); how often a quit ends in a kill beyond that sample of thirteen. Whether
-`KILL_ALLOWANCE` (0.3 s) covers the gate's kill at its bound on a loaded Mac (its helper process since pull request 30,
-`/bin/sh` with `ps` and `awk`, took 0.03 s idle and a stop with no time 0.05 s, as measured by pull request 30; the kill
-before it, `ps` and two `kill`, took 0.06 s idle), and whether it covers main's kill of a running check and what follows
-it there (on 2026-11-17, idle, L22's acknowledgement came 0.11 s to 0.18 s after the stop's instant). The quit's own
-processing time before `Shell::stop` (the core's quit, its store write, the last frames). The two cases pull request 30
-did not provoke: the process ending while a kill is under way (K1 case 5) and the kill helper running out of time (K1
-case 7). A quit during a start or during a check on a server found already running (K1 case 4). L21 relies on the owner
-channel's `starting`, which is the shell's view and can lag the worker by one event, so a gate that became ready just
-before the snapshot would make its quit an orderly stop and the test would still pass; in its runs the quit came well
-before Isabelle could be ready. The empty work directory of K11. The adapter's kills outside Unix, and the non-Unix
-build of the `cfg(unix)` tests w30 and w31. The new tests on CI or a loaded Mac: w31's 700 ms margin and w32's timing
-assume a scheduler that is not badly delayed, and L22's stop leaves about 0.1 s of `QUIT_BOUND`.
+(K7). Which W04 core tests cover S5. The edge of p44's bound and the drop of a failing live process (both timing). The
+page's cards for update and delete (9.4 item 9). The `Ok`-and-broken path with a real Isabelle (a purge that fails after
+a complete `use_theories`; only w22's double shows the restart). The kill at the bound at quit with a slow but answering
+server: no test asserts it, and it was seen once, by its time only (K15); how often a quit ends in a kill beyond that
+sample of thirteen. Whether `KILL_ALLOWANCE` (0.3 s) covers the gate's kill at its bound on a loaded Mac (its helper
+process since pull request 30, `/bin/sh` with `ps` and `awk`, took 0.03 s idle and a stop with no time 0.05 s, as
+measured by pull request 30; the kill before it, `ps` and two `kill`, took 0.06 s idle), and whether it covers main's
+kill of a running check and what follows it there (on 2026-11-17, idle, L22's acknowledgement came 0.11 s to 0.18 s
+after the stop's instant). The quit's own processing time before `Shell::stop` (the core's quit, its store write, the
+last frames). The two cases pull request 30 did not provoke: the process ending while a kill is under way (K1 case 5)
+and the kill helper running out of time (K1 case 7). A quit during a start or during a check on a server found already
+running (K1 case 4). L21 relies on the owner channel's `starting`, which is the shell's view and can lag the worker by
+one event, so a gate that became ready just before the snapshot would make its quit an orderly stop and the test would
+still pass; in its runs the quit came well before Isabelle could be ready. The empty work directory of K11. Outside Unix
+nothing was built or run here: w30 asserts there that the worker does not kill a start, and CI runs it on Windows; no
+test covers that main kills no running check there (w31 is `cfg(unix)`). The new tests on CI or a loaded Mac: w31's 700
+ms margin and w32's timing assume a scheduler that is not badly delayed, and L22's stop leaves about 0.1 s of
+`QUIT_BOUND`. A quit during a check on a server that is computing: L22's server is stopped, and pull request 30 tried
+the kill during a computing check at the gate only. What a server killed during a check leaves in Isabelle's temporary
+files (K18): L22 does no scan. That main keeps its bound when the kill's helper hangs (by reading the code only).
 
 Checked in Isabelle2025-2's sources on 2026-11-16: Isabelle reads the `ROOT` and the `ROOTS` of every directory it is
 given, the `dirs` of `session_start` included (`src/Pure/Build/sessions.scala` 1284-1325: `load_dir` is `load_root`

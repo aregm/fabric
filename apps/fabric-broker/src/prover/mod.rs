@@ -1907,8 +1907,8 @@ mod tests {
     }
 
     /// PW w30 (PW 2.5, PW K1): a stop while a starter is inside its gate's start kills that
-    /// start's handle before the stop is acknowledged.
-    #[cfg(unix)]
+    /// start's handle before the stop is acknowledged, on Unix; elsewhere the handle is not
+    /// killed.
     #[test]
     fn a_stop_while_starting_kills_the_start() {
         let data = TempDir::new("w30");
@@ -1926,7 +1926,7 @@ mod tests {
         assert!(stop(prover));
         let handles = handles.lock().unwrap().clone();
         assert_eq!(handles.len(), 1);
-        assert!(handles[0].is_killed());
+        assert_eq!(handles[0].is_killed(), cfg!(unix));
         latch.open();
     }
 
