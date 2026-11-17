@@ -19,10 +19,10 @@
 //! No test here gives the core a proof it did not get from Isabelle.
 //!
 //! Run them on an otherwise idle Mac: the in-process stop must be acknowledged within
-//! `QUIT_BOUND` (1.5 s) and measured 0.8 s to 1.3 s, and a failing assertion names the time it
-//! took.
+//! `QUIT_BOUND` (1.5 s); the worker gives Isabelle at most 1.2 s to stop and then kills its
+//! server, and a failing assertion names the time it took.
 //!
-//! The test ids PW L1 to PW L19 are those of section 7.3 of the prover wiring's design,
+//! The test ids PW L1 to PW L20 are those of section 7.3 of the prover wiring's design,
 //! `docs/plans/calendar-desktop-prover-wiring-design.md`, not the CD-W04 design's package decisions
 //! L1 to L7; a bare DEF-n cites the CD-W04 design (`docs/plans/calendar-desktop-w04-design.md`).
 
@@ -602,8 +602,8 @@ impl Live {
 
     /// Ends the run as main does: quit, then the shell's stop. Returns whether the worker
     /// acknowledged and how long the stop took, which it prints. Without an acknowledgement the
-    /// worker thread is still stopping the gate: it waits for the server to go, so the server
-    /// does not outlive the test process.
+    /// worker was still in a check (PW K1), or in the kill's wait; it waits for the server to
+    /// go, so the server does not outlive the test process.
     fn stop(&mut self) -> (bool, Duration) {
         let mut shell = self.shell.take().expect("the shell runs");
         shell
@@ -624,8 +624,9 @@ impl Live {
     }
 
     /// [`Live::stop`], and the assertion that the worker acknowledged within `QUIT_BOUND`, which
-    /// keeps a quit inside the relay's drain. The stop has a few hundred milliseconds to spare,
-    /// so a busy Mac can fail it: the message names the measured time.
+    /// keeps a quit inside the relay's drain. The gate's stop is bounded at 1.2 s, and then the
+    /// gate kills its server; a busy Mac can still fail the assertion: the message names the
+    /// measured time.
     fn stop_within_bound(&mut self) -> Duration {
         let (acknowledged, took) = self.stop();
         assert!(
@@ -996,19 +997,19 @@ fn the_theory_pin_refuses_a_changed_rule_file() {
     assert_pinned_out("pin", &rules.0);
 }
 
-/// PW L19, the theory pin: the built theory stays in place, but `ROOTS` or the session's
-/// `ROOT` points the session `Fabric_Broker` at a copied theory changed by one byte. Each is
-/// refused as the changed theory itself is: Isabelle would load the changed theory.
+/// PW L19, the theory pin: the built theory stays in place, but the session's `ROOT` points the
+/// session `Fabric_Broker` at a copied theory changed by one byte, or a `ROOTS` beside it adds a
+/// directory that defines the session with that theory; each is refused before any gate starts.
 #[test]
 #[ignore = "live: needs Isabelle; run sh scripts/verify-desktop.sh --live-proofs"]
 fn the_theory_pin_refuses_session_files_that_load_another_theory() {
     let _live = live_lock();
     let redirects: [(&str, &str); 2] = [
-        ("ROOTS", "Fabric_Policy\nRules2\n"),
         (
             "Fabric_Broker/ROOT",
             "session Fabric_Broker in \"../Rules2\" = HOL +\n  options [document = false]\n  theories\n    Fabric_Broker\n",
         ),
+        ("Fabric_Broker/ROOTS", "../Rules2\n"),
     ];
     for (file, text) in redirects {
         let rules = copied_rules("redirected-rules");
@@ -1018,7 +1019,7 @@ fn the_theory_pin_refuses_session_files_that_load_another_theory() {
             std::fs::read_to_string(rules.0.join("Fabric_Broker").join("Fabric_Broker.thy"))
                 .unwrap();
         std::fs::write(other.join("Fabric_Broker.thy"), format!("{theory}\n")).unwrap();
-        if file == "ROOTS" {
+        if file == "Fabric_Broker/ROOTS" {
             std::fs::copy(
                 rules.0.join("Fabric_Broker").join("ROOT"),
                 other.join("ROOT"),
@@ -1499,7 +1500,9 @@ fn quit_stops_isabelle_within_the_relay_drain() {
 /// PW L3: a check over its budget is undecided. With a check limit of 1 ms every check runs
 /// past it, so Isabelle's report comes back with the outcome `undecided`, no failing rule and no
 /// authorizing grant; the request ends `undecided` with no authorization, nothing is dispatched,
-/// and the gate is kept (the prover stays ready).
+/// and the gate is kept (the prover stays ready). Isabelle ends the check at its first look, so
+/// the whole check takes under 500 ms (a full check takes about a second), not only its idle
+/// time.
 #[test]
 #[ignore = "live: needs Isabelle; run sh scripts/verify-desktop.sh --live-proofs"]
 fn a_check_over_budget_is_undecided() {
@@ -1532,6 +1535,10 @@ fn a_check_over_budget_is_undecided() {
     println!(
         "LIVE a check over a 1 ms budget took {} ms",
         report["elapsed_ms"]
+    );
+    assert!(
+        report["elapsed_ms"].as_u64().unwrap() < 500,
+        "the check ran on past its limit: {report}"
     );
     live.settle_all();
     assert_eq!(live.calendar.dispatches(), 0);
@@ -1566,6 +1573,9 @@ fn a_killed_broker_restarts_with_an_empty_work_dir_and_one_server() {
     let isabelle = isabelle();
     let server = server_name(&dir.data());
     let work_dir = dir.data().join("prover");
+    // Dropped after both brokers: a server a failure or the second quit leaves (a reused
+    // orphan, PW K1) is killed.
+    let _servers = KillServersOnDrop(server.clone());
 
     let mut first = Process::start(&dir.data(), &isabelle, true);
     first.prover_becomes("ready", START);
@@ -1604,13 +1614,76 @@ fn a_killed_broker_restarts_with_an_empty_work_dir_and_one_server() {
         one_server.len(),
         "not the processes of one server"
     );
-    assert!(
-        second.quit(DRAIN).is_some(),
-        "the broker did not exit within the drain"
-    );
+    let quit = second.quit(DRAIN);
+    if let Some(took) = quit {
+        println!("LIVE the second broker quit in {} ms", took.as_millis());
+    }
+    assert!(quit.is_some(), "the broker did not exit within the drain");
     assert!(servers_gone(&server, DRAIN), "the Isabelle server is left");
     assert!(!work_dir.exists());
     drop(first);
+}
+
+/// Sends `kill -KILL` to its process ids on drop; a process already gone is no error.
+struct KillOnDrop(Vec<u32>);
+
+impl Drop for KillOnDrop {
+    fn drop(&mut self) {
+        for pid in &self.0 {
+            let _ = Command::new("kill")
+                .arg("-KILL")
+                .arg(pid.to_string())
+                .stderr(std::process::Stdio::null())
+                .status();
+        }
+    }
+}
+
+/// Sends `kill -KILL`, on drop, to every process that still names the server. Declared before a
+/// test's brokers it drops after them, so a failing test leaves no Isabelle server running.
+struct KillServersOnDrop(String);
+
+impl Drop for KillServersOnDrop {
+    fn drop(&mut self) {
+        drop(KillOnDrop(servers(&self.0)));
+    }
+}
+
+/// PW L20: a quit while the Isabelle server does not answer (its processes stopped with
+/// SIGSTOP) still ends the built broker within the relay's drain: the gate's stop waits its
+/// bound, then kills the server's process groups. No server is left and the prover's directory
+/// is gone. The test kills the stopped processes itself at its end, so a failure leaves nothing
+/// stopped.
+#[test]
+#[ignore = "live: needs Isabelle; run sh scripts/verify-desktop.sh --live-proofs"]
+fn quit_kills_a_server_that_does_not_answer() {
+    let _live = live_lock();
+    let dir = TempDir::new("unanswering");
+    let isabelle = isabelle();
+    let mut broker = Process::start(&dir.data(), &isabelle, false);
+    broker.prover_becomes("ready", START);
+    let server = server_name(&dir.data());
+    let pids = servers(&server);
+    assert!(!pids.is_empty(), "no process names the server {server}");
+    for pid in &pids {
+        let _ = Command::new("kill")
+            .arg("-STOP")
+            .arg(pid.to_string())
+            .status();
+    }
+    let _stopped = KillOnDrop(pids);
+    let took = broker
+        .quit(DRAIN)
+        .expect("the broker exits within the drain");
+    println!(
+        "LIVE built broker quit with an unanswering server in {} ms",
+        took.as_millis()
+    );
+    assert!(
+        servers_gone(&server, Duration::from_millis(500)),
+        "the Isabelle server is left"
+    );
+    assert!(!dir.data().join("prover").exists());
 }
 
 /// PW L5 (PLAN 11): a dispatch whose answer is lost changes the practice calendar once and ends

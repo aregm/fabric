@@ -10,13 +10,16 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use fabric_policy::PolicyError;
-use fabric_policy::server::{Connection, Server, ServerAddress, ServerOptions, platform_path};
+use fabric_policy::server::{
+    Connection, KillHandle, Server, ServerAddress, ServerOptions, platform_path,
+};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
 use crate::check::{self, CheckTheory, GrantResult, NodeReport, RuleResult, Verdict};
 use crate::model::{Action, Context, Rule};
 use crate::report::{context_digest, proof_id, sha256_hex};
+use crate::theory::SESSION_ROOT;
 
 /// The Isabelle session of the rule theory (G0-THY).
 pub const SESSION: &str = "Fabric_Broker";
@@ -42,6 +45,11 @@ pub const DROP_STOP_BOUND: Duration = Duration::from_secs(5);
 /// How often [`BrokerGate::stop_within`] looks whether the server has exited.
 const EXIT_POLL: Duration = Duration::from_millis(10);
 
+/// How long past its bound [`BrokerGate::stop_within`] may still spend delivering `shutdown`
+/// to a server that `isabelle server` found already running, when the bounded exchange did not
+/// get it acknowledged: connecting, the greeting and the write take a few milliseconds.
+pub const FOUND_SHUTDOWN_GRACE: Duration = Duration::from_millis(300);
+
 /// The settings line that keeps Isabelle's temporary files in its user home.
 #[cfg(unix)]
 pub const TMP_PREFIX_SETTING: &str = "ISABELLE_TMP_PREFIX=\"$ISABELLE_HOME_USER/tmp\"";
@@ -51,8 +59,12 @@ pub struct GateConfig {
     pub isabelle_home: PathBuf,
     pub user_home: PathBuf,
     /// The directory with `Fabric_Broker/`, which holds the session's `ROOT` and
-    /// `Fabric_Broker.thy`. The session is loaded from that directory alone, so no `ROOTS`
-    /// file is needed.
+    /// `Fabric_Broker.thy`. The session is loaded from `Fabric_Broker/` alone, so no `ROOTS`
+    /// file is needed, and the gate refuses one there: Isabelle reads `ROOT` and `ROOTS` of
+    /// that directory, so `ROOT` must be the one the crate was built with
+    /// ([`crate::theory::SESSION_ROOT`]) and a `ROOTS` must not exist
+    /// ([`check_session_dir`]). A `ROOTS` in `rules_dir` itself, as in the repository's
+    /// `isabelle/`, is not read.
     pub rules_dir: PathBuf,
     /// Where check theories and server logs are written.
     pub work_dir: PathBuf,
@@ -137,6 +149,12 @@ pub struct BrokerGate {
     config: GateConfig,
     /// The server, when this gate started it.
     server: Option<Server>,
+    /// The handle that kills the server from any thread; for a connected gate it reaches
+    /// nothing.
+    kill: KillHandle,
+    /// The `isabelle server` process this gate started had already exited when the session
+    /// was open: it found a server already running under the name, which no kill reaches.
+    found: bool,
     /// Where the server listens, for a fresh connection when this one is broken.
     address: ServerAddress,
     connection: Connection,
@@ -157,8 +175,19 @@ impl BrokerGate {
     ///
     /// On Unix the server runs in a process group of its own, so a stop that runs out of time
     /// can end all of it, and Isabelle's temporary files go to a directory of the user home
-    /// only its owner can enter ([`prepare_private_tmp`]).
+    /// only its owner can enter ([`prepare_private_tmp`]). It is
+    /// [`BrokerGate::start_with_kill`] with a new handle.
     pub fn start(config: GateConfig) -> Result<Self, PolicyError> {
+        Self::start_with_kill(config, &KillHandle::new())
+    }
+
+    /// [`BrokerGate::start`], killable through `kill` from any thread while it starts and
+    /// afterwards ([`BrokerGate::kill_handle`] returns the same handle). A kill during the
+    /// start ends the server and makes the start an error soon after; a handle killed before
+    /// the start refuses it. A kill during a check makes it fail ([`Fault::Gate`]) and breaks
+    /// the gate, and the following stop returns at once. See [`KillHandle`] for what it cannot
+    /// reach.
+    pub fn start_with_kill(config: GateConfig, kill: &KillHandle) -> Result<Self, PolicyError> {
         let valid_name = !config.server_name.is_empty()
             && config
                 .server_name
@@ -173,16 +202,26 @@ impl BrokerGate {
         prepare_work_dir(&config.work_dir)?;
         #[cfg(unix)]
         require_private_tmp(&config)?;
-        let mut server = Server::start_in_group(&ServerOptions {
-            isabelle_home: &config.isabelle_home,
-            user_home: &config.user_home,
-            name: &config.server_name,
-            log_dir: &config.work_dir,
-        })?;
+        let mut server = Server::start_in_group_with(
+            &ServerOptions {
+                isabelle_home: &config.isabelle_home,
+                user_home: &config.user_home,
+                name: &config.server_name,
+                log_dir: &config.work_dir,
+            },
+            kill,
+        )?;
         match Connection::open(server.port, &server.password, SESSION_START_TIMEOUT) {
             Ok((connection, greeting)) => {
                 let address = server.address();
-                Self::open(config, Some(server), address, connection, &greeting)
+                Self::open(
+                    config,
+                    Some(server),
+                    kill.clone(),
+                    address,
+                    connection,
+                    &greeting,
+                )
             }
             Err(error) => {
                 server.kill();
@@ -197,12 +236,20 @@ impl BrokerGate {
         prepare_work_dir(&config.work_dir)?;
         let (connection, greeting) =
             Connection::open(address.port, &address.password, SESSION_START_TIMEOUT)?;
-        Self::open(config, None, address.clone(), connection, &greeting)
+        Self::open(
+            config,
+            None,
+            KillHandle::new(),
+            address.clone(),
+            connection,
+            &greeting,
+        )
     }
 
     fn open(
         config: GateConfig,
         server: Option<Server>,
+        kill: KillHandle,
         address: ServerAddress,
         connection: Connection,
         greeting: &Value,
@@ -214,6 +261,8 @@ impl BrokerGate {
         let mut gate = Self {
             config,
             server,
+            kill,
+            found: false,
             address,
             connection,
             session_id: String::new(),
@@ -228,16 +277,19 @@ impl BrokerGate {
             let _ = gate.stop();
             return Err(error);
         }
+        // Starting the session took seconds; the wrapper of a server that was found exits
+        // within a fraction of one.
+        gate.found = gate.server.as_mut().is_some_and(Server::has_exited);
         Ok(gate)
     }
 
     /// Opens the session from `<rules_dir>/Fabric_Broker` and records the hash of the theory
-    /// it loaded. The theory is hashed before `session_start` and again after it, and the
-    /// two must agree, so the hash names the text Isabelle read.
+    /// it loaded. The directory is checked ([`check_session_dir`]) before `session_start` and
+    /// again after it, and the two hashes must agree, so the hash names the text Isabelle read.
     fn open_session(&mut self) -> Result<(), PolicyError> {
         let session_dir = self.config.rules_dir.join(SESSION);
         let theory_path = session_dir.join("Fabric_Broker.thy");
-        let before = sha256_hex(&fs::read(&theory_path)?);
+        let before = check_session_dir(&session_dir)?;
         let session = self.connection.task(
             "session_start",
             &json!({
@@ -253,7 +305,7 @@ impl BrokerGate {
             .as_str()
             .ok_or_else(|| PolicyError::Protocol(format!("session_start returned {session}")))?
             .to_owned();
-        let after = sha256_hex(&fs::read(&theory_path)?);
+        let after = check_session_dir(&session_dir)?;
         if after != before {
             return Err(PolicyError::Isabelle(format!(
                 "{} changed while the session started (SHA-256 {before} before, {after} after)",
@@ -276,6 +328,14 @@ impl BrokerGate {
     #[must_use]
     pub fn isabelle(&self) -> &str {
         &self.isabelle
+    }
+
+    /// The handle that kills this gate's server from any thread ([`KillHandle`]): the one
+    /// given to [`BrokerGate::start_with_kill`]. For a gate made with [`BrokerGate::connect`]
+    /// it reaches nothing.
+    #[must_use]
+    pub fn kill_handle(&self) -> KillHandle {
+        self.kill.clone()
     }
 
     /// The port of the server the gate talks to.
@@ -436,7 +496,16 @@ impl BrokerGate {
     ///
     /// `isabelle server` reuses a running server of the same name. The process this gate
     /// holds then exits at once and the kill cannot reach that server, so only the
-    /// acknowledged shutdown says that it stopped.
+    /// acknowledged shutdown says that it stopped. When that process had already exited as
+    /// the stop began and the bounded exchange did not get `shutdown` acknowledged, the gate
+    /// still delivers `shutdown` on a fresh connection, taking at most
+    /// [`FOUND_SHUTDOWN_GRACE`] past `bound` and not waiting for the server to exit; the stop
+    /// is then an error that says so.
+    ///
+    /// After [`BrokerGate::kill_handle`] was killed, the stop reaps the server
+    /// ([`Server::kill`]) and is an error, at once. It says nothing to a server this gate
+    /// started, which the kill ended. A server found already running was not reached by the
+    /// kill, so it is sent `shutdown` without confirmation, as above.
     pub fn stop_within(&mut self, bound: Duration) -> Result<(), PolicyError> {
         if self.stopped {
             return Ok(());
@@ -458,6 +527,39 @@ impl BrokerGate {
             }
             return Ok(());
         };
+        if self.kill.is_killed() {
+            self.broken = true;
+            let sent = self.found.then(|| {
+                Connection::send_unanswered(
+                    self.address.port,
+                    &self.address.password,
+                    "shutdown",
+                    deadline + FOUND_SHUTDOWN_GRACE,
+                )
+            });
+            // The wrapper of a found server is reaped already, and its port is not ours to
+            // wait for.
+            if !self.found {
+                server.kill();
+            }
+            return Err(PolicyError::Isabelle(match sent {
+                None => "the gate's Isabelle server was killed through its kill handle".to_owned(),
+                Some(Ok(())) => "the gate's kill handle was killed, but the process this gate \
+                                 started had exited before: its Isabelle server was found \
+                                 already running and no kill reaches it; `shutdown` was sent \
+                                 without confirmation on a fresh connection"
+                    .to_owned(),
+                Some(Err(error)) => format!(
+                    "the gate's kill handle was killed, but the process this gate started had \
+                     exited before: its Isabelle server was found already running, which no \
+                     kill reaches, or has ended; `shutdown` could not be sent on a fresh \
+                     connection ({error})"
+                ),
+            }));
+        }
+        // A wrapper that exited before the stop began: `isabelle server` found a server already
+        // running (or the server ended by itself), and no kill can reach what serves the port.
+        let found = self.found || server.has_exited();
         // The session is stopped first, as before: `shutdown` alone was measured to be no
         // faster. Its result is ignored, but a failed exchange leaves the connection unusable.
         if !self.broken && !self.session_id.is_empty() {
@@ -481,6 +583,34 @@ impl BrokerGate {
         if shutdown.is_err() {
             self.broken = true;
         }
+        if found {
+            return match shutdown {
+                Ok(_) => Ok(()),
+                Err(error) => {
+                    let sent = Connection::send_unanswered(
+                        self.address.port,
+                        &self.address.password,
+                        "shutdown",
+                        deadline + FOUND_SHUTDOWN_GRACE,
+                    );
+                    let what = match sent {
+                        Ok(()) => "`shutdown` was then sent without confirmation on a fresh \
+                                   connection"
+                            .to_owned(),
+                        Err(again) => format!(
+                            "`shutdown` could not be sent on a fresh connection either ({again})"
+                        ),
+                    };
+                    Err(PolicyError::Isabelle(format!(
+                        "the process this gate started had exited before the stop began: its \
+                         Isabelle server was found already running, which no kill reaches, or \
+                         has ended; it did not acknowledge `shutdown` within {:.3}s ({error}); \
+                         {what}",
+                        bound.as_secs_f64()
+                    )))
+                }
+            };
+        }
         loop {
             if server.has_exited() {
                 return shutdown.map(|_| ());
@@ -500,6 +630,43 @@ impl BrokerGate {
                 .map(|error| format!(" (shutdown: {error})"))
                 .unwrap_or_default()
         )))
+    }
+}
+
+/// Checks the session directory the gate gives Isabelle (`<rules_dir>/Fabric_Broker`) and
+/// returns the SHA-256 of its `Fabric_Broker.thy` in hex. Isabelle reads `ROOT` and `ROOTS` of
+/// every directory in `dirs`, so `ROOT` must equal [`SESSION_ROOT`] byte for byte, and nothing
+/// named `ROOTS` (file, directory or symlink) may exist there. A violation is
+/// [`PolicyError::Isabelle`] naming the path.
+pub fn check_session_dir(session_dir: &Path) -> Result<String, PolicyError> {
+    let theory = sha256_hex(&fs::read(session_dir.join("Fabric_Broker.thy"))?);
+    let root = session_dir.join("ROOT");
+    match fs::read(&root) {
+        Ok(text) if text == SESSION_ROOT.as_bytes() => {}
+        Ok(_) => {
+            return Err(PolicyError::Isabelle(format!(
+                "{} is not the session ROOT this crate was built with",
+                root.display()
+            )));
+        }
+        Err(error) => {
+            return Err(PolicyError::Isabelle(format!(
+                "cannot read {}: {error}",
+                root.display()
+            )));
+        }
+    }
+    let roots = session_dir.join("ROOTS");
+    match fs::symlink_metadata(&roots) {
+        Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(theory),
+        Ok(_) => Err(PolicyError::Isabelle(format!(
+            "{} must not exist: Isabelle would read the sessions it names",
+            roots.display()
+        ))),
+        Err(error) => Err(PolicyError::Isabelle(format!(
+            "cannot tell whether {} exists: {error}",
+            roots.display()
+        ))),
     }
 }
 

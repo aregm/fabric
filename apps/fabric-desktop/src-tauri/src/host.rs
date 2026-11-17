@@ -87,7 +87,7 @@ pub struct BrokerProver {
     pub isabelle_home: PathBuf,
     /// Isabelle's per-user directory (`FABRIC_BROKER_ISABELLE_USER_HOME`).
     pub isabelle_user_home: PathBuf,
-    /// The directory with `ROOTS` and `Fabric_Broker/` (`FABRIC_BROKER_RULES_DIR`).
+    /// The directory with `Fabric_Broker/` (`FABRIC_BROKER_RULES_DIR`).
     pub rules_dir: PathBuf,
 }
 

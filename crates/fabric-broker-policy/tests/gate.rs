@@ -1,11 +1,12 @@
 //! The parts of the gate that need no Isabelle: removing stale check theories, the theory the
-//! crate was built with, whose fault an error is, and Isabelle's private temporary directory.
+//! crate was built with, the session directory's check, whose fault an error is, and Isabelle's
+//! private temporary directory.
 
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
 
-use fabric_broker_policy::gate::{check_rounds, remove_stale_checks};
+use fabric_broker_policy::gate::{check_rounds, check_session_dir, remove_stale_checks};
 use fabric_broker_policy::report::sha256_hex;
 use fabric_broker_policy::theory::{SESSION_ROOT, THEORY_TEXT};
 use fabric_broker_policy::{Fault, PolicyError, built_theory_sha256};
@@ -88,6 +89,82 @@ fn the_built_theory_is_the_repository_theory() {
             .bytes()
             .all(|byte| matches!(byte, b'0'..=b'9' | b'a'..=b'f'))
     );
+}
+
+/// A session directory as the gate gives it to Isabelle: the built `ROOT` and theory.
+fn session_dir(name: &str) -> PathBuf {
+    let dir = scratch(name).join("Fabric_Broker");
+    fs::create_dir_all(&dir).unwrap();
+    fs::write(dir.join("ROOT"), SESSION_ROOT).unwrap();
+    fs::write(dir.join("Fabric_Broker.thy"), THEORY_TEXT).unwrap();
+    dir
+}
+
+fn refusal(dir: &Path) -> String {
+    match check_session_dir(dir) {
+        Err(PolicyError::Isabelle(message)) => message,
+        other => panic!("expected an Isabelle error, got {other:?}"),
+    }
+}
+
+#[test]
+fn the_session_directory_with_the_built_root_and_theory_is_accepted() {
+    let dir = session_dir("session-ok");
+    assert_eq!(check_session_dir(&dir).unwrap(), built_theory_sha256());
+    // A `ROOTS` one level up, as in the repository's `isabelle/`, is not read.
+    fs::write(dir.parent().unwrap().join("ROOTS"), "Fabric_Broker\n").unwrap();
+    assert_eq!(check_session_dir(&dir).unwrap(), built_theory_sha256());
+    // And the repository's own session directory passes.
+    let repository_session = repository().join("isabelle").join("Fabric_Broker");
+    assert_eq!(
+        check_session_dir(&repository_session).unwrap(),
+        built_theory_sha256()
+    );
+}
+
+#[test]
+fn a_different_or_missing_root_is_refused() {
+    let dir = session_dir("session-root");
+    let root = dir.join("ROOT");
+    for text in [
+        format!("{SESSION_ROOT}\nsession Other = HOL +\n  theories Other\n"),
+        SESSION_ROOT.replacen("Fabric_Broker", "Fabric_Other", 1),
+        SESSION_ROOT.trim_end().to_owned(),
+    ] {
+        assert_ne!(text, SESSION_ROOT);
+        fs::write(&root, &text).unwrap();
+        let message = refusal(&dir);
+        assert!(message.contains(&root.display().to_string()), "{message}");
+    }
+    fs::remove_file(&root).unwrap();
+    let message = refusal(&dir);
+    assert!(message.contains(&root.display().to_string()), "{message}");
+}
+
+#[test]
+fn a_roots_beside_the_root_is_refused_whatever_it_is() {
+    let dir = session_dir("session-roots");
+    let roots = dir.join("ROOTS");
+    let check = |what: &str| {
+        let message = refusal(&dir);
+        assert!(
+            message.contains(&roots.display().to_string()),
+            "{what}: {message}"
+        );
+    };
+    fs::write(&roots, "").unwrap();
+    check("an empty file");
+    fs::remove_file(&roots).unwrap();
+    fs::create_dir(&roots).unwrap();
+    check("a directory");
+    fs::remove_dir(&roots).unwrap();
+    #[cfg(unix)]
+    {
+        std::os::unix::fs::symlink(dir.join("missing"), &roots).unwrap();
+        check("a dangling symlink");
+        fs::remove_file(&roots).unwrap();
+    }
+    assert_eq!(check_session_dir(&dir).unwrap(), built_theory_sha256());
 }
 
 /// Isabelle ends a check after this many looks, 50 ms apart; it reads 0 as "no limit".
