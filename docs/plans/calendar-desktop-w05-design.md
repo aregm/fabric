@@ -349,7 +349,7 @@ records do not pile up: CO2.
 Before a Calendar call the adapter takes the account's access token from `AccessCache`. When there is none, or it
 ends within 60 s, it refreshes: `POST` to the token endpoint with `grant_type=refresh_token`, `refresh_token`,
 `client_id`, `client_secret`. One attempt, inside the call's own deadline. A call never reaches the Calendar host
-without a token, so a failure here always means nothing was sent.
+without a token, so whatever happens to the refresh, nothing was sent to the calendar.
 
 | Answer | Result for the call |
 |---|---|
@@ -460,8 +460,11 @@ for tests; a broker may use it only with the test key source, never with the Key
   10 s of it.
 - A response body is read up to a bound and no further: 64 KiB for the token, revocation and error answers,
   256 KiB for the key set and for one event, 4 MiB for a list page. More is treated as no usable answer.
-- JSON answers must say `application/json`. They are read into `serde_json::Value` first and then into lenient
-  structs: unknown members are ignored, missing optional members are absent, a member of the wrong type is an error.
+- A JSON body is read only from an answer that says `application/json`. It is read into `serde_json::Value`
+  first and then into lenient structs: unknown members are ignored, missing optional members are absent, a member
+  of the wrong type is an error. An answer of another content type keeps its status (Google answers some errors
+  with a page), but has no readable body: for a 2xx that is no usable answer (6.10). An answer that is not a 2xx
+  is held to 64 KiB whatever was asked for.
 - `User-Agent: FabricCalendar/<crate version>`. No other identifying header.
 - The result separates three cases, which 6.10 needs. **Nothing was sent**: name lookup, connecting or the TLS
   handshake failed, or the deadline had passed before the request was handed to the client. **A complete answer
@@ -510,9 +513,9 @@ calendar there is no own entry: no invitation to answer, no own response to show
 
 ### 6.2 Calendar list
 
-`GET /users/me/calendarList?maxResults=250&minAccessRole=freeBusyReader&showHidden=true[&pageToken=..]`, every
-page. More than 20 pages fails the listing; a cut list would look like lost calendars (CO7). Deleted entries are
-not asked for. Hidden ones are: hiding a calendar in Google's page is a display choice and takes no access away.
+`GET /users/me/calendarList?maxResults=250&minAccessRole=freeBusyReader&showHidden=true[&pageToken=..]`, page
+after page (Google may fill a page with fewer than it was asked for). More than 250 calendars in all fails the
+listing (PD23, ST2); a cut list would look like lost calendars (CO7). Deleted entries are not asked for. Hidden ones are: hiding a calendar in Google's page is a display choice and takes no access away.
 
 Result per entry: Google's `id` (5.3); the name (`summaryOverride`, else `summary`, cut to 200 characters, "(no
 name)" when empty); `primary`; `timeZone`; the access role:
@@ -713,6 +716,7 @@ else that is not a plain yes or a plain refusal is an unknown outcome. For a cha
 | What happened | Outcome |
 |---|---|
 | Nothing was sent (5.2), or the deadline had passed before sending | Transient |
+| Fewer than 10 s of the deadline are left when the changing request is due | Transient, and nothing is sent: with less than the connect limit left, a connection that is cut off by the deadline could not be told from a request that was sent |
 | The request was sent and no complete, readable answer arrived | **NoAnswer** |
 | 5xx | **NoAnswer**: Google may have made the change and failed afterwards |
 | 2xx as 6.6 to 6.8 | Applied |
@@ -776,9 +780,12 @@ entry is as it was read.
 A change whose outcome is unknown is never sent again. The broker reads and decides. The read is the broker's own
 action (`System_reconcile account calendar event`, THEORY) and needs its proof (PD29).
 
-`reconcile::decide(effect, read_back) -> Verdict`, a pure function. `effect` is the tool, the approved action, the
-reserved id of a create, the approved revision of a change, and how many reads came before. `read_back` is `Found`
-(an event that is not cancelled, with its revision), `Cancelled`, or `NotFound` (404 or 410).
+The adapter's answer to a reconcile order says only what Google holds: `Found` (an event that is not cancelled,
+with its revision and whether it equals what was approved, 6.12), `Cancelled`, or `NotFound` (404 or 410). Nothing
+in it is Google's own shape. The table below is then a pure function of that answer,
+`reconcile::decide(tool, approved revision, reads before, read_back) -> Verdict`. The lead's answer of 2026-11-17
+is that the core owns this table (18.5); `decide` in GC is the table as plain code with its tests, for the core to
+take over.
 
 | Tool | Read back | Verdict | Lifecycle (CR 9) |
 |---|---|---|---|
@@ -893,7 +900,7 @@ Today `Provider::dispatch(&DispatchOrder) -> AttemptDone` only. Proposed, names 
 | PO1 | Every order names its calendar as a target: the broker's `CalendarRef`, Google's calendar id, the calendar's zone and whether it is the account's primary, all resolved by the core in the transaction that makes the order | The adapter must not read the store (W04 5.1) and must not be given an id by an agent; 6.1 and 6.9 need the last two |
 | PO2 | An observe order: a target, the event id and whether Fabric created that event; under a system proof on `System_refresh account calendar` (the calendar is selected, or the action would not have passed its checks). Answered `Found(ObservedEvent, before: EventView)`, `Absent` or a failure. The core runs it before every proof on an action that names an event and fills `TrustedFacts.event` | THEORY `Event_known`, `Revision_current`, `Event_supported`, `Invitation_target`; it replaces the practice hook (PW 4.4) |
 | PO3 | A read order for availability and for event details: the targets, the window, the fields, the ids of Fabric-created events in those calendars, and a `still_allowed` flag the core turns false when the fence changes. One order reads every page (6.4). Answered `Done(ToolResult)`, `Stopped` or a failure | D33 lifted; PLAN 8 (each page's handoff checks authority) without a lifecycle edge per page: the contract has none from `dispatching` back, and an authorization is used once |
-| PO4 | A reconcile order: the effect and its target, under a system proof on `System_reconcile`. Answered with the read-back; the core applies `reconcile::decide` | Section 7 |
+| PO4 | A reconcile order: the effect and its target, under a system proof on `System_reconcile`. Answered with the read-back in a form that names nothing of Google (found with its revision and "equals what was approved", cancelled, not found); the core owns the table of section 7 | Section 7; 18.5 |
 | PO5 | A calendar-list order per account, under a system proof (TH1) | 6.2; CO7 |
 | PO6 | `AttemptReport::Applied` gains `confirmed: bool` and `notification: Sent, NotRequested or Unknown`; every result may carry `AuthLost(account, cause)` or `AccessChanged(account)` | Section 7; 3.8; 6.10 |
 | PO7 | Sign-in is not a provider order. It runs on its own worker: `Connect(account, the stored subject, or for a new account every subject that any account record has)` answered with `ConnectOutcome`; `Revoke(account)` answered `Revoked` or `NotConfirmed`; `Forget(account)` | A sign-in waits up to 300 s and must not hold up a dispatch; 3.7 |
@@ -905,9 +912,11 @@ practice run stops at `applied` (section 16 step 6).
 
 ---------------------------------------------------------------------------------------------------------------------
 
-## 11. What the store must keep (request to the lead; W04 3.6 reserves migration 2)
+## 11. What the store must keep (request to the lead)
 
-Additive only, as W04 3.6 and R22 require: new tables, new nullable columns. No existing column changes. No
+W04 3.6 reserves the next migration for this package; the lead numbers the migrations of CD-W05 and CD-W06 and has
+asked that this document give no number (18.5). Additive only, as W04 3.6 and R22 require: new tables, new
+nullable columns. No existing column changes. No
 contract value that the store keeps changes shape (the contract session's rule); what is new about an account
 lives in ST1, beside the contract's `Account` record, not inside it.
 
@@ -923,7 +932,7 @@ lives in ST1, beside the contract's `Account` record, not inside it.
 | ST8 | Mutations and operation types | For each row above, and for `owner.connect_google`, `provider.connect`, `provider.calendars`, `provider.observation`, `provider.auth_lost`, `request.read`, `request.release`, `request.reconcile` |
 | ST9 | A backup still holds no token | True by ST1 |
 | ST10 | Budget of the snapshot | Accounts are not in W04's D38 budget (R24). An account with 250 calendars is about 60 KiB of snapshot. How many accounts fit is the lead's arithmetic and the owner's question (OQ14) |
-| ST11 | Rehearsal | Migration 2 run on an encrypted version 1 fixture with a verified backup, as W04 s08 does for its rehearsal (PLAN 14 "upgrade encrypted fixture database"). W04 R22 (replay is not version-aware) must be settled first; ST1 to ST5 only add |
+| ST11 | Rehearsal | The migration run on an encrypted fixture of the version before it, with a verified backup, as W04 s08 does for its rehearsal (PLAN 14 "upgrade encrypted fixture database"). W04 R22 (replay is not version-aware) must be settled first; ST1 to ST5 only add |
 
 ---------------------------------------------------------------------------------------------------------------------
 
@@ -1160,7 +1169,9 @@ Each is run by the owner at the Mac with the accounts of RUNBOOK, in phase 2.
 
 1. The contract session drafts schema version 3 with V3-1 to V3-10 and the theory with TH1 and TH2; the owner's
    approval is the merge.
-2. The lead writes the store design for migration 2 (ST1 to ST11) with this session, then builds it.
+2. The lead writes one design for phase 2 of CD-W05 and CD-W06 (the store, the core, the port, held results, the
+   order of pull requests), with an answer for every id of sections 10 to 12, as a pull request the owner merges;
+   then builds the store part.
 3. PORTS gains PO1 to PO8. GC gains the dependency on the core, the mapping of its outcomes, `KeychainTokenStore`
    with its ignored test, and `SystemBrowser`.
 4. The core gains CO1 to CO14, each with acceptance tests that use FAKE as the provider, in process.
@@ -1247,8 +1258,6 @@ The code and this design run on the default after each.
   leaving the check out; the plan asks for it. Default: check.
 - OQ7 The HTTP client: `reqwest`, already in the lock file, or a smaller blocking client that adds crates. Default:
   `reqwest`.
-- OQ8 The client switch "Use this client for an AI-powered agent" (RUNBOOK 6.3). Default: off. Asked through the
-  lead on 2026-11-17; not answered yet.
 - OQ9 Is the calendar list at connect a broker action that needs a proof (TH1), or part of the owner's own command?
   Default: it needs a proof, so that no Calendar call exists without one. Then an account cannot be set up while
   the rule prover is not running.
@@ -1259,11 +1268,15 @@ The code and this design run on the default after each.
 - OQ13 Should an event Fabric creates forbid its guests to invite others (`guestsCanInviteOthers: false`)? It is a
   member the agent did not ask for and the owner did not see. Default: Google's default, unchanged.
 - OQ14 How many accounts and calendars? The snapshot must fit one frame (W04 D38, R24). Default: 250 calendars per
-  account; the number of accounts is the lead's arithmetic for you to confirm.
+  account. With no cap a sixth account of that size would pass the frame limit, so the lead sets a budget past
+  which `connect_google` is refused, and puts it to you (18.5).
 - OQ15 A before-image longer than the contract's bounds is shown cut (RK8). Or refuse to change such an event?
   Default: cut.
 - OQ16 A disconnect while a change of that account is still unconfirmed ends it as "needs your look". Or warn
   before disconnecting? Default: no warning.
+
+Answered: OQ8, the client switch "Use this client for an AI-powered agent" (RUNBOOK 6.3). The owner decided on
+2026-11-17, for the development client: "Yes, leave it off". A release client is not decided.
 
 ### 18.3 Not checked
 
@@ -1282,6 +1295,26 @@ retried (PD17), which removed every "read before judging" rule; the own entry ex
 (PD31); a failed sign-in revokes nothing (PD34); a cut attendee list fails a read (PD23); two reads before any
 change counts as absent (PD20); read times are in the calendar's zone (PD33); one order reads every page (PO3);
 and sections 9 to 13 were rewritten against how the core and the contract really work.
+
+### 18.5 The lead's first answer to sections 9 to 12 (2026-11-17)
+
+Every item of PO, ST and CO was accepted or accepted with a change; none was refused. The answer per id comes as
+the lead's own design document for phase 2 (section 16 step 2); nothing is built in the lead's areas from this
+document. What it changes here:
+
+- PD17 is accepted. Google is not attached to the core before reconciliation exists there (CO8, PO4).
+- PO4: the core owns the table of section 7; the adapter reports what Google holds (done in section 7).
+- PO3: the `still_allowed` flag is only an early stop. The core checks authority again in the commit that stores a
+  read result, and treats a stopped read as a retry, not a failure. One order reading every page is accepted.
+- PO2 and CO6: the observation becomes a broker record first, and the proof reads it from the store.
+- Broker calendar ids are made by the core, never while a mutation is applied.
+- How a read's result reaches the agent is open and the lead's to settle together with CD-W06, which asked for the
+  same: section 9 makes every release a second call, PLAN 9.2 says an allowed read returns its result. The four
+  amendments of section 9 are accepted in substance.
+- ST3 and ST4 keep content outside the ledger, which touches ADR-115 D1 and D7, and ST8 adds operation types,
+  which touches D2. Both need the owner. ST7 changes what the theory calls a pending effect; that goes to the
+  contract session.
+- OQ14: see there.
 
 ---------------------------------------------------------------------------------------------------------------------
 
