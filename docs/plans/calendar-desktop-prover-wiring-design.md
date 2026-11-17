@@ -15,7 +15,7 @@ the authority core and the broker executable this step extends.
 section, `PW X8` or `PW P1` a decision of section 0, `PW c40`, `PW sh01`, `PW p44` or `PW L1` a test id of section 7,
 `PW K1` a risk, `PW T1` and `PW E1` requests, and `PW O1` an owner question of section 9. A number without the prefix
 in the same crates cites W4D (`docs/plans/calendar-desktop-w04-design.md`), as before; in particular the live tests
-`PW L1` to `PW L20` are not W4D's package decisions L1 to L7. A file that cites both says so in its module
+`PW L1` to `PW L22` are not W4D's package decisions L1 to L7. A file that cites both says so in its module
 documentation.
 
 **Who decides.** Every question of section 9.3 is the owner's; the code runs on the default named there. The
@@ -24,7 +24,8 @@ practice calendar is an exception to W4D's decision D13 ("no prover or provider 
 amendment of D13 and D26 in W4D is proposed with this step's pull request and is the owner's to accept (O1).
 
 Date 2026-11-16. Status: as built (branch `claude/cd-prover-wiring`); updated 2026-11-16 by the adapter follow-up
-(branch `claude/cd-prover-adapter`) for the gate of pull request 26.
+(branch `claude/cd-prover-adapter`) for the gate of pull request 26; updated 2026-11-17 by the kill handle follow-up
+(branch `claude/cd-prover-kill-handle`) for the gate's kill handle of pull request 30.
 
 Abbreviations (paths relative to the repository root):
 
@@ -63,9 +64,9 @@ No test double of the gate ever returns a `Check`: doubles exist only under `#[c
 | X4 | Fault injection | In-process `Faults` passed to `PracticeCalendar::new`; `Plan::of` always passes `Faults::default()` | W4D D12: no product hook reachable from outside |
 | X5 | Practice identities | The synthetic agent's `synthetic-account` / `synthetic-calendar`; one seeded event Fabric did not make | One seed; the ids are already in the theory's identifier charset |
 | X6 | Observation for update and delete | `PracticeCalendar::observation(&agent::Action) -> Option<ObservedEvent>`; the shell sets only `job.facts.event`, only when the core left it `None`, in practice runs only | An update or delete needs the observed event (`event_known` in MODEL); the core sets `facts.event` to `None` until CD-W05 adds the core's observation port and `Fence.event_revision` (W4D 1.2). Fail-closed: `None` unless the target is a live practice event; `context_of` refuses an observation of another calendar; the provider checks the revision again at dispatch. It departs from PORTS ("read in one transaction"): owner question O2 |
-| X7 | Adapter shape | `prover/{mod.rs, map.rs}`; a crate-private `Gate` trait and starter; doubles only under `#[cfg(test)]`; one starter thread per start; a broken or refused gate is stopped on the worker within `GATE_STOP_BOUND` (1.2 s); no watcher thread, but an overrun poll the shell calls as a backstop (2.3) | Isabelle stays out of CI (PLAN RD-7), so every failure path is unit-tested without it; the seam is not reachable from outside the crate (W4D D12, D13) |
+| X7 | Adapter shape | `prover/{mod.rs, map.rs}`; a crate-private `Gate` trait and starter; doubles only under `#[cfg(test)]`; one starter thread and one new kill handle (`KillHandle`) per start, the latest held in the shared record (2.2); a broken or refused gate is stopped on the worker within `GATE_STOP_BOUND` (1.2 s); no watcher thread, but an overrun poll the shell calls as a backstop (2.3) | Isabelle stays out of CI (PLAN RD-7), so every failure path is unit-tested without it; the seam is not reachable from outside the crate (W4D D12, D13). A killed handle stays killed (pull request 30), so a retry needs a new one |
 | X8 | Restart policy | After the n-th consecutive failure (a failed start or a broken gate) wait `RESTART_WAITS[n-1]` (10 s, 60 s) and start again; after a third failure stay `unavailable` for the run; the count resets on `Ready`; a start begins only after the broken gate's stop returned (it runs on the worker and is bounded); no start begins once a stop was sent | Bounded; a stuck stop is never reused. Owner question O3 |
-| X9 | Stop at quit | Bound 1.5 s (`QUIT_BOUND`); before it sends the stop the handle records in the shared record the instant by which the gate's stop must end, `QUIT_BOUND` less `KILL_ALLOWANCE` (0.3 s) from then, that is 1.2 s; the worker gives its gate what is left of it (zero: an immediate kill); jobs queued at the stop are not checked and no start begins; main drains its event channel while it waits; the work directory is removed in every state, by the worker or, without an acknowledgement in time, by the calling thread | The relay kills the broker 2 s after closing its stdin (`QUIT_DRAIN`); the kill's signals must go out before the process ends |
+| X9 | Stop at quit | Bound 1.5 s (`QUIT_BOUND`); before it sends the stop the handle records in the shared record the instant by which the gate's stop must end, `QUIT_BOUND` less `KILL_ALLOWANCE` (0.3 s) from then, that is 1.2 s; the worker gives its gate what is left of it (zero: an immediate kill); jobs queued at the stop are not checked and no check and no start begins; main drains its event channel while it waits; on Unix two kills through the kill handle: the worker kills a gate start in progress before it acknowledges, and main kills the server of a check still running at the stop's instant, on a short-lived thread (2.5); the work directory is removed in every state, by the worker or, without an acknowledgement in time, by the calling thread | The relay kills the broker 2 s after closing its stdin (`QUIT_DRAIN`); the kill's signals must go out before the process ends. No bound of the gate's ends a start or a running check within the quit's bound, so only the handle reaches them in time |
 | X10 | Work directory cleanup | `remove_dir_all(<data_dir>/prover)` then a non-recursive create (mode 0700 on Unix) before every gate start, and removal at every stop; once the store is open and its lock held, the shell removes it once in every configuration, with or without a prover; the gate also removes stale `Check_*.thy` at its start (T3); the adapter's cleanup is a superset and stays | One call covers a killed broker's `Check_*.thy` and the server logs; `remove_dir_all` does not follow a symbolic link; the non-recursive create can never make `<data_dir>` itself |
 | X11 | Deadline skip | Skip when wall `now_ms() >= job.deadline_ms`, no margin (`PAST_DEADLINE`); otherwise the check's limit is the time left before `job.deadline_ms`, from the same clock read, with nothing subtracted; the gate caps it at `CHECK_TIMEOUT` | The core clock is wall time plus a never-negative offset (W4D D34), so the skip never fires before the core's deadline and the limit is never too short; a late result is ignored anyway. A fresh job has 35 s left, so the gate's cap gives it the plan's 30 s, and the gate's answer or its break comes by 30 s + `CHECK_GRACE` (5 s), the job's deadline. A job that waited behind other checks gets a shorter limit, which ends at its deadline; the gate's answer comes a moment after it (at most `CHECK_GRACE` after), when the core has already ended the job as undecided, so no decided result is lost that would have been used. Subtracting `CHECK_GRACE` from the limit would turn undecided some requests that are decided today (a check takes about 1.2 s). A zero limit would be a `Check` Isabelle never ran (the gate answers it `Ok` undecided without asking) |
 | X12 | Reason texts | `no_report(job, &'static str)` with fixed texts; no `PolicyError` text reaches a reason or stderr | A no-report reason is never stored or shown. An `Undecided` check can carry an Isabelle message into `undecided_reason`; that is stored only in the encrypted store |
@@ -79,7 +80,7 @@ No test double of the gate ever returns a `Check`: doubles exist only under `#[c
 | P2 | Smaller safeguards | `Gate`, the starter and `ProverOptions.starter` are crate-private, doubles only under `cfg(test)`; the observation hook returns `Option<ObservedEvent>`; health leaves `ready` while a check is past its deadline; `done_of` checks the check's action and context digests against the job's; Unix-only checks behind `cfg(unix)`, plain `is_file` elsewhere; the proposal limit is a field; the packaged check unsets the three Isabelle variables; practice updates and deletes notify nobody (`send_updates: none`) | Each is placed in the section it changes |
 | P3 | The page | Not built in this step. The screens of CD-W08 are the page; this step adds one static line under the build line, `#practice-line` in `ui/index.html` (6). Section 9.4 lists what the page still lacks for a practice run | Another work package owns the screens |
 | P4 | Owner questions | O1 to O7 stay open (9.3); the code runs on their defaults. O1: the practice calendar is built (debug builds only, only with the synthetic agent, the test key and a configured Isabelle; state in memory), and the amendment of W4D D13 and D26 is proposed with this step's pull request. O5: the synthetic classifier stays for synthetic runs without Isabelle, so the W04 process tests and CI are unchanged | The owner decides |
-| P5 | Requests to other owners | T1 to T9 (theory and policy) and E1 to E4 (contract) are requests (9.2); T1 to T9 were answered by pull request 26, as listed in 9.2, and T10 to T12 are open; nothing under `crates/fabric-broker-policy`, `isabelle` or the contract changes | One owner per area |
+| P5 | Requests to other owners | T1 to T9 (theory and policy) and E1 to E4 (contract) are requests (9.2); T1 to T9 were answered by pull request 26 and T10 to T12 by pull request 30, as listed in 9.2; nothing under `crates/fabric-broker-policy`, `isabelle` or the contract changes | One owner per area |
 | P6 | Live proofs | Never run by CI (PLAN RD-7). Each is `#[ignore]` with a reason and runs by name; `sh scripts/verify-desktop.sh --live-proofs` runs them on a developer's Mac. They take the Isabelle location from the same three variables, with the repository's development layout as the default when all three are absent | RM keeps Isabelle out of CI; PLAN 14 names the flag |
 
 ---------------------------------------------------------------------------------------------------------------------
@@ -163,8 +164,11 @@ add a directory that defines the session. Why not `<RULES_DIR>/ROOTS`: since pul
 `<RULES_DIR>/Fabric_Broker` alone, so that file is never read; pinning or requiring it would refuse a layout without it
 and protect nothing. The pin is enforced in three places: the files under `RULES_DIR` before each gate start (2.2), the
 started gate's `theory_sha256()` (2.2), and each `Check`'s `theory_sha256` (2.4); the gate does not enforce the built
-hash itself. Residuals: the gate hashes the theory before and after `session_start` and refuses a change between the
-two, but a `ROOT` or a `ROOTS` changed between the worker's `pin` and `session_start` is not caught (T11); a second
+hash itself. Since pull request 30 the gate also checks the session files itself (T11): before and after
+`session_start` it requires `Fabric_Broker/ROOT` to equal `SESSION_ROOT` and refuses a `Fabric_Broker/ROOTS`, and it
+hashes the theory both times and refuses a change between the two. The adapter's `pin` stays: it is what leaves the
+prover down for the run with line T; a `ROOT` or a `ROOTS` changed between the `pin` and the gate's own check is a
+failed start (`Isabelle`) with a retry (X8), whose `pin` refuses it if the change is still there. Residual: a second
 definition of `Fabric_Broker` in a component directory of the Isabelle home or the user home (K18) is left to
 Isabelle's refusal of a duplicate session.
 
@@ -182,7 +186,10 @@ killed broker left goes even in a run without a prover (sh05, p45).
 One worker thread for the broker's life (`fabric-prover`), owning the gate; channel `Msg { Job(Box<ProofJob>),
 Started(Result<Box<dyn Gate>, PolicyError>), Stop(Sender<()>) }`; the instant by which a gate's stop must end at quit
 is not in the message but in the shared record (`Shared.stop_by`, 2.5), which the handle sets before it sends `Stop`;
-while `Down` with a retry and no stop sent it also wakes at the retry time.
+while `Down` with a retry and no stop sent it also wakes at the retry time. The shared record also holds `Shared.kill`,
+the kill handle of the latest gate start: of the start in progress, or of the gate it gave. It is `None` until the first
+start is about to spawn its starter thread, and it is never cleared: the handle of a server that was stopped and reaped
+reaches nothing.
 
 | State | Health on entry | `Job(job)` | Transition |
 |---|---|---|---|
@@ -211,9 +218,15 @@ sent during steps 1 and 2 ends it before step 3):
    `ROOTS` exists: `Down` for the run and line T: `fabric-broker: the rule theory or its session files in
    FABRIC_BROKER_RULES_DIR are not the ones this broker was built with; the rule prover does not run in this run`. No
    gate is started.
-3. A starter thread runs `(options.starter)(&options.gate)` and sends `Started`. A send after the worker is gone fails,
-   and the starter stops its own gate within `stop_bound` (below): `GATE_STOP_BOUND`, or what is left of the quit's
-   instant; if the process has ended first, the server outlives it (K1).
+3. The worker makes a new `KillHandle` for this start (a killed handle stays killed, X7). In one critical section of
+   the shared record it returns if a stop was sent, and otherwise stores a clone of the handle in `Shared.kill`; so a
+   stop sent before that section starts no gate, and a stop sent after it finds the handle (2.5). A starter thread then
+   runs `(options.starter)(&options.gate, &handle)` and sends `Started`. A send after the worker is gone fails, and the
+   starter stops its own gate within `stop_bound` (below): `GATE_STOP_BOUND`, or what is left of the quit's instant. On
+   Unix the worker killed this start's handle before it acknowledged the stop (2.5): a server the start spawned is
+   ended and the start returns an error, and a gate it still returns stops at once, which also sends `shutdown` to a
+   server found already running. What is left: if the process ends before the start returns, a found server outlives
+   it (K1 case 4).
 
 Stopping a gate (every "`g` stopped on the worker" above). `stop_gate` calls `g.stop_within(stop_bound(..))` on the
 worker, result ignored, then drops `g` (a stopped `BrokerGate`'s `Drop` returns at once). `stop_bound` is
@@ -248,7 +261,8 @@ if a stop was sent                        -> no_report(job, NOT_RUNNING)    // `
 left = job.deadline_ms - now_ms()         // one wall clock read, saturating; nothing subtracted
 if left == 0                              -> no_report(job, PAST_DEADLINE)
 (context, action) = context_of(&job)      // Err(JobRefused(t)) -> no_report(job, t); gate kept
-mark the check running until job.deadline_ms (shared record)
+if a stop was sent                        -> no_report(job, NOT_RUNNING)    // read again where the mark is set
+mark the check running until job.deadline_ms (shared record; the same critical section as the read above)
 result = gate.check_within(&context, &action, left); broken = gate.is_broken()
 clear the mark
 (done, fate) = done_of(&job, &context, built_theory_sha256(), result); if broken: fate = Restart; emit Done(done)
@@ -369,20 +383,53 @@ plus `QUIT_BOUND` less `KILL_ALLOWANCE` (0.3 s), at most `GATE_STOP_BOUND`, that
 instant) and, until the bound, waits for the acknowledgement in 20 ms slices and calls `drain` between them. Without
 an Isabelle worker it returns at once (sh03).
 
+Main's kill of a running check (Unix). The first time a slice ends at or after `stop_by` without an acknowledgement, so
+up to one slice after it, `stop` looks once at the shared record: if a check is running (`Shared.running`) and a gate
+start gave a kill handle (`Shared.kill`), it clones the handle, releases the lock and kills it on a short-lived thread
+(`fabric-prover-kill`), inline only if that thread cannot be spawned; the result is ignored. It then keeps waiting and
+draining until the bound as before. Why a thread: `KillHandle::kill` waits for its helper process up to
+`KILL_HELPER_WAIT` (2 s) when the helper hangs, and the relay kills the broker 2 s after quit, so main keeps its slices,
+its drain and its bound. Why at `stop_by` and not at once: a check that ends before `stop_by` still gets an orderly stop
+in what is left, and one look at one instant is simpler than two rules. The look is exact: `check_job` reads `stop_by`
+in the same critical section that marks a check running and refuses the job with `NOT_RUNNING` when it is set (2.3,
+w34), so once `stop_by` has passed, `Shared.running` is set if and only if a check that began before the stop still
+runs. With no check running at `stop_by` main kills nothing: the worker is then in its gate's stop, where the gate kills
+at that same instant itself (w32), or in its own kill of a start (below). After main's kill the check fails with an
+error of the gate's (`Fault::Gate`: an I/O or a protocol error, as the killed server resets or closes the connection)
+and the worker handles it as the check of any broken gate (2.2, 2.3): the job's result without a report, one stderr
+failure line that names a retry, and health `unavailable`; no retry follows, because a stop was sent, and the drain
+discards the two events. The broken gate's `stop_within` then returns at once: with the killed handle it reaps the
+server (a second helper run on the dead group, then its waits for the groups and the port). The worker removes the work
+directory and acknowledges. On 2026-11-17 on one Mac this stop (L22) was acknowledged 1.31 s to 1.38 s after it began,
+in four runs, against `QUIT_BOUND` of 1.5 s (K15). A check on a server found already running is not reached by the kill
+(K1 case 4).
+
 Once `stop_by` is set, the worker checks no more jobs and starts no gate: a job still queued in `Ready` ahead of the
 `Stop` is answered `NOT_RUNNING` without a check (2.3), and neither the first start nor a retry that is due begins (the
 worker waits for the `Stop`). Every stop of a gate on the worker gets `stop_bound`: what is left until `stop_by` (zero:
 the gate kills its server at once; the kill's signals go out about 0.06 s after), at most `GATE_STOP_BOUND`. For a check
 that ends `r` after the stop was sent, whether it keeps or breaks its gate, the gate's stop gets 1.2 s less `r`, and the
 kill's signals go out by about the larger of 1.2 s and `r`, plus 0.06 s, after the send: inside `QUIT_BOUND` for any `r`
-up to about 1.4 s.
+up to about 1.4 s. A check still running 1.2 s after the send is not left to end by itself: main kills its server then
+(above), so on Unix the acknowledgement no longer depends on `r`.
 
-Worker on `Stop` (P1 d): `Ready` stops its gate on the worker within `stop_bound` (errors ignored), then every state
-removes `work_dir`; then it acknowledges and exits. The same happens when the channel is closed or the main loop is
-gone (no stop was sent, so the gate gets `GATE_STOP_BOUND`), or the handle is dropped without `stop` (its `Drop` sets
+Worker on `Stop` (P1 d): `Ready` stops its gate on the worker within `stop_bound` (errors ignored); on Unix `Starting`
+kills the handle in `Shared.kill` (cloned out first: no lock is held across the kill); `Down` kills nothing; then every
+state removes `work_dir`; then it acknowledges and exits. The same happens when the channel is closed or the main loop
+is gone (no stop was sent, so the gate gets `GATE_STOP_BOUND`), or the handle is dropped without `stop` (its `Drop` sets
 `stop_by` to now plus `GATE_STOP_BOUND` unless it is set, and sends `Stop` without waiting). A starter still inside
-`BrokerGate::start` keeps its thread; when the start returns after the worker is gone it stops its gate within
-`stop_bound` if the process still runs.
+`BrokerGate::start_with_kill` keeps its thread. The killed handle refuses a start that has not spawned its server yet,
+and ends a server being started, so the start returns an error; a gate already started whose `Started` is in the
+channel, or that its starter cannot send any more, has the killed handle, so its stop, by the channel's drop or by the
+starter within `stop_bound`, returns at once. The kill does not reach a server `isabelle server` found already running:
+its `shutdown` is sent by whoever stops its gate, after a quit during its start only after the acknowledgement (by the
+starter thread, or by the worker thread as it drops the channel), so it goes out only if the process is still alive
+(K1 case 4). A server this broker spawned was ended before the acknowledgement. On 2026-11-17 on one Mac the built
+broker's quit during a gate start (L21) took 55 ms to 57 ms in four runs. The worker's kill stays on the worker: if it
+takes longer than the bound (its helper may take up to `KILL_HELPER_WAIT`, 2 s), main returns false at its bound and
+removes the work directory itself, as for any unacknowledged stop (below). Outside Unix neither the worker nor main
+kills through the handle: it would reach nothing, and its flag alone would only make the gate's later stop skip
+`session_stop` and `shutdown` and kill the wrapper alone (K1 case 8).
 
 No acknowledgement within the bound (P1 d): the calling thread removes `work_dir` itself with `remove_dir_all`, which
 removes a `Check_*.thy` that a running check still holds (Unix allows removing an open file), and `stop` returns false.
@@ -396,7 +443,8 @@ start removes them once the store is open (X10).
 data_dir.join("prover")`, `server_name: server_name(data_dir)`, `check_timeout: CHECK_TIMEOUT` (30 s, the cap on each
 check's own limit, 2.3), `consolidate_delay_seconds: 0.1 }`. `server_name` is `fabric-broker-` and the first 16
 characters of `sha256_hex(data_dir.as_os_str().as_encoded_bytes())`. `ProverOptions::new` uses it, `RESTART_WAITS`, and
-the real starter (`BrokerGate::start(config.clone())`, boxed as `dyn Gate`). Its `gate` and `restart_waits` fields are
+the real starter (`BrokerGate::start_with_kill(config.clone(), kill)` with the start's kill handle, boxed as `dyn
+Gate`). Its `gate` and `restart_waits` fields are
 public, so a live test can shorten `check_timeout`; any `GateConfig` still runs the real `BrokerGate` and still meets
 the theory pin.
 
@@ -579,10 +627,11 @@ scratch directory per run (4.2). What the page still lacks for a practice run is
 ## 7. Tests
 
 No test gives the core a permit it did not get from a live Isabelle check. `Gate` doubles exist only under
-`#[cfg(test)]` in `prover/mod.rs`; their `check_within` returns only `Err`, or blocks and then returns `Err`; they
-record each limit and each stop bound, and report `is_broken` as set by a check that breaks them; their
-`theory_sha256()` returns `built_theory_sha256()` unless the test says otherwise. A double starter may return `Ok` with
-such a double (w12, w14, w15, w22, w24 to w26): a gate that cannot prove, not a proof. No double ever returns a
+`#[cfg(test)]` in `prover/mod.rs`; their `check_within` returns only `Err`, or blocks and then returns `Err` (one given
+its start's kill handle blocks until the handle is killed, then breaks); they record each limit and each stop bound,
+and report `is_broken` as set by a check that breaks them; their `theory_sha256()` returns `built_theory_sha256()`
+unless the test says otherwise. A double starter may return `Ok` with such a double (w12, w14, w15, w22, w24 to w26,
+w31, w32; w34 builds a worker already `Ready` with one): a gate that cannot prove, not a proof. No double ever returns a
 `Check`. The map tests u09 to u12, u15 and u16 build `Check` values by hand (u10 with a Permit verdict) and pass them
 only to `done_of`, a pure function; they never reach a worker, a `Shell` or a `Broker`. Unix-only assertions (file
 modes, execute bits, a shell script standing in for Isabelle) are `#[cfg(unix)]`; CI compiles and tests the workspace
@@ -658,6 +707,11 @@ The scenarios the "Plan" columns name: S1 to S6 are rows of PLAN 14's required s
 | w27 | `the_bounds_fit_the_core_and_the_relay` | X9, X11: `QUIT_BOUND` is under the relay's `QUIT_DRAIN`, `KILL_ALLOWANCE` under `QUIT_BOUND`, and `CHECK_TIMEOUT` plus `CHECK_GRACE` at most the core's `PROOF_WATCHDOG_MS` | - |
 | w28 | `no_start_begins_once_a_stop_was_sent` | 2.5, X8: a retry due when the stop is sent starts no gate; a sent stop makes a due retry neither waited for nor due | - |
 | w29 | `a_stop_sent_before_the_first_start_starts_nothing` | 2.5, X8: a worker whose stop was sent before it ran acknowledges it, never calls the starter, spawns no starter thread and makes no work directory | - |
+| w30 | `a_stop_while_starting_kills_the_start` (`cfg(unix)`) | 2.5, K1 case 2: a stop while the starter is inside its start is acknowledged, and by then the kill handle that start was given is killed | - |
+| w31 | `a_check_still_running_at_the_stop_instant_is_killed` (`cfg(unix)`) | 2.5, K1 case 3: a check still running at the stop's instant has its handle killed; the stop is acknowledged at least `GATE_STOP_BOUND` and less than `GATE_STOP_BOUND` plus 700 ms after it began, and the broken gate's stop runs once | - |
+| w32 | `a_stop_kills_no_server_whose_check_is_not_running` | 2.5: an idle gate whose stop returns 200 ms after its bound: the stop is acknowledged, not before `GATE_STOP_BOUND`, and the handle is not killed | - |
+| w33 | `each_start_gets_its_own_kill_handle` | 2.2 step 3, X7: after a start whose handle was killed, the retry's starter is given a handle that is not killed | - |
+| w34 | `no_check_starts_once_a_stop_was_sent` | 2.3, 2.5: `check_job` with `stop_by` set refuses the job with `NOT_RUNNING`, does not call the gate's check and marks no check running | - |
 
 `apps/fabric-broker/src/config.rs`:
 
@@ -751,7 +805,8 @@ How to run them: all of them, after the first test alone and the rule theory's c
 scripts/verify-desktop.sh --live-proofs` (7.4); one of them with `sh scripts/run.sh cargo test --locked -p fabric-broker
 --test live -- --ignored --exact <name> --nocapture`. Run them on an otherwise idle Mac: the in-process stop must be
 acknowledged within `QUIT_BOUND`; the gate's stop inside it is bounded at 1.2 s and then killed (K15). On 2026-11-16 the
-whole mode took about seven minutes on one Mac: the corpus about 210 s, the live binary, with L20, about 180 s.
+whole mode took about seven minutes on one Mac: the corpus about 210 s, the live binary, with L20, about 180 s. On
+2026-11-17, with L21 and L22, the corpus took 213 s and the live binary 190 s.
 
 | Id | Test | Shows | Plan |
 |---|---|---|---|
@@ -775,6 +830,8 @@ whole mode took about seven minutes on one Mac: the corpus about 210 s, the live
 | L18 | `the_theory_pin_refuses_a_changed_rule_file` | P1 a: a theory one byte different is refused before any gate starts; no server, no proposal, nothing proved | R06 |
 | L19 | `the_theory_pin_refuses_session_files_that_load_another_theory` | P1 a: the session's `ROOT` points the session at a copied, changed theory, or a `ROOTS` beside it adds a directory that defines the session with it; each is refused before any gate starts | R06 |
 | L20 | `quit_kills_a_server_that_does_not_answer` | the built broker, its server's processes stopped with SIGSTOP once it is ready; end of input: the broker exits within the relay's drain, no server is left 500 ms later, and `prover/` is gone; it prints the quit time; a drop guard made right after the SIGSTOP kills the stopped processes, so a failure leaves nothing stopped | X9, K1 |
+| L21 | `quit_during_a_gate_start_leaves_no_server` | the built broker; once a process names its server and a snapshot still reports the prover `starting`, end of input: the broker exits within the relay's drain, no server is left 500 ms later, and `prover/` is gone; it prints the quit time; a prover already `ready` at the snapshot fails the test, since no quit during a start was tried; a drop guard declared before the broker kills any server still listed when the test ends | X9, K1 |
+| L22 | `quit_during_a_check_kills_its_server` | in process, as L2: once ready and A's classification check has ended, the server's processes are stopped with SIGSTOP and A is approved; a check theory in the work directory, still there just before the stop, shows the fresh permit's check running; the stop is acknowledged within `QUIT_BOUND` and not before 1.2 s (`GATE_STOP_BOUND`), no server is left 500 ms later, and the work directory is gone; it prints the stop time; a drop guard made right after the SIGSTOP kills the stopped processes | X9, K1 |
 
 S5 (audit failure, a locked database) does not depend on the prover and is left to the W04 core tests (which of them
 cover it was not checked).
@@ -810,7 +867,8 @@ crate-private gate seam needs `--document-private-items`), and `-p fabric-deskto
   crate's, re-exported); `gate_config`,
   `server_name`; `ProverOptions { gate, restart_waits }` and `ProverOptions::new`; `ProverEvent { Done, Health }` and
   `Emit`; `IsabelleProver` with `identity`, `spawn`, `prove`, `next_due_ms`, `poll` and `stop`. Crate-private: `Gate`
-  (`check_within`, `is_broken`, `stop_within`, `theory_sha256`), `Starter`, `remove_work_dir`.
+  (`check_within`, `is_broken`, `stop_within`, `theory_sha256`), `Starter` (given the `GateConfig` and the start's
+  `KillHandle`), `remove_work_dir`.
 - `prover::map` (`prover/map.rs`, pure): `JobRefused`, the fixed texts, `context_of`, `GateFate`, `done_of`,
   `no_report`.
 - `practice` (`practice.rs`, debug builds): `FOREIGN_EVENT_ID`, `FOREIGN_TITLE`, `Faults`, `PracticeEvent`,
@@ -837,34 +895,54 @@ crate-private gate seam needs `--document-private-items`), and `-p fabric-deskto
 
 ### 9.1 Risks
 
-- K1 An Isabelle server can outlive its broker in these cases, and only these (`s` is when `Shell::stop` sends the
-  stop; the process ends at about `s + 1.5 s` when the worker does not acknowledge sooner):
+- K1 An Isabelle server can outlive its broker in the open cases below, and only these (`s` is when `Shell::stop`
+  sends the stop; the process ends at about `s + 1.5 s` when the worker does not acknowledge sooner). Cases 2, 3 and 5
+  are closed; they keep their numbers, because other text cites them.
   1. The broker is killed (the relay's SIGKILL after its 2 s drain, a crash, a force quit).
-  2. A quit while a starter is inside `BrokerGate::start` (about 5 s with a built heap, minutes while the heap builds);
-     also a start that returns in the milliseconds between the stop and the worker's exit (its gate is then dropped
-     with the channel, with the gate's own 5 s drop bound, while the process ends).
-  3. A quit while the worker is inside a check that ends more than about 1.4 s after `s`.
-  4. A server `isabelle server -n` found already running under the name (an orphan of cases 1 to 3, reused): the kill
-     cannot reach it. It stops only if `session_stop` and then `shutdown` are acknowledged within the bound. If
-     `session_stop` uses up the bound, `shutdown` is not sent at all; with no time left (a quit during a check that
-     ends after the deadline) nothing is sent. The server and its session's ML process then stay, and the next run
-     reuses it and has the same chance again. Before this change the two exchanges had until the process ended (about
-     1.5 s); now they have at most 1.2 s. L4 is its test.
-  5. The kill is under way when the process ends: it sends SIGSTOP to the server's own group (the wrapper and Java),
-     lists the groups below it with `ps`, then sends SIGKILL to all of them. A process that ends in between leaves the
-     wrapper and Java stopped and the session's ML process running; the next start does not reuse such a server
-     (Isabelle's probe gets no greeting) and starts a new one.
+  2. Closed on Unix by the kill handle follow-up (L21, w30): a quit while a starter is inside
+     `BrokerGate::start_with_kill` (about 5 s with a built heap, minutes while the heap builds). The worker kills the
+     start's handle before it acknowledges (2.5): a start that has not spawned its server is refused, a server being
+     started is ended and the start returns an error, and a gate whose start returns in the milliseconds between the
+     stop and the worker's exit stops at once when it is dropped with the channel or by its starter. What is left of
+     it, a start that found a server already running, is case 4.
+  3. Closed on Unix by the kill handle follow-up (L22, w31, w34): a quit while the worker is inside a check that ends
+     more than about 1.4 s after `s`. Main kills the check's server through the kill handle at `stop_by`, 1.2 s after
+     `s` (2.5); the check fails, the broken gate's stop returns at once and the worker acknowledges.
+  4. A server `isabelle server -n` found already running under the name (an orphan of case 1, or of a case that was
+     open before, reused): neither the gate's kill at its bound nor the kill handle reaches it. It stops if
+     `session_stop` and then `shutdown` are acknowledged within the bound. Since pull request 30 (T12), when that
+     exchange did not get `shutdown` acknowledged, `stop_within` still sends `shutdown` on a fresh connection, up to
+     `FOUND_SHUTDOWN_GRACE` (0.3 s) past its bound and without confirmation, also after a kill through the handle. Its
+     `shutdown` is sent by whoever stops its gate: by the worker in `Ready`; after a quit during its start only after
+     the acknowledgement, by the starter thread or by the worker thread as it drops the channel, so it goes out only if
+     the process is still alive. Left: a quit during a check on a found server, which no kill ends, when the check
+     ends after the process; a quit during a start that found a server, when the process ends before the start
+     returns; and a `shutdown` that is sent but not confirmed. The server and its session's ML process then stay, and
+     the next run reuses it and has the same chance again. L4 is its test.
+  5. Closed by pull request 30: the kill under way when the process ends. The kill now runs in a helper process
+     (`/bin/sh` in a process group of its own) that stops the server's group, lists the groups below it with `ps`, and
+     kills them and the server's group; once started it finishes without its caller, so the server is not left
+     stopped. Pull request 30 says the case itself was not provoked in a test.
   6. A panic of the main thread (the handle's `Drop` sends the stop without waiting).
-  7. The kill fails (`ps` or `/bin/kill` cannot run).
-  8. Outside Unix: no process group; the kill reaches only the wrapper (the broker runs Isabelle only on macOS).
+  7. The kill fails: `/bin/sh`, `ps`, `awk` or `/bin/kill` cannot run, or the helper does not finish within
+     `KILL_HELPER_WAIT` (2 s). The server's own group is then killed directly, and a `poly` process below it can be
+     left.
+  8. Outside Unix: no process group; the kill reaches only the wrapper (the broker runs Isabelle only on macOS). The
+     adapter makes no kill through the handle there, which would only set its flag.
+  9. A timing case beside case 5: the process ends before a kill has started: the worker's own kill at its gate's bound,
+     when the worker is more than `KILL_ALLOWANCE` (0.3 s) late for the stop's instant (an idle gate, or a check that
+     ended shortly before `stop_by`, which main does not kill); or main's kill of a check still running at that instant
+     (2.5), when its kill thread has not started its helper process by then.
 
   The next start with the prover configured and the same data directory finds a running orphan by its stable name and
   uses it (L4 showed both server processes surviving a kill and being reused); a start without the prover configured
   cannot stop it, having no `isabelle`; a check theory left behind is still removed by every start once the store is
-  open. Closed by this change: an idle or ready gate at an orderly quit (killed at the bound); a quit during a check
-  that ends within about 1.4 s, whether the check keeps or breaks its gate; jobs queued at the quit; a start that would
-  begin after the quit; a gate being stopped shortly before the quit; a gate whose start returns after the worker is
-  gone while the process lives on. T10 and T12 ask for the rest.
+  open. Closed by the adapter follow-up: an idle or ready gate at an orderly quit (killed at the bound); a quit during a
+  check that ends within about 1.4 s, whether the check keeps or breaks its gate; jobs queued at the quit; a start that
+  would begin after the quit; a gate being stopped shortly before the quit; a gate whose start returns after the worker
+  is gone while the process lives on. Closed by the kill handle follow-up, on Unix, with the kill handle of pull request
+  30 (T10): a quit during a start (case 2) and a quit during a check still running at the stop's instant (case 3); by
+  pull request 30 itself: a kill under way when the process ends (case 5).
 - K2 A hung check holds the worker up to its limit plus `CHECK_GRACE`: until its job's deadline for a fresh job, up to
   `CHECK_GRACE` after it for a job that waited (X11). The gate is then broken and restarted; health turns `unavailable`
   at the job's deadline (the overrun poll, 2.3), and the request ends `undecided` by the core's watchdog.
@@ -890,9 +968,12 @@ crate-private gate seam needs `--document-private-items`), and `-p fabric-deskto
 - K9 W4D D13 is contradicted by code until the owner accepts the amendment (O1); the merge waits for it.
 - K10 Texts on the page that name Google can show for practice requests (9.4); the practice line says what a practice
   run does.
-- K11 A stop while a starter is still inside `BrokerGate::start` may let that starter write its logs after the work
-  directory was removed, just before the process ends; the next start removes them. L13 waits for `ready` before it
-  quits for that reason. It is K1 case 2.
+- K11 A stop while a starter is still inside `BrokerGate::start_with_kill` kills its handle (2.5), which refuses only
+  the server's spawn. A start whose thread had not reached the gate's own preparation of the work directory when the
+  worker removed it creates the directory again, empty, just before the process ends; the next start, or the next run
+  once the store is open, removes it. Before the kill handle follow-up such a starter could also write its logs there
+  (it was part of K1 case 2). L13 waits for `ready` before it quits; L21 quits after a server exists, so it does not
+  cover this.
 - K12 Other sessions running live Isabelle tests with the same user home at the same time share Isabelle's server
   registry; the policy crate serializes server starts only within one process.
 - K13 Isabelle's temporary prefix is `/tmp/isabelle-<user>` by default, which another account on the Mac could create
@@ -918,12 +999,21 @@ crate-private gate seam needs `--document-private-items`), and `-p fabric-deskto
   2 s drain. With this change, on 2026-11-16 on one Mac (the practice app and its own Isabelle server ran beside the
   tests), thirteen in-process stops of a ready gate took 0.88 s to 1.26 s, nine of them between 1.05 s and 1.20 s. One,
   at 1.26 s, ran to the bound and, by its time, ended in a kill; the tests do not print which way a stop ended. The
-  built broker's quit (L13) took 1.01 s to 1.02 s in three runs, its quit with a server that does not answer (L20)
-  1.30 s to 1.32 s in four runs, and the quit of L4's second broker, which reuses the orphan, 0.25 s to 0.90 s in four
-  runs with no server left in any. So an orderly stop of an idle server ends close to the bound, and in this sample one
-  quit in thirteen ended in a kill. The bound cannot grow unless `QUIT_BOUND` grows towards the relay's 2 s drain or
-  `KILL_ALLOWANCE` shrinks (X9). An unacknowledged stop means the worker was still in a check (K1 case 3) or the kill's
-  wait ran long; past the bound the calling thread removes the work directory. A killed Isabelle leaves its temporary
+  built broker's quit (L13) took 1.01 s to 1.02 s in three runs, its quit with a server that does not answer (L20) 1.30
+  s to 1.32 s in four runs, and the quit of L4's second broker, which reuses the orphan, 0.25 s to 0.90 s in four runs
+  with no server left in any. So an orderly stop of an idle server ends close to the bound, and in this sample one quit
+  in thirteen ended in a kill. The bound cannot grow unless `QUIT_BOUND` grows towards the relay's 2 s drain or
+  `KILL_ALLOWANCE` shrinks (X9). With the kill handle follow-up, on 2026-11-17 on one Mac (the practice app and its own
+  Isabelle server ran beside the tests): the built broker's quit during a gate start (L21) took 55 ms to 57 ms in four
+  runs; the in-process stop during a check whose server does not answer (L22), which main kills at the stop's instant
+  (2.5), took 1.31 s to 1.38 s in four runs, against `QUIT_BOUND` of 1.5 s, so it needs an otherwise idle Mac too; L20
+  took 1.32 s in two runs, L13 1.06 s and 1.14 s, and the quit of L4's second broker 0.14 s in one run; ten idle
+  in-process stops in one run of the whole live mode took 0.90 s to 1.24 s. A stop of a gate on a server found already
+  running may take up to `FOUND_SHUTDOWN_GRACE` (0.3 s) past the gate's bound (T12, K1 case 4); with the gate's bound at
+  the stop's instant that is `QUIT_BOUND`. An unacknowledged stop means the worker was late: a kill (the gate's at its
+  bound, or the kill handle's of a check still running at the stop's instant) or what follows it took longer than
+  `QUIT_BOUND`, as on a busy Mac, or the kill failed (K1 case 7), or the check runs on a found server, which no kill
+  ends (K1 case 4); past the bound the calling thread removes the work directory. A killed Isabelle leaves its temporary
   files under the private prefix in the user home, and nothing removes them (K18). The live tests print the time and
   fail when the stop is not acknowledged.
 - K16 Live proofs never run in CI (PLAN RD-7): CI compiles `tests/live.rs` on Unix and runs none of it, so a change
@@ -932,21 +1022,24 @@ crate-private gate seam needs `--document-private-items`), and `-p fabric-deskto
 - K17 The live test L14 `checks_are_timed` fails the live mode when the mean check exceeds 1.5 s, and its margin is
   thin too: idle means were 1.22 s to 1.29 s, and one run on a loaded Mac (load average 6 to 10) failed at 1,529 ms
   and passed when repeated. Like the stop bound (K15), it needs an otherwise idle Mac.
-- K18 Only the rule theory and `Fabric_Broker/ROOT` are pinned, and no `ROOTS` may stand beside them (2.1). The Isabelle
-  distribution (`bin/isabelle` and what it loads) and the Isabelle user home (its `etc/settings` and `etc/components`,
-  which Isabelle sources) are trusted as given, a second definition of `Fabric_Broker` in their component directories
-  being refused by Isabelle as a duplicate session (9.5), and a debug host forwards the three paths with any store
-  (X16). On Unix the gate writes one settings line into the user home (T9). A killed Isabelle leaves its scripts and
-  temporary files under the private prefix in the user home, and nothing removes them; the live test L2 kills one on
-  every run, and a quit whose stop takes longer than the bound now ends in a kill (K15). Whether an idle killed
-  Isabelle leaves calendar text there is not known; the live test L1, which scans that directory after its stop, is
-  the check that exists.
+- K18 Only the rule theory and `Fabric_Broker/ROOT` are pinned, and no `ROOTS` may stand beside them (2.1): by the
+  worker before each start; since pull request 30 the gate checks `ROOT` and `ROOTS` too, before and after
+  `session_start` (T11). The Isabelle distribution (`bin/isabelle` and what it loads) and the Isabelle user home (its
+  `etc/settings` and `etc/components`, which Isabelle sources) are trusted as given, a second definition of
+  `Fabric_Broker` in their component directories being refused by Isabelle as a duplicate session (9.5), and a debug
+  host forwards the three paths with any store (X16). On Unix the gate writes one settings line into the user home (T9).
+  A killed Isabelle leaves its scripts and temporary files under the private prefix in the user home, and nothing
+  removes them; the live tests L2, L20, L21 and L22 kill one on every run, and a quit now ends in a kill whenever the
+  gate's stop takes longer than the bound, a gate start is in progress, or a check still runs at the stop's instant
+  (K15, 2.5). Whether an idle killed Isabelle leaves calendar text there is not known; the live test L1, which scans
+  that directory after its stop, is the check that exists.
 
 ### 9.2 Requests to other owners
 
 To the owner of the rule theory and the policy crate (the design works without them):
 - T1 a health probe, or a cancel, for a running check; in part answered by pull request 26: `check_within` bounds a
-  whole check by its limit and `CHECK_GRACE` (2.3); still open: T10;
+  whole check by its limit and `CHECK_GRACE` (2.3); a cancel from another thread by pull request 30: the kill handle
+  (T10), which ends a running check's server, used at quit (2.5);
 - T2 a typed "gate broken" error; done by pull request 26: `Fault` and `is_broken` (2.3, 2.4);
 - T3 `BrokerGate::start` removes stale `Check_*.thy` files itself; done by pull request 26; the adapter keeps its own
   emptying (X10);
@@ -960,17 +1053,23 @@ To the owner of the rule theory and the policy crate (the design works without t
 - T7 export the expected theory hash, or make `BrokerGate::start` take one and refuse another theory; done by pull
   request 26: `theory::THEORY_TEXT`, `theory::SESSION_ROOT` and `built_theory_sha256` (2.1);
 - T8 hash and load the theory from the same bytes (the window between the hash and `session_start`, 2.1); narrowed by
-  pull request 26: the theory is hashed before and after `session_start`; still open for the session's `ROOT` and
-  `ROOTS`: T11;
+  pull request 26: the theory is hashed before and after `session_start`; the session's `ROOT` and `ROOTS` are checked
+  the same way since pull request 30 (T11);
 - T9 a private temporary prefix for Isabelle (K13); done by pull request 26 on Unix (3.4);
 - T10 a `Send + Sync` kill handle on `BrokerGate`, available as soon as `start` has spawned the server, that ends the
-  server's process groups from another thread at once and without leaving them stopped, so a quit can end a server
-  whose gate is still in `start` or blocked in `check_within` (K1 cases 2, 3 and 5);
+  server's process groups from another thread at once and without leaving them stopped, so a quit can end a server whose
+  gate is still in `start` or blocked in `check_within` (K1 cases 2, 3 and 5); done by pull request 30 on Unix:
+  `KillHandle` and `BrokerGate::start_with_kill`; the kill runs in a helper process that finishes without its caller;
+  the adapter gives every start a new handle and kills it at quit when that start is in progress or a check still runs
+  at the stop's instant (2.2, 2.5);
 - T11 compare `<rules_dir>/Fabric_Broker/ROOT` with `theory::SESSION_ROOT`, and refuse a `ROOTS` beside it, before and
-  after `session_start`, as the gate does for the theory's hash;
+  after `session_start`, as the gate does for the theory's hash; done by pull request 30: `gate::check_session_dir`
+  before and after `session_start`; the adapter keeps its own pin (2.1);
 - T12 for a server found already running under the name: stop and replace it at `start`; or, in `stop_within`, still
   write `shutdown` (on a fresh connection, without waiting for the answer) when `session_stop` has used the bound or
-  the bound is zero (K1 case 4).
+  the bound is zero (K1 case 4); done by pull request 30 the second way: `stop_within` still sends `shutdown` on a
+  fresh connection, up to `FOUND_SHUTDOWN_GRACE` (0.3 s) past its bound, also after a kill through the handle, and the
+  stop is then an error that says `shutdown` was sent without confirmation (K1 case 4, K15).
 
 Nothing of pull request 28 is used.
 
@@ -1027,11 +1126,20 @@ Windows and Linux targets (only this Mac; their `cfg` was emulated for clippy). 
 (K7). Which W04 core tests cover S5.
 The edge of p44's bound and the drop of a failing live process (both timing). The page's cards for update and delete
 (9.4 item 9). The `Ok`-and-broken path with a real Isabelle (a purge that fails after a complete `use_theories`; only
-w22's double shows the restart). The kill at the bound at quit with a slow but answering server: no test asserts it,
-and it was seen once, by its time only (K15); how often a quit ends in a kill beyond that sample of thirteen. Whether
-`KILL_ALLOWANCE` (0.3 s) covers `ps` and two `kill` on a loaded Mac (0.06 s measured idle). The quit's own processing
-time before `Shell::stop` (the core's quit, its store write, the last frames). A quit during a start or during a long
-check with a real Isabelle (K1 cases 2 and 3; only doubles show the adapter's part).
+w22's double shows the restart). The kill at the bound at quit with a slow but answering server: no test asserts it, and
+it was seen once, by its time only (K15); how often a quit ends in a kill beyond that sample of thirteen. Whether
+`KILL_ALLOWANCE` (0.3 s) covers the gate's kill at its bound on a loaded Mac (its helper process since pull request 30,
+`/bin/sh` with `ps` and `awk`, took 0.03 s idle and a stop with no time 0.05 s, as measured by pull request 30; the kill
+before it, `ps` and two `kill`, took 0.06 s idle), and whether it covers main's kill of a running check and what follows
+it there (on 2026-11-17, idle, L22's acknowledgement came 0.11 s to 0.18 s after the stop's instant). The quit's own
+processing time before `Shell::stop` (the core's quit, its store write, the last frames). The two cases pull request 30
+did not provoke: the process ending while a kill is under way (K1 case 5) and the kill helper running out of time (K1
+case 7). A quit during a start or during a check on a server found already running (K1 case 4). L21 relies on the owner
+channel's `starting`, which is the shell's view and can lag the worker by one event, so a gate that became ready just
+before the snapshot would make its quit an orderly stop and the test would still pass; in its runs the quit came well
+before Isabelle could be ready. The empty work directory of K11. The adapter's kills outside Unix, and the non-Unix
+build of the `cfg(unix)` tests w30 and w31. The new tests on CI or a loaded Mac: w31's 700 ms margin and w32's timing
+assume a scheduler that is not badly delayed, and L22's stop leaves about 0.1 s of `QUIT_BOUND`.
 
 Checked in Isabelle2025-2's sources on 2026-11-16: Isabelle reads the `ROOT` and the `ROOTS` of every directory it is
 given, the `dirs` of `session_start` included (`src/Pure/Build/sessions.scala` 1284-1325: `load_dir` is `load_root`
@@ -1046,3 +1154,14 @@ listing after the full run and after the single runs showed no Isabelle server b
 are in K15; they include one run each of L3 and L4 and two of L20 made before the last review fixes, which changed L4's
 clean-up and added the start guards of 2.2, not the stop path. The Keychain was not touched: every test uses the test
 key.
+Checked on 2026-11-17 on one Mac, with the kill handle follow-up: a quit during a start and during a long check with a
+real Isabelle (K1 cases 2 and 3), each run alone three times: L21 and L22 passed every time (times in K15); L22's
+check could not end by itself, its server's processes being stopped, and its stderr held the one failure line 2.5
+names. L20 and L13 passed once each with the changed adapter. After every run a process listing showed no Isabelle
+server but the practice app's own and no stopped process. The unit tests of the prover passed ten runs in a row, and
+removing each new behaviour in turn made its test fail: the worker's kill (w30), main's kill (w31), the condition that
+a check runs (w32), the read of `stop_by` in `check_job` (w34), and a handle reused across starts (w33). Those single
+runs were made before the last review fixes, which changed comments and this document only. Then, on the final code,
+`sh scripts/verify-desktop.sh --live-proofs` passed once (the first test alone, the corpus's 3 tests, the live binary's
+18 tests, L21 and L22 among them), and a process listing after it showed no Isabelle server but the practice app's own
+and no stopped process. The Keychain was not touched: every test uses the test key.
