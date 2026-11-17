@@ -9,9 +9,12 @@
 use std::fmt;
 
 use fabric_desktop_contracts::agent::{Action, ResponseTarget};
-use fabric_desktop_contracts::scalar::ProviderRef;
+use fabric_desktop_contracts::common::SendUpdates;
+use fabric_desktop_contracts::scalar::{Id, ProviderRef};
 
+use crate::http::ids::{EventId, ReservedEventId, Revision};
 use crate::outcome::{Notification, Sentence};
+use crate::time::parse_rfc3339_ms;
 
 /// The earliest a first reconcile read may run after the attempt ended (PD20).
 pub const FIRST_READ_DELAY_MS: u64 = 10_000;
@@ -93,6 +96,100 @@ impl Effect {
             _ => None,
         }
     }
+
+    /// Whether the change could tell the people of the event: its approved `send_updates` is
+    /// not `none`. False for a create (`sendUpdates=none`, PD16) and for an action that changes
+    /// nothing (section 7).
+    #[must_use]
+    pub fn may_notify(&self) -> bool {
+        let send = match &self.action {
+            Action::ProposeUpdate(a) => a.send_updates,
+            Action::ProposeInvitation(a) => a.send_updates,
+            Action::ProposeResponse(a) => a.send_updates,
+            Action::ProposeDelete(a) => a.send_updates,
+            _ => SendUpdates::None,
+        };
+        send != SendUpdates::None
+    }
+
+    /// The broker's account and calendar the action names; `None` for an action that changes
+    /// no calendar.
+    #[must_use]
+    pub fn calendar(&self) -> Option<(&Id, &Id)> {
+        match &self.action {
+            Action::ProposeCreate(a) => Some((&a.account_id, &a.calendar_id)),
+            Action::ProposeUpdate(a) => Some((&a.account_id, &a.calendar_id)),
+            Action::ProposeInvitation(a) => Some((&a.account_id, &a.calendar_id)),
+            Action::ProposeResponse(a) => Some((&a.account_id, &a.calendar_id)),
+            Action::ProposeDelete(a) => Some((&a.account_id, &a.calendar_id)),
+            _ => None,
+        }
+    }
+
+    /// The ids of the effect, checked as 5.3 says, before any request: the event id (the
+    /// reserved id of a create, the approved event or occurrence instance otherwise), the
+    /// approved revision when the tool has one, and the approved original start of one
+    /// occurrence (CD-Q05b). A failure is the fixed sentence of the check that failed.
+    pub(crate) fn checked_ids(&self) -> Result<EffectIds, Sentence> {
+        let event = |id: &ProviderRef| EventId::new(id.as_str()).map_err(|_| Sentence::EventIdForm);
+        let revision = |rev: &ProviderRef| {
+            Revision::new(rev.as_str())
+                .map(Some)
+                .map_err(|_| Sentence::RevisionForm)
+        };
+        let (event_id, revision, original_start_ms) = match &self.action {
+            Action::ProposeCreate(_) => (
+                ReservedEventId::new(self.reserved_id.as_deref().unwrap_or(""))
+                    .map_err(|_| Sentence::ReservedIdForm)?
+                    .as_event_id(),
+                None,
+                None,
+            ),
+            Action::ProposeUpdate(a) => (
+                event(&a.event.event_id)?,
+                revision(&a.event.revision)?,
+                None,
+            ),
+            Action::ProposeInvitation(a) => (
+                event(&a.event.event_id)?,
+                revision(&a.event.revision)?,
+                None,
+            ),
+            Action::ProposeDelete(a) => (
+                event(&a.event.event_id)?,
+                revision(&a.event.revision)?,
+                None,
+            ),
+            Action::ProposeResponse(a) => match &a.target {
+                ResponseTarget::Event(e) => (event(&e.event_id)?, revision(&e.revision)?, None),
+                ResponseTarget::Occurrence(o) => (
+                    event(&o.instance_id)?,
+                    revision(&o.revision)?,
+                    // The adapter found the time unreadable; nothing was sent (PD27).
+                    Some(
+                        parse_rfc3339_ms(o.original_start_time.date_time.as_str())
+                            .map_err(|_| Sentence::TimeUnreadable)?,
+                    ),
+                ),
+            },
+            _ => return Err(Sentence::OrderMismatch),
+        };
+        Ok(EffectIds {
+            event_id,
+            revision,
+            original_start_ms,
+        })
+    }
+}
+
+/// The checked ids of an effect ([`Effect::checked_ids`]).
+pub(crate) struct EffectIds {
+    /// The event the effect names (5.3).
+    pub(crate) event_id: EventId,
+    /// The approved revision; `None` for a create.
+    pub(crate) revision: Option<Revision>,
+    /// The approved original start of one occurrence, as UTC milliseconds (CD-Q05b).
+    pub(crate) original_start_ms: Option<i64>,
 }
 
 /// Prints the tool and whether a reserved id is present; never content or an id (PD27).
@@ -172,8 +269,9 @@ pub enum Verdict {
         /// True: the read showed exactly what was approved (or, for a deletion, that the event
         /// is gone).
         confirmed: bool,
-        /// `NotRequested` for a create (`sendUpdates=none`, PD16); `Unknown` for every other
-        /// tool: whether Google sent messages is not known (PLAN 11).
+        /// `NotRequested` for a create (`sendUpdates=none`, PD16) and for a change whose
+        /// `send_updates` is `none`; `Unknown` otherwise: whether Google sent messages is not
+        /// known (PLAN 11).
         notification: Notification,
     },
     /// The change is not there and cannot appear any more (`reconciling ->
@@ -213,27 +311,37 @@ impl fmt::Debug for Verdict {
 }
 
 /// The table of section 7. `approved_revision` is the revision the approval names (`None` for
-/// a create); `reads_before` counts the reconcile reads of this effect before this one;
-/// `read_back` is what this read found, at `read_at_ms`.
+/// a create); `may_notify` is [`Effect::may_notify`]; `earlier_not_yet_at_ms` is the time of
+/// the earlier reconcile read of this effect that also found the change not there, if there
+/// was one (a failed read is no such read); `read_back` is what this read found, at
+/// `read_at_ms`.
 ///
-/// `NotYet` (PD20): on the first read it is `ReadAgain`, no sooner than 60 s after this read;
-/// on a later read it is `Absent`.
+/// `NotYet` (PD20) is `Absent` only when an earlier read at `t` said "not there yet" and this
+/// read is at least 60 s later. Otherwise it is `ReadAgain`: no sooner than 60 s after this
+/// read when there was no earlier one, or than `t + 60 s` when this read came too early.
 #[must_use]
 pub fn decide(
     tool: ChangeTool,
     approved_revision: Option<&ProviderRef>,
-    reads_before: u32,
+    may_notify: bool,
+    earlier_not_yet_at_ms: Option<u64>,
     read_back: &ReadBack,
     read_at_ms: u64,
 ) -> Verdict {
-    let not_yet = || {
-        if reads_before == 0 {
-            Verdict::ReadAgain {
-                not_before_ms: read_at_ms.saturating_add(SECOND_READ_DELAY_MS),
-            }
-        } else {
-            Verdict::Absent
-        }
+    let not_yet = || match earlier_not_yet_at_ms {
+        Some(t) if read_at_ms >= t.saturating_add(SECOND_READ_DELAY_MS) => Verdict::Absent,
+        Some(t) => Verdict::ReadAgain {
+            not_before_ms: t.saturating_add(SECOND_READ_DELAY_MS),
+        },
+        None => Verdict::ReadAgain {
+            not_before_ms: read_at_ms.saturating_add(SECOND_READ_DELAY_MS),
+        },
+    };
+    // Section 7: found applied by reading, the messages are unknown unless none were asked for.
+    let found_notification = if may_notify {
+        Notification::Unknown
+    } else {
+        Notification::NotRequested
     };
     let same_revision = |found: &ProviderRef| approved_revision == Some(found);
     match (tool, read_back) {
@@ -260,7 +368,7 @@ pub fn decide(
                 Verdict::Applied {
                     revision: Some(revision.clone()),
                     confirmed: true,
-                    notification: Notification::Unknown,
+                    notification: found_notification,
                 }
             } else if same_revision(revision) {
                 not_yet()
@@ -275,7 +383,7 @@ pub fn decide(
         (ChangeTool::Delete, ReadBack::Cancelled | ReadBack::NotFound) => Verdict::Applied {
             revision: None,
             confirmed: true,
-            notification: Notification::Unknown,
+            notification: found_notification,
         },
         (ChangeTool::Delete, ReadBack::Found { revision, .. }) => {
             if same_revision(revision) {
@@ -313,11 +421,15 @@ mod tests {
 
     const T: u64 = 5_000_000;
 
+    /// An earlier read that said "not there yet", long enough before `T`.
+    const EARLIER: Option<u64> = Some(T - 60_000);
+
     #[test]
     fn create_rows() {
-        let d = |back: &ReadBack, reads| decide(ChangeTool::Create, None, reads, back, T);
+        let d =
+            |back: &ReadBack, earlier| decide(ChangeTool::Create, None, false, earlier, back, T);
         assert_eq!(
-            d(&found(7, true), 0),
+            d(&found(7, true), None),
             Verdict::Applied {
                 revision: Some(rev(7)),
                 confirmed: true,
@@ -325,21 +437,65 @@ mod tests {
             }
         );
         assert_eq!(
-            d(&found(7, false), 0),
+            d(&found(7, false), None),
             Verdict::NeedsOwner(NeedsOwnerReason::CreateDiffers)
         );
         assert_eq!(
-            d(&ReadBack::Cancelled, 0),
+            d(&ReadBack::Cancelled, None),
             Verdict::NeedsOwner(NeedsOwnerReason::CreatedThenDeleted)
         );
         assert_eq!(
-            d(&ReadBack::NotFound, 0),
+            d(&ReadBack::NotFound, None),
             Verdict::ReadAgain {
                 not_before_ms: T + 60_000
             }
         );
-        assert_eq!(d(&ReadBack::NotFound, 1), Verdict::Absent);
-        assert_eq!(d(&ReadBack::NotFound, 5), Verdict::Absent);
+        assert_eq!(d(&ReadBack::NotFound, EARLIER), Verdict::Absent);
+        assert_eq!(d(&ReadBack::NotFound, Some(0)), Verdict::Absent);
+        // A create never notifies, whatever the caller says.
+        assert!(matches!(
+            decide(ChangeTool::Create, None, true, None, &found(7, true), T),
+            Verdict::Applied {
+                notification: Notification::NotRequested,
+                ..
+            }
+        ));
+    }
+
+    /// PD20: a second read that comes less than 60 s after the first is not the second read of
+    /// an absence; it says when the second read may be.
+    #[test]
+    fn a_second_read_less_than_60_seconds_after_the_first_reads_again() {
+        for tool in [
+            ChangeTool::Create,
+            ChangeTool::Update,
+            ChangeTool::Invitation,
+            ChangeTool::Response,
+            ChangeTool::Delete,
+        ] {
+            let approved = rev(1);
+            let back = match tool {
+                ChangeTool::Create => ReadBack::NotFound,
+                _ => found(1, false),
+            };
+            let d = |earlier, at| decide(tool, Some(&approved), false, earlier, &back, at);
+            let first = T;
+            assert_eq!(
+                d(Some(first), first + 59_999),
+                Verdict::ReadAgain {
+                    not_before_ms: first + 60_000
+                },
+                "{tool:?}"
+            );
+            assert_eq!(
+                d(Some(first), first),
+                Verdict::ReadAgain {
+                    not_before_ms: first + 60_000
+                },
+                "{tool:?}"
+            );
+            assert_eq!(d(Some(first), first + 60_000), Verdict::Absent, "{tool:?}");
+        }
     }
 
     #[test]
@@ -350,11 +506,12 @@ mod tests {
             ChangeTool::Response,
         ] {
             let approved = rev(1);
-            let d = |back: &ReadBack, reads| decide(tool, Some(&approved), reads, back, T);
+            let d =
+                |back: &ReadBack, earlier| decide(tool, Some(&approved), true, earlier, back, T);
             // Found and equal, whatever the revision.
             for n in [1, 2] {
                 assert_eq!(
-                    d(&found(n, true), 0),
+                    d(&found(n, true), None),
                     Verdict::Applied {
                         revision: Some(rev(n)),
                         confirmed: true,
@@ -364,38 +521,80 @@ mod tests {
             }
             // Found, the approved revision, not equal: not yet.
             assert_eq!(
-                d(&found(1, false), 0),
+                d(&found(1, false), None),
                 Verdict::ReadAgain {
                     not_before_ms: T + 60_000
                 }
             );
-            assert_eq!(d(&found(1, false), 1), Verdict::Absent);
+            assert_eq!(d(&found(1, false), EARLIER), Verdict::Absent);
             // Found, another revision, not equal.
             assert_eq!(
-                d(&found(2, false), 0),
+                d(&found(2, false), None),
                 Verdict::NeedsOwner(NeedsOwnerReason::ChangedUnclear)
             );
             for back in [ReadBack::Cancelled, ReadBack::NotFound] {
                 assert_eq!(
-                    d(&back, 0),
+                    d(&back, None),
                     Verdict::NeedsOwner(NeedsOwnerReason::GoneUnclear)
                 );
                 assert_eq!(
-                    d(&back, 1),
+                    d(&back, EARLIER),
                     Verdict::NeedsOwner(NeedsOwnerReason::GoneUnclear)
                 );
             }
         }
     }
 
+    /// Section 7: a change found applied by reading whose `send_updates` was `none` asked for
+    /// no messages; with `all` or `externalOnly` whether they were sent is unknown.
+    #[test]
+    fn a_change_found_applied_notified_nobody_when_it_asked_for_no_messages() {
+        let approved = rev(1);
+        for (may_notify, want) in [
+            (false, Notification::NotRequested),
+            (true, Notification::Unknown),
+        ] {
+            for tool in [
+                ChangeTool::Update,
+                ChangeTool::Invitation,
+                ChangeTool::Response,
+            ] {
+                assert_eq!(
+                    decide(tool, Some(&approved), may_notify, None, &found(2, true), T),
+                    Verdict::Applied {
+                        revision: Some(rev(2)),
+                        confirmed: true,
+                        notification: want
+                    }
+                );
+            }
+            assert_eq!(
+                decide(
+                    ChangeTool::Delete,
+                    Some(&approved),
+                    may_notify,
+                    None,
+                    &ReadBack::NotFound,
+                    T
+                ),
+                Verdict::Applied {
+                    revision: None,
+                    confirmed: true,
+                    notification: want
+                }
+            );
+        }
+    }
+
     #[test]
     fn delete_rows() {
         let approved = rev(1);
-        let d =
-            |back: &ReadBack, reads| decide(ChangeTool::Delete, Some(&approved), reads, back, T);
+        let d = |back: &ReadBack, earlier| {
+            decide(ChangeTool::Delete, Some(&approved), true, earlier, back, T)
+        };
         for back in [ReadBack::Cancelled, ReadBack::NotFound] {
             assert_eq!(
-                d(&back, 0),
+                d(&back, None),
                 Verdict::Applied {
                     revision: None,
                     confirmed: true,
@@ -405,13 +604,13 @@ mod tests {
         }
         for matches in [true, false] {
             assert_eq!(
-                d(&found(1, matches), 0),
+                d(&found(1, matches), None),
                 Verdict::ReadAgain {
                     not_before_ms: T + 60_000
                 }
             );
-            assert_eq!(d(&found(1, matches), 1), Verdict::Absent);
-            assert_eq!(d(&found(2, matches), 0), Verdict::Absent);
+            assert_eq!(d(&found(1, matches), EARLIER), Verdict::Absent);
+            assert_eq!(d(&found(2, matches), None), Verdict::Absent);
         }
     }
 
@@ -420,7 +619,27 @@ mod tests {
         assert_eq!(earliest_read_ms(1_000), 11_000);
         assert_eq!(earliest_read_ms(u64::MAX), u64::MAX);
         assert_eq!(
-            decide(ChangeTool::Create, None, 0, &ReadBack::NotFound, u64::MAX),
+            decide(
+                ChangeTool::Create,
+                None,
+                false,
+                None,
+                &ReadBack::NotFound,
+                u64::MAX
+            ),
+            Verdict::ReadAgain {
+                not_before_ms: u64::MAX
+            }
+        );
+        assert_eq!(
+            decide(
+                ChangeTool::Create,
+                None,
+                false,
+                Some(u64::MAX - 1),
+                &ReadBack::NotFound,
+                u64::MAX - 1
+            ),
             Verdict::ReadAgain {
                 not_before_ms: u64::MAX
             }
@@ -445,7 +664,14 @@ mod tests {
         let text = format!(
             "{:?} {:?}",
             found(987_654, true),
-            decide(ChangeTool::Create, None, 0, &found(987_654, true), T)
+            decide(
+                ChangeTool::Create,
+                None,
+                false,
+                None,
+                &found(987_654, true),
+                T
+            )
         );
         assert!(!text.contains("987654"), "{text}");
     }

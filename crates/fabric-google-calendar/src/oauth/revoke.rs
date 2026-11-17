@@ -33,8 +33,11 @@ pub fn revoke(
     let Ok(Some(token)) = store.read(account) else {
         return Revocation::NotConfirmed;
     };
-    let request = Request::new(Method::Post, Target::Revocation, BodyBound::Small)
-        .form(&[("token", token.expose())]);
+    let Ok(request) = Request::new(Method::Post, Target::Revocation, BodyBound::Small)
+        .form(&[("token", token.expose())])
+    else {
+        return Revocation::NotConfirmed;
+    };
     match transport.send(request, deadline_ms) {
         Exchange::Answer(answer) if answer.status() == 200 => Revocation::Revoked,
         Exchange::Answer(answer)

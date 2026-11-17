@@ -6,7 +6,10 @@
 
 #![allow(dead_code)]
 
-use std::sync::{Arc, Mutex};
+use std::io::{Read, Write};
+use std::net::{Shutdown, TcpListener, TcpStream};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Condvar, Mutex};
 use std::time::{Duration, Instant};
 
 use fabric_desktop_contracts::scalar::Id;
@@ -37,14 +40,21 @@ pub fn account(n: u32) -> Id {
     Id::new(format!("account-{n:032x}")).expect("a valid id")
 }
 
-/// A token store that counts writes and deletes, over a shared memory store.
+/// A token store that counts writes and deletes, over a shared memory store. It can be told to
+/// refuse writes while reads go on working.
 #[derive(Clone, Default)]
 pub struct CountingStore {
     pub inner: MemoryTokenStore,
     counts: Arc<Mutex<(usize, usize)>>,
+    refuse_writes: Arc<AtomicBool>,
 }
 
 impl CountingStore {
+    /// Every later write fails with `Failed`, or works again with `false`.
+    pub fn refuse_writes(&self, refuse: bool) {
+        self.refuse_writes.store(refuse, Ordering::SeqCst);
+    }
+
     /// How many writes were made.
     pub fn writes(&self) -> usize {
         self.counts.lock().expect("unpoisoned").0
@@ -70,6 +80,9 @@ impl TokenStore for CountingStore {
     }
     fn write(&mut self, account: &Id, token: &Secret) -> Result<(), TokenStoreError> {
         self.counts.lock().expect("unpoisoned").0 += 1;
+        if self.refuse_writes.load(Ordering::SeqCst) {
+            return Err(TokenStoreError::Failed { status: -1 });
+        }
         self.inner.write(account, token)
     }
     fn delete(&mut self, account: &Id) -> Result<(), TokenStoreError> {
@@ -189,6 +202,35 @@ impl Rig {
         )
     }
 
+    /// A second sign-in part over the same client and clock whose requests go to `port` (a
+    /// [`HoldingProxy`] in front of the fake). Its key set and its latest flow are its own.
+    pub fn flow_through(&self, port: u16) -> Flow {
+        let shared: fabric_google_calendar::SharedClock = Arc::new(self.clock.clone());
+        let transport = Arc::new(
+            Transport::new(Endpoints::loopback(port), Arc::clone(&shared)).expect("a transport"),
+        );
+        Flow::new(transport, Arc::clone(&self.client), shared)
+    }
+
+    /// Starts a flow on `flow` and gives it with the address the browser was given, the
+    /// address pointed at the fake when `flow` sends its requests through a proxy.
+    pub fn start_on(&self, flow: &Flow, job: ConnectJob) -> (PendingFlow, Secret) {
+        let browser = RecordingBrowser::new();
+        let pending = flow.start(job, &mut browser.clone());
+        let address = browser
+            .take_address()
+            .expect("the browser was given an address");
+        let text = address.expose();
+        let (_, rest) = text
+            .split_once("/o/oauth2/v2/auth")
+            .expect("the authorization path");
+        let at_fake = format!(
+            "http://127.0.0.1:{}/o/oauth2/v2/auth{rest}",
+            self.fake.port()
+        );
+        (pending, Secret::new(at_fake))
+    }
+
     /// A deadline 30 s ahead on the test clock.
     pub fn deadline(&self) -> u64 {
         self.clock.now_ms() + 30_000
@@ -238,4 +280,143 @@ pub fn wait_until(bound: Duration, mut done: impl FnMut() -> bool) {
         std::thread::yield_now();
         std::thread::sleep(Duration::from_millis(5));
     }
+}
+
+/// What the proxy's gate is doing.
+#[derive(Default)]
+struct Gate {
+    /// The next token request is to be held.
+    armed: bool,
+    /// A token request is held now.
+    holding: bool,
+    /// The held request may go on.
+    released: bool,
+}
+
+/// A forwarder on `127.0.0.1` between the adapter and the fake that can hold the next token
+/// request before the fake sees it, until the test releases it: a flow can be kept inside its
+/// token request for exactly as long as a test needs, with no timing. One request per
+/// connection, as the transport sends them (`Connection: close`).
+pub struct HoldingProxy {
+    port: u16,
+    gate: Arc<(Mutex<Gate>, Condvar)>,
+    stop: Arc<AtomicBool>,
+}
+
+impl HoldingProxy {
+    /// Starts forwarding to the fake on `fake_port`.
+    pub fn start(fake_port: u16) -> HoldingProxy {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind a loopback port");
+        let port = listener.local_addr().expect("an address").port();
+        let gate: Arc<(Mutex<Gate>, Condvar)> = Arc::default();
+        let stop = Arc::new(AtomicBool::new(false));
+        let (thread_gate, thread_stop) = (Arc::clone(&gate), Arc::clone(&stop));
+        std::thread::spawn(move || {
+            for stream in listener.incoming() {
+                if thread_stop.load(Ordering::SeqCst) {
+                    break;
+                }
+                let Ok(stream) = stream else { continue };
+                let gate = Arc::clone(&thread_gate);
+                std::thread::spawn(move || forward(stream, fake_port, &gate));
+            }
+        });
+        HoldingProxy { port, gate, stop }
+    }
+
+    /// The port the adapter sends to.
+    pub fn port(&self) -> u16 {
+        self.port
+    }
+
+    /// Holds the next `POST /token` until [`HoldingProxy::release`].
+    pub fn hold_next_token_request(&self) {
+        let (gate, _) = &*self.gate;
+        gate.lock().expect("unpoisoned").armed = true;
+    }
+
+    /// Waits until a token request is held, at most `GUARD_WAIT`.
+    pub fn wait_until_holding(&self) {
+        let (gate, signal) = &*self.gate;
+        let guard = gate.lock().expect("unpoisoned");
+        let (guard, timeout) = signal
+            .wait_timeout_while(guard, GUARD_WAIT, |g| !g.holding)
+            .expect("unpoisoned");
+        assert!(
+            !timeout.timed_out() && guard.holding,
+            "no token request was held"
+        );
+    }
+
+    /// Lets the held request go on to the fake.
+    pub fn release(&self) {
+        let (gate, signal) = &*self.gate;
+        gate.lock().expect("unpoisoned").released = true;
+        signal.notify_all();
+    }
+}
+
+impl Drop for HoldingProxy {
+    fn drop(&mut self) {
+        self.release();
+        self.stop.store(true, Ordering::SeqCst);
+        // Wakes the accept loop so that it sees the stop.
+        let _ = TcpStream::connect(("127.0.0.1", self.port));
+    }
+}
+
+/// A guard on the proxy's waits: far longer than any step needs.
+const GUARD_WAIT: Duration = Duration::from_secs(20);
+
+/// Reads one request (head and `Content-Length` body), holds it when it is the token request
+/// the gate waits for, sends it to the fake and copies the fake's answer back.
+fn forward(mut client: TcpStream, fake_port: u16, gate: &(Mutex<Gate>, Condvar)) {
+    let _ = client.set_read_timeout(Some(GUARD_WAIT));
+    let mut request = Vec::new();
+    let mut chunk = [0u8; 4096];
+    let head_end = loop {
+        if let Some(end) = request.windows(4).position(|w| w == b"\r\n\r\n") {
+            break end + 4;
+        }
+        match client.read(&mut chunk) {
+            Ok(0) | Err(_) => return,
+            Ok(n) => request.extend_from_slice(&chunk[..n]),
+        }
+    };
+    let head = String::from_utf8_lossy(&request[..head_end]).to_ascii_lowercase();
+    let length: usize = head
+        .lines()
+        .find_map(|line| line.strip_prefix("content-length:"))
+        .and_then(|value| value.trim().parse().ok())
+        .unwrap_or(0);
+    while request.len() < head_end + length {
+        match client.read(&mut chunk) {
+            Ok(0) | Err(_) => return,
+            Ok(n) => request.extend_from_slice(&chunk[..n]),
+        }
+    }
+    if head.starts_with("post /token ") {
+        let (lock, signal) = gate;
+        let mut state = lock.lock().expect("unpoisoned");
+        if state.armed {
+            state.armed = false;
+            state.holding = true;
+            signal.notify_all();
+            let (_state, _) = signal
+                .wait_timeout_while(state, GUARD_WAIT, |g| !g.released)
+                .expect("unpoisoned");
+        }
+    }
+    let Ok(mut fake) = TcpStream::connect(("127.0.0.1", fake_port)) else {
+        return;
+    };
+    let _ = fake.set_read_timeout(Some(GUARD_WAIT));
+    if fake.write_all(&request).is_err() {
+        return;
+    }
+    let mut answer = Vec::new();
+    let _ = fake.read_to_end(&mut answer);
+    let _ = client.write_all(&answer);
+    let _ = client.flush();
+    let _ = client.shutdown(Shutdown::Write);
 }

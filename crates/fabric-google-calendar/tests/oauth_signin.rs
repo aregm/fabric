@@ -1,6 +1,10 @@
 //! Sign-in against the fake Google (design 3.2 to 3.7): g01 to g06, g12, g13.
 
+#![cfg(debug_assertions)]
+
 mod oauth_common;
+
+use std::time::Duration;
 
 use base64::Engine;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
@@ -443,5 +447,100 @@ fn g13_the_token_answer_is_checked_and_each_failure_is_cancelled_with_nothing_st
             "{given}"
         );
     }
+    rig.check_log();
+}
+
+#[test]
+fn g13_an_access_or_refresh_token_that_cannot_go_in_a_header_is_google_error_with_nothing_stored() {
+    let rig = Rig::new();
+    for (member, value) in [
+        ("access_token", "ya29.with space"),
+        ("access_token", "ya29.\u{e9}"),
+        ("refresh_token", "1//with\ttab"),
+        ("refresh_token", &"r".repeat(4097)),
+    ] {
+        let label = format!("{member} of {} bytes", value.len());
+        rig.fake.arm(Fault::token_answer(TokenFault::Member(
+            member.to_owned(),
+            serde_json::Value::String(value.to_owned()),
+        )));
+        let (outcome, _, _) =
+            rig.sign_in(ConnectJob::new_account(account(1), []), Decision::allow());
+        assert_eq!(
+            outcome,
+            ConnectOutcome::Cancelled(CancelReason::GoogleError),
+            "{label}"
+        );
+        assert!(rig.store.inner.is_empty(), "{label}");
+        assert!(rig.cache.get_valid(&account(1), 0, 0).is_none(), "{label}");
+    }
+    assert!(rig.fake.log().revocations().is_empty());
+    rig.check_log();
+}
+
+/// PD5, 3.3: flow A (a reconnect) is held inside its token request; flow B for the same
+/// account starts, which supersedes A, and finishes; then A's request goes on. A ends
+/// `Superseded`, writes nothing and forgets nothing: B's token stays and still refreshes.
+#[test]
+fn g06_a_superseded_reconnect_never_deletes_the_token_of_the_flow_that_superseded_it() {
+    let rig = Rig::new();
+    rig.connect(1, Decision::allow());
+    let proxy = HoldingProxy::start(rig.fake.port());
+    let flow = rig.flow_through(proxy.port());
+    let job = || ConnectJob::reconnect(account(1), SUB_A);
+
+    let (a, a_address) = rig.start_on(&flow, job());
+    proxy.hold_next_token_request();
+    let cache = &rig.cache;
+    std::thread::scope(|scope| {
+        let mut a_store = rig.store.clone();
+        let a_waiter = scope.spawn(move || a.wait(&mut a_store, cache));
+        let a_visit = rig
+            .fake
+            .browser()
+            .visit(a_address.expose(), Decision::allow())
+            .expect("visit");
+        assert_eq!(a_visit.listener_answer().expect("answered").status, 200);
+        // A is inside its token request now, and stays there until released.
+        proxy.wait_until_holding();
+
+        let (b, b_address) = rig.start_on(&flow, job());
+        let fake = &rig.fake;
+        let b_visit = scope.spawn(move || {
+            fake.browser()
+                .visit(b_address.expose(), Decision::allow())
+                .expect("visit")
+        });
+        let mut b_store = rig.store.clone();
+        let b_outcome = b.wait(&mut b_store, cache);
+        b_visit.join().expect("the browser thread ends");
+        assert!(b_outcome.is_connected(), "{b_outcome:?}");
+        let b_token = rig.store.token(&account(1)).expect("B stored its token");
+        assert!(
+            !a_waiter.is_finished(),
+            "A is still held in its token request"
+        );
+
+        proxy.release();
+        wait_until(Duration::from_secs(20), || a_waiter.is_finished());
+        assert_eq!(
+            a_waiter.join().expect("A ends"),
+            ConnectOutcome::Cancelled(CancelReason::Superseded)
+        );
+        assert_eq!(
+            rig.store.token(&account(1)),
+            Some(b_token),
+            "A neither deleted nor replaced B's token"
+        );
+    });
+    assert_eq!(rig.token_requests("authorization_code"), 3);
+    // B's token still refreshes.
+    rig.cache.drop_token(&account(1));
+    let before = rig.token_requests("refresh_token");
+    rig.access()
+        .access_token(&account(1), rig.deadline())
+        .expect("B's token refreshes");
+    assert_eq!(rig.token_requests("refresh_token"), before + 1);
+    assert!(rig.fake.log().revocations().is_empty());
     rig.check_log();
 }

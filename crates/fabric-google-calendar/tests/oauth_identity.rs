@@ -1,5 +1,7 @@
 //! The identity token and Google's key set against the fake (design 3.5): g10, g11.
 
+#![cfg(debug_assertions)]
+
 mod oauth_common;
 
 use fabric_google_calendar::oauth::{CancelReason, ConnectJob, ConnectOutcome, IdentityProblem};
@@ -105,16 +107,39 @@ fn g10_each_identity_token_fault_is_identity_check_failed_and_nothing_is_stored(
 #[test]
 fn g11_an_unknown_key_id_fetches_the_key_set_once_more_and_then_verifies() {
     let rig = Rig::new();
+    rig.fake.with_state(|s| s.unpublish_key(KeyId::B));
+    rig.connect(1, Decision::allow());
+    assert_eq!(rig.fake.with_state(|s| s.key_set_fetches()), 1);
+    // Google rotates to a key the kept set lacks: the next fetch has it.
+    rig.fake.with_state(|s| {
+        s.publish_key(KeyId::B, 0);
+        s.set_signing_key(KeyId::B);
+    });
+    rig.connect(2, Decision::allow().sign_in_as(SUB_B));
+    assert_eq!(rig.fake.with_state(|s| s.key_set_fetches()), 2);
+    // The next sign-in uses the kept set.
+    rig.connect(3, Decision::allow());
+    assert_eq!(rig.fake.with_state(|s| s.key_set_fetches()), 2);
+    rig.check_log();
+}
+
+#[test]
+fn g11_a_key_set_fetched_in_the_same_sign_in_because_none_was_kept_is_not_fetched_again() {
+    let rig = Rig::new();
+    // The first fetch lacks the signing key; a second one would have it.
     rig.fake.with_state(|s| {
         s.unpublish_key(KeyId::B);
         s.publish_key(KeyId::B, 1);
         s.set_signing_key(KeyId::B);
     });
-    rig.connect(1, Decision::allow());
-    assert_eq!(rig.fake.with_state(|s| s.key_set_fetches()), 2);
-    // The next sign-in uses the kept set.
-    rig.connect(2, Decision::allow().sign_in_as(SUB_B));
-    assert_eq!(rig.fake.with_state(|s| s.key_set_fetches()), 2);
+    let (outcome, _, _) = rig.sign_in(ConnectJob::new_account(account(1), []), Decision::allow());
+    assert_eq!(outcome, identity_failed(IdentityProblem::UnknownKey));
+    assert_eq!(
+        rig.fake.with_state(|s| s.key_set_fetches()),
+        1,
+        "the set fetched in this sign-in is as fresh as a refetch"
+    );
+    assert!(rig.store.inner.is_empty());
     rig.check_log();
 }
 

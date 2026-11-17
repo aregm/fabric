@@ -287,6 +287,7 @@ pub struct State {
     pub(crate) pending_decision: Option<Decision>,
     pub(crate) deleted_event_get: DeletedEventGet,
     pub(crate) free_busy_merge: bool,
+    pub(crate) calendar_list_page_size: Option<usize>,
     pub(crate) scope_spelling: ScopeSpelling,
     pub(crate) revision: u64,
     pub(crate) counter: u64,
@@ -317,6 +318,7 @@ impl State {
             pending_decision: None,
             deleted_event_get: DeletedEventGet::default(),
             free_busy_merge: true,
+            calendar_list_page_size: None,
             scope_spelling: ScopeSpelling::default(),
             revision: 3_400_000_000_000_000,
             counter: 0,
@@ -596,6 +598,13 @@ impl State {
     /// Periods are never cut to the window by the fake: that is the adapter's job (6.3).
     pub fn set_free_busy_merge(&mut self, merge: bool) {
         self.free_busy_merge = merge;
+    }
+
+    /// The most entries one page of the calendar list holds, whatever `maxResults` asks for;
+    /// `None` (the default) fills each page as asked. Google may fill a page with fewer
+    /// entries than it was asked for (6.2), so a listing must follow the page token.
+    pub fn set_calendar_list_page_size(&mut self, size: Option<usize>) {
+        self.calendar_list_page_size = size.map(|n| n.max(1));
     }
 
     pub(crate) fn stored(&self, calendar: &str, id: &str) -> Option<&StoredEvent> {

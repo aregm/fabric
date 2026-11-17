@@ -14,10 +14,22 @@ use crate::client::ClientConfig;
 use crate::http::{Answer, BodyBound, Exchange, Method, Request, Target, Transport};
 use crate::secret::Secret;
 
-use super::wipe::WipedJson;
+use crate::secret::wipe::WipedJson;
 
 /// The bounds `expires_in` is held to, in seconds (3.4, 3.8).
 pub const EXPIRES_IN_BOUNDS: (u64, u64) = (60, 86_400);
+
+/// The longest `access_token` or `refresh_token` kept, in bytes. Each byte must be `!` to `~`,
+/// the characters a bearer token can carry in a header (3.4, 3.8).
+pub const MAX_TOKEN_BYTES: usize = 4096;
+
+/// Whether `token` is 1 to [`MAX_TOKEN_BYTES`] bytes, each `!` to `~`. A token of other
+/// characters would be kept and then fail every call when its header is built, with no
+/// refresh to replace it.
+fn header_safe(token: &str) -> bool {
+    (1..=MAX_TOKEN_BYTES).contains(&token.len())
+        && token.bytes().all(|b| (b'!'..=b'~').contains(&b))
+}
 
 /// A token answer as read (3.4, 3.8). Required members are checked by the caller, since the
 /// code exchange and the refresh require different ones.
@@ -62,7 +74,8 @@ pub enum AnswerProblem {
     /// JSON (5.2, 6.10).
     NoAnswer,
     /// A readable 2xx JSON answer of the wrong shape: not an object, `access_token` or
-    /// `expires_in` missing or of the wrong type, another member of the wrong type.
+    /// `expires_in` missing or of the wrong type, another member of the wrong type, or an
+    /// `access_token` or `refresh_token` that is not 1 to 4096 bytes of `!` to `~`.
     Shape,
     /// An error answer (not 2xx), with Google's `error` read against the closed list.
     Error(OAuthError),
@@ -148,7 +161,14 @@ pub fn read_token_json(value: &Value) -> Result<TokenAnswer, AnswerProblem> {
     let secret = |name: &str| -> Result<Option<Secret>, AnswerProblem> {
         Ok(text(name)?.filter(|s| !s.is_empty()).map(Secret::from))
     };
-    let access_token = secret("access_token")?.ok_or(AnswerProblem::Shape)?;
+    // A token that could not be sent in a header is a shape problem of the answer.
+    let token = |name: &str| -> Result<Option<Secret>, AnswerProblem> {
+        match secret(name)? {
+            Some(token) if !header_safe(token.expose()) => Err(AnswerProblem::Shape),
+            other => Ok(other),
+        }
+    };
+    let access_token = token("access_token")?.ok_or(AnswerProblem::Shape)?;
     let expires_in = number("expires_in")?.ok_or(AnswerProblem::Shape)?;
     let (low, high) = EXPIRES_IN_BOUNDS;
     Ok(TokenAnswer {
@@ -157,7 +177,7 @@ pub fn read_token_json(value: &Value) -> Result<TokenAnswer, AnswerProblem> {
         bearer: text("token_type")?.map(|t| t.eq_ignore_ascii_case("bearer")),
         scope: text("scope")?.map(str::to_owned),
         id_token: secret("id_token")?,
-        refresh_token: secret("refresh_token")?,
+        refresh_token: token("refresh_token")?,
         refresh_token_expires_in_s: number("refresh_token_expires_in")?,
     })
 }
@@ -171,14 +191,17 @@ pub fn exchange_code(
     redirect_uri: &str,
     deadline_ms: u64,
 ) -> Result<TokenAnswer, AnswerProblem> {
-    let request = Request::new(Method::Post, Target::Token, BodyBound::Small).form(&[
-        ("grant_type", "authorization_code"),
-        ("code", code.expose()),
-        ("code_verifier", verifier.expose()),
-        ("client_id", client.client_id()),
-        ("client_secret", client.client_secret().expose()),
-        ("redirect_uri", redirect_uri),
-    ]);
+    let request = Request::new(Method::Post, Target::Token, BodyBound::Small)
+        .form(&[
+            ("grant_type", "authorization_code"),
+            ("code", code.expose()),
+            ("code_verifier", verifier.expose()),
+            ("client_id", client.client_id()),
+            ("client_secret", client.client_secret().expose()),
+            ("redirect_uri", redirect_uri),
+        ])
+        // The token endpoint takes a form; nothing was formed, so nothing was sent.
+        .map_err(|_| AnswerProblem::NoAnswer)?;
     read_token_exchange(transport.send(request, deadline_ms))
 }
 
@@ -249,6 +272,35 @@ mod tests {
             read_token_json(&json!({"access_token": "t", "expires_in": 1, "refresh_token": ""}))
                 .expect("an answer");
         assert!(empty.refresh_token.is_none());
+    }
+
+    #[test]
+    fn a_token_that_cannot_go_in_a_header_is_a_shape_problem() {
+        let long = "a".repeat(MAX_TOKEN_BYTES + 1);
+        for bad in ["a b", "a\nb", "a\u{e9}", "a\u{7f}", "\u{0}", long.as_str()] {
+            assert_eq!(
+                read_token_json(&json!({"access_token": bad, "expires_in": 100})).err(),
+                Some(AnswerProblem::Shape),
+                "access_token {}",
+                bad.len()
+            );
+            assert_eq!(
+                read_token_json(
+                    &json!({"access_token": "t", "expires_in": 100, "refresh_token": bad})
+                )
+                .err(),
+                Some(AnswerProblem::Shape),
+                "refresh_token {}",
+                bad.len()
+            );
+        }
+        let longest = "a".repeat(MAX_TOKEN_BYTES);
+        let answer = read_token_json(&json!({
+            "access_token": longest, "expires_in": 100, "refresh_token": "1//!~+/="
+        }))
+        .expect("an answer");
+        assert_eq!(answer.access_token.len(), MAX_TOKEN_BYTES);
+        assert_eq!(answer.refresh_token.expect("kept").expose(), "1//!~+/=");
     }
 
     #[test]

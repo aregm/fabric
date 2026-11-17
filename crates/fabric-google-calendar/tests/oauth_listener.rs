@@ -1,17 +1,44 @@
 //! The loopback listener against the fake's browser (design 3.3): g07, g08, g09.
 
+#![cfg(debug_assertions)]
+
 mod oauth_common;
 
+use std::io::{ErrorKind, Read};
+use std::net::TcpStream;
 use std::time::{Duration, Instant};
 
-use fabric_google_calendar::oauth::listener::{ERROR_TEXT, HEAD_TIME, PAGE_TEXT};
+use fabric_google_calendar::oauth::listener::{ERROR_TEXT, PAGE_TEXT, POLL};
 use fabric_google_calendar::oauth::{CancelReason, ConnectJob, ConnectOutcome};
 use fabric_google_fake::client::{RawRequest, connect_idle};
-use fabric_google_fake::{ClientError, Decision, Tamper};
+use fabric_google_fake::{ClientError, Decision, HttpResponse, Tamper};
 use oauth_common::*;
 
 /// A guard for joins: far longer than any wait the listener has.
 const GUARD: Duration = Duration::from_secs(20);
+
+/// A callback sent after the flow's listener closed finds no listener: the connection is
+/// refused, or, when another test's listener has since been given the same port, what answers
+/// is not this flow's page.
+fn assert_no_listener(result: Result<HttpResponse, ClientError>) {
+    match result {
+        Err(ClientError::Refused) => {}
+        Ok(answer) => assert!(
+            !(answer.status == 200 && answer.text().contains(PAGE_TEXT)),
+            "a closed flow's listener answered the callback"
+        ),
+        Err(other) => panic!("neither refused nor answered: {other:?}"),
+    }
+}
+
+/// Whether the server has not closed `stream`: a read that would block finds it open.
+fn still_open(stream: &mut TcpStream) -> bool {
+    stream.set_nonblocking(true).expect("non-blocking");
+    let mut byte = [0u8; 1];
+    let open = matches!(stream.read(&mut byte), Err(e) if e.kind() == ErrorKind::WouldBlock);
+    stream.set_nonblocking(false).expect("blocking");
+    open
+}
 
 #[test]
 fn g07_wrong_requests_get_error_pages_and_never_end_the_flow_and_the_right_state_ends_it_once() {
@@ -71,10 +98,7 @@ fn g07_wrong_requests_get_error_pages_and_never_end_the_flow_and_the_right_state
         let outcome = waiter.join().expect("the flow ends");
         assert!(outcome.is_connected(), "{outcome:?}");
         // A second callback finds no listener.
-        assert_eq!(
-            browser.follow(&location, &[]).err(),
-            Some(ClientError::Refused)
-        );
+        assert_no_listener(browser.follow(&location, &[]));
     });
     assert_eq!(rig.token_requests("authorization_code"), 1);
     rig.check_log();
@@ -148,10 +172,7 @@ fn g08_the_listener_ends_after_300_seconds_on_the_test_clock_with_timed_out() {
         .browser()
         .visit(address.expose(), Decision::allow())
         .expect("visit");
-    assert_eq!(
-        late.callback.expect("a redirect").err(),
-        Some(ClientError::Refused)
-    );
+    assert_no_listener(late.callback.expect("a redirect"));
     assert!(rig.store.token(&account(1)).is_none());
     assert!(rig.fake.log().revocations().is_empty());
     rig.check_log();
@@ -172,7 +193,9 @@ fn g08_a_superseded_flow_ends_at_once_with_superseded() {
             join_within(waiter),
             ConnectOutcome::Cancelled(CancelReason::Superseded)
         );
-        // 3.3 asks for 250 ms; the bound is generous for a loaded machine.
+        // 3.3 asks for 250 ms: the accept loop reads the flag every `POLL`. The end-to-end
+        // bound is generous for a loaded machine.
+        assert!(POLL <= Duration::from_millis(250), "{POLL:?}");
         assert!(started.elapsed() < Duration::from_secs(5));
     });
     let late = rig
@@ -180,10 +203,7 @@ fn g08_a_superseded_flow_ends_at_once_with_superseded() {
         .browser()
         .visit(address.expose(), Decision::allow())
         .expect("visit");
-    assert_eq!(
-        late.callback.expect("a redirect").err(),
-        Some(ClientError::Refused)
-    );
+    assert_no_listener(late.callback.expect("a redirect"));
     assert!(rig.store.inner.is_empty());
     // A flow superseded before it waits ends the same way.
     let (pending, _) = rig.start(ConnectJob::new_account(account(2), []));
@@ -272,23 +292,24 @@ fn g09_seven_idle_connections_do_not_delay_the_callback() {
     let rig = Rig::new();
     let (pending, address) = rig.start(ConnectJob::new_account(account(1), []));
     let port = pending.port().expect("listening");
-    let idle: Vec<_> = (0..7)
+    let mut idle: Vec<_> = (0..7)
         .map(|_| connect_idle(port).expect("an idle connection"))
         .collect();
     let mut store = rig.store.clone();
     let cache = &rig.cache;
     std::thread::scope(|scope| {
         let waiter = scope.spawn(move || pending.wait(&mut store, cache));
-        let started = Instant::now();
         let visit = rig
             .fake
             .browser()
             .visit(address.expose(), Decision::allow())
             .expect("visit");
-        let elapsed = started.elapsed();
         assert_eq!(visit.listener_answer().expect("answered").status, 200);
-        // Had the idle connections held the callback, it would have waited for their 2 s.
-        assert!(elapsed < HEAD_TIME, "{elapsed:?}");
+        // The callback was answered while every idle connection was still open: it did not
+        // wait for a slot that one of them held.
+        for (i, stream) in idle.iter_mut().enumerate() {
+            assert!(still_open(stream), "idle connection {i} was closed first");
+        }
         assert!(join_within(waiter).is_connected());
     });
     drop(idle);

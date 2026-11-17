@@ -12,8 +12,14 @@
 //! | anything else, or no answer | `Transient` |
 //!
 //! Token-store failures (section 4): `Locked` is `Transient`; `Refused` and `Failed` are
-//! `Store(..)`. No stored refresh token is `AuthLost(GrantEnded)`. In every case nothing was
-//! sent to the Calendar host.
+//! `Store(..)`. No stored refresh token is `AuthLost(GrantEnded)`. A failed write of a rotated
+//! refresh token is not the call's failure (the new access token is kept). In every case
+//! nothing was sent to the Calendar host.
+//!
+//! A refresh reads the account's generation in the [`AccessCache`] before it reads the
+//! refresh token. When [`crate::tokens::forget`] raised it while the refresh was under way,
+//! the refresh keeps nothing (no access token, no rotated refresh token) and the call ends
+//! `AuthLost(GrantEnded)` (section 4).
 
 use std::fmt;
 use std::sync::Arc;
@@ -73,9 +79,13 @@ impl<S: TokenStore> GoogleAccess<S> {
         &self.cache
     }
 
-    fn lost(&mut self, account: &Id, cause: AuthLostCause) -> AccessFailure {
-        // The cached token is dropped whatever the store answers (section 4).
-        let _ = forget(&mut self.store, &self.cache, account);
+    fn lost(&mut self, account: &Id, generation: u64, cause: AuthLostCause) -> AccessFailure {
+        // The cached token is dropped whatever the store answers (section 4). An account
+        // forgotten while the refresh was under way is not forgotten again: a sign-in may
+        // have stored a new token for it since.
+        if self.cache.generation(account) == generation {
+            let _ = forget(&mut self.store, &self.cache, account);
+        }
         AccessFailure::AuthLost(cause)
     }
 
@@ -95,6 +105,9 @@ impl<S: TokenStore> AccessTokens for GoogleAccess<S> {
         {
             return Ok(token);
         }
+        // Read before the refresh token: a forget after this point makes the refresh store
+        // nothing (section 4).
+        let generation = self.cache.generation(account);
         let refresh_token = match self.store.read(account) {
             Ok(Some(token)) => token,
             Ok(None) => {
@@ -103,46 +116,66 @@ impl<S: TokenStore> AccessTokens for GoogleAccess<S> {
             }
             Err(error) => return Err(Self::store_failure(error)),
         };
-        let request = Request::new(Method::Post, Target::Token, BodyBound::Small).form(&[
-            ("grant_type", "refresh_token"),
-            ("refresh_token", refresh_token.expose()),
-            ("client_id", self.client.client_id()),
-            ("client_secret", self.client.client_secret().expose()),
-        ]);
+        let request = Request::new(Method::Post, Target::Token, BodyBound::Small)
+            .form(&[
+                ("grant_type", "refresh_token"),
+                ("refresh_token", refresh_token.expose()),
+                ("client_id", self.client.client_id()),
+                ("client_secret", self.client.client_secret().expose()),
+            ])
+            .map_err(|_| AccessFailure::Transient)?;
         let answer = match exchange::read_token_exchange(self.transport.send(request, deadline_ms))
         {
             Ok(answer) => answer,
             Err(AnswerProblem::Error(
                 OAuthError::InvalidGrant | OAuthError::AdminPolicyEnforced,
-            )) => return Err(self.lost(account, AuthLostCause::GrantEnded)),
+            )) => return Err(self.lost(account, generation, AuthLostCause::GrantEnded)),
             Err(AnswerProblem::Error(
                 OAuthError::InvalidClient | OAuthError::UnauthorizedClient,
             )) => {
-                return Err(self.lost(account, AuthLostCause::ClientRejected));
+                return Err(self.lost(account, generation, AuthLostCause::ClientRejected));
             }
             Err(_) => return Err(AccessFailure::Transient),
         };
+        // The account was forgotten while the refresh was under way: nothing is kept, and the
+        // account is gone for this call (section 4).
+        if self.cache.generation(account) != generation {
+            return Err(AccessFailure::AuthLost(AuthLostCause::GrantEnded));
+        }
         if let Some(scope) = answer.scope.as_deref()
             && scopes::classify(scope) != Grant::Complete
         {
-            return Err(self.lost(account, AuthLostCause::GrantEnded));
-        }
-        if let Some(rotated) = answer.refresh_token.as_ref() {
-            self.store
-                .write(account, rotated)
-                .map_err(Self::store_failure)?;
+            return Err(self.lost(account, generation, AuthLostCause::GrantEnded));
         }
         let ends_at = self
             .clock
             .now_ms()
             .saturating_add(answer.expires_in_s.saturating_mul(1000));
-        self.cache
-            .put(account, Secret::from(answer.access_token.expose()), ends_at);
+        let store = &mut self.store;
+        let kept = self.cache.put_if_current(
+            account,
+            generation,
+            Secret::from(answer.access_token.expose()),
+            ends_at,
+            || {
+                if let Some(rotated) = answer.refresh_token.as_ref() {
+                    // A failed write is not this call's failure: the new access token is
+                    // kept and the call goes on. The rotation is then lost: the store keeps
+                    // the old refresh token, and if Google ended it with the rotation, the
+                    // next refresh ends `AuthLost(GrantEnded)` and the owner signs in again.
+                    let _ = store.write(account, rotated);
+                }
+            },
+        );
+        if !kept {
+            return Err(AccessFailure::AuthLost(AuthLostCause::GrantEnded));
+        }
         Ok(Secret::from(answer.access_token.expose()))
     }
 
     fn drop_cached(&mut self, account: &Id) {
-        self.cache.drop_account(account);
+        // A 401 is not a forget (3.8): the generation stays.
+        self.cache.drop_token(account);
     }
 }
 

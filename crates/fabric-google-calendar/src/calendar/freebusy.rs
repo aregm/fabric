@@ -33,12 +33,13 @@ impl Google {
             ));
         }
         check_targets(account, &targets.iter().collect::<Vec<_>>())?;
+        // The adapter finds the window unreadable itself; nothing was sent (PD27).
         let (Some(window_start), Some(window_end)) =
             (window.start.unix_millis(), window.end.unix_millis())
         else {
             return Err(ReadFailure::rejected(
                 FailureCode::InvalidArguments,
-                Sentence::InvalidRequest,
+                Sentence::TimeUnreadable,
             ));
         };
         let items: Vec<Value> = targets

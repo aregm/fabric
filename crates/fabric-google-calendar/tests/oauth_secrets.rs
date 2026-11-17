@@ -5,6 +5,8 @@
 //! authorization address. The Calendar part (calendar ids, event titles) is searched by the
 //! Calendar tests.
 
+#![cfg(debug_assertions)]
+
 mod oauth_common;
 
 use std::time::Duration;
@@ -208,22 +210,28 @@ fn g16_no_secret_of_a_sign_in_appears_in_any_debug_display_or_error_text() {
         secrets.len() > 40,
         "the search covers the secrets of the runs"
     );
-    for text in &texts {
+    // A failure names the text's index and the needle's length, never the text: it would
+    // print the secret it found.
+    for (i, text) in texts.iter().enumerate() {
         for secret in &secrets {
             assert!(
                 !text.contains(secret.as_str()),
-                "a secret in a formatted value: {text}"
+                "a secret of {} bytes in formatted value {i}",
+                secret.len()
             );
         }
         // No address either.
         assert!(
             !text.contains("127.0.0.1:"),
-            "an address in a formatted value: {text}"
+            "an address in formatted value {i}"
         );
-        assert!(
-            !text.contains(SUB_A) && !text.contains(SUB_B),
-            "a subject: {text}"
-        );
+        for subject in [SUB_A, SUB_B] {
+            assert!(
+                !text.contains(subject),
+                "a subject of {} bytes in formatted value {i}",
+                subject.len()
+            );
+        }
     }
     rig.check_log();
 }

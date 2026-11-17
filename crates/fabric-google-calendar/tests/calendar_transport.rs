@@ -2,7 +2,11 @@
 //! changing request, the id checks, and what formatted values may hold: g37 to g42, and the
 //! Calendar half of g16.
 
+// The loopback endpoints and `ManualClock` exist only in debug builds (PD2).
+#![cfg(debug_assertions)]
+
 mod calendar_common;
+mod common;
 
 use std::net::TcpListener;
 use std::sync::Arc;
@@ -141,6 +145,11 @@ fn each_row_of_6_10_classifies_a_change_and_a_read_against_the_fake() {
             "429 no hint",
             FaultAction::error(429, "rateLimitExceeded"),
             (t(None), None, None, ReadWant::Transient(None)),
+        ),
+        (
+            "429 unknown reason",
+            FaultAction::error_retry_after(429, "somethingNew", "5"),
+            (t(Some(5_000)), None, None, ReadWant::Transient(Some(5_000))),
         ),
         (
             "403 quota",
@@ -350,11 +359,6 @@ fn a_call_without_a_token_makes_no_request_and_follows_3_8() {
     world.check_log();
 }
 
-fn closed_port() -> u16 {
-    let listener = TcpListener::bind("127.0.0.1:0").expect("bind");
-    listener.local_addr().expect("an address").port()
-}
-
 /// g38: nothing sent (nothing listening, the deadline already past, fewer than 10 s left for a
 /// change) is Transient; sent and unanswered is NoAnswer for a change and Transient for a read;
 /// every request came on its own connection.
@@ -366,16 +370,13 @@ fn nothing_sent_is_transient_and_sent_unanswered_is_no_answer_for_a_change_only(
     let now = world.clock.now_ms();
 
     // Nothing listening.
+    let nothing_listens = common::ClosedPort::new();
     let transport = Transport::new(
-        Endpoints::loopback(closed_port()),
+        Endpoints::loopback(nothing_listens.port()),
         Arc::new(world.clock.clone()),
     )
     .expect("a transport");
-    let mut closed = Google::new(
-        Arc::new(transport),
-        Box::new(world.tokens.clone()),
-        Arc::new(world.clock.clone()),
-    );
+    let mut closed = Google::new(Arc::new(transport), Box::new(world.tokens.clone()));
     let order = ChangeOrder::new(retitle(&p, &id, &etag), None, 1);
     assert_eq!(
         closed.change(&alice.id, &p, &order, now + 30_000).outcome,
@@ -386,7 +387,8 @@ fn nothing_sent_is_transient_and_sent_unanswered_is_no_answer_for_a_change_only(
         Err(ReadFailure::transient())
     );
 
-    // The deadline already past, and fewer than 10 s left for a change: no request.
+    // The deadline already past, and fewer than 10 s left for a change (9 999 ms is one
+    // millisecond short): no request.
     for deadline in [now - 1, now, now + 9_999] {
         let report = run(
             &mut world,
@@ -415,6 +417,21 @@ fn nothing_sent_is_transient_and_sent_unanswered_is_no_answer_for_a_change_only(
             ))
             .is_ok()
     );
+    // Exactly 10 000 ms left: the change is sent.
+    let before = world.fake.log().calendar_changes().len();
+    let report = run(
+        &mut world,
+        &alice,
+        &p,
+        retitle(&p, &id, &etag),
+        None,
+        now + 10_000,
+    );
+    assert!(
+        matches!(report.outcome, ChangeOutcome::Applied { .. }),
+        "{report:?}"
+    );
+    assert_eq!(world.fake.log().calendar_changes().len(), before + 1);
 
     // Sent and unanswered.
     world.fake.arm(Fault::on(
@@ -499,8 +516,10 @@ fn a_redirect_is_not_followed_and_an_unusable_body_is_no_answer() {
     assert!(witness.accept().is_err(), "nobody followed the redirect");
     assert_eq!(world.fake.log().len(), 2);
 
+    // A PATCH answer and one event are read with the large bound (4 MiB): one event may carry
+    // many attendees.
     let unusable = [
-        FaultAction::TooLong(300 * 1024),
+        FaultAction::TooLong(4 * 1024 * 1024 + 1),
         FaultAction::Gzip,
         FaultAction::ContentType("text/html; charset=UTF-8".into()),
         FaultAction::NotJson,
@@ -602,10 +621,21 @@ fn every_tool(world: &World, target: &CalendarTarget, n: u32) -> Vec<(Action, Op
     ]
 }
 
-/// g40 and g41: for every tool and every fault, at most one POST, PATCH or DELETE per order;
-/// every PATCH and DELETE carries `If-Match` with one strong tag, and every changing request
-/// an explicit `sendUpdates`. g16's Calendar half: no formatted value reached holds a token, a
-/// calendar id, an event id or an event title.
+/// The method of the changing request of `action` (6.6 to 6.8).
+fn changing_method(action: &Action) -> &'static str {
+    match action {
+        Action::ProposeCreate(_) => "POST",
+        Action::ProposeDelete(_) => "DELETE",
+        _ => "PATCH",
+    }
+}
+
+/// g40 and g41: for every tool and every fault on its changing request, exactly one POST,
+/// PATCH or DELETE per order (the reads before it succeed); with the fault on the read before
+/// an invitation or a response, no changing request unless the read succeeded and the change
+/// was applied. Every PATCH and DELETE carries `If-Match` with one strong tag, and every
+/// changing request an explicit `sendUpdates`. g16's Calendar half: no formatted value reached
+/// holds a token, a calendar id, an event id or an event title.
 #[test]
 fn every_order_makes_at_most_one_changing_request_whatever_the_fault() {
     let (mut world, alice) = World::with_alice();
@@ -614,13 +644,18 @@ fn every_order_makes_at_most_one_changing_request_whatever_the_fault() {
     let faults = every_fault(&world, &p);
     let mut n = 0;
     let mut tokens = vec![world.tokens.token(&alice.id)];
+    let mut stopped_at_the_read = 0;
     for fault in &faults {
+        // The fault on the changing request: the reads before it succeed, so exactly one
+        // changing request is made, whatever the fault does to it.
         for tool in 0..5 {
             n += 1;
             let (action, id) = every_tool(&world, &p, n).swap_remove(tool);
-            world
-                .fake
-                .arm(Fault::matching(Match::any(), fault.clone()).always());
+            world.fake.arm(Fault::on(
+                changing_method(&action),
+                "/calendar/v3/calendars/",
+                fault.clone(),
+            ));
             let start = world.fake.log().len();
             let order = ChangeOrder::new(action.clone(), id.clone(), 1);
             world
@@ -642,10 +677,35 @@ fn every_order_makes_at_most_one_changing_request_whatever_the_fault() {
                 .iter()
                 .filter(|e| e.is_calendar_change())
                 .count();
-            assert!(
-                changing <= 1,
-                "{fault:?} tool {tool}: {changing} changing requests"
+            assert_eq!(changing, 1, "{fault:?} tool {tool}");
+            renew_token(&world, &alice);
+            tokens.push(world.tokens.token(&alice.id));
+        }
+        // The fault on the read before an invitation and a response: no changing request
+        // unless the read was unharmed and the change applied.
+        for tool in [2, 3] {
+            n += 1;
+            let (action, id) = every_tool(&world, &p, n).swap_remove(tool);
+            world
+                .fake
+                .arm(Fault::on("GET", "/calendar/v3/calendars/", fault.clone()));
+            let start = world.fake.log().len();
+            let report = run(&mut world, &alice, &p, action, id, deadline);
+            world.formatted.push(format!("{report:?}"));
+            world.fake.disarm_all();
+            world.fake.apply_late_changes();
+            let changing = world
+                .log_since(start)
+                .iter()
+                .filter(|e| e.is_calendar_change())
+                .count();
+            let applied = matches!(report.outcome, ChangeOutcome::Applied { .. });
+            assert_eq!(
+                changing,
+                usize::from(applied),
+                "{fault:?} at the read, tool {tool}: {report:?}"
             );
+            stopped_at_the_read += usize::from(!applied);
             renew_token(&world, &alice);
             tokens.push(world.tokens.token(&alice.id));
         }
@@ -669,6 +729,10 @@ fn every_order_makes_at_most_one_changing_request_whatever_the_fault() {
         renew_token(&world, &alice);
         tokens.push(world.tokens.token(&alice.id));
     }
+    assert!(
+        stopped_at_the_read > 40,
+        "most faults at the read stop the order: {stopped_at_the_read}"
+    );
     let log = world.fake.log();
     assert!(
         log.calendar_changes().len() > 100,

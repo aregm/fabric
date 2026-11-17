@@ -14,6 +14,12 @@
 //!   its cached access token ([`forget`]; 3.7, OQ12).
 //! - [`Supersede`] ends a waiting flow from another thread (PD5). A flow superseded after the
 //!   listener ended, but before the token store is written, ends `Cancelled(Superseded)` too.
+//! - The adapter keeps PD5 itself: [`Flow::start`] supersedes the flow that the same [`Flow`]
+//!   (or a clone) started before, and gives the new one the next generation. A flow whose
+//!   generation is no longer the latest never writes the token store and never forgets the
+//!   account, so a superseded flow cannot delete what the flow after it stored (3.3). Its last
+//!   "was I superseded" check and its write happen under one lock that `start` takes too, so a
+//!   write and a newer start cannot interleave.
 //!
 //! Order of the checks after the token answer: the shape of the answer and `token_type`, then
 //! the scopes (so that an unticked address scope is a partial grant and not an identity
@@ -22,7 +28,8 @@
 use std::collections::BTreeSet;
 use std::fmt;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex, PoisonError};
+use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
+use std::time::Instant;
 
 use fabric_desktop_contracts::scalar::{Email, Id};
 
@@ -56,7 +63,7 @@ pub enum CancelReason {
     ClientRejected,
     /// The token or key request failed: nothing or nothing usable came back. Also a sign-in
     /// that could not start: no loopback port could be bound, or the system gave no random
-    /// bytes (the design names no reason for these; see the report of CD-W05).
+    /// bytes (3.2.2 names `Network` for these).
     Network,
     /// A check of the identity token failed (3.5), with its fixed label.
     IdentityCheckFailed(IdentityProblem),
@@ -175,20 +182,24 @@ impl fmt::Display for BrowserNotOpened {
 impl std::error::Error for BrowserNotOpened {}
 
 /// Opens the authorization address in the system browser (3.2.1, PD7). The real
-/// `SystemBrowser` (`/usr/bin/open`) is phase 2; tests use [`RecordingBrowser`].
+/// `SystemBrowser` (`/usr/bin/open`) is phase 2; tests use `RecordingBrowser`, which exists
+/// only in a debug build (PD2).
 pub trait BrowserOpener {
     /// Opens `address`. An implementation must not log or keep it longer than it needs to.
     fn open(&mut self, address: &Secret) -> Result<(), BrowserNotOpened>;
 }
 
 /// A test double that opens nothing: it keeps each address for the test to take, or refuses
-/// every one. Clones share the addresses.
+/// every one. Clones share the addresses. Only in a debug build (PD2: no test seam in
+/// release).
+#[cfg(debug_assertions)]
 #[derive(Clone, Default)]
 pub struct RecordingBrowser {
     addresses: Arc<Mutex<Vec<Secret>>>,
     refuse: bool,
 }
 
+#[cfg(debug_assertions)]
 impl RecordingBrowser {
     /// A double that accepts every address.
     #[must_use]
@@ -216,6 +227,7 @@ impl RecordingBrowser {
     }
 }
 
+#[cfg(debug_assertions)]
 impl BrowserOpener for RecordingBrowser {
     fn open(&mut self, address: &Secret) -> Result<(), BrowserNotOpened> {
         if self.refuse {
@@ -230,6 +242,7 @@ impl BrowserOpener for RecordingBrowser {
 }
 
 /// Prints how many addresses wait, never one.
+#[cfg(debug_assertions)]
 impl fmt::Debug for RecordingBrowser {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let waiting = self
@@ -334,14 +347,25 @@ impl fmt::Debug for Supersede {
     }
 }
 
-/// The sign-in part of the adapter: the transport, the client, the clock and Google's key set
-/// in memory. One per broker; clones share the key set.
+/// Which flow is the latest (PD5): its generation and its supersede handle.
+#[derive(Default)]
+struct Turn {
+    /// The generation of the latest flow started; 0 before the first.
+    current: u64,
+    /// The supersede handle of the latest flow started.
+    latest: Option<Supersede>,
+}
+
+/// The sign-in part of the adapter: the transport, the client, the clock, Google's key set in
+/// memory, and which flow is the latest (PD5). One per broker; clones share the key set and
+/// the latest flow, so a start on any clone supersedes a flow started on another.
 #[derive(Clone)]
 pub struct Flow {
     transport: Arc<Transport>,
     client: Arc<ClientConfig>,
     clock: SharedClock,
     keys: Arc<Mutex<KeyCache>>,
+    turn: Arc<Mutex<Turn>>,
 }
 
 impl Flow {
@@ -353,14 +377,32 @@ impl Flow {
             client,
             clock,
             keys: Arc::new(Mutex::new(KeyCache::new())),
+            turn: Arc::new(Mutex::new(Turn::default())),
         }
     }
 
     /// Starts a sign-in for `job` (3.2): fresh verifier, state and nonce, the listener on
     /// `127.0.0.1:0`, and the address handed to `browser`. The listener's 300 s count from
     /// here. A browser that cannot be started ends the flow `Cancelled(BrowserNotOpened)`.
+    ///
+    /// It supersedes the flow this `Flow` (or a clone) started before, if that one is still
+    /// under way, and makes the new one the latest (PD5).
+    ///
+    /// Call [`PendingFlow::wait`] on the result at once: the listener accepts no connection
+    /// before `wait` runs it, so a browser that reaches it earlier waits in the system's
+    /// backlog, and the 300 s run from here whether or not `wait` was called.
     pub fn start(&self, job: ConnectJob, browser: &mut dyn BrowserOpener) -> PendingFlow {
+        let supersede = Supersede::default();
+        let generation = {
+            let mut turn = lock(&self.turn);
+            if let Some(previous) = turn.latest.replace(supersede.clone()) {
+                previous.supersede();
+            }
+            turn.current = turn.current.wrapping_add(1);
+            turn.current
+        };
         let started_ms = self.clock.now_ms();
+        let started_at = Instant::now();
         let stage = match self.listen(&job, browser) {
             Ok(listening) => Stage::Listening(Box::new(listening)),
             Err(reason) => Stage::Ended(reason),
@@ -370,7 +412,9 @@ impl Flow {
             job,
             stage,
             started_ms,
-            supersede: Supersede::default(),
+            started_at,
+            supersede,
+            generation,
         }
     }
 
@@ -432,12 +476,18 @@ enum Stage {
 }
 
 /// A started sign-in, waiting for the browser (3.2). Dropping it closes the listener.
+///
+/// Call [`PendingFlow::wait`] at once after [`Flow::start`]: the listener accepts nothing
+/// before `wait` runs it, and its 300 s count from `start`.
 pub struct PendingFlow {
     flow: Flow,
     job: ConnectJob,
     stage: Stage,
     started_ms: u64,
+    started_at: Instant,
     supersede: Supersede,
+    /// This flow's generation; the flow is the latest while the [`Flow`]'s is the same.
+    generation: u64,
 }
 
 impl PendingFlow {
@@ -459,25 +509,44 @@ impl PendingFlow {
     /// Waits for the callback and finishes the sign-in (3.2 to 3.7). Writes the refresh token
     /// to `store` only for `Connected`, and then keeps the new access token in `cache`. A
     /// reconnect that does not end `Connected` forgets the account in `store` and `cache`.
+    ///
+    /// A flow that is no longer the latest its [`Flow`] started (PD5) ends
+    /// `Cancelled(Superseded)` without writing, and never forgets the account: the later flow
+    /// owns it now.
     pub fn wait(self, store: &mut dyn TokenStore, cache: &AccessCache) -> ConnectOutcome {
         let PendingFlow {
             flow,
             job,
             stage,
             started_ms,
+            started_at,
             supersede,
+            generation,
         } = self;
+        let started = Started {
+            ms: started_ms,
+            at: started_at,
+        };
+        let ours = Ours {
+            supersede: &supersede,
+            generation,
+        };
         let outcome = match stage {
             Stage::Ended(reason) => ConnectOutcome::Cancelled(reason),
-            Stage::Listening(listening) => finish(
-                &flow, &job, *listening, started_ms, &supersede, store, cache,
-            ),
+            Stage::Listening(listening) => {
+                finish(&flow, &job, *listening, started, &ours, store, cache)
+            }
         };
         if job.is_reconnect() && !outcome.is_connected() {
-            // Fail closed (3.7, OQ12). A store that fails here keeps the old token, but the
-            // account is not connected and the next connect replaces it; the cached access
-            // token is dropped in every case.
-            let _ = forget(store, cache, &job.account);
+            // Fail closed (3.7, OQ12), but only while this flow is the latest: a later flow
+            // may have stored a token for the account (3.3). Under the turn's lock, so no
+            // newer start comes between the check and the forget. A store that fails here
+            // keeps the old token, but the account is not connected and the next connect
+            // replaces it; the cached access token is dropped in every case.
+            let turn = lock(&flow.turn);
+            if turn.current == generation {
+                let _ = forget(store, cache, &job.account);
+            }
         }
         outcome
     }
@@ -498,12 +567,39 @@ impl fmt::Debug for PendingFlow {
     }
 }
 
+/// Locks `mutex`, recovering from a panic in another holder: the turn and the key set hold
+/// plain values with no invariant a panic could break.
+fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
+    mutex.lock().unwrap_or_else(PoisonError::into_inner)
+}
+
+/// When a flow started, on the crate's clock and on the monotonic clock (3.3).
+#[derive(Clone, Copy)]
+struct Started {
+    ms: u64,
+    at: Instant,
+}
+
+/// What tells a flow it is no longer wanted: its supersede flag and its generation (PD5).
+struct Ours<'a> {
+    supersede: &'a Supersede,
+    generation: u64,
+}
+
+impl Ours<'_> {
+    /// Whether the flow was superseded, by its handle or by a newer start; `turn` is the
+    /// [`Flow`]'s, read under its lock.
+    fn superseded(&self, turn: &Turn) -> bool {
+        self.supersede.is_set() || turn.current != self.generation
+    }
+}
+
 fn finish(
     flow: &Flow,
     job: &ConnectJob,
     listening: Listening,
-    started_ms: u64,
-    supersede: &Supersede,
+    started: Started,
+    ours: &Ours<'_>,
     store: &mut dyn TokenStore,
     cache: &AccessCache,
 ) -> ConnectOutcome {
@@ -517,8 +613,9 @@ fn finish(
     let code = match listener.run(
         &secrets.state,
         flow.clock.as_ref(),
-        started_ms,
-        &supersede.0,
+        started.ms,
+        started.at,
+        &ours.supersede.0,
     ) {
         CallbackEnd::Code(code) => code,
         CallbackEnd::Denied => return ConnectOutcome::ConsentDenied,
@@ -526,7 +623,7 @@ fn finish(
         CallbackEnd::TimedOut => return Cancelled(CancelReason::TimedOut),
         CallbackEnd::Superseded => return Cancelled(CancelReason::Superseded),
     };
-    if supersede.is_set() {
+    if ours.superseded(&lock(&flow.turn)) {
         return Cancelled(CancelReason::Superseded);
     }
     let answer = match exchange::exchange_code(
@@ -567,7 +664,7 @@ fn finish(
         ));
     };
     let identity = {
-        let mut keys = flow.keys.lock().unwrap_or_else(PoisonError::into_inner);
+        let mut keys = lock(&flow.keys);
         let expected = Expected {
             client_id: flow.client.client_id(),
             nonce: &secrets.nonce,
@@ -590,18 +687,26 @@ fn finish(
     if !job.accepts(&identity.subject) {
         return ConnectOutcome::AccountMismatch;
     }
-    if supersede.is_set() {
-        return Cancelled(CancelReason::Superseded);
-    }
-    if let Err(error) = store.write(&job.account, refresh_token) {
-        return Cancelled(CancelReason::TokenStore(error));
-    }
-    let now = flow.clock.now_ms();
-    cache.put(
-        &job.account,
-        Secret::from(answer.access_token.expose()),
-        now.saturating_add(answer.expires_in_s.saturating_mul(1000)),
-    );
+    // The last check and the write under the turn's lock, which `Flow::start` takes too: a
+    // newer start either comes first and this flow writes nothing, or comes after the write
+    // and the newer flow owns the account from then on (PD5, 3.3).
+    let now = {
+        let turn = lock(&flow.turn);
+        if ours.superseded(&turn) {
+            return Cancelled(CancelReason::Superseded);
+        }
+        if let Err(error) = store.write(&job.account, refresh_token) {
+            return Cancelled(CancelReason::TokenStore(error));
+        }
+        let now = flow.clock.now_ms();
+        cache.put(
+            &job.account,
+            Secret::from(answer.access_token.expose()),
+            now.saturating_add(answer.expires_in_s.saturating_mul(1000)),
+        );
+        drop(turn);
+        now
+    };
     ConnectOutcome::Connected {
         subject: identity.subject.clone(),
         email: identity.email.clone(),
@@ -654,6 +759,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(debug_assertions)]
     fn the_recording_browser_hands_out_addresses_in_order_and_can_refuse() {
         let mut browser = RecordingBrowser::new();
         let reader = browser.clone();

@@ -13,17 +13,27 @@
 //! secret, a verifier, a state, a nonce, a code), an address, a calendar id or event content.
 //! Errors are fixed labels and numbers (PD27, 3.10). Secrets are held as [`Secret`].
 //!
-//! The foundation modules:
+//! The modules:
 //!
 //! - [`secret`] holds [`Secret`].
-//! - [`clock`] holds [`Clock`], [`SystemClock`], the test double [`ManualClock`].
+//! - [`clock`] holds [`Clock`], [`SystemClock`] and, in debug builds, the test double
+//!   `ManualClock`.
 //! - [`endpoints`] holds [`Endpoints`], Google's five addresses and the loopback set (5.1).
 //! - [`http`] holds [`http::Transport`], the only place that talks HTTP (5.2), and [`http::ids`],
 //!   the typed ids that alone may reach a path or a header (5.3).
 //! - [`client`] holds [`ClientConfig`] and Google's client file (3.1).
-//! - [`tokens`] holds [`TokenStore`], [`MemoryTokenStore`], [`AccessCache`], [`forget`]
-//!   (section 4).
-//! - [`time`] turns RFC 3339 to instants and to the contract's time types (6.9).
+//! - [`tokens`] holds [`TokenStore`], [`MemoryTokenStore`], [`AccessCache`], [`forget`] and
+//!   [`AccessTokens`], where a Calendar call gets its token (section 4, 3.8).
+//! - [`oauth`] holds the sign-in ([`oauth::Flow`]), the refresh ([`oauth::GoogleAccess`]) and
+//!   the revocation (section 3).
+//! - [`calendar`] holds [`calendar::Google`] and the Calendar operations (section 6).
+//! - [`translate`] turns Google's resources into the contract's values and back (6.4, 6.5,
+//!   6.9, 6.12), and [`time`] turns RFC 3339 into instants and the contract's time types.
+//! - [`outcome`] holds the classes of an answer and the retry rule (6.10, 6.11).
+//! - [`reconcile`] holds the decision after an unknown outcome (section 7).
+//!
+//! Phase 1 of the work package: nothing here has been run against the real Google. Every test
+//! runs against `fabric-google-fake`, a double written from Google's documentation (14.3).
 
 pub mod calendar;
 pub mod client;
@@ -38,10 +48,20 @@ pub mod time;
 pub mod tokens;
 pub mod translate;
 
+pub use calendar::{
+    CalendarListEntry, CalendarTarget, ChangeOrder, EventsQuery, Google, Observed, ObservedEvent,
+};
 pub use client::{ClientConfig, ClientFileError, ClientFileProblem};
-pub use clock::{Clock, ManualClock, SharedClock, SystemClock};
+#[cfg(debug_assertions)]
+pub use clock::ManualClock;
+pub use clock::{Clock, SharedClock, SystemClock};
 pub use endpoints::{Endpoint, Endpoints, Scheme, Service};
 pub use http::ids::{CalendarId, EventId, IdError, ReservedEventId, Revision};
+pub use outcome::{
+    ChangeOutcome, ChangeReport, Notification, ReadFailure, RetryDecision, RetryPolicy, SideResult,
+    next_attempt,
+};
+pub use reconcile::{Effect, ReadBack, Verdict};
 pub use secret::Secret;
 pub use tokens::{
     AccessCache, AccessFailure, AccessTokens, AuthLostCause, MemoryTokenStore, TokenStore,

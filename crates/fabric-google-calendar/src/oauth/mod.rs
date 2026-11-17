@@ -38,12 +38,12 @@ pub mod revoke;
 pub mod scopes;
 pub mod url;
 
-mod wipe;
-
 pub use access::GoogleAccess;
+#[cfg(debug_assertions)]
+pub use flow::RecordingBrowser;
 pub use flow::{
     BrowserNotOpened, BrowserOpener, CancelReason, ConnectJob, ConnectOutcome, Flow, PendingFlow,
-    RecordingBrowser, Supersede,
+    Supersede,
 };
 pub use id_token::IdentityProblem;
 pub use revoke::{Revocation, revoke};

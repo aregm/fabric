@@ -1,7 +1,8 @@
 //! The Calendar operations (design section 6, and the read of section 7).
 //!
-//! [`Google`] is made from a shared [`Transport`], the [`AccessTokens`] through which every call
-//! gets the token of its own account, and a clock. Its operations:
+//! [`Google`] is made from a shared [`Transport`] and the [`AccessTokens`] through which every
+//! call gets the token of its own account. Its only clock is the transport's (6.10). Its
+//! operations:
 //!
 //! - [`Google::list_calendars`] (6.2), every page, at most 250 calendars.
 //! - [`Google::free_busy`] (6.3).
@@ -33,13 +34,12 @@ use fabric_desktop_contracts::common::{
 use fabric_desktop_contracts::scalar::{Email, IanaZone, Id, Label, ProviderRef};
 use serde_json::Value;
 
-use crate::clock::SharedClock;
 use crate::http::ids::CalendarId;
 use crate::http::{Answer, Exchange, Request, Transport};
 use crate::outcome::{
     ReadFailure, ReadKind, ReadRefusal, Refusal, Sentence, read_access_failure, read_refusal,
 };
-use crate::reconcile::Effect;
+use crate::reconcile::{Effect, EffectIds};
 use crate::secret::Secret;
 use crate::tokens::AccessTokens;
 
@@ -231,7 +231,6 @@ impl fmt::Debug for ChangeOrder {
 pub struct Google {
     transport: Arc<Transport>,
     tokens: Box<dyn AccessTokens>,
-    clock: SharedClock,
 }
 
 /// Prints nothing of the tokens or the endpoints.
@@ -250,23 +249,16 @@ pub(crate) enum ReadAnswer {
 }
 
 impl Google {
-    /// The adapter over `transport`, getting each account's access token from `tokens`, with
-    /// `clock` for `observed_at` and the deadline rule of 6.10.
+    /// The adapter over `transport`, getting each account's access token from `tokens`. The
+    /// transport's clock gives `observed_at` and the deadline rule of 6.10, so the rule and the
+    /// transport's own timing of a request never disagree.
     #[must_use]
-    pub fn new(
-        transport: Arc<Transport>,
-        tokens: Box<dyn AccessTokens>,
-        clock: SharedClock,
-    ) -> Google {
-        Google {
-            transport,
-            tokens,
-            clock,
-        }
+    pub fn new(transport: Arc<Transport>, tokens: Box<dyn AccessTokens>) -> Google {
+        Google { transport, tokens }
     }
 
     fn now_ms(&self) -> u64 {
-        self.clock.now_ms()
+        self.transport.now_ms()
     }
 
     /// The account's access token for a read.
@@ -322,6 +314,27 @@ impl Google {
             ReadRefusal::Failed(failure) => Err(failure),
         }
     }
+}
+
+/// The one check of an order that names an effect, shared by [`Google::change`] and
+/// [`Google::reconcile_read`], before any request: the effect must name `account` and the
+/// target's calendar, the target must belong to `account` (otherwise the order-mismatch
+/// sentence), and its ids must pass 5.3 ([`Effect::checked_ids`]).
+pub(crate) fn check_effect(
+    account: &Id,
+    target: &CalendarTarget,
+    effect: &Effect,
+) -> Result<EffectIds, Sentence> {
+    let Some((effect_account, effect_calendar)) = effect.calendar() else {
+        return Err(Sentence::OrderMismatch);
+    };
+    if effect_account != account
+        || &target.calendar.account_id != account
+        || effect_calendar != &target.calendar.calendar_id
+    {
+        return Err(Sentence::OrderMismatch);
+    }
+    effect.checked_ids()
 }
 
 /// Checks that every target belongs to `account`; otherwise the order is refused before any

@@ -215,10 +215,37 @@ impl Witness {
     }
 }
 
-/// A port on which nothing listens: bound, then released.
-pub fn closed_port() -> u16 {
-    let listener = TcpListener::bind("127.0.0.1:0").expect("bind a loopback port");
-    listener.local_addr().expect("an address").port()
+/// A loopback port on which nothing listens, and which no other test can get while this
+/// lives: the local port of an open connection. The connection is made to a listener that is
+/// then closed, so nothing listens on either end's port; the system does not hand out a port
+/// that an open socket holds, so a parallel test that binds port 0 never gets it. A connect to
+/// it is refused.
+pub struct ClosedPort {
+    port: u16,
+    _client: TcpStream,
+    _server: TcpStream,
+}
+
+impl ClosedPort {
+    /// Opens the connection that holds the port.
+    pub fn new() -> ClosedPort {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind a loopback port");
+        let client = TcpStream::connect(listener.local_addr().expect("an address"))
+            .expect("connect to the listener");
+        let (server, _) = listener.accept().expect("accept the connection");
+        drop(listener);
+        let port = client.local_addr().expect("the client's address").port();
+        ClosedPort {
+            port,
+            _client: client,
+            _server: server,
+        }
+    }
+
+    /// The port.
+    pub fn port(&self) -> u16 {
+        self.port
+    }
 }
 
 /// An HTTP/1.1 answer with `Content-Length`.

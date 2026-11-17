@@ -8,6 +8,8 @@
 //! `Secret` is not `Clone`: a store that hands out a copy builds a new `Secret` from
 //! [`Secret::expose`], so every copy is made on purpose.
 
+pub(crate) mod wipe;
+
 use std::fmt;
 
 use zeroize::Zeroizing;

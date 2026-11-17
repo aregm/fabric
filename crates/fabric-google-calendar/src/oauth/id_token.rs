@@ -35,7 +35,7 @@ use zeroize::Zeroizing;
 use crate::http::{BodyBound, Exchange, Method, Request, Target, Transport};
 use crate::secret::Secret;
 
-use super::wipe::WipedJson;
+use crate::secret::wipe::WipedJson;
 
 /// The longest identity token read, in bytes (3.5 item 1).
 pub const MAX_TOKEN_LEN: usize = 16 * 1024;
@@ -476,17 +476,21 @@ impl KeyCache {
     }
 
     /// The key with this `kid`, fetching the set when it is not kept, and once more when the
-    /// `kid` is unknown and no such refetch happened in the last minute (3.5 item 3).
+    /// `kid` is unknown and no such refetch happened in the last minute (3.5 item 3). A set
+    /// fetched in this call because the kept one had expired is not fetched again.
     pub fn key(
         &mut self,
         kid: &str,
         now_ms: u64,
         fetch: &mut dyn FnMut() -> Option<(KeySet, u64)>,
     ) -> Result<&PublicKey, CheckFailure> {
-        if now_ms >= self.valid_until_ms {
+        // A set fetched in this call because the kept one had expired is as fresh as a
+        // refetch would be: an unknown `kid` is not fetched for a second time (3.5 item 3).
+        let fetched_now = now_ms >= self.valid_until_ms;
+        if fetched_now {
             self.refetch(now_ms, fetch)?;
         }
-        if self.set.find(kid).is_none() && !self.set.refuses(kid) {
+        if !fetched_now && self.set.find(kid).is_none() && !self.set.refuses(kid) {
             let allowed = self
                 .last_unknown_refetch_ms
                 .is_none_or(|last| now_ms.saturating_sub(last) >= UNKNOWN_KID_REFETCH_MS);
@@ -857,6 +861,25 @@ mod tests {
         // Expiry.
         assert!(cache.key(KeyId::A.kid(), 361_000, &mut fetch).is_ok());
         assert_eq!(cache.fetches(), 4);
+        // A set fetched in this call because the kept one expired is not fetched again for an
+        // unknown kid, even when no refetch for an unknown kid happened in the last minute.
+        let mut fresh = KeyCache::new();
+        let mut fresh_fetches = 0u32;
+        let mut fresh_fetch = || {
+            fresh_fetches += 1;
+            Some((key_set(&[KeyId::A]), 300_000))
+        };
+        assert_eq!(
+            fresh.key("unknown", 0, &mut fresh_fetch).err(),
+            Some(CheckFailure::Identity(IdentityProblem::UnknownKey))
+        );
+        assert_eq!(fresh.fetches(), 1, "the first fetch only");
+        assert_eq!(
+            fresh.key("unknown", 400_000, &mut fresh_fetch).err(),
+            Some(CheckFailure::Identity(IdentityProblem::UnknownKey))
+        );
+        assert_eq!(fresh.fetches(), 2, "the expiry fetch only");
+        let _ = fresh_fetches;
         // A refused key is not refetched for.
         let mut weak = KeyCache::new();
         let mut weak_fetch = || Some((key_set(&[KeyId::WeakExponent]), 300_000));

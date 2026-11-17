@@ -10,6 +10,7 @@ use std::io::Read;
 use std::path::{Path, PathBuf};
 
 use crate::secret::Secret;
+use crate::secret::wipe::WipedJson;
 
 /// The largest client file read. Google's file is well under 1 KiB.
 pub const MAX_CLIENT_FILE: u64 = 64 * 1024;
@@ -55,9 +56,12 @@ impl ClientConfig {
         if bytes.len() as u64 > MAX_CLIENT_FILE {
             return Err(error(ClientFileProblem::TooLarge));
         }
-        let value: serde_json::Value =
-            serde_json::from_slice(&bytes).map_err(|_| error(ClientFileProblem::NotJson))?;
+        // The parsed file holds the client secret: its strings are wiped on drop.
+        let value = WipedJson(
+            serde_json::from_slice(&bytes).map_err(|_| error(ClientFileProblem::NotJson))?,
+        );
         let installed = value
+            .value()
             .as_object()
             .ok_or(error(ClientFileProblem::NotAnObject))?
             .get("installed")

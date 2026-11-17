@@ -1,6 +1,9 @@
 //! Changing events (6.6 to 6.8) and the reconciliation of an unknown outcome (section 7):
 //! g28 to g36.
 
+// The loopback endpoints and `ManualClock` exist only in debug builds (PD2).
+#![cfg(debug_assertions)]
+
 mod calendar_common;
 
 use calendar_common::{
@@ -12,7 +15,9 @@ use fabric_desktop_contracts::common::{FailureCode, SendUpdates};
 use fabric_desktop_contracts::scalar::{EventLocation, EventTitle};
 use fabric_google_calendar::Clock;
 use fabric_google_calendar::calendar::{CalendarTarget, ChangeOrder};
-use fabric_google_calendar::outcome::{ChangeOutcome, ChangeReport, Notification, Sentence};
+use fabric_google_calendar::outcome::{
+    ChangeOutcome, ChangeReport, Notification, ReadFailure, Sentence,
+};
 use fabric_google_calendar::reconcile::{ChangeTool, Effect, ReadBack, Verdict, decide};
 use fabric_google_fake::{CalendarEntry, Fault, FaultAction, LoggedRequest};
 use serde_json::{Value, json};
@@ -181,7 +186,14 @@ fn a_create_whose_answer_is_lost_is_no_answer_and_reconciliation_finds_it_applie
     };
     assert!(*matches);
     assert_eq!(
-        decide(ChangeTool::Create, None, 0, &back, world.clock.now_ms()),
+        decide(
+            ChangeTool::Create,
+            None,
+            false,
+            None,
+            &back,
+            world.clock.now_ms()
+        ),
         Verdict::Applied {
             revision: Some(revision.clone()),
             confirmed: true,
@@ -215,7 +227,7 @@ fn a_create_answered_503_is_no_answer_and_a_late_visible_insert_is_found_on_the_
     assert_eq!(first, ReadBack::NotFound);
     let t = world.clock.now_ms();
     assert_eq!(
-        decide(ChangeTool::Create, None, 0, &first, t),
+        decide(ChangeTool::Create, None, false, None, &first, t),
         Verdict::ReadAgain {
             not_before_ms: t + 60_000
         }
@@ -224,7 +236,14 @@ fn a_create_answered_503_is_no_answer_and_a_late_visible_insert_is_found_on_the_
     let second = reconcile(&mut world, &alice, &p, &effect);
     assert!(matches!(second, ReadBack::Found { matches: true, .. }));
     assert!(matches!(
-        decide(ChangeTool::Create, None, 1, &second, world.clock.now_ms()),
+        decide(
+            ChangeTool::Create,
+            None,
+            false,
+            Some(t),
+            &second,
+            world.clock.now_ms()
+        ),
         Verdict::Applied {
             confirmed: true,
             ..
@@ -401,7 +420,8 @@ fn an_update_answered_503_after_it_was_applied_reconciles_as_applied_with_unknow
     let verdict = decide(
         ChangeTool::Update,
         effect.approved_revision(),
-        0,
+        effect.may_notify(),
+        None,
         &back,
         world.clock.now_ms(),
     );
@@ -530,6 +550,147 @@ fn an_invitation_change_sends_exactly_the_approved_list_and_keeps_the_own_entry(
         (FailureCode::InvalidArguments, Sentence::AttendeesCut.text())
     );
     assert_eq!(changes(&world).len(), before, "no PATCH");
+    world.check_log();
+}
+
+/// g34, adversarial lists at the fake: two entries for one address, an address whose domain
+/// differs in case, the own entry that is also the organizer, an entry without `email`, and
+/// no `attendees` member at all. Each PATCH body is exactly what 6.7 says; afterwards nobody
+/// outside the approved list (and the own entry) is an attendee, everyone approved is one
+/// exactly once, and everyone who was an attendee keeps their answer.
+#[test]
+fn an_invitation_change_against_adversarial_attendee_lists_keeps_exactly_the_approved_people() {
+    let (mut world, alice) = World::with_alice();
+    let p = alice.primary.clone();
+    let own = json!({"email": "alice@example.com", "self": true, "responseStatus": "accepted"});
+    let cases: Vec<(&str, Option<Value>, Vec<&str>, Value)> = vec![
+        (
+            "one address twice",
+            Some(json!([
+                own.clone(),
+                {"email": "ann@example.com", "responseStatus": "accepted"},
+                {"email": "ann@example.com", "responseStatus": "declined"},
+                {"email": "bob@example.com", "responseStatus": "tentative"},
+            ])),
+            vec!["ann@example.com", "dan@example.com"],
+            json!([
+                {"email": "ann@example.com", "responseStatus": "accepted"},
+                {"email": "dan@example.com"},
+                own.clone(),
+            ]),
+        ),
+        (
+            "the domain in another case",
+            Some(json!([
+                {"email": "Ann@EXAMPLE.com", "responseStatus": "declined", "comment": "away"},
+                own.clone(),
+            ])),
+            vec!["Ann@example.com"],
+            json!([
+                {"email": "Ann@EXAMPLE.com", "responseStatus": "declined", "comment": "away"},
+                own.clone(),
+            ]),
+        ),
+        (
+            "the own entry is the organizer",
+            Some(json!([
+                {"email": "alice@example.com", "self": true, "organizer": true, "responseStatus": "accepted"},
+                {"email": "bob@example.com", "responseStatus": "accepted"},
+            ])),
+            vec!["dan@example.com", "alice@example.com"],
+            json!([
+                {"email": "dan@example.com"},
+                {"email": "alice@example.com", "self": true, "organizer": true, "responseStatus": "accepted"},
+            ]),
+        ),
+        (
+            "an entry without an address",
+            Some(json!([
+                own.clone(),
+                {"displayName": "Someone", "responseStatus": "accepted"},
+                {"email": "bob@example.com", "responseStatus": "tentative"},
+            ])),
+            vec!["bob@example.com"],
+            json!([
+                {"email": "bob@example.com", "responseStatus": "tentative"},
+                own.clone(),
+            ]),
+        ),
+        (
+            "no attendees member",
+            None,
+            vec!["dan@example.com"],
+            json!([{"email": "dan@example.com"}]),
+        ),
+    ];
+    for (n, (label, attendees, approved, body)) in cases.into_iter().enumerate() {
+        let mut event = json!({
+            "id": format!("adv{n}"), "summary": "Review",
+            "start": {"dateTime": "2026-11-20T09:00:00+01:00"}, "end": {"dateTime": "2026-11-20T10:00:00+01:00"},
+            "organizer": {"email": "carol@example.com"},
+        });
+        if let Some(list) = &attendees {
+            event["attendees"] = list.clone();
+        }
+        let (id, etag) = put(&world, &p, event);
+        let before = changes(&world).len();
+        let report = run(
+            &mut world,
+            &alice,
+            &p,
+            invitation(&p, event_ref(&id, &etag), &approved, SendUpdates::All),
+            None,
+        );
+        assert!(
+            matches!(
+                report.outcome,
+                ChangeOutcome::Applied {
+                    confirmed: true,
+                    ..
+                }
+            ),
+            "{label}: {report:?}"
+        );
+        let sent = changes(&world);
+        assert_eq!(sent.len(), before + 1, "{label}");
+        assert_eq!(
+            sent[before].body_json(),
+            Some(json!({ "attendees": body })),
+            "{label}"
+        );
+        // Afterwards: the approved people once each (the own entry counts as Alice), nobody
+        // else, and every earlier attendee who stays keeps the answer they had.
+        let after = stored(&world, &p, &id)["attendees"].clone();
+        let after = after.as_array().cloned().unwrap_or_default();
+        let key = |address: &str| {
+            let (local, domain) = address.split_once('@').expect("an address");
+            format!("{local}@{}", domain.to_ascii_lowercase())
+        };
+        let mut people: Vec<String> = after
+            .iter()
+            .map(|a| key(a["email"].as_str().expect("every entry has an address")))
+            .collect();
+        people.sort();
+        let mut want: Vec<String> = approved.iter().map(|a| key(a)).collect();
+        if attendees.is_some() && !want.contains(&key("alice@example.com")) {
+            want.push(key("alice@example.com"));
+        }
+        want.sort();
+        assert_eq!(people, want, "{label}");
+        for entry in &after {
+            let address = key(entry["email"].as_str().expect("an address"));
+            let earlier = attendees
+                .iter()
+                .flat_map(|l| l.as_array().cloned().unwrap_or_default())
+                .find(|a| a["email"].as_str().is_some_and(|e| key(e) == address));
+            if let Some(earlier) = earlier {
+                assert_eq!(
+                    entry["responseStatus"], earlier["responseStatus"],
+                    "{label}"
+                );
+            }
+        }
+    }
     world.check_log();
 }
 
@@ -803,5 +964,359 @@ fn an_order_that_does_not_fit_its_target_makes_no_request() {
         )
     );
     assert_eq!(world.fake.log().len(), before);
+    world.check_log();
+}
+
+fn read_rejected(sentence: Sentence) -> ReadFailure {
+    ReadFailure::rejected(FailureCode::InvalidArguments, sentence)
+}
+
+/// The check of an order's fit is one check, made by a change and by its reconcile read: an
+/// effect that names another calendar or account than its target, or a target of another
+/// account, makes no request. A delete read on the wrong calendar would read 404 and be judged
+/// applied.
+#[test]
+fn a_reconcile_read_whose_effect_does_not_fit_its_target_makes_no_request() {
+    let (mut world, alice) = World::with_alice();
+    let bob = world.person("bob");
+    let p = alice.primary.clone();
+    let team = world.calendar(
+        &alice,
+        CalendarEntry::new("team@group.example.com", "owner").time_zone(ZONE),
+    );
+    let (id, etag) = meeting(&world, &p);
+    let deadline = world.deadline();
+    let before = world.fake.log().len();
+    let delete_on = |t: &CalendarTarget| delete(t, event_ref(&id, &etag), SendUpdates::All);
+    let list = Action::CalendarList(fabric_desktop_contracts::agent::CalendarListArguments {});
+    for (target, action) in [
+        (&team, delete_on(&p)),
+        (&p, delete_on(&team)),
+        (&p, delete_on(&bob.primary)),
+        (&bob.primary, delete_on(&bob.primary)),
+        (&p, list),
+    ] {
+        let effect = Effect::new(action.clone(), None);
+        let back = world.as_account(&alice, |g| {
+            g.reconcile_read(&alice.id, target, &effect, deadline)
+        });
+        assert_eq!(back, Err(read_rejected(Sentence::OrderMismatch)));
+        let report = run(&mut world, &alice, target, action, None);
+        assert_eq!(
+            rejected(&report),
+            (
+                FailureCode::InvalidArguments,
+                Sentence::OrderMismatch.text()
+            )
+        );
+    }
+    assert_eq!(world.fake.log().len(), before, "no request");
+    world.check_log();
+}
+
+/// An event read that answers with another event than the one asked for is no usable answer:
+/// Transient for an observation, a reconcile read and the read before an invitation or a
+/// response; no PATCH is sent.
+#[test]
+fn an_event_read_answered_with_another_event_is_no_usable_answer() {
+    let (mut world, alice) = World::with_alice();
+    let p = alice.primary.clone();
+    let (id, etag) = invited_event(&world, &p, "alice@example.com");
+    let mut other = stored(&world, &p, &id);
+    other["id"] = json!("anotherevent");
+    let arm = |world: &World| {
+        world.fake.arm(Fault::on(
+            "GET",
+            "/calendar/v3/calendars/",
+            FaultAction::Json(200, other.clone()),
+        ));
+    };
+    let deadline = world.deadline();
+    arm(&world);
+    let observed = world.as_account(&alice, |g| g.observe(&alice.id, &p, &id, false, deadline));
+    assert_eq!(observed, Err(ReadFailure::transient()));
+    let answer = response(
+        &p,
+        event_ref(&id, &etag),
+        ProposedResponse::Accepted,
+        SendUpdates::All,
+    );
+    arm(&world);
+    let effect = Effect::new(answer.clone(), None);
+    let back = world.as_account(&alice, |g| {
+        g.reconcile_read(&alice.id, &p, &effect, deadline)
+    });
+    assert_eq!(back, Err(ReadFailure::transient()));
+    let invite = invitation(
+        &p,
+        event_ref(&id, &etag),
+        &["dan@example.com"],
+        SendUpdates::All,
+    );
+    for action in [invite, answer] {
+        arm(&world);
+        let report = run(&mut world, &alice, &p, action, None);
+        assert_eq!(report.outcome, ChangeOutcome::transient());
+    }
+    assert!(changes(&world).is_empty(), "no PATCH");
+    world.check_log();
+}
+
+/// An event that Google gives as well-formed JSON but not as a usable event (a member of the
+/// wrong type, an unknown answer, start and end of different kinds) is Rejected with the fixed
+/// sentence for an observation, a reconcile read and the read before a change; no PATCH is
+/// sent. Reading it again would give the same, so it is not Transient.
+#[test]
+fn an_unusable_event_is_rejected_by_every_event_read_and_no_patch_is_sent() {
+    let (mut world, alice) = World::with_alice();
+    let p = alice.primary.clone();
+    let (id, etag) = invited_event(&world, &p, "alice@example.com");
+    let good = stored(&world, &p, &id);
+    let mut wrong_type = good.clone();
+    wrong_type["summary"] = json!(5);
+    let mut unknown_answer = good.clone();
+    unknown_answer["attendees"][1]["responseStatus"] = json!("maybe");
+    let mut mixed = good;
+    mixed["start"] = json!({"date": "2026-11-20"});
+    let deadline = world.deadline();
+    let answer = response(
+        &p,
+        event_ref(&id, &etag),
+        ProposedResponse::Accepted,
+        SendUpdates::All,
+    );
+    let invite = invitation(
+        &p,
+        event_ref(&id, &etag),
+        &["dan@example.com"],
+        SendUpdates::All,
+    );
+    for body in [wrong_type, unknown_answer, mixed] {
+        let arm = |world: &World| {
+            world.fake.arm(Fault::on(
+                "GET",
+                "/calendar/v3/calendars/",
+                FaultAction::Json(200, body.clone()),
+            ));
+        };
+        arm(&world);
+        let observed = world.as_account(&alice, |g| g.observe(&alice.id, &p, &id, false, deadline));
+        assert_eq!(observed, Err(read_rejected(Sentence::EventUnreadable)));
+        arm(&world);
+        let effect = Effect::new(answer.clone(), None);
+        let back = world.as_account(&alice, |g| {
+            g.reconcile_read(&alice.id, &p, &effect, deadline)
+        });
+        assert_eq!(back, Err(read_rejected(Sentence::EventUnreadable)));
+        for action in [invite.clone(), answer.clone()] {
+            arm(&world);
+            let report = run(&mut world, &alice, &p, action, None);
+            assert_eq!(
+                rejected(&report),
+                (
+                    FailureCode::InvalidArguments,
+                    Sentence::EventUnreadable.text()
+                )
+            );
+        }
+    }
+    assert!(changes(&world).is_empty(), "no PATCH");
+    world.check_log();
+}
+
+/// Local parts are compared exactly (the plan forbids inventing equivalences): two approved
+/// addresses that differ in the local part's case are two people, and the order goes through.
+/// Two that differ only in the domain's case cannot be approved: the contract's `email` holds
+/// a lower-case domain (the refusal itself is a unit test of `translate`).
+#[test]
+fn an_invitation_of_addresses_that_differ_in_the_local_parts_case_names_two_people() {
+    let (mut world, alice) = World::with_alice();
+    let p = alice.primary.clone();
+    let (id, etag) = invited_event(&world, &p, "alice@example.com");
+    let report = run(
+        &mut world,
+        &alice,
+        &p,
+        invitation(
+            &p,
+            event_ref(&id, &etag),
+            &["ann@example.com", "Ann@example.com"],
+            SendUpdates::All,
+        ),
+        None,
+    );
+    assert!(
+        matches!(report.outcome, ChangeOutcome::Applied { .. }),
+        "{report:?}"
+    );
+    let sent = changes(&world)[0].body_json().expect("a body");
+    let addresses: Vec<&str> = sent["attendees"]
+        .as_array()
+        .expect("a list")
+        .iter()
+        .map(|a| a["email"].as_str().expect("an address"))
+        .collect();
+    assert_eq!(
+        addresses,
+        ["ann@example.com", "Ann@Example.com", "alice@example.com"]
+    );
+    world.check_log();
+}
+
+/// An update that sets no member would send `PATCH {}`, could still tell everyone, and would
+/// read as confirmed: it is refused before any request.
+#[test]
+fn an_update_that_changes_nothing_is_refused_before_any_request() {
+    let (mut world, alice) = World::with_alice();
+    let p = alice.primary.clone();
+    let (id, etag) = meeting(&world, &p);
+    for send in [SendUpdates::All, SendUpdates::None] {
+        let report = run(
+            &mut world,
+            &alice,
+            &p,
+            update(&p, event_ref(&id, &etag), no_changes(), send),
+            None,
+        );
+        assert_eq!(
+            rejected(&report),
+            (
+                FailureCode::InvalidArguments,
+                Sentence::NothingToChange.text()
+            )
+        );
+    }
+    assert!(world.fake.log().is_empty(), "no request");
+    world.check_log();
+}
+
+/// A time in the order that the adapter cannot read is refused with a sentence of its own,
+/// never with one that says Google refused: nothing was sent (PD27).
+#[test]
+fn an_unreadable_original_start_is_refused_with_its_own_sentence_and_no_request() {
+    let (mut world, alice) = World::with_alice();
+    let p = alice.primary.clone();
+    // 30 February has the contract's form but is no day.
+    let to = occurrence(
+        "series9_20260301T080000Z",
+        at("2026-02-30T09:00:00+01:00", ZONE),
+        "\"1\"",
+    );
+    let action = response_to(&p, to, ProposedResponse::Accepted, SendUpdates::All);
+    let report = run(&mut world, &alice, &p, action.clone(), None);
+    assert_eq!(
+        rejected(&report),
+        (
+            FailureCode::InvalidArguments,
+            Sentence::TimeUnreadable.text()
+        )
+    );
+    let deadline = world.deadline();
+    let effect = Effect::new(action, None);
+    let back = world.as_account(&alice, |g| {
+        g.reconcile_read(&alice.id, &p, &effect, deadline)
+    });
+    assert_eq!(back, Err(read_rejected(Sentence::TimeUnreadable)));
+    assert!(world.fake.log().is_empty(), "no request");
+    assert!(!Sentence::TimeUnreadable.text().starts_with("Google"));
+    world.check_log();
+}
+
+/// CD-Q05b binds instance id, original start and revision: a reconcile read of an answer to
+/// one occurrence does not match when the instance's original start is not the approved one,
+/// even if the own entry has the approved answer.
+#[test]
+fn a_reconcile_read_of_an_occurrence_answer_checks_the_original_start() {
+    let (mut world, alice) = World::with_alice();
+    let p = alice.primary.clone();
+    let instance = "series9_20261127T080000Z";
+    let (_, etag) = put(
+        &world,
+        &p,
+        json!({
+            "id": instance, "recurringEventId": "series9",
+            "originalStartTime": {"dateTime": "2026-11-27T09:00:00+01:00"},
+            "start": {"dateTime": "2026-11-27T09:00:00+01:00"}, "end": {"dateTime": "2026-11-27T10:00:00+01:00"},
+            "organizer": {"email": "carol@example.com"},
+            "attendees": [{"email": "alice@example.com", "self": true, "responseStatus": "accepted"}, {"email": "carol@example.com"}],
+        }),
+    );
+    let deadline = world.deadline();
+    let read = |world: &mut World, original: &str| {
+        let action = response_to(
+            &p,
+            occurrence(instance, at(original, ZONE), &etag),
+            ProposedResponse::Accepted,
+            SendUpdates::None,
+        );
+        let effect = Effect::new(action, None);
+        world
+            .as_account(&alice, |g| {
+                g.reconcile_read(&alice.id, &p, &effect, deadline)
+            })
+            .expect("a read-back")
+    };
+    assert!(matches!(
+        read(&mut world, "2026-11-27T08:00:00+00:00"),
+        ReadBack::Found { matches: true, .. }
+    ));
+    assert!(matches!(
+        read(&mut world, "2026-11-27T10:00:00+01:00"),
+        ReadBack::Found { matches: false, .. }
+    ));
+    world.check_log();
+}
+
+/// One event with many attendees can be larger than 256 KiB: the read before a change and the
+/// answer to the PATCH use the large bound, so the answer is read and the change Applied.
+#[test]
+fn a_change_of_an_event_larger_than_256_kib_is_read_and_applied() {
+    let (mut world, alice) = World::with_alice();
+    let p = alice.primary.clone();
+    let local = "x".repeat(60);
+    let mut attendees =
+        vec![json!({"email": "alice@example.com", "self": true, "responseStatus": "needsAction"})];
+    attendees.extend((0..1_999).map(|n| {
+        json!({"email": format!("{local}{n:04}@example.com"), "responseStatus": "needsAction", "comment": "y".repeat(40)})
+    }));
+    let (id, etag) = put(
+        &world,
+        &p,
+        json!({
+            "id": "crowd", "summary": "All hands",
+            "start": {"dateTime": "2026-11-20T09:00:00+01:00"}, "end": {"dateTime": "2026-11-20T10:00:00+01:00"},
+            "organizer": {"email": "carol@example.com"},
+            "attendees": attendees,
+        }),
+    );
+    assert!(
+        serde_json::to_vec(&stored(&world, &p, &id))
+            .expect("json")
+            .len()
+            > 256 * 1024
+    );
+    let report = run(
+        &mut world,
+        &alice,
+        &p,
+        response(
+            &p,
+            event_ref(&id, &etag),
+            ProposedResponse::Accepted,
+            SendUpdates::None,
+        ),
+        None,
+    );
+    assert!(
+        matches!(
+            report.outcome,
+            ChangeOutcome::Applied {
+                confirmed: true,
+                ..
+            }
+        ),
+        "{report:?}"
+    );
+    assert_eq!(changes(&world).len(), 1);
     world.check_log();
 }

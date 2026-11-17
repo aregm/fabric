@@ -8,7 +8,8 @@
 //! What this module decides:
 //!
 //! - The calendar-list entry (6.2): the roles, the name cut to 200 characters or "(no name)",
-//!   entries with an unusable id, an unknown role or an unusable zone left out.
+//!   entries with an unusable id, the id `primary`, an unknown role or an unusable zone left
+//!   out.
 //! - Event times (6.9, PD33): a `dateTime` is paired with the zone of the calendar the read
 //!   named; `Z` becomes `+00:00`, a fraction of a second is dropped; all-day dates stay dates.
 //! - The [`EventView`] of a read, built from the granted fields only (PD24), with texts cut at
@@ -25,7 +26,7 @@ use std::fmt;
 
 use fabric_desktop_contracts::agent::{
     Action, Attendee, AttendeeList, EventChanges, EventSpan, EventView, NewEvent, Occurrence,
-    ProposedResponse, ResponseStatus, ResponseTarget,
+    ProposedResponse, ResponseStatus,
 };
 use fabric_desktop_contracts::canonical;
 use fabric_desktop_contracts::common::{CalendarAccess, EventField, EventTime};
@@ -35,7 +36,7 @@ use fabric_desktop_contracts::scalar::{
 use serde_json::{Map, Value, json};
 
 use crate::calendar::{CalendarTarget, ObservedEvent};
-use crate::http::ids::{CalendarId, ReservedEventId};
+use crate::http::ids::{CalendarId, EventId};
 use crate::time::{parse_rfc3339_ms, to_offset_date_time};
 
 /// The longest calendar name (6.2; the contract's `label`).
@@ -183,7 +184,8 @@ pub(crate) struct ListItem {
 }
 
 /// Reads one entry of `calendarList.list` (6.2). `Ok(None)` when it is left out: an unusable
-/// id (5.3), an unknown role, a zone the contract cannot hold, or a deleted entry.
+/// id (5.3), the id `primary` (Google's keyword, which no request may name, PD22), an unknown
+/// role, a missing zone or one the contract cannot hold, or a deleted entry.
 pub(crate) fn calendar_list_item(value: &Value) -> Result<Option<ListItem>, ShapeError> {
     const L: &str = "a calendar list entry is not of the expected shape";
     let o = as_object(value, L)?;
@@ -198,7 +200,11 @@ pub(crate) fn calendar_list_item(value: &Value) -> Result<Option<ListItem>, Shap
     if deleted {
         return Ok(None);
     }
-    let Some(id) = id.and_then(|id| CalendarId::new(id).ok()) else {
+    // PD22: an entry whose id is the keyword would make a later request name `primary`.
+    let Some(id) = id
+        .filter(|id| *id != "primary")
+        .and_then(|id| CalendarId::new(id).ok())
+    else {
         return Ok(None);
     };
     let Some(access) = role.and_then(access_of) else {
@@ -594,9 +600,11 @@ pub(crate) fn event_view(
     })
 }
 
-/// The size of a view in the canonical form, for the bound of 768 KiB (6.4).
-pub(crate) fn canonical_len(view: &EventView) -> Option<usize> {
-    serde_json::to_value(view).ok().map(|v| canonical(&v).len())
+/// The size of a value in the canonical form, for the bound of 768 KiB (6.4).
+pub(crate) fn canonical_len<T: serde::Serialize>(value: &T) -> Option<usize> {
+    serde_json::to_value(value)
+        .ok()
+        .map(|v| canonical(&v).len())
 }
 
 /// Why an observation failed (6.5).
@@ -670,8 +678,9 @@ fn time_body(time: &EventTime) -> Value {
 /// The body of `events.insert` (6.6): the reserved id, the title, start and end with their
 /// zones, and the description and place when given. Nothing else: no attendees, no
 /// recurrence, no event type.
+/// `id` is the reserved id, checked as 5.3 says ([`crate::reconcile::Effect`]).
 #[must_use]
-pub(crate) fn create_body(event: &NewEvent, id: &ReservedEventId) -> Value {
+pub(crate) fn create_body(event: &NewEvent, id: &EventId) -> Value {
     let mut body = Map::new();
     body.insert("id".into(), json!(id.as_str()));
     body.insert("summary".into(), json!(event.title.as_str()));
@@ -684,6 +693,29 @@ pub(crate) fn create_body(event: &NewEvent, id: &ReservedEventId) -> Value {
         body.insert("location".into(), json!(l.as_str()));
     }
     Value::Object(body)
+}
+
+/// Whether an update sets no member. Such an order is refused before any request: a `PATCH {}`
+/// could still tell everyone and would then read as confirmed (6.7).
+#[must_use]
+pub(crate) fn changes_nothing(changes: &EventChanges) -> bool {
+    changes.title.is_none()
+        && changes.start.is_none()
+        && changes.end.is_none()
+        && changes.description.is_none()
+        && changes.location.is_none()
+}
+
+/// Whether an approved attendee list names one mailbox twice: two addresses with the same local
+/// part whose domains are equal without regard to case (6.12). Such an order is refused before
+/// any request. The contract's `email` and its unique list rule this out today (a domain is
+/// lower case); the check keeps the body of 6.7 right if that ever changes.
+#[must_use]
+pub(crate) fn names_an_address_twice<'a>(approved: impl IntoIterator<Item = &'a str>) -> bool {
+    let mut seen = HashSet::new();
+    approved
+        .into_iter()
+        .any(|a| !seen.insert(address_key(a).unwrap_or_else(|| a.to_owned())))
 }
 
 /// The body of an update (6.7): only the members that are set; a start or end as `dateTime`
@@ -901,20 +933,12 @@ pub(crate) fn response_confirmed(
     others(read) == others(after)
 }
 
-/// The instance named by a response to one occurrence, with its original start (CD-Q05b).
-pub(crate) fn response_event_id(target: &ResponseTarget) -> (&ProviderRef, &ProviderRef) {
-    match target {
-        ResponseTarget::Event(e) => (&e.event_id, &e.revision),
-        ResponseTarget::Occurrence(o) => (&o.instance_id, &o.revision),
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use fabric_desktop_contracts::agent::{
         ProposeCreateArguments, ProposeInvitationArguments, ProposeResponseArguments,
-        ProposeUpdateArguments,
+        ProposeUpdateArguments, ResponseTarget,
     };
     use fabric_desktop_contracts::common::{CalendarRef, EventRef, SendUpdates};
     use fabric_desktop_contracts::scalar::{EventTitle, Id, OffsetDateTime, Task};
@@ -1088,6 +1112,22 @@ mod tests {
         for other in ["", "Owner", "none", "admin"] {
             assert_eq!(access_of(other), None);
         }
+    }
+
+    #[test]
+    fn an_entry_named_primary_or_without_a_zone_is_left_out() {
+        let base = json!({"id": "a@example.com", "accessRole": "owner", "timeZone": "UTC"});
+        assert!(calendar_list_item(&base).expect("readable").is_some());
+        let mut v = base.clone();
+        v["id"] = json!("primary");
+        assert!(calendar_list_item(&v).expect("readable").is_none());
+        // Only the exact keyword: an id that merely holds the word is an ordinary id.
+        let mut v = base.clone();
+        v["id"] = json!("primary@example.com");
+        assert!(calendar_list_item(&v).expect("readable").is_some());
+        let mut v = base;
+        v.as_object_mut().expect("an object").remove("timeZone");
+        assert!(calendar_list_item(&v).expect("readable").is_none());
     }
 
     #[test]
@@ -1353,7 +1393,9 @@ mod tests {
         let Action::ProposeCreate(a) = create_action(None, Some("")) else {
             panic!("create");
         };
-        let id = ReservedEventId::new("abcdefghij0123456789abcdef").expect("valid");
+        let id = crate::http::ids::ReservedEventId::new("abcdefghij0123456789abcdef")
+            .expect("valid")
+            .as_event_id();
         assert_eq!(
             create_body(&a.event, &id),
             json!({
@@ -1370,7 +1412,43 @@ mod tests {
             update_body(&changes),
             json!({"summary": "New", "start": {"dateTime": "2026-11-20T12:00:00+01:00", "timeZone": "Europe/Berlin", "date": null}})
         );
-        assert_eq!(update_body(&no_changes()), json!({}));
+        // An update that sets nothing is refused before any request (6.7); a set member,
+        // even an empty text, is a change.
+        assert!(changes_nothing(&no_changes()));
+        assert!(!changes_nothing(&changes));
+        let mut empty_text = no_changes();
+        empty_text.location = Some(EventLocation::new("").expect("valid"));
+        assert!(!changes_nothing(&empty_text));
+    }
+
+    #[test]
+    fn an_attendee_list_names_one_address_twice_only_when_local_parts_are_equal_and_domains_differ_in_case()
+     {
+        assert!(names_an_address_twice([
+            "ann@example.com",
+            "ann@EXAMPLE.com"
+        ]));
+        assert!(names_an_address_twice([
+            "bob@example.com",
+            "ann@Example.Com",
+            "ann@example.COM"
+        ]));
+        assert!(names_an_address_twice([
+            "ann@example.com",
+            "ann@example.com"
+        ]));
+        // The local part is compared exactly: two mailboxes.
+        assert!(!names_an_address_twice([
+            "ann@example.com",
+            "Ann@example.com"
+        ]));
+        assert!(!names_an_address_twice([
+            "ann@example.com",
+            "bob@example.com"
+        ]));
+        assert!(!names_an_address_twice([]));
+        // The contract cannot hold an upper-case domain, so an order cannot carry such a pair.
+        assert!(Email::new("ann@EXAMPLE.com").is_err());
     }
 
     /// g45: `matches` for each tool, each member, absent against empty, instants written with

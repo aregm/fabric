@@ -631,6 +631,48 @@ fn the_calendar_list_pages_and_filters_by_role_hidden_and_deleted() {
 }
 
 #[test]
+fn a_set_calendar_list_page_size_fills_each_page_with_fewer_than_asked() {
+    let fake = fake();
+    let t = token(&fake, ALICE);
+    fake.add_calendar(ALICE, CalendarEntry::new("fb@x", "freeBusyReader"));
+    fake.with_state(|s| s.set_calendar_list_page_size(Some(2)));
+    let path = "/users/me/calendarList";
+    let first = api(
+        &fake,
+        &t,
+        "GET",
+        &format!("{path}?maxResults=250"),
+        &[],
+        None,
+    );
+    assert_eq!(ids(&first), vec![ALICE_EMAIL, SHARED]);
+    let next = first.json()["nextPageToken"].as_str().unwrap().to_string();
+    let rest = api(
+        &fake,
+        &t,
+        "GET",
+        &format!("{path}?maxResults=250&pageToken={}", enc(&next)),
+        &[],
+        None,
+    );
+    assert_eq!(ids(&rest), vec!["fb@x"]);
+    assert!(rest.json().get("nextPageToken").is_none());
+    // A request that asks for fewer than the set size gets what it asked for.
+    let one = api(&fake, &t, "GET", &format!("{path}?maxResults=1"), &[], None);
+    assert_eq!(ids(&one), vec![ALICE_EMAIL]);
+    fake.with_state(|s| s.set_calendar_list_page_size(None));
+    let whole = api(
+        &fake,
+        &t,
+        "GET",
+        &format!("{path}?maxResults=250"),
+        &[],
+        None,
+    );
+    assert_eq!(ids(&whole), vec![ALICE_EMAIL, SHARED, "fb@x"]);
+}
+
+#[test]
 fn a_call_needs_a_valid_token_with_its_scope_and_a_listed_calendar_and_a_writer_role() {
     let fake = fake();
     let alice = token(&fake, ALICE);

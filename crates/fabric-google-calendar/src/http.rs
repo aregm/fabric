@@ -3,7 +3,9 @@
 //! A [`Transport`] is made once for an [`Endpoints`] set. A [`Request`] names what it asks for
 //! with a [`Target`] (never an address), carries query pairs, the headers the crate chooses
 //! ([`Request::bearer`], [`Request::if_match`]), an optional JSON or form body, and the bound
-//! for its answer ([`BodyBound`]). [`Transport::send`] takes the request and a deadline and gives
+//! for its answer ([`BodyBound`]). A bearer token is refused on any target but the Calendar
+//! API, and a form body on any target but the token and revocation endpoints (5.1), so one
+//! wrong call cannot send a token to another host. [`Transport::send`] takes the request and a deadline and gives
 //! one of the three results of 5.2 as an [`Exchange`]:
 //!
 //! - [`Exchange::NothingSent`]: the deadline had passed before the request was handed to the
@@ -57,7 +59,10 @@
 //!
 //! - The caller's deadline ending during the connect phase. reqwest's total time-out then fires
 //!   first, and its error is not a connect error, although nothing was written. This happens
-//!   only when less than 10 s of the deadline remain when the request is handed over.
+//!   only when less than 10 s of the deadline remain when the request is handed over. The
+//!   transport is left so on purpose: the Calendar part refuses to start a changing request
+//!   with less than 10 s of its deadline left (6.10), so this can befall only a read, a
+//!   refresh, a key fetch or a revocation, and for those both classes mean "try again".
 //! - hyper's "cancelled before it was written" (`Canceled`): the connection closed after it was
 //!   opened but before the request was written. hyper-util repeats such a request only on a
 //!   reused connection, so here it is an error, and it is not a connect error.
@@ -283,6 +288,9 @@ pub fn browser_address(endpoint: &Endpoint, pairs: &[(&'static str, &str)]) -> S
 pub enum RequestError {
     /// An access token holds a character that cannot be sent in a header (only `!` to `~`).
     TokenNotUsable,
+    /// The target does not take this: a bearer token on any target but the Calendar API, or
+    /// a form body on any target but the token and revocation endpoints (5.1).
+    NotForThisTarget,
     /// A header value could not be formed.
     HeaderNotFormed,
     /// The JSON body could not be serialized.
@@ -295,6 +303,7 @@ impl RequestError {
     pub const fn label(self) -> &'static str {
         match self {
             RequestError::TokenNotUsable => "the access token cannot be sent in a header",
+            RequestError::NotForThisTarget => "the request's target does not take this",
             RequestError::HeaderNotFormed => "a header value could not be formed",
             RequestError::BodyNotEncoded => "the request body could not be encoded",
         }
@@ -352,15 +361,22 @@ impl Request {
         self
     }
 
-    /// Adds `Authorization: Bearer <token>`. The token must be `!` to `~` only (the
-    /// characters an OAuth bearer token uses); the header value is marked sensitive.
+    /// Adds `Authorization: Bearer <token>`. Only a Calendar API target takes it (5.1): on
+    /// any other it is [`RequestError::NotForThisTarget`]. The token must be `!` to `~` only
+    /// (the characters an OAuth bearer token uses); the header value is marked sensitive.
     pub fn bearer(mut self, token: &Secret) -> Result<Request, RequestError> {
+        if self.target.service() != Service::Calendar {
+            return Err(RequestError::NotForThisTarget);
+        }
         let t = token.expose();
         if t.is_empty() || !t.bytes().all(|b| (b'!'..=b'~').contains(&b)) {
             return Err(RequestError::TokenNotUsable);
         }
-        let mut value = HeaderValue::from_str(&format!("Bearer {t}"))
-            .map_err(|_| RequestError::TokenNotUsable)?;
+        // The crate's own copy of the header text is wiped; the header value's is not (RK14).
+        let mut text = Zeroizing::new(String::with_capacity("Bearer ".len() + t.len()));
+        text.push_str("Bearer ");
+        text.push_str(t);
+        let mut value = HeaderValue::from_str(&text).map_err(|_| RequestError::TokenNotUsable)?;
         value.set_sensitive(true);
         self.authorization = Some(value);
         Ok(self)
@@ -382,12 +398,15 @@ impl Request {
     }
 
     /// Sets a form body, sent as `application/x-www-form-urlencoded`, every name and value
-    /// percent-encoded as in 5.3 (a space is `%20`).
-    #[must_use]
-    pub fn form(mut self, pairs: &[(&'static str, &str)]) -> Request {
-        let encoded = encode_pairs(pairs.iter().copied());
-        self.body = Body::Form(Zeroizing::new(encoded.into_bytes()));
-        self
+    /// percent-encoded as in 5.3 (a space is `%20`). Only the token and revocation endpoints
+    /// take one (5.1): on any other target it is [`RequestError::NotForThisTarget`].
+    pub fn form(mut self, pairs: &[(&'static str, &str)]) -> Result<Request, RequestError> {
+        if !matches!(self.target.service(), Service::Token | Service::Revocation) {
+            return Err(RequestError::NotForThisTarget);
+        }
+        let encoded = Zeroizing::new(encode_pairs(pairs.iter().copied()));
+        self.body = Body::Form(Zeroizing::new(encoded.as_bytes().to_vec()));
+        Ok(self)
     }
 
     /// The method.
@@ -741,6 +760,13 @@ impl Transport {
         &self.endpoints
     }
 
+    /// Now on the transport's clock (Unix ms): the clock [`Transport::send`] times every
+    /// request on, so a caller's deadline rule and the transport agree (6.10).
+    #[must_use]
+    pub fn now_ms(&self) -> u64 {
+        self.clock.now_ms()
+    }
+
     /// The address of `request`, built from the endpoint, the target's segments and the
     /// encoded query. Infallible: setting the path and the query of a parsed URL cannot fail.
     fn url(&self, request: &Request) -> reqwest::Url {
@@ -910,10 +936,13 @@ fn read_answer(response: reqwest::blocking::Response, bound: BodyBound) -> Excha
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(debug_assertions)]
     use std::sync::Arc;
 
+    #[cfg(debug_assertions)]
     use crate::clock::ManualClock;
 
+    #[cfg(debug_assertions)]
     fn transport() -> Transport {
         Transport::new(
             Endpoints::loopback(40_123),
@@ -922,6 +951,7 @@ mod tests {
         .expect("a transport")
     }
 
+    #[cfg(debug_assertions)]
     fn calendar(id: &str) -> CalendarId {
         CalendarId::new(id).expect("valid")
     }
@@ -937,6 +967,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(debug_assertions)]
     fn each_id_is_one_path_segment_after_the_url_library_has_parsed_it() {
         let t = transport();
         for id in [
@@ -964,6 +995,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(debug_assertions)]
     fn the_paths_of_every_target_are_fixed_strings_and_encoded_ids() {
         let t = transport();
         let cal = calendar("me@example.com");
@@ -993,6 +1025,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(debug_assertions)]
     fn query_values_are_encoded_and_cannot_add_pairs() {
         let t = transport();
         let request = Request::new(Method::Get, Target::CalendarList, BodyBound::Large)
@@ -1012,15 +1045,62 @@ mod tests {
     #[test]
     fn a_token_with_a_control_or_space_character_is_refused() {
         for bad in ["", "a b", "a\nb", "a\u{e9}", "a\0"] {
-            let r = Request::new(Method::Get, Target::Keys, BodyBound::Small)
+            let r = Request::new(Method::Get, Target::CalendarList, BodyBound::Small)
                 .bearer(&Secret::from(bad));
             assert_eq!(r.err(), Some(RequestError::TokenNotUsable), "{bad:?}");
         }
         assert!(
-            Request::new(Method::Get, Target::Keys, BodyBound::Small)
+            Request::new(Method::Get, Target::CalendarList, BodyBound::Small)
                 .bearer(&Secret::from("ya29.a0-_~+/="))
                 .is_ok()
         );
+    }
+
+    #[test]
+    fn a_bearer_token_goes_only_to_the_calendar_api_and_a_form_only_to_token_and_revocation() {
+        let calendar = || CalendarId::new("me@example.com").expect("valid");
+        let event = || EventId::new("ev_1").expect("valid");
+        let token = Secret::from("ya29.a0");
+        for target in [
+            Target::CalendarList,
+            Target::FreeBusy,
+            Target::Events(calendar()),
+            Target::Event(calendar(), event()),
+        ] {
+            let label = target.label();
+            let request = Request::new(Method::Post, target, BodyBound::Small);
+            assert!(request.bearer(&token).is_ok(), "{label}");
+        }
+        for target in [Target::Token, Target::Revocation, Target::Keys] {
+            let label = target.label();
+            let request = Request::new(Method::Post, target, BodyBound::Small);
+            assert_eq!(
+                request.bearer(&token).err(),
+                Some(RequestError::NotForThisTarget),
+                "{label}"
+            );
+        }
+        for target in [Target::Token, Target::Revocation] {
+            let label = target.label();
+            let request = Request::new(Method::Post, target, BodyBound::Small);
+            assert!(request.form(&[("token", "1//r")]).is_ok(), "{label}");
+        }
+        for target in [
+            Target::Keys,
+            Target::CalendarList,
+            Target::FreeBusy,
+            Target::Events(calendar()),
+            Target::Event(calendar(), event()),
+        ] {
+            let label = target.label();
+            let request = Request::new(Method::Post, target, BodyBound::Small);
+            assert_eq!(
+                request.form(&[("token", "1//r")]).err(),
+                Some(RequestError::NotForThisTarget),
+                "{label}"
+            );
+        }
+        assert!(!RequestError::NotForThisTarget.to_string().contains("1//r"));
     }
 
     #[test]

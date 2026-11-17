@@ -1,5 +1,8 @@
 //! Reconciliation (section 7) with the fake as the source of the read-back: g43.
 
+// The loopback endpoints and `ManualClock` exist only in debug builds (PD2).
+#![cfg(debug_assertions)]
+
 mod calendar_common;
 
 use calendar_common::{
@@ -18,13 +21,14 @@ use fabric_google_calendar::reconcile::{
 use fabric_google_fake::{DeletedEventGet, Fault, FaultAction, LateTrigger};
 use serde_json::{Value, json};
 
-/// Reads the effect back and decides, as the core would.
+/// Reads the effect back and decides, as the core would. `earlier` is the time of an earlier
+/// read of this effect that found the change not there yet.
 fn verdict(
     world: &mut World,
     who: &Person,
     target: &CalendarTarget,
     effect: &Effect,
-    reads_before: u32,
+    earlier: Option<u64>,
 ) -> Verdict {
     let deadline = world.deadline();
     let back = world
@@ -33,7 +37,8 @@ fn verdict(
     decide(
         effect.tool().expect("a change"),
         effect.approved_revision(),
-        reads_before,
+        effect.may_notify(),
+        earlier,
         &back,
         world.clock.now_ms(),
     )
@@ -119,7 +124,7 @@ fn reconciling_a_create_follows_every_row_of_section_7() {
         revision,
         confirmed,
         notification,
-    } = verdict(&mut world, &alice, &p, &effect, 0)
+    } = verdict(&mut world, &alice, &p, &effect, None)
     else {
         panic!("applied");
     };
@@ -137,7 +142,7 @@ fn reconciling_a_create_follows_every_row_of_section_7() {
     world.as_account(&alice, |g| g.change(&alice.id, &p, &order, deadline));
     let effect = Effect::new(create(&p), Some(other.clone()));
     assert_eq!(
-        verdict(&mut world, &alice, &p, &effect, 0),
+        verdict(&mut world, &alice, &p, &effect, None),
         Verdict::NeedsOwner(NeedsOwnerReason::CreateDiffers)
     );
 
@@ -145,21 +150,32 @@ fn reconciling_a_create_follows_every_row_of_section_7() {
     world.fake.with_state(|s| s.cancel_event(&cal, &id));
     let effect = Effect::new(create(&p), Some(id));
     assert_eq!(
-        verdict(&mut world, &alice, &p, &effect, 0),
+        verdict(&mut world, &alice, &p, &effect, None),
         Verdict::NeedsOwner(NeedsOwnerReason::CreatedThenDeleted)
     );
 
-    // Not found: read again no sooner than 60 s later, then absent.
+    // Not found: read again no sooner than 60 s later, then absent. A second read that comes
+    // too early is told when it may come.
     let effect = Effect::new(create(&p), Some(reserved(3)));
     let now = world.clock.now_ms();
     assert_eq!(
-        verdict(&mut world, &alice, &p, &effect, 0),
+        verdict(&mut world, &alice, &p, &effect, None),
         Verdict::ReadAgain {
             not_before_ms: now + 60_000
         }
     );
-    world.clock.advance(60_000);
-    assert_eq!(verdict(&mut world, &alice, &p, &effect, 1), Verdict::Absent);
+    world.clock.advance(59_999);
+    assert_eq!(
+        verdict(&mut world, &alice, &p, &effect, Some(now)),
+        Verdict::ReadAgain {
+            not_before_ms: now + 60_000
+        }
+    );
+    world.clock.advance(1);
+    assert_eq!(
+        verdict(&mut world, &alice, &p, &effect, Some(now)),
+        Verdict::Absent
+    );
     assert_eq!(earliest_read_ms(now), now + 10_000);
     world.check_log();
 }
@@ -188,14 +204,15 @@ fn reconciling_a_change_of_an_existing_event_follows_every_row_of_section_7() {
         );
         let now = world.clock.now_ms();
         assert_eq!(
-            verdict(&mut world, &alice, &p, &effect_now, 0),
+            verdict(&mut world, &alice, &p, &effect_now, None),
             Verdict::ReadAgain {
                 not_before_ms: now + 60_000
             },
             "{tool:?}"
         );
+        world.clock.advance(60_000);
         assert_eq!(
-            verdict(&mut world, &alice, &p, &effect_now, 1),
+            verdict(&mut world, &alice, &p, &effect_now, Some(now)),
             Verdict::Absent,
             "{tool:?}"
         );
@@ -203,7 +220,7 @@ fn reconciling_a_change_of_an_existing_event_follows_every_row_of_section_7() {
         world.fake.change_event(&cal, &id, applied.clone());
         assert!(
             matches!(
-                verdict(&mut world, &alice, &p, &effect_now, 0),
+                verdict(&mut world, &alice, &p, &effect_now, None),
                 Verdict::Applied {
                     notification: Notification::Unknown,
                     confirmed: true,
@@ -218,14 +235,14 @@ fn reconciling_a_change_of_an_existing_event_follows_every_row_of_section_7() {
             .fake
             .change_event(&cal, &id, json!({"location": "Elsewhere"}));
         assert_eq!(
-            verdict(&mut world, &alice, &p, &effect, 0),
+            verdict(&mut world, &alice, &p, &effect, None),
             Verdict::NeedsOwner(NeedsOwnerReason::ChangedUnclear),
             "{tool:?}"
         );
         // Cancelled, and not found: the owner looks.
         world.fake.with_state(|s| s.cancel_event(&cal, &id));
         assert_eq!(
-            verdict(&mut world, &alice, &p, &effect, 0),
+            verdict(&mut world, &alice, &p, &effect, None),
             Verdict::NeedsOwner(NeedsOwnerReason::GoneUnclear),
             "{tool:?}"
         );
@@ -233,7 +250,7 @@ fn reconciling_a_change_of_an_existing_event_follows_every_row_of_section_7() {
             .fake
             .with_state(|s| s.set_deleted_event_get(DeletedEventGet::Gone));
         assert_eq!(
-            verdict(&mut world, &alice, &p, &effect, 1),
+            verdict(&mut world, &alice, &p, &effect, Some(0)),
             Verdict::NeedsOwner(NeedsOwnerReason::GoneUnclear),
             "{tool:?}"
         );
@@ -242,7 +259,7 @@ fn reconciling_a_change_of_an_existing_event_follows_every_row_of_section_7() {
             s.remove_event(&cal, &id);
         });
         assert_eq!(
-            verdict(&mut world, &alice, &p, &effect, 0),
+            verdict(&mut world, &alice, &p, &effect, None),
             Verdict::NeedsOwner(NeedsOwnerReason::GoneUnclear),
             "{tool:?}"
         );
@@ -257,35 +274,61 @@ fn reconciling_a_delete_follows_every_row_of_section_7() {
     let p = alice.primary.clone();
     let cal = p.provider_id.as_str().to_owned();
     let (id, etag) = invited(&world, &p);
-    let effect = Effect::new(delete(&p, event_ref(&id, &etag), SendUpdates::None), None);
+    let effect = Effect::new(delete(&p, event_ref(&id, &etag), SendUpdates::All), None);
     // Found, the approved revision: not yet, then absent.
     let now = world.clock.now_ms();
     assert_eq!(
-        verdict(&mut world, &alice, &p, &effect, 0),
+        verdict(&mut world, &alice, &p, &effect, None),
         Verdict::ReadAgain {
             not_before_ms: now + 60_000
         }
     );
-    assert_eq!(verdict(&mut world, &alice, &p, &effect, 1), Verdict::Absent);
+    world.clock.advance(60_000);
+    assert_eq!(
+        verdict(&mut world, &alice, &p, &effect, Some(now)),
+        Verdict::Absent
+    );
     // Found, another revision: absent at once.
     world
         .fake
         .change_event(&cal, &id, json!({"summary": "Changed"}));
-    assert_eq!(verdict(&mut world, &alice, &p, &effect, 0), Verdict::Absent);
-    // Cancelled, gone (410) and not found (404): applied.
-    let applied = Verdict::Applied {
+    assert_eq!(
+        verdict(&mut world, &alice, &p, &effect, None),
+        Verdict::Absent
+    );
+    // Cancelled, gone (410) and not found (404): applied; whether people were told is unknown,
+    // and nobody was asked to be told when `send_updates` was `none` (section 7).
+    let applied = |notification| Verdict::Applied {
         revision: None,
         confirmed: true,
-        notification: Notification::Unknown,
+        notification,
     };
+    let quiet = Effect::new(delete(&p, event_ref(&id, &etag), SendUpdates::None), None);
     world.fake.with_state(|s| s.cancel_event(&cal, &id));
-    assert_eq!(verdict(&mut world, &alice, &p, &effect, 0), applied);
+    assert_eq!(
+        verdict(&mut world, &alice, &p, &effect, None),
+        applied(Notification::Unknown)
+    );
+    assert_eq!(
+        verdict(&mut world, &alice, &p, &quiet, None),
+        applied(Notification::NotRequested)
+    );
     world
         .fake
         .with_state(|s| s.set_deleted_event_get(DeletedEventGet::Gone));
-    assert_eq!(verdict(&mut world, &alice, &p, &effect, 0), applied);
+    assert_eq!(
+        verdict(&mut world, &alice, &p, &effect, None),
+        applied(Notification::Unknown)
+    );
     world.fake.with_state(|s| s.remove_event(&cal, &id));
-    assert_eq!(verdict(&mut world, &alice, &p, &effect, 0), applied);
+    assert_eq!(
+        verdict(&mut world, &alice, &p, &effect, None),
+        applied(Notification::Unknown)
+    );
+    assert_eq!(
+        verdict(&mut world, &alice, &p, &quiet, None),
+        applied(Notification::NotRequested)
+    );
     world.check_log();
 }
 
@@ -307,13 +350,14 @@ fn a_late_insert_and_a_late_patch_are_found_on_the_second_read() {
     let report = world.as_account(&alice, |g| g.change(&alice.id, &p, &order, deadline));
     assert_eq!(report.outcome, ChangeOutcome::NoAnswer);
     let effect = Effect::new(create(&p), Some(id));
+    let first = world.clock.now_ms();
     assert!(matches!(
-        verdict(&mut world, &alice, &p, &effect, 0),
+        verdict(&mut world, &alice, &p, &effect, None),
         Verdict::ReadAgain { .. }
     ));
     world.clock.advance(60_000);
     assert!(matches!(
-        verdict(&mut world, &alice, &p, &effect, 1),
+        verdict(&mut world, &alice, &p, &effect, Some(first)),
         Verdict::Applied {
             confirmed: true,
             ..
@@ -334,13 +378,14 @@ fn a_late_insert_and_a_late_patch_are_found_on_the_second_read() {
     let report = world.as_account(&alice, |g| g.change(&alice.id, &p, &order, deadline));
     assert_eq!(report.outcome, ChangeOutcome::NoAnswer);
     let effect = Effect::new(action, None);
+    let first = world.clock.now_ms();
     assert!(matches!(
-        verdict(&mut world, &alice, &p, &effect, 0),
+        verdict(&mut world, &alice, &p, &effect, None),
         Verdict::ReadAgain { .. }
     ));
     world.clock.advance(60_000);
     assert!(matches!(
-        verdict(&mut world, &alice, &p, &effect, 1),
+        verdict(&mut world, &alice, &p, &effect, Some(first)),
         Verdict::Applied {
             notification: Notification::Unknown,
             ..
@@ -351,5 +396,36 @@ fn a_late_insert_and_a_late_patch_are_found_on_the_second_read() {
         2,
         "one changing request per order"
     );
+    world.check_log();
+}
+
+/// Section 7: an update, an invitation or a response found applied by reading carries
+/// `notification: NotRequested` when its `send_updates` was `none`, and `Unknown` otherwise.
+#[test]
+fn a_change_found_applied_with_send_updates_none_notified_nobody() {
+    let (mut world, alice) = World::with_alice();
+    let p = alice.primary.clone();
+    let cal = p.provider_id.as_str().to_owned();
+    let (id, etag) = invited(&world, &p);
+    let mut c = no_changes();
+    c.title = Some(EventTitle::new("Renamed").expect("valid"));
+    world
+        .fake
+        .change_event(&cal, &id, json!({"summary": "Renamed"}));
+    for (send, want) in [
+        (SendUpdates::None, Notification::NotRequested),
+        (SendUpdates::ExternalOnly, Notification::Unknown),
+        (SendUpdates::All, Notification::Unknown),
+    ] {
+        let effect = Effect::new(update(&p, event_ref(&id, &etag), c.clone(), send), None);
+        assert_eq!(effect.may_notify(), send != SendUpdates::None);
+        assert!(
+            matches!(
+                verdict(&mut world, &alice, &p, &effect, None),
+                Verdict::Applied { notification, confirmed: true, .. } if notification == want
+            ),
+            "{send:?}"
+        );
+    }
     world.check_log();
 }

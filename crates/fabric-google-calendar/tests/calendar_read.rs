@@ -1,5 +1,8 @@
 //! Free/busy, reading events and observing one event (6.3 to 6.5): g20 to g27.
 
+// The loopback endpoints and `ManualClock` exist only in debug builds (PD2).
+#![cfg(debug_assertions)]
+
 mod calendar_common;
 
 use std::cell::Cell;
@@ -507,39 +510,100 @@ fn a_read_past_its_bounds_fails_with_the_fixed_sentence() {
     world.check_log();
 }
 
-/// g25: `Z`, an offset and a fraction; every events read names the calendar's zone and the
-/// view pairs Google's offset with it; a daylight-saving gap and fold as Google writes them; an
-/// all-day date is never an instant.
+/// g24, the positive control at the edge: the 768 KiB bound counts the whole canonical result
+/// (the views, the commas between them and the wrapper with `observed_at`). A result of
+/// exactly 768 KiB is returned; one byte more fails with the fixed sentence.
+#[test]
+fn a_result_of_exactly_768_kib_is_returned_and_one_byte_more_fails() {
+    const MAX: usize = 768 * 1024;
+    let mut world = World::new();
+    let dave = world.person("dave");
+    let cal = dave.primary.clone();
+    let deadline = world.deadline();
+    let q = query(std::slice::from_ref(&cal), &[EventField::Description]);
+    let read = |world: &mut World| {
+        world.as_account(&dave, |g| g.read_events(&dave.id, &q, deadline, &|| true))
+    };
+    let size = |result: &ToolResult| {
+        fabric_desktop_contracts::canonical(&serde_json::to_value(result).expect("json")).len()
+    };
+    // Ids of one length and one etag, so that every view's size differs only by its text.
+    let event = |n: usize, len: usize| {
+        json!({"id": format!("big{n:04}"), "etag": "\"1\"", "description": "d".repeat(len),
+        "start": {"date": "2026-11-20"}, "end": {"date": "2026-11-21"}})
+    };
+    let wrapper = size(&read(&mut world).expect("no events"));
+    put(&world, &cal, event(0, 8_000));
+    let per = size(&read(&mut world).expect("one event")) - wrapper;
+    let base = per - 8_000;
+    // k views of `per` bytes and one filler view of `base + fill` bytes, with a comma between
+    // each two: wrapper + k * (per + 1) + base + fill = MAX.
+    let k = (MAX - wrapper - base) / (per + 1);
+    let fill = MAX - wrapper - base - k * (per + 1);
+    assert!(fill < 8_192, "the filler's text fits the contract");
+    for n in 1..k {
+        put(&world, &cal, event(n, 8_000));
+    }
+    put(&world, &cal, event(9_999, fill));
+    let result = read(&mut world).expect("exactly 768 KiB");
+    assert_eq!(size(&result), MAX);
+    assert_eq!(events_of(result).len(), k + 1);
+    put(&world, &cal, event(9_999, fill + 1));
+    let failure = read(&mut world).expect_err("one byte more");
+    assert_eq!(
+        rejected_with(&failure),
+        (
+            FailureCode::InvalidArguments,
+            Sentence::WindowTooLarge.text().to_owned()
+        )
+    );
+    world.check_log();
+}
+
+/// g25: every events read names the calendar's zone, and the view pairs Google's offset with
+/// it. The fixtures are what Google writes for that zone: `+01:00` and `+02:00` on a Berlin
+/// calendar (with a daylight-saving gap and fold), `Z` on a UTC calendar; a fraction is
+/// dropped; an all-day date is never an instant. The fake does no zone arithmetic: that Google
+/// converts each time to the named zone is a check of the live run (LV8).
 #[test]
 fn times_pair_googles_offset_with_the_calendars_zone() {
     let (mut world, alice) = World::with_alice();
-    let p = &alice.primary;
-    put(
-        &world,
-        p,
-        json!({"id": "zulu", "start": {"dateTime": "2026-11-20T08:00:00Z"}, "end": {"dateTime": "2026-11-20T09:00:00.999Z"}}),
+    let p = alice.primary.clone();
+    let utc = world.calendar(
+        &alice,
+        CalendarEntry::new("utc@group.example.com", "owner").time_zone("UTC"),
     );
     put(
         &world,
-        p,
+        &p,
+        json!({"id": "berlin", "start": {"dateTime": "2026-11-20T09:00:00+01:00"}, "end": {"dateTime": "2026-11-20T10:00:00.999+01:00"}}),
+    );
+    put(
+        &world,
+        &p,
         json!({"id": "gap", "start": {"dateTime": "2026-03-29T03:30:00+02:00"}, "end": {"dateTime": "2026-03-29T04:00:00+02:00"}}),
     );
     put(
         &world,
-        p,
+        &p,
         json!({"id": "fold1", "start": {"dateTime": "2026-10-25T02:30:00+02:00"}, "end": {"dateTime": "2026-10-25T02:45:00+02:00"}}),
     );
     put(
         &world,
-        p,
+        &p,
         json!({"id": "fold2", "start": {"dateTime": "2026-10-25T02:30:00+01:00"}, "end": {"dateTime": "2026-10-25T02:45:00+01:00"}}),
     );
     put(
         &world,
-        p,
+        &p,
         json!({"id": "day", "start": {"date": "2026-11-20"}, "end": {"date": "2026-11-21"}}),
     );
-    let mut q = query(std::slice::from_ref(p), &[EventField::Time]);
+    put(
+        &world,
+        &utc,
+        json!({"id": "zulu", "start": {"dateTime": "2026-11-20T08:00:00Z"}, "end": {"dateTime": "2026-11-20T09:00:00.999Z"}}),
+    );
+    let mut q = query(&[p.clone(), utc.clone()], &[EventField::Time]);
     q.window = Window {
         start: Timestamp::new("2026-03-01T00:00:00.000Z").expect("valid"),
         end: Timestamp::new("2026-12-01T00:00:00.000Z").expect("valid"),
@@ -585,10 +649,16 @@ fn times_pair_googles_offset_with_the_calendars_zone() {
                 z.clone()
             ),
             (
+                "berlin",
+                "2026-11-20T09:00:00+01:00".into(),
+                "2026-11-20T10:00:00+01:00".into(),
+                z
+            ),
+            (
                 "zulu",
                 "2026-11-20T08:00:00+00:00".into(),
                 "2026-11-20T09:00:00+00:00".into(),
-                z
+                "UTC".to_owned()
             ),
         ]
     );
@@ -609,10 +679,84 @@ fn times_pair_googles_offset_with_the_calendars_zone() {
     );
     // The observation of an event reads in the calendar's zone too.
     world
-        .as_account(&alice, |g| g.observe(&alice.id, p, "zulu", false, deadline))
+        .as_account(&alice, |g| {
+            g.observe(&alice.id, &p, "berlin", false, deadline)
+        })
         .expect("observed");
-    for request in world.fake.log().entries() {
-        assert_eq!(request.query_value("timeZone"), Some(ZONE));
+    world
+        .as_account(&alice, |g| {
+            g.observe(&alice.id, &utc, "zulu", false, deadline)
+        })
+        .expect("observed");
+    let log = world.fake.log();
+    assert_eq!(log.len(), 4);
+    for request in log.entries() {
+        let zone = if request.segments[3] == utc.provider_id.as_str() {
+            "UTC"
+        } else {
+            assert_eq!(request.segments[3], p.provider_id.as_str());
+            ZONE
+        };
+        assert_eq!(
+            request.query_value("timeZone"),
+            Some(zone),
+            "{}",
+            request.seq
+        );
+    }
+    world.check_log();
+}
+
+/// One item of an events page that is well-formed JSON but not a usable event fails the whole
+/// read as Rejected with the fixed sentence, never a partial result and never Transient (it
+/// would read the same again); a page that is not an answer at all is Transient.
+#[test]
+fn an_unusable_item_fails_the_whole_read_as_rejected() {
+    let (mut world, alice) = World::with_alice();
+    put(&world, &alice.primary, timed("good", "Good", 9, 10));
+    let deadline = world.deadline();
+    let q = query(
+        std::slice::from_ref(&alice.primary),
+        &[EventField::Time, EventField::Title, EventField::Attendees],
+    );
+    let good = json!({"id": "fine", "etag": "\"1\"",
+        "start": {"dateTime": "2026-11-20T09:00:00+01:00"}, "end": {"dateTime": "2026-11-20T10:00:00+01:00"}});
+    let mut wrong_type = good.clone();
+    wrong_type["summary"] = json!(5);
+    let mut unknown_answer = good.clone();
+    unknown_answer["attendees"] = json!([{"email": "a@example.com", "responseStatus": "maybe"}]);
+    let mut mixed = good.clone();
+    mixed["start"] = json!({"date": "2026-11-20"});
+    for bad in [wrong_type, unknown_answer, mixed, json!("an item")] {
+        world.fake.arm(Fault::on(
+            "GET",
+            "/calendar/v3/calendars/",
+            FaultAction::Json(200, json!({"items": [good.clone(), bad]})),
+        ));
+        let failure = world
+            .as_account(&alice, |g| g.read_events(&alice.id, &q, deadline, &|| true))
+            .expect_err("an unusable item");
+        assert_eq!(
+            rejected_with(&failure),
+            (
+                FailureCode::InvalidArguments,
+                Sentence::EventUnreadable.text().to_owned()
+            )
+        );
+    }
+    for not_an_answer in [
+        json!({"items": "x"}),
+        json!({"items": [], "nextPageToken": 3}),
+    ] {
+        world.fake.arm(Fault::on(
+            "GET",
+            "/calendar/v3/calendars/",
+            FaultAction::Json(200, not_an_answer),
+        ));
+        let failure = world
+            .as_account(&alice, |g| g.read_events(&alice.id, &q, deadline, &|| true))
+            .expect_err("no answer");
+        assert_eq!(failure, ReadFailure::transient());
     }
     world.check_log();
 }

@@ -1,25 +1,28 @@
 //! Reading events (6.4), observing one event (6.5) and the reconcile read (section 7).
 
-use fabric_desktop_contracts::agent::{Action, ToolResult};
+use fabric_desktop_contracts::agent::ToolResult;
 use fabric_desktop_contracts::common::FailureCode;
 use fabric_desktop_contracts::scalar::{AnyList, Id, ProviderRef};
 use serde_json::Value;
 
-use super::{CalendarTarget, EventsQuery, Google, Observed, ReadAnswer, check_targets};
-use crate::http::ids::{EventId, IdError, ReservedEventId};
+use super::{
+    CalendarTarget, EventsQuery, Google, Observed, ReadAnswer, check_effect, check_targets,
+};
+use crate::http::ids::EventId;
 use crate::http::{BodyBound, Method, Request, Target};
 use crate::outcome::{ReadFailure, ReadKind, Sentence};
 use crate::reconcile::{Effect, ReadBack};
 use crate::secret::Secret;
 use crate::translate::{
     GoogleEvent, Granted, ObserveError, ViewError, canonical_len, event_view, matches, observation,
-    response_event_id,
 };
 
 /// The most events one read returns (6.4, PD23).
 pub const MAX_EVENTS: usize = 2_500;
 
-/// The most bytes of canonical result one read returns: 768 KiB (6.4, PD23).
+/// The most bytes of canonical result one read returns: 768 KiB (6.4, PD23). Counted over the
+/// whole result as it is returned: the views, the commas between them and the wrapper with
+/// `observed_at`.
 pub const MAX_RESULT_BYTES: usize = 768 * 1024;
 
 fn window_too_large() -> ReadFailure {
@@ -28,6 +31,12 @@ fn window_too_large() -> ReadFailure {
 
 fn event_id_form() -> ReadFailure {
     ReadFailure::rejected(FailureCode::InvalidArguments, Sentence::EventIdForm)
+}
+
+/// Well-formed JSON from Google that is not a usable event: reading it again would give the
+/// same, so it is Rejected rather than Transient (6.10).
+fn unreadable() -> ReadFailure {
+    ReadFailure::rejected(FailureCode::InvalidArguments, Sentence::EventUnreadable)
 }
 
 /// One event read with `GET /calendars/<id>/events/<event id>?timeZone=<zone>`.
@@ -39,8 +48,12 @@ pub(crate) enum EventRead {
 }
 
 impl Google {
-    /// `GET` one event in the calendar's zone (6.5, 6.7, section 7). A 2xx that is not an event
-    /// is no usable answer: Transient.
+    /// `GET` one event in the calendar's zone (6.5, 6.7, section 7), with the large bound: one
+    /// event may carry many attendees. A body that is not a JSON object, or an event whose `id`
+    /// is not the one asked for, is no usable answer: Transient. A JSON object that is not a
+    /// usable event (a member of the wrong type, an unknown `responseStatus`, start and end of
+    /// different kinds) is Rejected `invalid_arguments` with the "event cannot be read"
+    /// sentence.
     pub(crate) fn get_event(
         &mut self,
         account: &Id,
@@ -52,15 +65,24 @@ impl Google {
         let request = Request::new(
             Method::Get,
             Target::Event(target.provider_id.clone(), event_id.clone()),
-            BodyBound::Medium,
+            BodyBound::Large,
         )
         .query("timeZone", target.time_zone.as_str());
-        match self.send_read(account, token, request, deadline_ms, ReadKind::Event)? {
-            ReadAnswer::Absent => Ok(EventRead::Absent),
-            ReadAnswer::Body(body) => GoogleEvent::read(&body)
-                .map(|event| EventRead::Event(Box::new(event)))
-                .map_err(|_| ReadFailure::transient()),
+        let body = match self.send_read(account, token, request, deadline_ms, ReadKind::Event)? {
+            ReadAnswer::Absent => return Ok(EventRead::Absent),
+            ReadAnswer::Body(body) => body,
+        };
+        // Another event than the one asked for is no answer to this read.
+        if body.get("id").and_then(Value::as_str) != Some(event_id.as_str()) {
+            return Err(ReadFailure::transient());
         }
+        let event = GoogleEvent::read(&body).map_err(|_| unreadable())?;
+        if !event.cancelled
+            && let Err(ViewError::Shape(_)) = event_view(&event, Granted::ALL, target, false)
+        {
+            return Err(unreadable());
+        }
+        Ok(EventRead::Event(Box::new(event)))
     }
 
     /// Reads every page of every calendar of `query` in one order, inside one deadline (6.4,
@@ -69,6 +91,9 @@ impl Google {
     /// only when the last page of the last calendar arrived; past 2 500 events or 768 KiB of
     /// canonical result, or with a cut or too long attendee list when attendees were asked
     /// for, the read fails with "Ask for a shorter window" (PD23). Cancelled items are skipped.
+    /// One item that is not a usable event fails the whole read as Rejected `invalid_arguments`
+    /// with the "event cannot be read" sentence; a page that is not an answer at all is
+    /// Transient.
     pub fn read_events(
         &mut self,
         account: &Id,
@@ -124,7 +149,7 @@ impl Google {
                 };
                 for item in items {
                     let Ok(event) = GoogleEvent::read(item) else {
-                        return Err(ReadFailure::transient());
+                        return Err(unreadable());
                     };
                     if event.cancelled {
                         continue;
@@ -137,11 +162,12 @@ impl Google {
                     let view = match event_view(&event, granted, target, created) {
                         Ok(view) => view,
                         Err(ViewError::Bound) => return Err(window_too_large()),
-                        Err(ViewError::Shape(_)) => return Err(ReadFailure::transient()),
+                        Err(ViewError::Shape(_)) => return Err(unreadable()),
                     };
+                    // The view and the comma before it; the wrapper is counted at the end.
                     bytes = bytes
                         .saturating_add(canonical_len(&view).unwrap_or(usize::MAX))
-                        .saturating_add(1);
+                        .saturating_add(usize::from(!events.is_empty()));
                     events.push(view);
                     if events.len() > MAX_EVENTS || bytes > MAX_RESULT_BYTES {
                         return Err(window_too_large());
@@ -158,10 +184,15 @@ impl Google {
             crate::time::format_timestamp(i64::try_from(self.now_ms()).unwrap_or(i64::MAX))
                 .map_err(|_| ReadFailure::transient())?;
         let events = AnyList::new(events).map_err(|_| ReadFailure::transient())?;
-        Ok(ToolResult::Events {
+        let result = ToolResult::Events {
             observed_at,
             events,
-        })
+        };
+        // The bound counts the result as it really is, wrapper and all (PD23).
+        if canonical_len(&result).is_none_or(|len| len > MAX_RESULT_BYTES) {
+            return Err(window_too_large());
+        }
+        Ok(result)
     }
 
     /// Observes one event (6.5, PO2): `GET` it in the calendar's zone and give the observation
@@ -202,8 +233,10 @@ impl Google {
     /// The read of section 7 (PO4): what Google holds under the effect's event, and nothing of
     /// Google's shape. `Found` with the revision and whether it equals what was approved (6.12),
     /// `Cancelled`, or `NotFound` (404 or 410). The event is the reserved id for a create, the
-    /// approved event (or occurrence instance) otherwise; an id of another form makes no
-    /// request.
+    /// approved event (or occurrence instance) otherwise. An effect that names another account
+    /// or calendar than the target, or ids of another form than 5.3 allows, makes no request
+    /// (the check [`Google::change`] makes too). For an answer to one occurrence, an instance
+    /// whose original start is not the approved instant does not match (CD-Q05b).
     pub fn reconcile_read(
         &mut self,
         account: &Id,
@@ -211,39 +244,20 @@ impl Google {
         effect: &Effect,
         deadline_ms: u64,
     ) -> Result<ReadBack, ReadFailure> {
-        check_targets(account, &[target])?;
-        let event_id = match &effect.action {
-            Action::ProposeCreate(_) => {
-                ReservedEventId::new(effect.reserved_id.as_deref().unwrap_or(""))
-                    .map(|id| id.as_event_id())
-            }
-            Action::ProposeUpdate(a) => EventId::new(a.event.event_id.as_str()),
-            Action::ProposeInvitation(a) => EventId::new(a.event.event_id.as_str()),
-            Action::ProposeDelete(a) => EventId::new(a.event.event_id.as_str()),
-            Action::ProposeResponse(a) => EventId::new(response_event_id(&a.target).0.as_str()),
-            _ => {
-                return Err(ReadFailure::rejected(
-                    FailureCode::InvalidArguments,
-                    Sentence::OrderMismatch,
-                ));
-            }
-        }
-        .map_err(|error| match error {
-            IdError::ReservedEventId => {
-                ReadFailure::rejected(FailureCode::InvalidArguments, Sentence::ReservedIdForm)
-            }
-            _ => event_id_form(),
-        })?;
+        let ids = check_effect(account, target, effect)
+            .map_err(|sentence| ReadFailure::rejected(FailureCode::InvalidArguments, sentence))?;
         let token = self.read_token(account, deadline_ms)?;
-        match self.get_event(account, &token, target, &event_id, deadline_ms)? {
+        match self.get_event(account, &token, target, &ids.event_id, deadline_ms)? {
             EventRead::Absent => Ok(ReadBack::NotFound),
             EventRead::Event(event) if event.cancelled => Ok(ReadBack::Cancelled),
             EventRead::Event(event) => {
-                let revision =
-                    ProviderRef::new(event.etag.as_str()).map_err(|_| ReadFailure::transient())?;
+                let revision = ProviderRef::new(event.etag.as_str()).map_err(|_| unreadable())?;
+                let same_occurrence = ids
+                    .original_start_ms
+                    .is_none_or(|approved| event.original_start_ms() == Some(approved));
                 Ok(ReadBack::Found {
                     revision,
-                    matches: matches(&effect.action, &event, target),
+                    matches: same_occurrence && matches(&effect.action, &event, target),
                 })
             }
         }

@@ -286,6 +286,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(debug_assertions)]
     fn loopback_is_plain_http_to_127_0_0_1_only_with_the_fakes_paths() {
         let e = Endpoints::loopback(40_123);
         assert!(e.is_loopback());
@@ -307,6 +308,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(debug_assertions)]
     fn debug_prints_no_address() {
         for e in [Endpoints::google(), Endpoints::loopback(40_123)] {
             let text = format!("{e:?} {:?} {:?}", e.token(), e.calendar());

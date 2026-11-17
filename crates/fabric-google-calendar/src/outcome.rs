@@ -211,7 +211,8 @@ impl ReadFailure {
 /// text of Google's or of a library is ever shown or stored.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Sentence {
-    /// 400 (6.10).
+    /// 400 (6.10). Only when Google answered: a request the adapter refuses itself has a
+    /// sentence of its own (PD27).
     InvalidRequest,
     /// `AuthLost(GrantEnded)` and 403 `insufficientPermissions` (3.8, 6.10).
     SignInEnded,
@@ -265,8 +266,17 @@ pub enum Sentence {
     OrderMismatch,
     /// An order with no calendar, or more than 50, for a read (6.3).
     CalendarCount,
-    /// An event that Google gave in a form the adapter cannot read (6.5).
+    /// An event that Google gave in a form the adapter cannot read: well-formed JSON that is
+    /// not a usable event (6.4, 6.5, 6.7, section 7).
     EventUnreadable,
+    /// A time in the order that the adapter cannot read (a window or an occurrence's original
+    /// start); nothing was sent.
+    TimeUnreadable,
+    /// An invitation whose approved list names one mailbox twice (the same local part, the
+    /// domain without regard to case, 6.12); nothing was sent.
+    AddressTwice,
+    /// An update that sets no member (6.7); nothing was sent.
+    NothingToChange,
     /// Section 7: an event exists under the request's id and is not what was approved.
     ReconcileCreateDiffers,
     /// Section 7: the event was created and then deleted.
@@ -279,7 +289,7 @@ pub enum Sentence {
 
 impl Sentence {
     /// Every sentence, for the tests.
-    pub const ALL: [Sentence; 31] = [
+    pub const ALL: [Sentence; 34] = [
         Sentence::InvalidRequest,
         Sentence::SignInEnded,
         Sentence::ClientRejected,
@@ -307,6 +317,9 @@ impl Sentence {
         Sentence::OrderMismatch,
         Sentence::CalendarCount,
         Sentence::EventUnreadable,
+        Sentence::TimeUnreadable,
+        Sentence::AddressTwice,
+        Sentence::NothingToChange,
         Sentence::ReconcileCreateDiffers,
         Sentence::ReconcileCreatedThenDeleted,
         Sentence::ReconcileChangedUnclear,
@@ -356,6 +369,9 @@ impl Sentence {
             Sentence::OrderMismatch => "The order does not fit its calendar.",
             Sentence::CalendarCount => "A read names 1 to 50 calendars.",
             Sentence::EventUnreadable => "Google gave the event in a form Fabric cannot read.",
+            Sentence::TimeUnreadable => "The time in the request cannot be read.",
+            Sentence::AddressTwice => "The attendee list names one address twice.",
+            Sentence::NothingToChange => "The update changes nothing.",
             Sentence::ReconcileCreateDiffers => {
                 "An event exists under this request's id and is not what was approved."
             }
@@ -482,9 +498,11 @@ fn shared_row(refusal: Refusal, read: bool) -> Option<(ChangeOutcome, Option<Sid
     let status = refusal.status;
     let rejected = |code, sentence| Some((ChangeOutcome::rejected(code, sentence), None));
     match (status, refusal.reason) {
+        (200..=299, _) => None,
         (400, _) => rejected(FailureCode::InvalidArguments, Sentence::InvalidRequest),
         (401, _) => Some((ChangeOutcome::transient(), None)),
-        (403 | 429, Reason::RateLimit) => Some((
+        // Every 429 is a refusal before acting, whatever its reason (6.10).
+        (429, _) | (403, Reason::RateLimit) => Some((
             ChangeOutcome::Transient {
                 retry_after_ms: refusal.retry_after_ms(),
             },
@@ -525,8 +543,10 @@ pub(crate) fn change_refusal(kind: ChangeKind, refusal: Refusal) -> ChangeReport
         return ChangeReport { outcome, side };
     }
     let outcome = match (kind, refusal.status) {
-        // 5xx: Google may have made the change and failed afterwards (PD17).
-        (_, 500..=599) => ChangeOutcome::NoAnswer,
+        // 5xx: Google may have made the change and failed afterwards (PD17). A 2xx is a yes
+        // that was not read; the callers read it first, and if one comes here it is an
+        // unknown outcome too (6.10).
+        (_, 500..=599 | 200..=299) => ChangeOutcome::NoAnswer,
         // 6.6: an event with this id exists; no earlier attempt of this effect made it.
         (ChangeKind::Create, 409) => {
             ChangeOutcome::rejected(FailureCode::ProviderRejected, Sentence::IdTaken)
@@ -568,7 +588,9 @@ pub(crate) fn read_refusal(kind: ReadKind, refusal: Refusal) -> ReadRefusal {
         });
     }
     match (kind, refusal.status) {
-        (_, 500..=599) => ReadRefusal::Failed(ReadFailure::transient()),
+        // A 2xx is an answer that was not read; the callers read it first, and if one comes
+        // here it is no usable answer (6.10).
+        (_, 500..=599 | 200..=299) => ReadRefusal::Failed(ReadFailure::transient()),
         (ReadKind::Event, 404 | 410) => ReadRefusal::Absent,
         (ReadKind::Calendar, 404) => ReadRefusal::Failed(ReadFailure::rejected(
             FailureCode::ProviderRejected,
@@ -807,7 +829,7 @@ mod tests {
                     ChangeOutcome::NoAnswer
                 );
             }
-            for status in [300, 301, 302, 304, 307, 418, 429, 451, 100] {
+            for status in [300, 301, 302, 304, 307, 418, 451, 100] {
                 let report = r(kind, status, Reason::Other);
                 assert_eq!(
                     code_of(&report),
@@ -907,6 +929,67 @@ mod tests {
             code(r(Calendar, 410, Reason::Other)),
             Some(FailureCode::ProviderRejected)
         );
+    }
+
+    /// A 429 always means Google refused before acting: Transient whatever its reason, with
+    /// `Retry-After` when present, for a change and for a read.
+    #[test]
+    fn every_429_is_transient_whatever_its_reason() {
+        for reason in [
+            Reason::Other,
+            Reason::Quota,
+            Reason::NonOrganizer,
+            Reason::InsufficientPermissions,
+            Reason::RateLimit,
+        ] {
+            for kind in [ChangeKind::Create, ChangeKind::Patch, ChangeKind::Delete] {
+                let report = change_refusal(kind, refusal(429, reason, None));
+                assert_eq!(report, ChangeReport::plain(ChangeOutcome::transient()));
+                assert_eq!(
+                    change_refusal(kind, refusal(429, reason, Some(9))).outcome,
+                    ChangeOutcome::Transient {
+                        retry_after_ms: Some(9_000)
+                    }
+                );
+            }
+            for kind in [ReadKind::Calendar, ReadKind::Event] {
+                assert_eq!(
+                    read_refusal(kind, refusal(429, reason, None)),
+                    ReadRefusal::Failed(ReadFailure::transient())
+                );
+                assert_eq!(
+                    read_refusal(kind, refusal(429, reason, Some(4))),
+                    ReadRefusal::Failed(ReadFailure::Transient {
+                        retry_after_ms: Some(4_000)
+                    })
+                );
+            }
+        }
+    }
+
+    /// A 2xx is never read as a refusal: for a change it is an unknown outcome, for a read no
+    /// usable answer; never `Rejected`.
+    #[test]
+    fn a_2xx_is_never_classified_as_a_refusal() {
+        for status in [200, 201, 204, 299] {
+            assert_eq!(
+                shared_row(refusal(status, Reason::Other, None), false),
+                None
+            );
+            assert_eq!(shared_row(refusal(status, Reason::Quota, None), true), None);
+            for kind in [ChangeKind::Create, ChangeKind::Patch, ChangeKind::Delete] {
+                assert_eq!(
+                    change_refusal(kind, refusal(status, Reason::Other, None)),
+                    ChangeReport::plain(ChangeOutcome::NoAnswer)
+                );
+            }
+            for kind in [ReadKind::Calendar, ReadKind::Event] {
+                assert_eq!(
+                    read_refusal(kind, refusal(status, Reason::Other, None)),
+                    ReadRefusal::Failed(ReadFailure::transient())
+                );
+            }
+        }
     }
 
     #[test]

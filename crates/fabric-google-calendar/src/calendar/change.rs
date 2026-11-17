@@ -2,29 +2,31 @@
 //!
 //! One order makes at most one request that can change Google (PD13); the reads before an
 //! invitation and a response come first. Ids and revisions are checked before any request
-//! (5.3, PD32); a failure there is Rejected `invalid_arguments` and nothing is sent. Every
+//! (5.3, PD32), as are an update that sets nothing and an attendee list that names one
+//! address twice; a failure there is Rejected `invalid_arguments` and nothing is sent. The
+//! answer to a POST or a PATCH is read with the large bound: one event may carry many
+//! attendees. Every
 //! PATCH and DELETE carries `If-Match` with the approved revision (PD14) and every changing
 //! request an explicit `sendUpdates`. With fewer than 10 s of the deadline left when the
 //! changing request is due, nothing is sent and the order is Transient (6.10).
 
-use fabric_desktop_contracts::agent::{Action, ResponseTarget};
+use fabric_desktop_contracts::agent::Action;
 use fabric_desktop_contracts::common::{FailureCode, SendUpdates};
 use fabric_desktop_contracts::scalar::{Id, ProviderRef};
 use serde_json::Value;
 
 use super::events::EventRead;
-use super::{CalendarTarget, ChangeOrder, Google};
-use crate::http::ids::{EventId, ReservedEventId, Revision};
+use super::{CalendarTarget, ChangeOrder, Google, check_effect};
+use crate::http::ids::{EventId, Revision};
 use crate::http::{BodyBound, Exchange, Method, Request, Target};
 use crate::outcome::{
     ChangeKind, ChangeOutcome, ChangeReport, Notification, ReadFailure, Refusal, Sentence,
     change_access_failure, change_refusal,
 };
 use crate::secret::Secret;
-use crate::time::parse_rfc3339_ms;
 use crate::translate::{
-    GoogleEvent, create_body, invitation_body, matches, own_entry, response_body,
-    response_confirmed, response_event_id, update_body,
+    GoogleEvent, changes_nothing, create_body, invitation_body, matches, names_an_address_twice,
+    own_entry, response_body, response_confirmed, update_body,
 };
 
 /// The least time of the deadline that must be left when the changing request is due (6.10):
@@ -74,25 +76,6 @@ fn from_read(failure: ReadFailure) -> ChangeReport {
     }
 }
 
-/// The checked event id and revision of an approved reference (5.3).
-fn checked(
-    event_id: &ProviderRef,
-    revision: &ProviderRef,
-) -> Result<(EventId, Revision), ChangeReport> {
-    let id = EventId::new(event_id.as_str()).map_err(|_| invalid(Sentence::EventIdForm))?;
-    let revision = Revision::new(revision.as_str()).map_err(|_| invalid(Sentence::RevisionForm))?;
-    Ok((id, revision))
-}
-
-/// The request an order sends, before the reads that complete its body.
-enum Plan {
-    Create(ReservedEventId),
-    Update(EventId, Revision),
-    Invitation(EventId, Revision),
-    Response(EventId, Revision, Option<i64>),
-    Delete(EventId, Revision),
-}
-
 impl Google {
     /// Carries out one changing order (6.6 to 6.8) and reports its outcome (6.10) with a result
     /// for the account when there is one (PO6). The order must name `account` and the target's
@@ -118,53 +101,20 @@ impl Google {
         deadline_ms: u64,
     ) -> Result<ChangeReport, ChangeReport> {
         let action = &order.effect.action;
-        let (action_account, action_calendar) = match action {
-            Action::ProposeCreate(a) => (&a.account_id, &a.calendar_id),
-            Action::ProposeUpdate(a) => (&a.account_id, &a.calendar_id),
-            Action::ProposeInvitation(a) => (&a.account_id, &a.calendar_id),
-            Action::ProposeResponse(a) => (&a.account_id, &a.calendar_id),
-            Action::ProposeDelete(a) => (&a.account_id, &a.calendar_id),
-            _ => return Err(invalid(Sentence::OrderMismatch)),
-        };
-        if action_account != account
-            || &target.calendar.account_id != account
-            || action_calendar != &target.calendar.calendar_id
-        {
-            return Err(invalid(Sentence::OrderMismatch));
+        // The checks of 5.3 and of the order's fit to its target, before any request (the same
+        // check `reconcile_read` makes).
+        let ids = check_effect(account, target, &order.effect).map_err(invalid)?;
+        match action {
+            Action::ProposeUpdate(a) if changes_nothing(&a.changes) => {
+                return Err(invalid(Sentence::NothingToChange));
+            }
+            Action::ProposeInvitation(a)
+                if names_an_address_twice(a.attendees.iter().map(|e| e.as_str())) =>
+            {
+                return Err(invalid(Sentence::AddressTwice));
+            }
+            _ => {}
         }
-
-        // The checks of 5.3, before any request.
-        let plan = match action {
-            Action::ProposeCreate(_) => Plan::Create(
-                ReservedEventId::new(order.effect.reserved_id.as_deref().unwrap_or(""))
-                    .map_err(|_| invalid(Sentence::ReservedIdForm))?,
-            ),
-            Action::ProposeUpdate(a) => {
-                let (id, rev) = checked(&a.event.event_id, &a.event.revision)?;
-                Plan::Update(id, rev)
-            }
-            Action::ProposeInvitation(a) => {
-                let (id, rev) = checked(&a.event.event_id, &a.event.revision)?;
-                Plan::Invitation(id, rev)
-            }
-            Action::ProposeResponse(a) => {
-                let (event_id, revision) = response_event_id(&a.target);
-                let (id, rev) = checked(event_id, revision)?;
-                let original = match &a.target {
-                    ResponseTarget::Event(_) => None,
-                    ResponseTarget::Occurrence(o) => Some(
-                        parse_rfc3339_ms(o.original_start_time.date_time.as_str())
-                            .map_err(|_| invalid(Sentence::InvalidRequest))?,
-                    ),
-                };
-                Plan::Response(id, rev, original)
-            }
-            Action::ProposeDelete(a) => {
-                let (id, rev) = checked(&a.event.event_id, &a.event.revision)?;
-                Plan::Delete(id, rev)
-            }
-            _ => return Err(invalid(Sentence::OrderMismatch)),
-        };
 
         let token = self
             .tokens
@@ -173,47 +123,37 @@ impl Google {
 
         // The request, and for an invitation and a response the event as read before it.
         let calendar = target.provider_id.clone();
-        let (request, kind, expected_id, read, sent_updates) = match (&plan, action) {
-            (Plan::Create(id), Action::ProposeCreate(a)) => {
+        let id = &ids.event_id;
+        let (request, kind, read, sent_updates) = match (action, ids.revision.as_ref()) {
+            (Action::ProposeCreate(a), None) => {
                 let request =
-                    Request::new(Method::Post, Target::Events(calendar), BodyBound::Medium)
+                    Request::new(Method::Post, Target::Events(calendar), BodyBound::Large)
                         .query("sendUpdates", "none")
                         .json(&create_body(&a.event, id));
-                (
-                    request,
-                    ChangeKind::Create,
-                    id.as_str().to_owned(),
-                    None,
-                    SendUpdates::None,
-                )
+                (request, ChangeKind::Create, None, SendUpdates::None)
             }
-            (Plan::Update(id, rev), Action::ProposeUpdate(a)) => {
+            (Action::ProposeUpdate(a), Some(rev)) => {
                 let request = patch(&calendar, id, rev, a.send_updates)
                     .and_then(|r| r.json(&update_body(&a.changes)));
-                (
-                    request,
-                    ChangeKind::Patch,
-                    id.as_str().to_owned(),
-                    None,
-                    a.send_updates,
-                )
+                (request, ChangeKind::Patch, None, a.send_updates)
             }
-            (Plan::Invitation(id, rev), Action::ProposeInvitation(a)) => {
+            (Action::ProposeInvitation(a), Some(rev)) => {
                 let read = self.read_before(account, &token, target, id, rev, None, deadline_ms)?;
                 let own = own_entry(&read, target);
                 let request = patch(&calendar, id, rev, a.send_updates)
                     .and_then(|r| r.json(&invitation_body(&read, &a.attendees, own)));
-                (
-                    request,
-                    ChangeKind::Patch,
-                    id.as_str().to_owned(),
-                    Some(read),
-                    a.send_updates,
-                )
+                (request, ChangeKind::Patch, Some(read), a.send_updates)
             }
-            (Plan::Response(id, rev, original), Action::ProposeResponse(a)) => {
-                let read =
-                    self.read_before(account, &token, target, id, rev, *original, deadline_ms)?;
+            (Action::ProposeResponse(a), Some(rev)) => {
+                let read = self.read_before(
+                    account,
+                    &token,
+                    target,
+                    id,
+                    rev,
+                    ids.original_start_ms,
+                    deadline_ms,
+                )?;
                 // An answer needs an own entry (6.1, 6.7): another person's invitation on a
                 // calendar that person shared is never answered.
                 let Some(own) = own_entry(&read, target) else {
@@ -224,15 +164,9 @@ impl Google {
                 };
                 let request = patch(&calendar, id, rev, a.send_updates)
                     .and_then(|r| r.json(&response_body(&read, own, a.response)));
-                (
-                    request,
-                    ChangeKind::Patch,
-                    id.as_str().to_owned(),
-                    Some(read),
-                    a.send_updates,
-                )
+                (request, ChangeKind::Patch, Some(read), a.send_updates)
             }
-            (Plan::Delete(id, rev), Action::ProposeDelete(a)) => {
+            (Action::ProposeDelete(a), Some(rev)) => {
                 let request = Request::new(
                     Method::Delete,
                     Target::Event(calendar, id.clone()),
@@ -240,16 +174,11 @@ impl Google {
                 )
                 .query("sendUpdates", send_updates(a.send_updates))
                 .if_match(rev);
-                (
-                    request,
-                    ChangeKind::Delete,
-                    id.as_str().to_owned(),
-                    None,
-                    a.send_updates,
-                )
+                (request, ChangeKind::Delete, None, a.send_updates)
             }
             _ => return Err(invalid(Sentence::OrderMismatch)),
         };
+        let expected_id = id.as_str();
         // The request is formed from checked values; a failure here means nothing exists to
         // send.
         let request = request
@@ -322,7 +251,8 @@ impl Google {
 
     /// The read before an invitation or a response (6.7): it must return the approved
     /// revision and must not have `attendeesOmitted: true`; for one occurrence its original
-    /// start must be the approved instant (CD-Q05b). Otherwise Rejected without a PATCH.
+    /// start must be the approved instant (CD-Q05b). Otherwise Rejected without a PATCH. An
+    /// event that cannot be read is Rejected too, and no PATCH is sent.
     #[allow(clippy::too_many_arguments)]
     fn read_before(
         &mut self,
@@ -377,7 +307,7 @@ fn patch(
     Request::new(
         Method::Patch,
         Target::Event(calendar.clone(), id.clone()),
-        BodyBound::Medium,
+        BodyBound::Large,
     )
     .query("sendUpdates", send_updates(updates))
     .if_match(revision)

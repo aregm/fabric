@@ -1,6 +1,8 @@
 //! Refresh, revocation and token-store failures against the fake (design 3.8, 3.9, section
 //! 4): g14, g15, g17.
 
+#![cfg(debug_assertions)]
+
 mod common;
 mod oauth_common;
 
@@ -13,7 +15,7 @@ use fabric_google_calendar::oauth::{
 };
 use fabric_google_calendar::{
     AccessCache, AccessFailure, AccessTokens, AuthLostCause, Clock, Secret, TokenStore,
-    TokenStoreError,
+    TokenStoreError, forget,
 };
 use fabric_google_fake::{Decision, Fault, FaultAction, TokenFault};
 use oauth_common::*;
@@ -368,5 +370,124 @@ fn g17_a_sign_in_whose_token_store_write_fails_is_cancelled_token_store_and_keep
         assert!(store.read(&account(1)).expect("read").is_none());
     }
     assert!(rig.fake.log().revocations().is_empty());
+    rig.check_log();
+}
+
+#[test]
+fn g14_a_refresh_under_way_when_the_account_is_forgotten_stores_nothing_and_is_auth_lost() {
+    for rotate in [false, true] {
+        let rig = connected();
+        // Not a forget: the next call refreshes.
+        rig.cache.drop_token(&account(1));
+        let (store, cache, id) = (rig.store.clone(), rig.cache.clone(), account(1));
+        // The sign-in thread forgets the account while the refresh is at Google.
+        let mut fault = refresh_fault(FaultAction::before(move |_| {
+            forget(&mut store.clone(), &cache, &id).expect("forget");
+        }));
+        if rotate {
+            fault = fault.and(FaultAction::Token(TokenFault::RotateRefreshToken));
+        }
+        rig.fake.arm(fault);
+        let writes = rig.store.writes();
+        assert_eq!(
+            rig.access().access_token(&account(1), rig.deadline()).err(),
+            Some(AccessFailure::AuthLost(AuthLostCause::GrantEnded)),
+            "rotate {rotate}"
+        );
+        assert!(
+            rig.cache.get_valid(&account(1), 0, 0).is_none(),
+            "rotate {rotate}"
+        );
+        assert!(rig.store.token(&account(1)).is_none(), "rotate {rotate}");
+        assert_eq!(
+            rig.store.writes(),
+            writes,
+            "rotate {rotate}: nothing written"
+        );
+        assert_eq!(rig.token_requests("refresh_token"), 1);
+        rig.check_log();
+    }
+}
+
+#[test]
+fn g14_a_401_drop_during_a_refresh_is_not_a_forget_and_the_refresh_keeps_its_token() {
+    let rig = connected();
+    rig.cache.drop_token(&account(1));
+    let (cache, id) = (rig.cache.clone(), account(1));
+    rig.fake.arm(refresh_fault(FaultAction::before(move |_| {
+        cache.drop_token(&id)
+    })));
+    let token = rig
+        .access()
+        .access_token(&account(1), rig.deadline())
+        .expect("a token");
+    assert_eq!(
+        rig.cache
+            .get_valid(&account(1), rig.clock.now_ms(), 0)
+            .expect("cached")
+            .expose(),
+        token.expose()
+    );
+    assert!(rig.store.token(&account(1)).is_some());
+    rig.check_log();
+}
+
+#[test]
+fn g14_a_refresh_answer_with_a_token_that_cannot_go_in_a_header_is_transient_and_keeps_nothing() {
+    for (member, value) in [
+        ("access_token", "ya29.with space"),
+        ("access_token", "ya29.\u{7f}"),
+        ("refresh_token", "1//with space"),
+    ] {
+        let label = format!("{member} of {} bytes", value.len());
+        let rig = connected();
+        let stored = rig.store.token(&account(1));
+        rig.cache.drop_account(&account(1));
+        rig.fake
+            .arm(refresh_fault(FaultAction::Token(TokenFault::Member(
+                member.to_owned(),
+                serde_json::Value::String(value.to_owned()),
+            ))));
+        let writes = rig.store.writes();
+        assert_eq!(
+            rig.access().access_token(&account(1), rig.deadline()).err(),
+            Some(AccessFailure::Transient),
+            "{label}"
+        );
+        assert!(rig.cache.get_valid(&account(1), 0, 0).is_none(), "{label}");
+        assert_eq!(rig.store.token(&account(1)), stored, "{label}");
+        assert_eq!(rig.store.writes(), writes, "{label}");
+        rig.check_log();
+    }
+}
+
+#[test]
+fn g14_a_rotated_refresh_token_that_cannot_be_stored_still_gives_the_access_token() {
+    let rig = connected();
+    let old = rig.store.token(&account(1)).expect("stored");
+    rig.cache.drop_token(&account(1));
+    rig.fake.arm(refresh_fault(FaultAction::Token(
+        TokenFault::RotateRefreshToken,
+    )));
+    rig.store.refuse_writes(true);
+    let writes = rig.store.writes();
+    let token = rig
+        .access()
+        .access_token(&account(1), rig.deadline())
+        .expect("the call goes on");
+    assert_eq!(rig.store.writes(), writes + 1, "the write was tried");
+    assert!(
+        rig.fake
+            .with_state(|s| s.access_token_valid(token.expose()))
+    );
+    assert_eq!(
+        rig.cache
+            .get_valid(&account(1), rig.clock.now_ms(), 0)
+            .expect("cached")
+            .expose(),
+        token.expose()
+    );
+    // The rotation is lost: the store keeps the old token.
+    assert_eq!(rig.store.token(&account(1)), Some(old));
     rig.check_log();
 }

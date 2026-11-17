@@ -17,8 +17,8 @@ contract win wherever they differ from this document. Sections 9 to 13 are reque
 and the lead writes the store design. Sections 8 and 6.9 are proposed to the owner as ADR-111 (Proposed), sections
 6.6 to 7 as ADR-113 (Proposed).
 
-Date 2026-11-17. Status: **Proposed**. Sections 2 to 8, 14 and 15 describe what phase 1 builds. Three independent
-readers went through the first draft before anything was built (18.4).
+Date 2026-11-17. Status: **Proposed**. Sections 2 to 8, 14 and 15 describe phase 1 as built. Three independent
+readers went through the first draft before anything was built (18.4), and two more read the code (15.4).
 
 Abbreviations (paths relative to the repository root):
 
@@ -158,7 +158,7 @@ Linux GC can reach only the loopback double, which is all a test needs (the brok
   access token (3.8); `oauth::revoke`; `BrowserOpener` (a recording double in debug builds; `SystemBrowser` comes
   in phase 2).
 - `tokens::{TokenStore, MemoryTokenStore, TokenStoreError, AccessCache, AccessTokens}` and `forget`.
-- `calendar::Google::new(transport, access tokens, clock)` with `list_calendars`, `free_busy`, `read_events`,
+- `calendar::Google::new(transport, access tokens)` with `list_calendars`, `free_busy`, `read_events`,
   `observe`, `change`, `reconcile_read`. `CalendarTarget` names a calendar for them (6.4).
 - `outcome::{ChangeOutcome, ReadFailure, RetryPolicy, RetryDecision, next_attempt}`.
 - `reconcile::{Effect, ReadBack, Verdict, decide, earliest_read_ms}`.
@@ -290,7 +290,8 @@ fixed label, never a part of the token.
 3. Header `kid` is present and names a key of Google's key set (`https://www.googleapis.com/oauth2/v3/certs`), with
    `kty` `RSA`, `alg` absent or `RS256`, `use` absent or `sig`, a modulus of 2048 to 8192 bits and the exponent
    65537. The key set is fetched over TLS, kept in memory for the `max-age` of its `Cache-Control` (not under 5
-   minutes, not over 24 hours), and fetched again once when a `kid` is unknown, at most once a minute.
+   minutes, not over 24 hours), and fetched once more when a `kid` is unknown, unless the set in hand was fetched
+   for this same token, and at most once a minute.
 4. The signature over `header.payload` verifies with that key: RSASSA-PKCS1-v1_5 with SHA-256 and its DigestInfo
    prefix.
 5. `iss` is `https://accounts.google.com` or `accounts.google.com`.
@@ -476,7 +477,8 @@ for tests; a broker may use it only with the test key source, never with the Key
 - Every call has a deadline: the earlier of the order's deadline and now plus 30 s (PLAN 5). Connecting has at most
   10 s of it.
 - A response body is read up to a bound and no further: 64 KiB for the token, revocation and error answers,
-  256 KiB for the key set and for one event, 4 MiB for a list page. More is treated as no usable answer.
+  256 KiB for the key set, 4 MiB for one event (an event may carry 2 000 attendees) and for a list page. More is
+  treated as no usable answer.
 - A JSON body is read only from an answer that says `application/json`. It is read into `serde_json::Value`
   first and then into lenient structs: unknown members are ignored, missing optional members are absent, a member
   of the wrong type is an error. An answer of another content type keeps its status (Google answers some errors
@@ -546,6 +548,9 @@ name)" when empty); `primary`; `timeZone`; the access role:
 | `freeBusyReader` | `free_busy_reader` | no |
 | anything else | the entry is left out | |
 
+An entry is also left out when it is marked deleted, when its `timeZone` is missing or not a zone the contract can
+hold, or when its id is the word `primary` (PD22).
+
 The core turns the list into the account's calendars, issues ids (section 8), keeps `selected` and `agent_drafts`
 as the owner set them, and treats a lost entry or a lower role as a reduction of authority (CO7).
 
@@ -578,8 +583,9 @@ this is "every event that overlaps the half-open window"), `timeZone=<the calend
   lifecycle sees one dispatch.
 - A result exists only when the last page of the last calendar arrived. A failure at any page leaves nothing
   (PD23).
-- Bounds (PD23), counted over all pages and calendars: at most 2 500 events and at most 768 KiB of canonical
-  result. Past either, the read fails: "The window holds more events than one answer can carry. Ask for a shorter
+- Bounds (PD23), counted over all pages and calendars: at most 2 500 events and at most 768 KiB for the whole
+  result in canonical form. An item that cannot be read as an event fails the read (6.10); no item is skipped
+  silently except a cancelled one. Past either, the read fails: "The window holds more events than one answer can carry. Ask for a shorter
   window." The same failure when an event has `attendeesOmitted: true` or more than 2 000 attendees and attendees
   were asked for: the contract's list cannot hold them, and a cut list is never shown as whole.
 - An item with `status` `cancelled` is skipped.
@@ -628,7 +634,8 @@ names, made before each proof on such an action (PO2), and gives:
 
 Results: `Found`, `Absent` (404, 410, or `status` `cancelled`), or a read failure (6.10). The observation fails
 with `invalid_arguments` when `attendeesOmitted` is `true` or when an attendee address does not fit the contract's
-`email` (PD25): the check of who is notified must see everyone.
+`email` (PD25): the check of who is notified must see everyone. An answer whose event has another id than the one
+asked for is no usable answer. `recurrence` counts as present when it is not empty.
 
 ### 6.6 Creating an event (`fabric_calendar_propose_create`)
 
@@ -649,6 +656,7 @@ keeps Google's default (OQ13 names one of them).
 | 200 with an event whose `id` is the reserved one | Applied, with `(id, etag)` and `confirmed`: whether the returned event equals the approved one (6.12) |
 | 200 with another `id`, or a body that is not an event | NoAnswer |
 | 409 | Rejected `provider_rejected` ("an event with this id already exists"). No earlier attempt of this effect can have made it (PD17), so the event is not Fabric's, and it is never recorded as created |
+| 404, 410, 412 | Rejected `provider_rejected` |
 | others | 6.10 |
 
 A retry after a Transient attempt sends the same body with the same reserved id (PLAN 11). An event counts as
@@ -670,6 +678,11 @@ revision>` (PD14, PD15). `sendUpdates` is always written: `all`, `externalOnly` 
   otherwise Rejected (`revision_conflict`, or `invalid_arguments` for a cut list) without a PATCH. For an answer to
   one occurrence the path names the instance id, and the instance's `originalStartTime` must be the approved
   instant; otherwise `revision_conflict` (CD-Q05b: instance id, original start and revision are bound together).
+- Two orders are refused before any request, as `invalid_arguments`: an update that sets no member (it would
+  change nothing and could still notify everyone), and an invitation whose approved list names one mailbox twice
+  (two addresses that differ only in the case of the domain; the contract's addresses cannot be written so today,
+  and the check stays as a guard). The local part of an address is compared exactly;
+  only the domain's case is ignored (PLAN S04: no invented equivalence).
 - An answer needs an own entry (6.1); without one it is Rejected `provider_rejected` ("this account is not invited
   to this event on this calendar"). So an invitation of another person, seen on a calendar that person shared, is
   never answered.
@@ -695,6 +708,7 @@ revision>` (PD14, PD15). `sendUpdates` is always written: `all`, `externalOnly` 
 | 204 or 200 | Applied, no event, `notification` as in 6.7 |
 | 412 | Rejected `revision_conflict` |
 | 404, 410 | Rejected `revision_conflict` ("the event is already gone"). Fabric did not delete it and sent no notice; the agent reads again |
+| 409 | Transient, as for a PATCH |
 | others | 6.10 |
 
 That only an event Fabric created may be deleted is the theory's rule (`Fabric_created`) on the store's record
@@ -751,7 +765,9 @@ else that is not a plain yes or a plain refusal is an unknown outcome. For a cha
 The reasons are read against this closed list; an unknown reason is "any other" (PD27).
 
 For a read (6.2 to 6.5, and the reads of section 7) there is no NoAnswer: an unanswered read, a 5xx and a 2xx
-whose body cannot be read are Transient. 404 on a calendar is Rejected `provider_rejected`; 404 on an event is `Absent`; the other rows hold.
+whose body is not complete JSON are Transient. A 2xx whose JSON is well formed and is not a usable event (a member
+of the wrong type, an answer status the contract does not know) is Rejected `invalid_arguments` ("the event cannot
+be read"): trying again would give the same. 404 on a calendar is Rejected `provider_rejected`; 404 on an event is `Absent`; the other rows hold.
 
 `AuthLost` and `AccessChanged` are side results beside the outcome (PO6).
 
@@ -799,8 +815,11 @@ action (`System_reconcile account calendar event`, THEORY) and needs its proof (
 
 The adapter's answer to a reconcile order says only what Google holds: `Found` (an event that is not cancelled,
 with its revision and whether it equals what was approved, 6.12), `Cancelled`, or `NotFound` (404 or 410). Nothing
-in it is Google's own shape. The table below is then a pure function of that answer,
-`reconcile::decide(tool, approved revision, reads before, read_back) -> Verdict`. The lead's answer of 2026-11-17
+in it is Google's own shape. The reconcile read refuses an effect that does not belong to the calendar it was
+given, and for an answer to one occurrence "equals" also means the occurrence's original start is the approved
+one. The table below is then a pure function of that answer,
+`reconcile::decide(tool, approved revision, whether the change could notify, when an earlier read said "not
+yet", read_back, time of this read) -> Verdict`. The lead's answer of 2026-11-17
 is that the core owns this table (18.5); `decide` in GC is the table as plain code with its tests, for the core to
 take over.
 
@@ -819,8 +838,9 @@ take over.
 | delete | found, another revision | `Absent`: it exists and changed, so the conditional delete cannot have been made and cannot be made later | `absence_confirmed` |
 
 - **`NotYet` (PD20).** The change is not there now, but Google may still be finishing the request the broker
-  stopped waiting for, and G-DOC gives no bound. On the first read `NotYet` is `ReadAgain`, no sooner than 60 s
-  later; on the second it is `Absent` (`reconciling -> absence_confirmed`). This holds for every tool: a late
+  stopped waiting for, and G-DOC gives no bound. `NotYet` is `ReadAgain`, no sooner than 60 s later, unless an
+  earlier read that Google answered already said `NotYet` at least 60 s before; then it is `Absent`
+  (`reconciling -> absence_confirmed`). A read that failed does not count. This holds for every tool: a late
   PATCH or DELETE still matches its `If-Match` as long as nobody else changed the event.
 - `earliest_read_ms(attempt_finished_ms)` is the attempt's end plus 10 s. After a restart the end of the attempt is
   not known; the core uses the start of its recovery plus 10 s (CO8).
@@ -1090,15 +1110,15 @@ of its own account.
 | g03 | Denied consent is `ConsentDenied`; nothing is stored; no token request is made |
 | g04 | A missing calendar scope, and a missing address scope, are `PartialGrant`; nothing is stored; no revocation is asked |
 | g05 | A scope beyond the five is `UnexpectedScope`; nothing stored; no revocation is asked |
-| g06 | A reconnect as another subject, and a new connect as a subject some account record has, are `AccountMismatch`; the token store is never written, and the existing account's token still refreshes at FAKE |
+| g06 | A reconnect as another subject, and a new connect as a subject some account record has, are `AccountMismatch`; the token store is never written, and the existing account's token still refreshes at FAKE. A superseded reconnect never deletes the token of the flow that superseded it |
 | g07 | The listener: a wrong state, a missing state, a doubled parameter, another path, another method, another `Host` each get an error page; sixty of them do not end the flow; the right state ends it once; a second callback finds no listener; a wrong `iss` is `GoogleError`; unknown parameters are ignored |
 | g08 | The listener ends after 300 s (test clock) with `TimedOut`, and at once when superseded |
 | g09 | The page the listener answers is the fixed text and echoes no parameter; seven idle connections do not delay the callback |
 | g10 | Each identity-token fault of 14.2 is `IdentityCheckFailed`, and nothing is stored |
-| g11 | An unknown key id fetches the key set once more and then verifies; the key set is cached by its `max-age` within the bounds |
+| g11 | A key that appears after the set was kept: one more fetch, then it verifies; a set fetched for this same token is not fetched again; at most one such fetch a minute; the key set is cached by its `max-age` within the bounds |
 | g12 | An unverified address, and one the contract cannot hold, do not connect |
 | g13 | The token answer: no refresh token, another token type, not JSON, each end `Cancelled`; `invalid_client` is `ClientRejected`; `refresh_token_expires_in` is passed on; `expires_in` is held to its bounds |
-| g14 | Refresh: an access token near its end is refreshed before the call; a 401 drops it and is Transient; `invalid_grant` and `admin_policy_enforced` are `AuthLost(GrantEnded)`, `invalid_client` is `AuthLost(ClientRejected)`, each deletes the stored token and the cached one; a new refresh token is stored; other scopes are `AuthLost` |
+| g14 | Refresh: an access token near its end is refreshed before the call; a 401 drops it and is Transient; `invalid_grant` and `admin_policy_enforced` are `AuthLost(GrantEnded)`, `invalid_client` is `AuthLost(ClientRejected)`, each deletes the stored token and the cached one; a new refresh token is stored; other scopes are `AuthLost`; a refresh under way when the account is forgotten stores nothing; a 401 from a real Calendar call drops the cached token and the next call refreshes (`oauth_with_calendar`) |
 | g15 | Revocation: 200 and `invalid_token` are `Revoked`; anything else is `NotConfirmed` |
 | g16 | No secret in any `Debug`, `Display` or error text: the verifier, state, code, tokens, client secret, a calendar id and an event title of a full run with injected faults are searched for in every formatted value the tests can reach |
 | g17 | Token-store failures (a scripted store): `Locked` is Transient, `Refused` and `Failed` are Rejected, and in each case FAKE saw no request |
@@ -1134,6 +1154,12 @@ of its own account.
 | g47 | `Endpoints::google()` is the five constants; the loopback set accepts only `127.0.0.1` (unit) |
 | g48 | The client file: the `installed` shape is read, other members ignored; a missing secret and another shape are errors that name the path and no content (unit, with a made-up file) |
 | f01 | FAKE's own rules: a code is single use and bound to its challenge and redirect; `If-Match`; a duplicate id; revisions rise; the log is complete |
+
+The tests are in `crates/fabric-google-calendar/tests/`: `oauth_signin`, `oauth_listener`, `oauth_identity`,
+`oauth_access`, `oauth_secrets`, `oauth_with_calendar` (g01 to g17), `calendar_list`, `calendar_read`,
+`calendar_change`, `calendar_transport`, `reconcile` (g18 to g43), `http`, `tokens`, `fitness` (the transport
+rules, g17's store, g46), and unit tests in the modules (g44, g45, g47, g48). FAKE's own are in
+`crates/fabric-google-fake/tests/`.
 
 ### 15.2 The rows of gate `CD-G2b` and what stands in for each
 
@@ -1180,6 +1206,28 @@ Each is run by the owner at the Mac with the accounts of RUNBOOK, in phase 2.
 | LV12 | The five scopes are enough for every call of section 6 and none is unused: the calendar list with `calendar.calendarlist.readonly`, free/busy with `calendar.freebusy` (it does not accept `calendar.events`), every events call with `calendar.events`. This is the scope freeze of PLAN 10.2 |
 | LV13 | The entry marked `self`: on the primary calendar it is the account (FA15); on a calendar another account shared it is that other account, and Fabric refuses to answer that person's invitation |
 | LV14 | The event ids Google itself gives, for ordinary, imported and recurring events, against 5.3 (FA17) |
+
+### 15.4 Results as they stand
+
+macOS, Apple silicon, 2026-11-17, debug profile, on `main` at `2d41210` merged with this branch:
+
+- `sh scripts/verify.sh` (format check, check, clippy with `-D warnings`, tests, docs, the whole workspace):
+  passed. 994 tests passed, 0 failed, 43 ignored. None of the ignored tests is in the two new crates.
+- `sh scripts/run.sh cargo test --locked -p fabric-google-calendar -p fabric-google-fake`: 289 passed, 0 failed, 0
+  ignored (the adapter 226: 117 unit and 109 against FAKE or a scripted peer; FAKE 63). Five more runs in a row
+  gave the same.
+- `sh scripts/run.sh cargo check --release --locked -p fabric-google-calendar --lib` and `--tests`: finished. In
+  a release build the loopback endpoints and the test doubles do not exist and the tests that need them compile
+  to nothing.
+- Not run: Linux and Windows (CI runs them on the pull request); any ignored test; `verify-desktop.sh` (nothing
+  of the desktop app or the broker binary changed); anything against the real Google.
+
+Two independent reviewers then read the code, one the transport and the sign-in, one the Calendar part. Neither
+found a wrong result or a leak that the tests had missed; both found weaknesses, which were fixed before this
+pull request: a superseded sign-in could delete the token of the sign-in that replaced it; a refresh under way
+could store a token for an account that had just been forgotten; a token could be put on a request to the wrong
+host by one wrong call; a reconcile read did not check that its effect belonged to its calendar; an update that
+changed nothing was sent; several tests proved less than their names said.
 
 ---------------------------------------------------------------------------------------------------------------------
 
@@ -1262,6 +1310,8 @@ decision. Merging the pull request that carries them is the owner's acceptance.
   redirect; closing that needs a socket option the workspace's no-`unsafe` rule keeps out of reach. The broker is a
   macOS product and Windows only runs its tests. On every platform a local program can also hold the listener's
   eight places and delay a sign-in until its 300 s end (3.3).
+- RK20 The local part of an address is compared exactly. If an agent proposes `bob@x.com` where Google holds
+  `Bob@x.com`, the change removes one entry and invites the other; the owner's card shows a removal (CO6).
 - RK19 The two bounds of a read nearly coincide: 2 500 events with ordinary ids already pass 768 KiB, so the byte
   bound is the one that usually applies.
 

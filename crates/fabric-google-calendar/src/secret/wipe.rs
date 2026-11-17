@@ -1,9 +1,10 @@
 //! A JSON value that is wiped when dropped (3.2.2: what Google issued is wiped from memory).
 //!
-//! A token answer and the payload of an identity token are read into a
-//! [`serde_json::Value`], whose strings are plain `String`s. [`WipedJson`] owns such a value and
-//! overwrites every string in it on drop. Member names are not wiped; they are Google's fixed
-//! names. Copies inside the JSON library's own buffers are not reached (RK14).
+//! A token answer, the payload of an identity token and the client file (which holds the
+//! client secret, 3.1) are read into a [`serde_json::Value`], whose strings are plain
+//! `String`s. [`WipedJson`] owns such a value and overwrites every string in it on drop. Member
+//! names are not wiped; they are Google's fixed names. Copies inside the JSON library's own
+//! buffers are not reached (RK14).
 
 use serde_json::Value;
 use zeroize::Zeroize;

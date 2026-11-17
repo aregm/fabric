@@ -117,9 +117,27 @@ impl fmt::Debug for MemoryTokenStore {
 
 /// Access tokens in memory: account id to the token and the time it ends, in Unix ms (3.8,
 /// section 4). Clones share one map.
+///
+/// Each account also has a generation, which [`AccessCache::drop_account`] (and so
+/// [`forget`]) raises. A refresh reads it before it reads the refresh token, and keeps what
+/// the refresh returned only when it is unchanged: a refresh that was under way when the
+/// account was forgotten stores nothing (section 4).
 #[derive(Clone, Default)]
 pub struct AccessCache {
-    tokens: Arc<Mutex<HashMap<Id, (Secret, u64)>>>,
+    inner: Arc<Mutex<CacheInner>>,
+}
+
+#[derive(Default)]
+struct CacheInner {
+    tokens: HashMap<Id, (Secret, u64)>,
+    /// Raised by every forget; an account never forgotten is at 0.
+    generations: HashMap<Id, u64>,
+}
+
+impl CacheInner {
+    fn generation(&self, account: &Id) -> u64 {
+        self.generations.get(account).copied().unwrap_or(0)
+    }
 }
 
 impl AccessCache {
@@ -133,26 +151,69 @@ impl AccessCache {
     /// `None`, and the caller refreshes (3.8: a margin of 60 s).
     #[must_use]
     pub fn get_valid(&self, account: &Id, now_ms: u64, margin_ms: u64) -> Option<Secret> {
-        let tokens = lock(&self.tokens);
-        let (token, ends_at_ms) = tokens.get(account)?;
+        let inner = lock(&self.inner);
+        let (token, ends_at_ms) = inner.tokens.get(account)?;
         (*ends_at_ms > now_ms.saturating_add(margin_ms)).then(|| Secret::from(token.expose()))
     }
 
     /// Keeps `token` for the account until `ends_at_ms`, replacing an older one.
     pub fn put(&self, account: &Id, token: Secret, ends_at_ms: u64) {
-        lock(&self.tokens).insert(account.clone(), (token, ends_at_ms));
+        lock(&self.inner)
+            .tokens
+            .insert(account.clone(), (token, ends_at_ms));
     }
 
-    /// Drops the account's access token (a 401, 3.8; or [`forget`]).
+    /// Forgets the account in the cache: drops its access token and raises its generation, so
+    /// that a refresh under way for it stores nothing when it returns (section 4). [`forget`]
+    /// calls it.
     pub fn drop_account(&self, account: &Id) {
-        lock(&self.tokens).remove(account);
+        let mut inner = lock(&self.inner);
+        inner.tokens.remove(account);
+        let generation = inner.generation(account).wrapping_add(1);
+        inner.generations.insert(account.clone(), generation);
+    }
+
+    /// Drops the account's access token only, after a 401 from a Calendar call (3.8). This is
+    /// not a forget: the generation stays, and a refresh under way still keeps its token.
+    pub fn drop_token(&self, account: &Id) {
+        lock(&self.inner).tokens.remove(account);
+    }
+
+    /// The account's generation, read by a refresh before it reads the refresh token.
+    pub(crate) fn generation(&self, account: &Id) -> u64 {
+        lock(&self.inner).generation(account)
+    }
+
+    /// When the account's generation is still `generation`: runs `first` and then keeps
+    /// `token` until `ends_at_ms`, both under the cache's lock, so that no [`forget`] can come
+    /// between them; [`forget`] that follows deletes what `first` stored. Otherwise does
+    /// nothing. Gives whether the token was kept.
+    pub(crate) fn put_if_current(
+        &self,
+        account: &Id,
+        generation: u64,
+        token: Secret,
+        ends_at_ms: u64,
+        first: impl FnOnce(),
+    ) -> bool {
+        let mut inner = lock(&self.inner);
+        if inner.generation(account) != generation {
+            return false;
+        }
+        first();
+        inner.tokens.insert(account.clone(), (token, ends_at_ms));
+        true
     }
 }
 
 /// Prints how many accounts, never a token or an account id.
 impl fmt::Debug for AccessCache {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "AccessCache({} accounts)", lock(&self.tokens).len())
+        write!(
+            f,
+            "AccessCache({} accounts)",
+            lock(&self.inner).tokens.len()
+        )
     }
 }
 
@@ -189,14 +250,16 @@ pub trait AccessTokens: Send {
     /// The account's access token, valid for at least 60 s more, refreshed when needed. One
     /// refresh attempt at most, inside `deadline_ms` (Unix ms).
     fn access_token(&mut self, account: &Id, deadline_ms: u64) -> Result<Secret, AccessFailure>;
-    /// Drops the account's cached access token, after a 401 from a Calendar call (3.8).
+    /// Drops the account's cached access token, after a 401 from a Calendar call (3.8). This
+    /// is not a forget: the stored refresh token stays.
     fn drop_cached(&mut self, account: &Id);
 }
 
 /// Removes the account from the token store and from the cache in one step (section 4):
 /// `AuthLost`, a failed reconnect and `disconnect_google` all go through it. The cached access
 /// token is dropped first and always, so it never outlives the refresh token even when the
-/// store fails; the store's error is returned.
+/// store fails; the store's error is returned. The account's generation is raised
+/// ([`AccessCache::drop_account`]), so a refresh under way stores nothing when it returns.
 pub fn forget(
     store: &mut dyn TokenStore,
     cache: &AccessCache,
@@ -318,6 +381,31 @@ mod tests {
             assert_eq!(forget(&mut store, &cache, &a), Err(error));
             assert!(cache.get_valid(&a, 0, 0).is_none());
         }
+    }
+
+    #[test]
+    fn only_a_forget_raises_the_generation_and_a_stale_put_keeps_nothing() {
+        let mut store = MemoryTokenStore::new();
+        let cache = AccessCache::new();
+        let a = account(9);
+        let before = cache.generation(&a);
+        cache.put(&a, Secret::from("t"), u64::MAX);
+        cache.drop_token(&a);
+        assert!(cache.get_valid(&a, 0, 0).is_none());
+        assert_eq!(cache.generation(&a), before, "a 401 is not a forget");
+        let mut ran = false;
+        assert!(cache.put_if_current(&a, before, Secret::from("t2"), u64::MAX, || ran = true));
+        assert!(ran);
+        assert_eq!(cache.get_valid(&a, 0, 0).expect("kept").expose(), "t2");
+
+        forget(&mut store, &cache, &a).expect("forget");
+        assert_ne!(cache.generation(&a), before);
+        let mut ran = false;
+        assert!(!cache.put_if_current(&a, before, Secret::from("t3"), u64::MAX, || ran = true));
+        assert!(!ran, "nothing runs for a stale generation");
+        assert!(cache.get_valid(&a, 0, 0).is_none());
+        // Another account is not touched.
+        assert_eq!(cache.generation(&account(10)), 0);
     }
 
     #[test]

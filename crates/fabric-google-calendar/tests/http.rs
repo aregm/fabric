@@ -10,7 +10,7 @@ mod common;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use common::{Reply, ScriptedPeer, Witness, answer, answer_until_close, closed_port};
+use common::{ClosedPort, Reply, ScriptedPeer, Witness, answer, answer_until_close};
 use fabric_google_calendar::http::{
     BodyBound, BodyError, Exchange, Method, NotSentReason, Request, Target, Transport, USER_AGENT,
     UnansweredReason,
@@ -58,7 +58,8 @@ fn expect_unanswered(exchange: &Exchange) -> UnansweredReason {
 
 #[test]
 fn a_closed_port_is_nothing_sent() {
-    let t = transport(closed_port());
+    let closed = ClosedPort::new();
+    let t = transport(closed.port());
     let result = t.send(get_list(), deadline(SOON_MS));
     assert!(
         matches!(result, Exchange::NothingSent(NotSentReason::ConnectFailed)),
@@ -362,10 +363,12 @@ fn the_crate_sends_its_own_headers_and_no_others() {
     .expect("a body");
     expect_answer(t.send(patch, deadline(SOON_MS)));
 
-    let form = Request::new(Method::Post, Target::Token, BodyBound::Small).form(&[
-        ("grant_type", "refresh_token"),
-        ("refresh_token", "1//r t&x=y"),
-    ]);
+    let form = Request::new(Method::Post, Target::Token, BodyBound::Small)
+        .form(&[
+            ("grant_type", "refresh_token"),
+            ("refresh_token", "1//r t&x=y"),
+        ])
+        .expect("a form for the token endpoint");
     expect_answer(t.send(form, deadline(SOON_MS)));
 
     let delete = Request::new(
@@ -523,7 +526,8 @@ fn run_proxy_child(mode: &str, proxy: &Witness) -> String {
 #[test]
 fn the_proxy_variables_of_the_environment_are_ignored() {
     let control_proxy = Witness::start();
-    let unused = closed_port();
+    let closed = ClosedPort::new();
+    let unused = closed.port();
     let stdout = run_proxy_child(&format!("control:{unused}"), &control_proxy);
     assert!(stdout.contains("proxy child: control done"), "{stdout}");
     assert!(
@@ -655,7 +659,8 @@ fn no_formatted_result_or_error_holds_an_address_a_header_value_a_body_or_a_secr
     }
     peer.finish();
     // A connect error and a deadline already past.
-    let closed = closed_port();
+    let closed_port = ClosedPort::new();
+    let closed = closed_port.port();
     let t = transport(closed);
     let r = t.send(request(), deadline(SOON_MS));
     texts.push(format!("{r:?}"));
@@ -663,7 +668,7 @@ fn no_formatted_result_or_error_holds_an_address_a_header_value_a_body_or_a_secr
     let r = t.send(request(), 0);
     texts.push(format!("{r:?}"));
     // Request errors.
-    let e = Request::new(Method::Get, Target::Keys, BodyBound::Small)
+    let e = Request::new(Method::Get, Target::CalendarList, BodyBound::Small)
         .bearer(&Secret::from("SENTINEL TOKEN"))
         .expect_err("refused");
     texts.push(format!("{e} {e:?}"));

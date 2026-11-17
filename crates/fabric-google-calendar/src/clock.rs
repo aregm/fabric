@@ -2,9 +2,11 @@
 //!
 //! Everything that needs the time takes a clock: deadlines (5.2), access-token ends (3.8), the
 //! identity token's times (3.5 item 7), the listener's lifetime (3.3). Only [`SystemClock`]
-//! reads the system clock. Tests use [`ManualClock`] and move it themselves.
+//! reads the system clock. Tests use `ManualClock` and move it themselves; it exists only in a
+//! debug build (PD2: no test seam in release).
 
 use std::sync::Arc;
+#[cfg(debug_assertions)]
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -30,10 +32,13 @@ impl Clock for SystemClock {
 }
 
 /// A test double: a clock that moves only when told. Clones share one time, so a test can hold
-/// one handle and give another to the code under test, across threads.
+/// one handle and give another to the code under test, across threads. Only in a debug build
+/// (PD2).
+#[cfg(debug_assertions)]
 #[derive(Clone, Debug, Default)]
 pub struct ManualClock(Arc<AtomicU64>);
 
+#[cfg(debug_assertions)]
 impl ManualClock {
     /// A clock that reads `now_ms` until it is set or advanced.
     #[must_use]
@@ -56,6 +61,7 @@ impl ManualClock {
     }
 }
 
+#[cfg(debug_assertions)]
 impl Clock for ManualClock {
     fn now_ms(&self) -> u64 {
         self.0.load(Ordering::SeqCst)
@@ -73,6 +79,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(debug_assertions)]
     fn a_manual_clock_moves_only_when_told_and_its_clones_share_the_time() {
         let clock = ManualClock::new(1_000);
         let other = clock.clone();
@@ -87,6 +94,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(debug_assertions)]
     fn a_manual_clock_is_shared_across_threads() {
         let clock = ManualClock::new(0);
         let shared: SharedClock = Arc::new(clock.clone());

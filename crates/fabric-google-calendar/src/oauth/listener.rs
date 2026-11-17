@@ -3,8 +3,10 @@
 //! The rules of 3.3 and where each is kept:
 //!
 //! - It binds `127.0.0.1:0`, IPv4 only ([`Listener::bind`]).
-//! - It lives at most [`LIFETIME_MS`] from the start of the flow, on the crate's [`Clock`], or
-//!   until the flow is superseded; it reads both every [`POLL`] (well under the 250 ms of 3.3).
+//! - It lives at most [`LIFETIME_MS`] from the start of the flow, on the crate's [`Clock`] and
+//!   on the monotonic system clock ([`Instant`]), whichever ends first, or until the flow is
+//!   superseded; it reads all three every [`POLL`] (well under the 250 ms of 3.3). The crate's
+//!   clock is the wall clock in production, which can be set back; the monotonic one cannot.
 //!   Nothing else ends it without a result: wrong requests never do ([`Listener::run`]).
 //! - It serves up to [`MAX_CONNECTIONS`] connections at once; a further one waits in the
 //!   system's backlog until a slot is free. Each connection has [`HEAD_TIME`] to send a request
@@ -24,9 +26,14 @@
 //!   thread joined, before it returns, so before the token request is made (3.3: a code can be
 //!   presented once).
 //!
+//! - After the answer the connection's write side is shut down, and what the browser still
+//!   sends is read and dropped (at most [`DRAIN_MAX`] bytes, for at most [`DRAIN_TIME`])
+//!   before the socket is closed: closing with unread bytes makes some systems reset the
+//!   connection, and the browser may then lose the page.
+//!
 //! Threads: the accept loop runs on the thread that calls [`Listener::run`]. Each accepted
-//! connection gets a thread of its own, which ends after at most [`HEAD_TIME`] for the head
-//! and [`HEAD_TIME`] for writing the answer. `run` joins every one of them before it returns;
+//! connection gets a thread of its own, which ends after at most [`HEAD_TIME`] for the head,
+//! [`HEAD_TIME`] for writing the answer and [`DRAIN_TIME`] for the drain. `run` joins every one of them before it returns;
 //! none is detached, so no thread outlives the flow.
 
 use std::fmt;
@@ -54,9 +61,18 @@ pub const HEAD_TIME: Duration = Duration::from_secs(2);
 /// The largest request head read, in bytes (3.3).
 pub const MAX_HEAD: usize = 8 * 1024;
 
-/// How often the accept loop looks at the clock and the supersede flag (3.3: at least every
+/// How often the accept loop looks at the clocks and the supersede flag (3.3: at least every
 /// 250 ms).
 pub const POLL: Duration = Duration::from_millis(20);
+
+/// The lifetime of [`LIFETIME_MS`] on the monotonic clock (3.3).
+const LIFETIME: Duration = Duration::from_millis(LIFETIME_MS);
+
+/// The most bytes read and dropped after an answer, before the connection is closed.
+pub const DRAIN_MAX: usize = 4 * 1024;
+
+/// The longest the drain after an answer waits for the browser to close its side.
+pub const DRAIN_TIME: Duration = Duration::from_millis(200);
 
 /// The issuer a callback's `iss` must name when present (3.3; G-DOC, RFC 9207).
 pub const ISSUER: &str = "https://accounts.google.com";
@@ -76,7 +92,7 @@ pub enum CallbackEnd {
     /// The right state with another `error`, both or neither of `code` and `error`, an empty
     /// or unreadable `code`, or an `iss` other than Google's.
     GoogleError,
-    /// [`LIFETIME_MS`] passed on the crate's clock.
+    /// [`LIFETIME_MS`] passed on the crate's clock or on the monotonic clock.
     TimedOut,
     /// The supersede flag was set.
     Superseded,
@@ -130,14 +146,16 @@ impl Listener {
     }
 
     /// Serves until the first request with the right `state`, until [`LIFETIME_MS`] after
-    /// `started_ms` on `clock`, or until `superseded` is set, whichever comes first. A time-out
-    /// or a supersede seen by the loop wins over a callback that arrives while the loop shuts
-    /// down. Closes the socket and joins every connection thread before it returns.
+    /// `started_ms` on `clock` or after `started_at` on the monotonic clock, or until
+    /// `superseded` is set, whichever comes first. A time-out or a supersede seen by the loop
+    /// wins over a callback that arrives while the loop shuts down. Closes the socket and
+    /// joins every connection thread before it returns.
     pub fn run(
         self,
         state: &Secret,
         clock: &dyn Clock,
         started_ms: u64,
+        started_at: Instant,
         superseded: &AtomicBool,
     ) -> CallbackEnd {
         let state = Arc::new(Secret::from(state.expose()));
@@ -150,7 +168,9 @@ impl Listener {
             if superseded.load(Ordering::SeqCst) {
                 break Some(CallbackEnd::Superseded);
             }
-            if clock.now_ms().saturating_sub(started_ms) >= LIFETIME_MS {
+            if clock.now_ms().saturating_sub(started_ms) >= LIFETIME_MS
+                || started_at.elapsed() >= LIFETIME
+            {
                 break Some(CallbackEnd::TimedOut);
             }
             workers.retain(|worker| !worker.is_finished());
@@ -198,7 +218,7 @@ fn lock<T>(mutex: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
 }
 
 /// What one request gets.
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug)]
 pub enum Verdict {
     /// 400: another method, another host, a malformed head, a wrong or missing state.
     BadRequest,
@@ -208,21 +228,41 @@ pub enum Verdict {
     Ends(EndKind),
 }
 
-/// How the request with the right state ends the listener, without the code itself.
-#[derive(Debug, PartialEq, Eq)]
+/// How the request with the right state ends the listener.
 pub enum EndKind {
-    /// `code` exactly once, readable and not empty; it is handed out separately.
-    Code,
+    /// `code` exactly once, readable and not empty: the code.
+    Code(Secret),
     /// `error=access_denied`.
     Denied,
     /// Any other end with the right state.
     GoogleError,
 }
 
-/// Judges a request head (3.3). Returns the verdict and, for [`EndKind::Code`], the code.
+/// Prints the kind, never the code.
+impl fmt::Debug for EndKind {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(match self {
+            EndKind::Code(_) => "Code([redacted])",
+            EndKind::Denied => "Denied",
+            EndKind::GoogleError => "GoogleError",
+        })
+    }
+}
+
+impl From<EndKind> for CallbackEnd {
+    fn from(end: EndKind) -> CallbackEnd {
+        match end {
+            EndKind::Code(code) => CallbackEnd::Code(code),
+            EndKind::Denied => CallbackEnd::Denied,
+            EndKind::GoogleError => CallbackEnd::GoogleError,
+        }
+    }
+}
+
+/// Judges a request head (3.3).
 #[must_use]
-pub fn judge(head: &[u8], port: u16, state: &Secret) -> (Verdict, Option<Secret>) {
-    let bad = (Verdict::BadRequest, None);
+pub fn judge(head: &[u8], port: u16, state: &Secret) -> Verdict {
+    let bad = Verdict::BadRequest;
     let Ok(text) = std::str::from_utf8(head) else {
         return bad;
     };
@@ -253,7 +293,7 @@ pub fn judge(head: &[u8], port: u16, state: &Secret) -> (Verdict, Option<Secret>
     }
     let (path, query) = target.split_once('?').unwrap_or((target, ""));
     if path != "/" {
-        return (Verdict::NotFound, None);
+        return Verdict::NotFound;
     }
     let mut params = Params::read(query);
     let right_state = params.state.len() == 1
@@ -269,16 +309,18 @@ pub fn judge(head: &[u8], port: u16, state: &Secret) -> (Verdict, Option<Secret>
         _ => false,
     };
     if !iss_ok {
-        return (Verdict::Ends(EndKind::GoogleError), None);
+        return Verdict::Ends(EndKind::GoogleError);
     }
-    match (params.code.as_mut_slice(), params.error.as_slice()) {
-        ([code], []) => match code.take() {
-            Some(code) if !code.is_empty() => (Verdict::Ends(EndKind::Code), Some(code)),
-            _ => (Verdict::Ends(EndKind::GoogleError), None),
+    Verdict::Ends(
+        match (params.code.as_mut_slice(), params.error.as_slice()) {
+            ([code], []) => match code.take() {
+                Some(code) if !code.is_empty() => EndKind::Code(code),
+                _ => EndKind::GoogleError,
+            },
+            ([], [denied]) if *denied => EndKind::Denied,
+            _ => EndKind::GoogleError,
         },
-        ([], [denied]) if *denied => (Verdict::Ends(EndKind::Denied), None),
-        _ => (Verdict::Ends(EndKind::GoogleError), None),
-    }
+    )
 }
 
 /// The parameters the listener reads; every other one is dropped while reading (3.3).
@@ -374,21 +416,16 @@ fn serve(mut stream: TcpStream, port: u16, state: &Secret, result: &Mutex<Option
             return;
         }
     };
-    let (verdict, code) = judge(&head, port, state);
-    let status = match verdict {
+    let status = match judge(&head, port, state) {
         Verdict::BadRequest => 400,
         Verdict::NotFound => 404,
-        Verdict::Ends(kind) => {
+        Verdict::Ends(end) => {
             let mut slot = lock(result);
             if slot.is_some() {
                 // Another request with the right state came first; this one changes nothing.
                 400
             } else {
-                *slot = Some(match (kind, code) {
-                    (EndKind::Code, Some(code)) => CallbackEnd::Code(code),
-                    (EndKind::Denied, _) => CallbackEnd::Denied,
-                    _ => CallbackEnd::GoogleError,
-                });
+                *slot = Some(end.into());
                 200
             }
         }
@@ -461,13 +498,38 @@ pub fn answer_bytes(status: u16) -> Vec<u8> {
     .into_bytes()
 }
 
-/// Writes the fixed answer within [`HEAD_TIME`] and closes the connection.
+/// Writes the fixed answer within [`HEAD_TIME`], shuts down the write side, reads and drops
+/// what the browser still sends (at most [`DRAIN_MAX`] bytes within [`DRAIN_TIME`]), and
+/// closes the connection when the stream is dropped. Closing at once with unread bytes in the
+/// receive buffer makes some systems reset the connection, and the browser may lose the page.
 fn answer(stream: &mut TcpStream, status: u16) {
     if stream.set_write_timeout(Some(HEAD_TIME)).is_ok() {
         let _ = stream.write_all(&answer_bytes(status));
         let _ = stream.flush();
     }
-    let _ = stream.shutdown(Shutdown::Both);
+    if stream.shutdown(Shutdown::Write).is_err() {
+        return;
+    }
+    drain(stream);
+}
+
+/// Reads and drops at most [`DRAIN_MAX`] bytes within [`DRAIN_TIME`], until the peer closes.
+fn drain(stream: &mut TcpStream) {
+    let deadline = Instant::now() + DRAIN_TIME;
+    let mut chunk = Zeroizing::new([0u8; 1024]);
+    let mut read = 0usize;
+    while read < DRAIN_MAX {
+        let now = Instant::now();
+        if now >= deadline || stream.set_read_timeout(Some(deadline - now)).is_err() {
+            return;
+        }
+        match stream.read(chunk.as_mut()) {
+            Ok(0) => return,
+            Ok(n) => read += n,
+            Err(e) if e.kind() == ErrorKind::Interrupted => {}
+            Err(_) => return,
+        }
+    }
 }
 
 #[cfg(test)]
@@ -484,8 +546,28 @@ mod tests {
         format!("GET {target} HTTP/1.1\r\nHost: 127.0.0.1:{PORT}\r\nAccept: text/html").into_bytes()
     }
 
-    fn verdict(head: &[u8]) -> Verdict {
-        judge(head, PORT, &state()).0
+    /// A verdict without the code, to compare.
+    #[derive(Debug, PartialEq, Eq)]
+    enum V {
+        BadRequest,
+        NotFound,
+        Code,
+        Denied,
+        GoogleError,
+    }
+
+    fn kind(verdict: Verdict) -> V {
+        match verdict {
+            Verdict::BadRequest => V::BadRequest,
+            Verdict::NotFound => V::NotFound,
+            Verdict::Ends(EndKind::Code(_)) => V::Code,
+            Verdict::Ends(EndKind::Denied) => V::Denied,
+            Verdict::Ends(EndKind::GoogleError) => V::GoogleError,
+        }
+    }
+
+    fn verdict(head: &[u8]) -> V {
+        kind(judge(head, PORT, &state()))
     }
 
     const S: &str = "state=abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQ";
@@ -493,20 +575,23 @@ mod tests {
 
     #[test]
     fn the_right_state_and_one_code_ends_with_the_code() {
-        let (v, code) = judge(
+        let v = judge(
             &head(&format!(
                 "/?{S}&{ISS}&code=4%2F0abc&scope=x&authuser=0&prompt=consent"
             )),
             PORT,
             &state(),
         );
-        assert_eq!(v, Verdict::Ends(EndKind::Code));
-        assert_eq!(code.expect("a code").expose(), "4/0abc");
-        // Without `iss` too.
+        let Verdict::Ends(EndKind::Code(code)) = v else {
+            panic!("the verdict ends with a code");
+        };
+        assert_eq!(code.expose(), "4/0abc");
         assert_eq!(
-            verdict(&head(&format!("/?code=c&{S}"))),
-            Verdict::Ends(EndKind::Code)
+            format!("{:?}", Verdict::Ends(EndKind::Code(code))),
+            "Ends(Code([redacted]))"
         );
+        // Without `iss` too.
+        assert_eq!(verdict(&head(&format!("/?code=c&{S}"))), V::Code);
     }
 
     #[test]
@@ -520,14 +605,14 @@ mod tests {
             "/?state=%zz&code=c".to_owned(),
             "/?STATE=abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQ&code=c".to_owned(),
         ] {
-            assert_eq!(verdict(&head(&target)), Verdict::BadRequest, "{target}");
+            assert_eq!(verdict(&head(&target)), V::BadRequest, "{target}");
         }
         // An encoded name still is the name.
         assert_eq!(
             verdict(&head(
                 "/?st%61te=abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQ&code=c"
             )),
-            Verdict::Ends(EndKind::Code)
+            V::Code
         );
     }
 
@@ -535,7 +620,7 @@ mod tests {
     fn code_and_error_must_be_exactly_one_of_them() {
         assert_eq!(
             verdict(&head(&format!("/?{S}&error=access_denied&{ISS}"))),
-            Verdict::Ends(EndKind::Denied)
+            V::Denied
         );
         for target in [
             format!("/?{S}&error=server_error"),
@@ -546,11 +631,7 @@ mod tests {
             format!("/?{S}&code="),
             format!("/?{S}&code=%zz"),
         ] {
-            assert_eq!(
-                verdict(&head(&target)),
-                Verdict::Ends(EndKind::GoogleError),
-                "{target}"
-            );
+            assert_eq!(verdict(&head(&target)), V::GoogleError, "{target}");
         }
     }
 
@@ -563,13 +644,13 @@ mod tests {
         ] {
             assert_eq!(
                 verdict(&head(&format!("/?{S}&{iss}&code=c"))),
-                Verdict::Ends(EndKind::GoogleError),
+                V::GoogleError,
                 "{iss}"
             );
         }
         assert_eq!(
             verdict(&head(&format!("/?{S}&{ISS}&{ISS}&code=c"))),
-            Verdict::Ends(EndKind::GoogleError)
+            V::GoogleError
         );
     }
 
@@ -580,35 +661,26 @@ mod tests {
         };
         let good = format!("/?{S}&code=c");
         let host = format!("127.0.0.1:{PORT}");
-        assert_eq!(verdict(&with("POST", &good, &host)), Verdict::BadRequest);
-        assert_eq!(verdict(&with("get", &good, &host)), Verdict::BadRequest);
+        assert_eq!(verdict(&with("POST", &good, &host)), V::BadRequest);
+        assert_eq!(verdict(&with("get", &good, &host)), V::BadRequest);
         assert_eq!(
             verdict(&with("GET", &good, "localhost:51234")),
-            Verdict::BadRequest
+            V::BadRequest
         );
-        assert_eq!(
-            verdict(&with("GET", &good, "127.0.0.1:1")),
-            Verdict::BadRequest
-        );
-        assert_eq!(
-            verdict(&with("GET", &good, "127.0.0.1")),
-            Verdict::BadRequest
-        );
+        assert_eq!(verdict(&with("GET", &good, "127.0.0.1:1")), V::BadRequest);
+        assert_eq!(verdict(&with("GET", &good, "127.0.0.1")), V::BadRequest);
         assert_eq!(
             verdict(&format!("GET {good} HTTP/1.1\r\nHost: {host}\r\nHost: {host}").into_bytes()),
-            Verdict::BadRequest
+            V::BadRequest
         );
         assert_eq!(
             verdict(&format!("GET {good} HTTP/1.1").into_bytes()),
-            Verdict::BadRequest
+            V::BadRequest
         );
-        assert_eq!(
-            verdict(&with("GET", "/favicon.ico", &host)),
-            Verdict::NotFound
-        );
+        assert_eq!(verdict(&with("GET", "/favicon.ico", &host)), V::NotFound);
         assert_eq!(
             verdict(&with("GET", &format!("/callback?{S}&code=c"), &host)),
-            Verdict::NotFound
+            V::NotFound
         );
         assert_eq!(
             verdict(&with(
@@ -616,13 +688,13 @@ mod tests {
                 &format!("http://127.0.0.1:{PORT}/?{S}&code=c"),
                 &host
             )),
-            Verdict::NotFound
+            V::NotFound
         );
         assert_eq!(
             verdict(&format!("GET {good} SPDY/3\r\nHost: {host}").into_bytes()),
-            Verdict::BadRequest
+            V::BadRequest
         );
-        assert_eq!(verdict(b"\xff\xfe"), Verdict::BadRequest);
+        assert_eq!(verdict(b"\xff\xfe"), V::BadRequest);
     }
 
     #[test]
@@ -637,6 +709,56 @@ mod tests {
         let ok = String::from_utf8(answer_bytes(200)).expect("text");
         assert!(ok.contains(PAGE_TEXT));
         assert!(!ok.contains(ERROR_TEXT));
+    }
+
+    #[test]
+    fn the_listener_ends_after_300_s_on_the_monotonic_clock_when_the_crate_clock_stands_still() {
+        /// A wall clock that was set back: it shows no time passing.
+        struct Still;
+        impl Clock for Still {
+            fn now_ms(&self) -> u64 {
+                5_000
+            }
+        }
+        // A system that has run for less than 300 s cannot give such an instant.
+        let Some(long_ago) = Instant::now().checked_sub(LIFETIME) else {
+            return;
+        };
+        let listener = Listener::bind().expect("a listener");
+        let end = listener.run(&state(), &Still, 5_000, long_ago, &AtomicBool::new(false));
+        assert!(matches!(end, CallbackEnd::TimedOut), "{end:?}");
+    }
+
+    #[test]
+    fn the_page_arrives_whole_when_the_browser_sent_more_than_the_head() {
+        let server = TcpListener::bind("127.0.0.1:0").expect("a loopback port");
+        let port = server.local_addr().expect("an address").port();
+        let mut client = TcpStream::connect(("127.0.0.1", port)).expect("connected");
+        let (stream, _) = server.accept().expect("accepted");
+        let serving = std::thread::spawn(move || {
+            let result = Mutex::new(None);
+            serve(stream, port, &state(), &result);
+            lock(&result).is_none()
+        });
+        // A head with a wrong state, and bytes after it that the listener never reads.
+        let mut request =
+            format!("GET /?state=wrong HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\n\r\n").into_bytes();
+        request.extend(std::iter::repeat_n(b'x', 3_000));
+        client.write_all(&request).expect("sent");
+        // A guard against a hang, not a timing assumption.
+        client
+            .set_read_timeout(Some(Duration::from_secs(10)))
+            .expect("a guard");
+        let mut answer = Vec::new();
+        client
+            .read_to_end(&mut answer)
+            .expect("the whole answer and a clean end, no reset");
+        assert_eq!(answer, answer_bytes(400));
+        drop(client);
+        assert!(
+            serving.join().expect("served"),
+            "a wrong state ends nothing"
+        );
     }
 
     #[test]

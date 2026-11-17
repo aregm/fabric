@@ -224,7 +224,8 @@ fn send_updates_ok(request: &Request) -> Result<(), Response> {
 fn calendar_list(state: &State, subject: &str, request: &Request) -> Response {
     let max = match number_param(request, "maxResults") {
         Ok(Some(n)) if n < 1 => return invalid("Invalid value for: maxResults"),
-        Ok(n) => n.unwrap_or(100).min(250) as usize,
+        Ok(n) => (n.unwrap_or(100).min(250) as usize)
+            .min(state.calendar_list_page_size.unwrap_or(usize::MAX)),
         Err(r) => return r,
     };
     let min_rank = match request.query_all("minAccessRole").first() {

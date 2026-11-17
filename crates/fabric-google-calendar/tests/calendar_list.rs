@@ -1,29 +1,36 @@
 //! The calendar list (6.2) and two accounts side by side (6.1): g18, g19.
 
+// The loopback endpoints and `ManualClock` exist only in debug builds (PD2).
+#![cfg(debug_assertions)]
+
 mod calendar_common;
 
-use base64::Engine;
-use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use calendar_common::{CLIENT, World, ZONE};
 use fabric_desktop_contracts::common::{CalendarAccess, FailureCode};
 use fabric_google_calendar::outcome::ReadFailure;
-use fabric_google_fake::{CalendarEntry, Fault, FaultAction};
-use serde_json::json;
+use fabric_google_fake::CalendarEntry;
 
-/// g18: pages, the roles of 6.2, names, hidden entries listed, an unknown role and an unusable
-/// id left out.
+/// g18: pages (the fake fills each with two entries, fewer than asked), the roles of 6.2,
+/// names, hidden entries listed, an unknown role, an unusable id and the id `primary` left out
+/// (PD22).
 #[test]
 fn the_calendar_list_reads_every_page_maps_the_roles_lists_hidden_entries_and_leaves_out_the_unusable()
  {
     let (mut world, alice) = World::with_alice();
+    world.fake.add_calendar(
+        &alice.subject,
+        CalendarEntry::new("writer@example.com", "writer")
+            .summary(Some("Team"))
+            .time_zone(ZONE),
+    );
     for (id, role) in [
-        ("writer@example.com", "writer"),
         ("wwpa@example.com", "writerWithoutPrivateAccess"),
         ("reader@example.com", "reader"),
         ("fb@example.com", "freeBusyReader"),
         ("odd-role@example.com", "none"),
         ("..", "owner"),
         ("a/b@example.com", "owner"),
+        ("primary", "owner"),
     ] {
         world
             .fake
@@ -43,28 +50,17 @@ fn the_calendar_list_reads_every_page_maps_the_roles_lists_hidden_entries_and_le
         &alice.subject,
         CalendarEntry::new("long@example.com", "reader").summary(Some(&"\u{e9}".repeat(300))),
     );
-    // The first page is scripted with two entries and a page token that the fake reads as
-    // "from the third entry on", so the listing must follow it.
-    let first_page = json!({
-        "kind": "calendar#calendarList",
-        "items": [
-            {"id": alice.email, "summary": alice.email, "accessRole": "owner", "primary": true, "timeZone": ZONE},
-            {"id": "writer@example.com", "summary": "Team", "accessRole": "writer", "timeZone": ZONE},
-        ],
-        "nextPageToken": URL_SAFE_NO_PAD.encode("fake-page:2"),
-    });
-    world.fake.arm(Fault::on(
-        "GET",
-        "/calendar/v3/users/me/calendarList",
-        FaultAction::Json(200, first_page),
-    ));
+    // Google may fill a page with fewer entries than asked (6.2): twelve entries, six pages.
+    world
+        .fake
+        .with_state(|s| s.set_calendar_list_page_size(Some(2)));
     let deadline = world.deadline();
     let list = world
         .as_account(&alice, |g| g.list_calendars(&alice.id, deadline))
         .expect("a list");
 
     let requests = world.fake.log();
-    assert_eq!(requests.len(), 2, "two pages");
+    assert_eq!(requests.len(), 6, "six pages");
     for request in requests.entries() {
         assert_eq!(request.query_value("maxResults"), Some("250"));
         assert_eq!(request.query_value("minAccessRole"), Some("freeBusyReader"));
@@ -72,7 +68,11 @@ fn the_calendar_list_reads_every_page_maps_the_roles_lists_hidden_entries_and_le
         assert_eq!(request.query_value("showDeleted"), None);
     }
     assert_eq!(requests.entries()[0].query_value("pageToken"), None);
-    assert!(requests.entries()[1].query_value("pageToken").is_some());
+    assert!(
+        requests.entries()[1..]
+            .iter()
+            .all(|r| r.query_value("pageToken").is_some())
+    );
 
     let ids: Vec<&str> = list.iter().map(|e| e.provider_id.as_str()).collect();
     assert_eq!(

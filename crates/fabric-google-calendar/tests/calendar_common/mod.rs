@@ -131,7 +131,7 @@ pub struct World {
     pub fake: FakeGoogle,
     /// The adapter, pointed at the fake.
     pub google: Google,
-    /// The adapter's clock, at the fake's time.
+    /// The transport's clock (the adapter's only clock), at the fake's time.
     pub clock: ManualClock,
     /// The tokens the adapter gets.
     pub tokens: TestTokens,
@@ -155,7 +155,7 @@ impl World {
                 .expect("a loopback transport"),
         );
         let tokens = TestTokens::default();
-        let google = Google::new(transport, Box::new(tokens.clone()), Arc::new(clock.clone()));
+        let google = Google::new(transport, Box::new(tokens.clone()));
         World {
             fake,
             google,
