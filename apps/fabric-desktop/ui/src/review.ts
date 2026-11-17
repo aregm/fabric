@@ -4,10 +4,9 @@
 // the owner's commands through `model.command`.
 import type { Agent, Grant, ProofReport } from "../../../../contracts/desktop/v1/typescript/src/contract.ts";
 import type { Entry, Failure, Model } from "./model.ts";
-import { currentHealth } from "./status.ts";
 import {
-  NO_PROOF, OPERATION, OWNER_CAN_DO, TERMINAL, agentFacts, agentName, approvalFacts, askedFacts, attemptFacts, authorizationFacts,
-  formatInstant, grantFacts, proofFacts,
+  NO_PROOF, OPERATION, OWNER_CAN_DO, TERMINAL, UNDECIDED_REASON, UNDECIDED_REASON_UNKNOWN, agentFacts, agentName, approvalFacts,
+  askedFacts, attemptFacts, authorizationFacts, formatInstant, grantFacts, proofFacts,
 } from "./text.ts";
 import type { Fact } from "./text.ts";
 
@@ -28,13 +27,13 @@ export interface CommandState {
 export interface RequestLines {
   readonly ruling: string | null; // "Rule <rule>: <explanation>"
   readonly proofId: string | null; // the proof of the ruling
-  readonly reason: string | null; // why it failed, or for an undecided one that the rule checker is not ready now
+  readonly reason: string | null; // why it failed, or why no proof decided it as the broker recorded it (once read)
   readonly help: string | null; // what the owner can do for an unknown outcome
 }
 
 // The details of a request, in the parts the view shows.
 export interface DetailsParts {
-  readonly general: readonly Fact[]; // received, last change, account, request digest
+  readonly general: readonly Fact[]; // received, last change, why it was not decided (undecided only), account, request digest
   readonly asked: readonly Fact[]; // empty while the approval card shows them
   readonly decision: readonly Fact[]; // empty when nobody decided
   readonly proofIds: readonly string[]; // in the broker's order, newest first
@@ -101,16 +100,15 @@ export class ReviewModel {
     return {
       ruling: "denial" in s ? `Rule ${s.denial.rule}: ${s.denial.explanation}` : null,
       proofId: "denial" in s ? s.denial.proof_id : null,
-      reason: "failure" in s ? `Reason: ${s.failure.explanation}` : s.state === "undecided" ? this.proverReason() : null,
+      reason: "failure" in s ? `Reason: ${s.failure.explanation}` : s.state === "undecided" ? this.undecidedReason(e) : null,
       help: OWNER_CAN_DO[s.state] ?? null,
     };
   }
 
-  // Why an undecided request may not have been decided: the rule checker of this run is not ready.
-  private proverReason(): string | null {
-    const prover = currentHealth(this.model)?.prover;
-    return prover === "unavailable" ? "The rule checker is not running now."
-      : prover === "starting" ? "The rule checker is starting now." : null;
+  // Why no proof decided the request, as the broker recorded it; null until read, or when it recorded none.
+  private undecidedReason(e: Entry): string | null {
+    const reason = e.undecided?.reason ?? null;
+    return reason === null ? null : `Reason: ${UNDECIDED_REASON[reason]}`;
   }
 
   // Why the card asks, and while it is open when it expires; a closed card says why the owner was asked.
@@ -148,10 +146,13 @@ export class ReviewModel {
     const names = m.names;
     const z = names.zone;
     const r = d.request;
+    const why: Fact[] = r.status.state !== "undecided" ? []
+      : [{ term: "Why it was not decided", values: [d.undecided_reason === null ? UNDECIDED_REASON_UNKNOWN : UNDECIDED_REASON[d.undecided_reason]] }];
     return {
       general: [
         { term: "Received", values: [formatInstant(r.received_at, z)] },
         { term: "Last change", values: [formatInstant(r.updated_at, z)] },
+        ...why,
         { term: "Account", values: [r.account_id === null ? "None" : names.accounts.get(r.account_id)?.email ?? r.account_id] },
         { term: "Request digest", values: [r.request_digest] },
       ],

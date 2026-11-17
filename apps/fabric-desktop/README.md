@@ -31,7 +31,7 @@ npm packages, all for development and pinned: `@tauri-apps/cli`, `typescript`, `
 
 ## The screens
 
-The page has five screens (CD-W08) and, above them, a strip that says what needs the owner now: the broker stopped, a store that cannot be opened with the broker's reason, the rule checker not running, an account that needs a new sign-in, and how many requests wait for a decision.
+The page has five screens (CD-W08) and, above them, a strip that says what needs the owner now: the broker stopped, a store that cannot be opened with the broker's reason, the rule checker not running (with the cause the broker names and what you can do about it), an account that needs a new sign-in, and how many requests wait for a decision.
 
 | Screen | What it does | Owner methods |
 |---|---|---|
@@ -81,7 +81,7 @@ curl -X POST http://127.0.0.1:4317/harness/release-store   # that process ends
 npm run harness -- --broker harness/replay-broker.ts --port 4319
 ```
 
-With the store held, "Restart broker" in the page starts a broker that cannot open its store, and the strip shows the broker's reason and "Read the current state again"; after the release the broker opens the store at the next request that comes five seconds or more after its last try. The last line runs a stand-in in place of the broker. It replays the contract's fixtures and changes nothing, to look at what this broker cannot show yet, or shows only in the practice run: a blocked request with its proof, a request that was carried out, a failure, several agents, an account that needs a new sign-in. It is for looking at the page and never evidence for a gate.
+With the store held, "Restart broker" in the page starts a broker that cannot open its store, and the strip shows the broker's reason and "Read the current state again"; after the release the broker opens the store at the next request that comes five seconds or more after its last try. The last line runs a stand-in in place of the broker. It replays the contract's fixtures and changes nothing, to look at what this broker cannot show yet, or shows only in the practice run: a blocked request with its proof, a request that was carried out, a failure, requests that no proof decided (each with the reason the broker recorded), several agents, an account that needs a new sign-in, and the causes of a rule checker that is not running, one after the other. It is for looking at the page and never evidence for a gate.
 
 With `FABRIC_DESKTOP_TRACE=1` the host writes one line per relayed frame to stderr: the method, the id, the sequence and the size, never the content.
 
@@ -207,7 +207,7 @@ Do not touch the mouse or the trackpad after the window is in front.
 2. Press Tab six times: the five screens of the navigation, then "Review the waiting requests" in the strip, each with a visible outline. Press Return. Expected: focus is on the request's heading.
 3. Press Tab. Focus enters the card at "How long this approval lasts", on "Only this request". Press the Down arrow twice and the Up arrow once. The choice moves; nothing is sent.
 4. Press Tab three times. Focus is on "Show the proof", then on "Deny", then on "Allow". Press Escape. Expected: the state still says "Waiting for your decision".
-5. With focus on "Allow", press Return. Expected: the card closes with "You allowed this. The permission lasts until this agent's current session ends." (or the sentence of the duration you chose), focus is on the request's heading, and the state changes to "Fabric checks it once more before it is done" and then to "Not done: Fabric could not prove that it is allowed", with "The rule checker is not running now." under it. That state is correct here: this run has no rule prover. Under "Permissions you gave" the permission is listed as "In force."
+5. With focus on "Allow", press Return. Expected: the card closes with "You allowed this. The permission lasts until this agent's current session ends." (or the sentence of the duration you chose), focus is on the request's heading, and the state changes to "Fabric checks it once more before it is done" and then to "Not done: Fabric could not prove that it is allowed". If the broker recorded why, a line under it says so; in this run it would read "Reason: The rule checker was starting or not running." That state is correct here: this run has no rule prover. Under "Permissions you gave" the permission is listed as "In force."
 6. Press Tab until focus is on "Take back the permission" of that permission, and press Return. Expected: the permission stays on the page as "Ended while this window was open.", with "You took it back." in its last line, and focus is on its heading.
 7. One or two seconds after the first request ended a second request arrived, another "Create an event". Press Shift+Tab back to its card, to "Deny", and press Space. Expected: "You denied this."
 8. Press Tab until focus is on "Pause Synthetic agent (test build)" under "Agents", and press Return. Expected: the agent's state says "Paused.", and the button now reads "Resume" and still has the focus. Press Return again. Expected: "Connected."

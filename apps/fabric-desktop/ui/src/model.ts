@@ -4,10 +4,10 @@
 import type {
   Account, Agent, Approval, DurationKind, Enrollment, ErrorCode, Grant, Health, OwnerCommand, OwnerError, OwnerMethod, OwnerMethods,
   OwnerNotice, OwnerRequest, OwnerResponse, ParamsDecideRequest, Party, Preferences, Profiles, Protocol, RecipientSet,
-  Request, RequestDetails, ResultHello, SCHEMA_VERSION as SchemaVersion, Snapshot,
+  Request, RequestDetails, ResultHello, SCHEMA_VERSION as SchemaVersion, Snapshot, UndecidedReason,
 } from "../../../../contracts/desktop/v1/typescript/src/contract.ts";
 import type { Host, HostMessage, HostState, SendRefusal } from "./host.ts";
-import { ALLOWED_TEXT, CHECKING_STATES, OPERATION, STATE_TEXT, STORE_PROBLEM, TERMINAL, agentName, changeText } from "./text.ts";
+import { ALLOWED_TEXT, CHECKING_STATES, OPERATION, STATE_TEXT, STORE_PROBLEM, TERMINAL, agentName, changeText, proverProblemText } from "./text.ts";
 import type { Names } from "./text.ts";
 
 const PROTOCOL: Protocol = "fabric-desktop/1";
@@ -47,6 +47,8 @@ export interface Entry {
   details: RequestDetails | null; // the last get_request_details answer, the content of the card
   detailsRun: number;
   reading: boolean;
+  undecided: { readonly reason: UndecidedReason | null } | null; // why no proof decided it, as the details said; null until read
+  reasonReading: boolean; // a redacted read for the reason alone is in flight
   detailsOpen: boolean; // the owner has the details open: they are read, and read again when the request changes
   changed: boolean; // the digest differs from the card read before; the owner must acknowledge
   duration: DurationKind; // the owner's choice, kept across a disconnect
@@ -79,11 +81,11 @@ function refusalText(r: unknown): string {
 
 const noAnswer = (text: string): Failure => ({ text, code: null, error: null });
 
-const PROVER_ANNOUNCEMENT: Record<Health["prover"], string> = {
-  ready: "The rule checker is ready.",
-  starting: "The rule checker is starting.",
-  unavailable: "The rule checker stopped. Requests end as not done until it runs again.",
-};
+function proverAnnouncement(h: Health): string {
+  if (h.prover === "ready") return "The rule checker is ready.";
+  if (h.prover === "starting") return "The rule checker is starting.";
+  return `The rule checker is not running. ${proverProblemText(h.prover_problem)}`;
+}
 
 export class Model {
   run = 0;
@@ -260,7 +262,7 @@ export class Model {
     const e = this.requests.get(requestId);
     if (e === undefined || e.detailsOpen === open) return;
     e.detailsOpen = open;
-    if (this.ready && this.needsRead(e)) this.readDetails(e);
+    if (this.ready) this.readWanted(e);
     this.deps.changed();
   }
 
@@ -521,11 +523,13 @@ export class Model {
     }
     for (const r of s.requests) this.applyRequest(r, false);
     // Open details of a request the snapshot does not list (one that ended) are read in this run too.
-    for (const e of this.requests.values()) if (this.needsRead(e)) this.readDetails(e);
+    // A reason read that failed is tried again here.
+    for (const e of this.requests.values()) this.readWanted(e);
   }
 
   private applyHealth(h: Health): void {
-    if (this.health !== null && this.health.prover !== h.prover) this.deps.announce(PROVER_ANNOUNCEMENT[h.prover]);
+    const before = this.health;
+    if (before !== null && (before.prover !== h.prover || before.prover_problem !== h.prover_problem)) this.deps.announce(proverAnnouncement(h));
     this.health = h;
   }
 
@@ -550,7 +554,7 @@ export class Model {
     if (e === undefined) {
       e = {
         request: r, requestRun: this.run, available: true, checkingDelayMs: null, details: null, detailsRun: -1,
-        reading: false, detailsOpen: false, changed: false, duration: "one_request", durationChosen: false, command: null, approval: null,
+        reading: false, undecided: null, reasonReading: false, detailsOpen: false, changed: false, duration: "one_request", durationChosen: false, command: null, approval: null,
         note: null,
       };
       this.requests.set(r.request_id, e);
@@ -568,7 +572,7 @@ export class Model {
       const delay = this.deps.now() - Date.parse(r.received_at);
       if (delay >= 0) e.checkingDelayMs = delay;
     }
-    if (this.needsRead(e)) this.readDetails(e);
+    this.readWanted(e);
     if (TERMINAL[r.status.state]) this.dropEndedRequests();
   }
 
@@ -589,6 +593,17 @@ export class Model {
       && (e.detailsRun !== this.run || d?.revision !== e.request.revision || d?.request_digest !== e.request.request_digest);
   }
 
+  // An undecided request's recorded reason is read when it is not known yet and no read is in flight.
+  private needsReason(e: Entry): boolean {
+    return e.request.status.state === "undecided" && e.available && e.undecided === null && !e.reading && !e.reasonReading;
+  }
+
+  // A full read when one is wanted (its answer carries the reason too), otherwise the reason alone when that is wanted.
+  private readWanted(e: Entry): void {
+    if (this.needsRead(e)) this.readDetails(e);
+    else if (this.needsReason(e)) this.readReason(e);
+  }
+
   private readDetails(e: Entry): void {
     e.reading = true;
     this.query("get_request_details", { request_id: e.request.request_id, redaction: "full" }, (d) => {
@@ -601,7 +616,9 @@ export class Model {
       if (d.request.revision >= e.request.revision) e.request = d.request;
       if (TERMINAL[e.request.status.state]) e.available = true; // it ended; the broker lists only open ones
       e.approval = d.approval; // the broker is the authority on whether it is decided
+      if (d.request.status.state === "undecided") e.undecided = { reason: d.undecided_reason };
       if (this.needsRead(e)) return this.readDetails(e); // a newer revision arrived meanwhile
+      if (this.needsReason(e)) this.readReason(e); // it became undecided meanwhile
       if (d.card === null || d.request.status.state !== "pending_approval") return;
       const what = `${OPERATION[d.request.tool]}, from ${agentName(this.names, d.request.agent_id)}`;
       if (before === null || before.card === null) this.deps.announce(`A request needs your decision: ${what}.`);
@@ -611,6 +628,19 @@ export class Model {
       e.reading = false;
       if (f.code === "not_found") e.available = false;
       else e.note = `This request could not be read: ${f.text}`;
+    });
+  }
+
+  // The recorded reason alone. A redacted read: the full one writes an audit row in the broker and
+  // brings event content into the page. It touches nothing else of the entry, so the card and the open
+  // details keep what the full read gave. A failure is tried again at the next snapshot only.
+  private readReason(e: Entry): void {
+    e.reasonReading = true;
+    this.query("get_request_details", { request_id: e.request.request_id, redaction: "redacted" }, (d) => {
+      e.reasonReading = false;
+      if (d.request.status.state === "undecided") e.undecided = { reason: d.undecided_reason };
+    }, () => {
+      e.reasonReading = false;
     });
   }
 }

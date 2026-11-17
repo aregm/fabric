@@ -2,8 +2,8 @@
 // activity lines and dates. Pure functions; nothing here touches the page.
 import type {
   Account, AccountState, Action, Agent, Approval, Attempt, Authorization, CalendarAccess, CalendarRef, Change, DurationKind,
-  EventField, EventTime, EventView, Grant, GrantEndReason, GrantTerm, Health, ProofReport, RecipientSet, RequestDetails,
-  RequestState, ResponseStatus, Scope, SendUpdates, ToolName, Window as TimeWindow,
+  EventField, EventTime, EventView, Grant, GrantEndReason, GrantTerm, Health, ProofReport, ProverProblem, RecipientSet, RequestDetails,
+  RequestState, ResponseStatus, Scope, SendUpdates, ToolName, UndecidedReason, Window as TimeWindow,
 } from "../../../../contracts/desktop/v1/typescript/src/contract.ts";
 import type { HostState } from "./host.ts";
 
@@ -107,6 +107,36 @@ export const PROVER_TEXT: Record<Health["prover"], string> = {
   starting: "Starting",
   unavailable: "Not running",
 };
+
+// Why the rule checker is not running and what the owner can do, by the cause the broker names
+// (contract README, section 7). The broker sends no cause when it does not know it.
+export const PROVER_PROBLEM: Record<ProverProblem, string> = {
+  not_configured: "This run has no rule checker. Nothing can be done about it in this run.",
+  failed_will_retry: "It could not start, or it stopped. The broker starts it again by itself, so you only need to wait.",
+  failed: "It could not start, or it stopped, and the broker will not try again in this run. Quit Fabric Calendar and open it again.",
+  wrong_rules: "The rules on this computer are not the ones this broker was built with. Install Fabric Calendar again.",
+};
+export const PROVER_PROBLEM_UNKNOWN = "The broker did not say why.";
+
+// The same causes in a few words, for the activity line.
+const PROVER_PROBLEM_SHORT: Record<ProverProblem, string> = {
+  not_configured: "this run has none",
+  failed_will_retry: "the broker starts it again",
+  failed: "the broker will not start it again in this run",
+  wrong_rules: "the rules on this computer are not this broker's",
+};
+
+export function proverProblemText(p: ProverProblem | null): string {
+  return p === null ? PROVER_PROBLEM_UNKNOWN : PROVER_PROBLEM[p];
+}
+
+// Why no proof decided a request, as the broker recorded it (contract README, section 7).
+export const UNDECIDED_REASON: Record<UndecidedReason, string> = {
+  prover_unavailable: "The rule checker was starting or not running.",
+  out_of_time: "The rule checker did not finish within its time limit.",
+  failed: "The rule checker ran and did not decide the request, or its report could not be used.",
+};
+export const UNDECIDED_REASON_UNKNOWN = "The broker did not record why.";
 
 export const STORE_TEXT: Record<Health["store"], string> = {
   ready: "Open",
@@ -494,7 +524,11 @@ export function changeText(change: Change, names: Names): string {
     case "grant": return change.grant.ended === null
       ? `Permission given to ${agentName(names, change.grant.agent_id)}`
       : `Permission of ${agentName(names, change.grant.agent_id)} ended`;
-    case "health": return `Rule checker: ${PROVER_TEXT[change.health.prover]}. Store: ${STORE_TEXT[change.health.store]}`;
+    case "health": {
+      const h = change.health;
+      const cause = h.prover === "unavailable" && h.prover_problem !== null ? `, ${PROVER_PROBLEM_SHORT[h.prover_problem]}` : "";
+      return `Rule checker: ${PROVER_TEXT[h.prover]}${cause}. Store: ${STORE_TEXT[h.store]}`;
+    }
     case "snapshot_required": return "The broker asked this app to read everything again";
   }
 }

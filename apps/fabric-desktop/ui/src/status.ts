@@ -1,7 +1,7 @@
 // What needs the owner now, and the facts of the Status screen, in words. Pure: no DOM.
 import type { Calendar } from "../../../../contracts/desktop/v1/typescript/src/contract.ts";
 import type { Model } from "./model.ts";
-import { ACCESS_TEXT, ACCOUNT_TEXT, PROVER_TEXT, STORE_PROBLEM, STORE_TEXT, bannerText, formatTimeOfDay } from "./text.ts";
+import { ACCESS_TEXT, ACCOUNT_TEXT, PROVER_TEXT, STORE_PROBLEM, STORE_TEXT, bannerText, formatTimeOfDay, proverProblemText } from "./text.ts";
 
 export interface AttentionItem {
   readonly key: string;
@@ -16,7 +16,7 @@ const NO_ACCOUNT_CONNECT = "This build cannot connect or reconnect a Google acco
 const ACCOUNT_NEEDS_OWNER = new Set(["reauthentication_required", "consent_denied", "partial_grant", "account_mismatch", "cancelled"]);
 
 // Health is what the broker of this run said; it is not shown for an earlier run.
-export function currentHealth(m: Model) {
+function currentHealth(m: Model) {
   return m.connection?.name === "connected" && m.healthRun === m.run ? m.health : null;
 }
 
@@ -50,7 +50,7 @@ export function attention(m: Model): AttentionItem[] {
   if (health?.prover === "unavailable") {
     items.push({
       key: "prover", kind: "notice", title: "The rule checker is not running.",
-      text: "Fabric allows nothing it cannot prove. Until the rule checker runs, an agent's request ends as not done, also after you allow it.",
+      text: `${proverProblemText(health.prover_problem)} Fabric allows nothing it cannot prove. Until the rule checker runs, an agent's request ends as not done, also after you allow it.`,
       detail: null, action: null,
     });
   } else if (health?.prover === "starting") {
@@ -108,6 +108,12 @@ export function storeText(m: Model): string {
 export function proverText(m: Model): string {
   const h = currentHealth(m);
   return h === null ? "Not known while the broker's current state has not been read" : PROVER_TEXT[h.prover];
+}
+
+// Why the rule checker is not running, for the Status screen; null while it is not "unavailable".
+export function proverCauseText(m: Model): string | null {
+  const h = currentHealth(m);
+  return h === null || h.prover !== "unavailable" ? null : proverProblemText(h.prover_problem);
 }
 
 // One calendar of an account on the Status screen.

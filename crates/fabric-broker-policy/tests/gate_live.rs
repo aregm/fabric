@@ -24,7 +24,10 @@ use std::sync::{Mutex, PoisonError};
 use std::thread;
 use std::time::{Duration, Instant};
 
-use fabric_broker_policy::gate::{CHECK_GRACE, SESSION};
+use fabric_broker_policy::gate::{
+    CHECK_GRACE, INSTALLED_ISABELLE_DIR, INSTALLED_RULES_DIR, INSTALLED_USER_HOME_DIR,
+    ISABELLE_VERSION, IsabelleInstallation, SESSION, isabelle_installation,
+};
 use fabric_broker_policy::{
     BrokerGate, Fault, GateConfig, KillHandle, PolicyError, Verdict, built_theory_sha256,
 };
@@ -662,4 +665,179 @@ fn found_server_stop(name: &str, kill_first: bool) {
     let left = processes_left(&running);
     assert!(!listening_still, "the found server still listens");
     assert!(left.is_empty(), "server processes left: {left:?}");
+}
+
+/// Every file and directory below `dir` as `(path, is a directory, length, modified)`, sorted.
+fn listing(dir: &Path) -> Vec<(PathBuf, bool, u64, std::time::SystemTime)> {
+    let mut found = Vec::new();
+    let mut open = vec![dir.to_path_buf()];
+    while let Some(next) = open.pop() {
+        for entry in fs::read_dir(&next).unwrap() {
+            let entry = entry.unwrap();
+            let metadata = entry.metadata().unwrap();
+            if metadata.is_dir() {
+                open.push(entry.path());
+            }
+            found.push((
+                entry.path(),
+                metadata.is_dir(),
+                if metadata.is_dir() { 0 } else { metadata.len() },
+                metadata.modified().unwrap(),
+            ));
+        }
+    }
+    found.sort();
+    found
+}
+
+/// Sets the mode of everything below `dir`, and of `dir`: `directories` for a directory and
+/// `files` for a file.
+fn set_modes(dir: &Path, directories: u32, files: u32) {
+    use std::os::unix::fs::PermissionsExt;
+    // Directories are opened for writing before their entries are changed, and closed after.
+    fs::set_permissions(dir, fs::Permissions::from_mode(0o755)).unwrap();
+    for entry in fs::read_dir(dir).unwrap() {
+        let entry = entry.unwrap();
+        if entry.metadata().unwrap().is_dir() {
+            set_modes(&entry.path(), directories, files);
+        } else {
+            fs::set_permissions(entry.path(), fs::Permissions::from_mode(files)).unwrap();
+        }
+    }
+    fs::set_permissions(dir, fs::Permissions::from_mode(directories)).unwrap();
+}
+
+/// A stand-in for an installed application (plan Q09) under `.local/gate-live/installed layout`:
+/// the rule theory in a read-only application bundle, and Isabelle with its user home in a
+/// support folder. Every path has a space in it, as `~/Library/Application Support` and an
+/// application's name have on a Mac. The Isabelle there is a copy of the repository's, made
+/// once and kept (on APFS a clone, which takes seconds and no space).
+#[test]
+#[ignore = "needs Isabelle from scripts/setup-demo.sh; run with --ignored"]
+fn a_gate_for_an_installation_runs_from_paths_with_spaces_and_a_read_only_bundle() {
+    let _live = LIVE.lock().unwrap_or_else(PoisonError::into_inner);
+    let root = local().join("installed layout");
+    let bundle = root.join("Fabric Calendar.app");
+    let resources = bundle.join("Contents").join("Resources");
+    let support = root.join("Application Support").join("fabric gate live");
+
+    if bundle.exists() {
+        set_modes(&bundle, 0o755, 0o644);
+        fs::remove_dir_all(&bundle).unwrap();
+    }
+    let session = resources.join(INSTALLED_RULES_DIR).join(SESSION);
+    fs::create_dir_all(&session).unwrap();
+    for file in ["ROOT", "Fabric_Broker.thy"] {
+        fs::copy(
+            repository().join("isabelle").join(SESSION).join(file),
+            session.join(file),
+        )
+        .unwrap();
+    }
+    set_modes(&bundle, 0o555, 0o444);
+
+    let isabelle = support.join(INSTALLED_ISABELLE_DIR);
+    assert_eq!(
+        isabelle_installation(&support.join("no such folder")).unwrap(),
+        IsabelleInstallation::Missing
+    );
+    if isabelle_installation(&isabelle).unwrap() != IsabelleInstallation::Found {
+        let _ = fs::remove_dir_all(&isabelle);
+        fs::create_dir_all(&support).unwrap();
+        let source =
+            fs::canonicalize(GateConfig::for_repository(repository()).isabelle_home).unwrap();
+        let started = Instant::now();
+        let flags = if cfg!(target_os = "macos") {
+            "-cR"
+        } else {
+            "-R"
+        };
+        let status = Command::new("cp")
+            .arg(flags)
+            .arg(&source)
+            .arg(&isabelle)
+            .status()
+            .expect("cp runs");
+        assert!(status.success(), "copying Isabelle failed: {status}");
+        eprintln!(
+            "  copied Isabelle to {} in {:.1}s",
+            isabelle.display(),
+            started.elapsed().as_secs_f64()
+        );
+    }
+    assert_eq!(
+        isabelle_installation(&isabelle).unwrap(),
+        IsabelleInstallation::Found
+    );
+
+    let config = GateConfig::for_installation(
+        &resources,
+        &support,
+        &support.join("data").join("prover"),
+        "fabric-gate-work-installed",
+    );
+    assert_eq!(config.isabelle_home, isabelle);
+    assert_eq!(config.user_home, support.join(INSTALLED_USER_HOME_DIR));
+    for path in [
+        &config.isabelle_home,
+        &config.user_home,
+        &config.rules_dir,
+        &config.work_dir,
+    ] {
+        assert!(path.to_str().unwrap().contains(' '), "{}", path.display());
+    }
+    let home_user = config.user_home.join(".isabelle").join(ISABELLE_VERSION);
+    let heap_built_before = home_user.join("heaps").is_dir();
+    let before = listing(&bundle);
+
+    let started = Instant::now();
+    let mut gate = start(&config);
+    eprintln!(
+        "  the start took {:.1}s ({})",
+        started.elapsed().as_secs_f64(),
+        if heap_built_before {
+            "the session's heap was there"
+        } else {
+            "it built the session's heap"
+        }
+    );
+    assert_eq!(gate.theory_sha256(), built_theory_sha256());
+    assert_eq!(gate.isabelle(), ISABELLE_VERSION);
+
+    let started = Instant::now();
+    let check = gate
+        .check(&common::context(), &common::action())
+        .expect("the check runs");
+    eprintln!("  one check took {:.2}s", started.elapsed().as_secs_f64());
+    assert!(check.verdict.is_permit(), "{:?}", check.verdict);
+    assert_eq!(check.isabelle, ISABELLE_VERSION);
+
+    // Nothing was written into the bundle, and Isabelle's own files are in the user home.
+    assert_eq!(listing(&bundle), before, "the bundle is unchanged");
+    assert!(
+        home_user.join("heaps").is_dir(),
+        "the heap is in the user home"
+    );
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let mode = fs::metadata(home_user.join("tmp"))
+            .unwrap()
+            .permissions()
+            .mode();
+        assert_eq!(mode & 0o777, 0o700);
+    }
+
+    let running = server_processes(&config.server_name);
+    assert!(!running.is_empty(), "the server's Java process is found");
+    let port = gate.port();
+    gate.stop_within(Duration::from_secs(5))
+        .expect("an idle gate stops within five seconds");
+    assert!(!listening(port), "nothing listens on port {port}");
+    let left = processes_left(&running);
+    assert!(left.is_empty(), "server processes left: {left:?}");
+    assert_eq!(
+        listing(&bundle),
+        before,
+        "the bundle is unchanged after the stop"
+    );
 }
