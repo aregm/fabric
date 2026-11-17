@@ -308,7 +308,7 @@ test("every frame the model builds is a valid owner request", async () => {
 const RICH: Snapshot = fixture("accept-owner-response-get-snapshot-rich.json").result;
 const change = (name: string): any => fixture(name).change;
 const ENDED: Grant = change("accept-owner-notice-grant-ended-consumed.json").grant;
-const PROVER_STOPPED = "The rule checker stopped. Requests end as not done until it runs again.";
+const PROVER_STOPPED = "The rule checker is not running. The broker did not say why.";
 
 // A live model whose last snapshot was `snap`, with nothing announced yet.
 function live(snap: Snapshot = snapshot(0)) {
@@ -506,6 +506,32 @@ test("the rule checker's state is announced when it changes after the first snap
   announced.length = 0;
   connect(host, 2, snapshot(0));
   assert.deepEqual(announced, ["The broker is running."], "a new run's first snapshot says nothing about the rule checker");
+});
+
+test("the cause of a rule checker that is not running is announced and in the activity line; the same health twice is said once", () => {
+  const { host, model, announced } = live({ ...RICH, cursor: 0 });
+  host.notice(1, change("accept-owner-notice-health-prover-failed-will-retry.json"));
+  assert.deepEqual(announced, [
+    "The rule checker is not running. It could not start, or it stopped. The broker starts it again by itself, so you only need to wait.",
+  ]);
+  assert.equal(model.activity.at(-1)?.text, "Rule checker: Not running, the broker starts it again. Store: Open");
+  host.notice(2, change("accept-owner-notice-health-prover-failed-will-retry.json"));
+  assert.equal(announced.length, 1, "the same health again is not announced again");
+  host.notice(3, change("accept-owner-notice-health-prover-failed.json"));
+  assert.deepEqual(announced.at(-1),
+    "The rule checker is not running. It could not start, or it stopped, and the broker will not try again in this run. Quit Fabric Calendar and open it again.",
+    "a change of cause while still not running is announced");
+  assert.equal(model.activity.at(-1)?.text, "Rule checker: Not running, the broker will not start it again in this run. Store: Open");
+  host.notice(4, change("accept-owner-notice-health-prover-unavailable.json"));
+  assert.deepEqual(announced.at(-1), PROVER_STOPPED, "the cause became unknown");
+  assert.equal(model.activity.at(-1)?.text, "Rule checker: Not running. Store: Open");
+  host.notice(5, change("accept-owner-notice-health-prover-not-configured.json"));
+  assert.equal(model.activity.at(-1)?.text, "Rule checker: Not running, this run has none. Store: Open");
+  host.notice(6, change("accept-owner-notice-health-prover-wrong-rules.json"));
+  assert.equal(model.activity.at(-1)?.text, "Rule checker: Not running, the rules on this computer are not this broker's. Store: Open");
+  assert.deepEqual(announced.at(-1),
+    "The rule checker is not running. The rules on this computer are not the ones this broker was built with. Install Fabric Calendar again.");
+  assert.equal(announced.length, 5);
 });
 
 // ---- Details and the session duration (CD-W08 Review) ----

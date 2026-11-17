@@ -6,7 +6,7 @@ import type { Model } from "./model.ts";
 import { ACTIVITY_LIMIT } from "./model.ts";
 import type { Nav } from "./nav.ts";
 import type { ReviewView } from "./review-view.ts";
-import { attention, brokerText, buildLine, calendarLine, connectionText, lastCheckText, proverText, storeText } from "./status.ts";
+import { attention, brokerText, buildLine, calendarLine, connectionText, lastCheckText, proverCauseText, proverText, storeText } from "./status.ts";
 import type { AttentionItem } from "./status.ts";
 import { ACCOUNT_TEXT } from "./text.ts";
 
@@ -58,6 +58,7 @@ export class Shell {
   private readonly checkNote: HTMLParagraphElement;
   private readonly store: HTMLParagraphElement;
   private readonly prover: HTMLParagraphElement;
+  private readonly proverCause: HTMLParagraphElement;
   private readonly accountsHeading: HTMLHeadingElement;
   private readonly accountsEmpty: HTMLParagraphElement;
   private readonly accounts: HTMLDivElement;
@@ -95,7 +96,9 @@ export class Shell {
     this.store = make("p");
     part(section, "Store").part.append(this.store);
     this.prover = make("p");
-    part(section, "Rule checker").part.append(this.prover);
+    this.proverCause = make("p");
+    this.proverCause.hidden = true;
+    part(section, "Rule checker").part.append(this.prover, this.proverCause);
 
     const accounts = part(section, "Accounts");
     this.accountsHeading = accounts.heading;
@@ -134,6 +137,7 @@ export class Shell {
     setText(this.checkNote, !connected ? "Not available while the broker is not running." : m.checking ? "Checking…" : "");
     setText(this.store, `${storeText(m)}.`);
     setText(this.prover, `${proverText(m)}.`);
+    textLine(this.proverCause, proverCauseText(m), this.statusHeading);
 
     const accounts = [...m.accounts.values()];
     keyed(this.accounts, accounts, (a) => a.account_id, () => this.createAccount(), (node, a) => this.updateAccount(node, a), this.accountsHeading);
