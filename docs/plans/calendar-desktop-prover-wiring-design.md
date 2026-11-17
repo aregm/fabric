@@ -29,7 +29,7 @@ Date 2026-11-16. Status: as built (branch `claude/cd-prover-wiring`); updated 20
 part of contract schema version 2 (branch `claude/cd-broker-prover-reasons`): the prover's status says why it is
 unavailable (`health.prover_problem`, 2.2), every move to `undecided` stores its cause, which `get_request_details`
 gives as `undecided_reason` (2.4, X12), the adapter times its own check limit (2.3), and the shell answers at once every
-job it cannot hand over and every job a lost worker held (2.2); the tests u17 to u19, w35 to w40, sh07 to sh09 and
+job it cannot hand over and every job a lost worker held (2.2); the tests u17 to u19, w35 to w40, sh07 to sh11 and
 p46 to p48.
 
 Abbreviations (paths relative to the repository root):
@@ -143,13 +143,13 @@ an undecided report, and health stays `ready`; a job that waited behind other ch
 its deadline, so the core ends the request undecided there without a report (the late result is ignored), and health
 is `unavailable` from the deadline until the gate answers, then `ready` again (2.3).
 
-Since contract schema version 2 the owner channel also says why. An unavailable prover's health names its problem (2.2):
-`not_configured` in a run without Isabelle (3.3), `failed_will_retry` while a restart is scheduled, `failed` once none
-is, and `wrong_rules` for a rule theory or session file that is not the built one; it is null while a check runs past its
-job's deadline, when the cause is not yet known (2.3). The details of an `undecided` request
-name its reason (2.4): `prover_unavailable` when the rule checker was starting or not running, `out_of_time` when the
-check reached its limit or the proof's deadline, `failed` when the check ran and did not decide, or its report could not
-be used, and null when the broker did not record why.
+Since contract schema version 2 the owner channel also says why. An unavailable prover's health names its problem
+(2.2): `not_configured` in a run without Isabelle (3.3), `failed_will_retry` while a restart is scheduled, `failed`
+once none is, and `wrong_rules` for a rule theory or session file that is not the built one; it is null while a check
+runs past its job's deadline, when the cause is not yet known (2.3). The details of an `undecided` request name its
+reason (2.4): `prover_unavailable` when the rule checker was starting or not running, `out_of_time` when the check
+reached its limit or the proof's deadline, `failed` when the check ran and did not decide, or its report could not be
+used, and null when the broker did not record why.
 
 ---------------------------------------------------------------------------------------------------------------------
 
@@ -281,13 +281,20 @@ yet:
   its latch is set and the prover's due time clears, but its status is dropped: neither replaces `failed`;
 - the overrun poll (2.3) sets the pending status when `poll` returns `Some`.
 
-`Shell::next_due_ms` returns `Some(0)` while a status or a result is pending, so `next_event` returns at once and main
-feeds `Input::Tick`. `Shell::turn` first (`notice`) takes out of `handed` the job whose result is its own input, so a
-loss noticed in this turn never answers a result in hand with `NOT_RUNNING`, then asks the worker whether it is lost and
-runs the overrun poll (`watch_prover`), then takes `pending_health` and, if there was one, calls `broker.handle(Input::ProverHealth(s), now_ms)`, tells the
-agent and emits, then feeds each pending result as `Input::ProofDone` and emits, and only then handles its own input. A
-job leaves `handed` when its result passes through `turn` (sh04); a result that names another request or purpose than its job
-leaves the job there (K21).
+`Shell::next_due_ms` returns `Some(0)` while a status or a result is pending, so `next_event` returns at once and
+main feeds `Input::Tick`. `Shell::turn` first (`notice`) takes out of `handed` the job whose result is its own input,
+so a loss noticed in this turn never answers a result in hand with `NOT_RUNNING`, then asks the worker whether it is
+lost and runs the overrun poll (`watch_prover`), then takes `pending_health` and, if there was one, calls
+`broker.handle(Input::ProverHealth(s), now_ms)`, tells the agent and emits, then feeds each pending result as
+`Input::ProofDone` and emits, and only then handles its own input. A job leaves `handed` when its result passes
+through `turn` (sh04); a result that names another request or purpose than its job leaves the job there (K21).
+
+A panic of the worker sends no event, so nothing wakes the main loop when the worker ends. `notice` keeps the start
+of the last turn (`last_turn_ms`). While a job is out with the Isabelle worker (`handed` is not empty) and its loss
+is not known, `Shell::next_due_ms` is no later than `last_turn_ms` plus `LOSS_LOOK_MS` (250 ms), so the main loop
+sleeps at most that long. A worker that ended is noticed within that time, and its jobs are answered then (sh10,
+sh11). Every due time is a raw wall clock time, as `next_event` reads it. With no job out, a lost worker is noticed
+at the next event (K27).
 
 ### 2.3 One job in `Ready`
 
@@ -707,7 +714,8 @@ breaks); they record each limit and each stop bound, and report `is_broken` as s
 `theory_sha256()` returns `built_theory_sha256()` unless the test says otherwise. A double starter may return `Ok` with
 such a double (w12, w14, w15, w22, w24 to w26, w31, w32, w35, w36, w38, w40; w34 builds a worker already `Ready` with
 one): a gate that cannot prove, not a proof. `shell.rs`'s tests add one double, `PanickingGate`, whose check waits until
-its job's deadline has passed and then panics (sh04, sh09). No double ever returns a `Check`. The map tests u09 to u12, u15,
+a deadline the test sets has passed and then panics (sh04, sh09 to sh11). No double ever returns a `Check`. The map
+tests u09 to u12, u15,
 u16 and u19 build `Check` values by hand (u10 with a Permit verdict) and pass them only to `done_of`, a pure function;
 they never reach a worker, a `Shell` or a `Broker`. Unix-only assertions (file modes, execute bits, a shell script
 standing in for Isabelle) are `#[cfg(unix)]`; CI compiles and tests the workspace on macOS, Linux and Windows without
@@ -820,6 +828,8 @@ The scenarios the "Plan" columns name: S1 to S6 are rows of PLAN 14's required s
 | sh07 | `a_request_while_the_isabelle_worker_is_lost_ends_undecided` | 2.2 end to end: the synthetic agent's request on a lost worker ends `undecided` within a few turns, its redacted details read `prover_unavailable`, the health `unavailable` with `failed` | S1 |
 | sh08 | `a_job_no_prover_can_take_is_answered_not_running` | 2.2: a closed classifier channel and the slots `None` and `Waiting` answer a job at once with `NOT_RUNNING` and leave the status as it is | R06 |
 | sh09 | `a_failed_prove_send_is_a_sign_of_loss` | 2.2: with the worker ended and its loss not yet noticed, a failed `prove` send sets `failed` once and answers the jobs handed earlier, then its own job, with `NOT_RUNNING` | S1 |
+| sh10 | `a_job_out_bounds_the_next_due_time` | 2.2: with a job out and the loss not known, `next_due_ms` is the minimum of the other due times and the last turn's time plus `LOSS_LOOK_MS`; with no job out, or once the loss is known, it is the minimum of the other due times | S1 |
+| sh11 | `a_worker_lost_with_a_job_out_is_noticed_within_a_look` | 2.2 end to end: a worker that panics inside a check whose deadline is 30 s ahead, with no other event; the loop of `main.rs` (bounded only by the test's 5 s) answers the job `NOT_RUNNING` (cause `NotRunning`) and sets `failed` in less than 5 s | S1 |
 
 `apps/fabric-broker/src/practice.rs`:
 
@@ -1147,6 +1157,10 @@ crate-private gate seam needs `--document-private-items`), and `-p fabric-deskto
   loss is superseded: the shell answers its job `NOT_RUNNING` first, the request ends `undecided` with
   `prover_not_running`, and the core ignores the real result by job id. Only the result that is the turn's own input is
   kept (2.2). The outcome is fail-closed.
+- K27 A worker that ends while no job is out is noticed only at the next event the broker handles (an owner's
+  command, a new request, a due time): only a job out bounds the main loop's sleep (2.2). Until then health keeps the
+  last status it had (`ready`, or `failed` with a retry that will not come), and the first request after it is
+  answered at once with not running.
 
 ### 9.2 Requests to other owners
 
@@ -1262,9 +1276,12 @@ ms margin and w32's timing assume a scheduler that is not badly delayed, and L22
 `QUIT_BOUND`. A quit during a check on a server that is computing: L22's server is stopped, and pull request 30 tried
 the kill during a computing check at the gate only. What a server killed during a check leaves in Isabelle's temporary
 files (K18): L22 does no scan. That main keeps its bound when the kill's helper hangs (by reading the code only).
-The update of 2026-11-17 (contract schema version 2) ran no live test: the new asserts of L2, L3, L16, L18, L19 and L21
-and the two rules of p48 in the live harness were only compiled. That a killed server's check ends `failed` and not
-`out_of_time` (L2, L16) and that a 1 ms check reads `out_of_time` (L3) follow from 2.3 and 2.4 by reading the code.
+For the update of 2026-11-17 (contract schema version 2): Linux and Windows; a loaded machine (the new tests that
+wait on a real clock, sh04 and sh11 and the deadline and limit tests, and the live bounds of K15 and K17 were not
+tried under load); a store file written by another build, in either direction (the tests forge rows of the old shape
+into a store this build made); the packaged application; a worker that ends while no job is out (K27) with a real
+Isabelle; the statuses `failed` and unavailable with no cause, and a request made while Isabelle starts, with a real
+Isabelle (a stand-in shows them).
 
 Checked in Isabelle2025-2's sources on 2026-11-16: Isabelle reads the `ROOT` and the `ROOTS` of every directory it is
 given, the `dirs` of `session_start` included (`src/Pure/Build/sessions.scala` 1284-1325: `load_dir` is `load_root`
@@ -1290,3 +1307,15 @@ runs were made before the last review fixes, which changed comments and this doc
 `sh scripts/verify-desktop.sh --live-proofs` passed once (the first test alone, the corpus's 3 tests, the live binary's
 18 tests, L21 and L22 among them), and a process listing after it showed no Isabelle server but the practice app's own
 and no stopped process. The Keychain was not touched: every test uses the test key.
+
+Checked on 2026-11-17 on one Mac, with the update for contract schema version 2 and `main` at 2d41210 merged in: `sh
+scripts/verify-desktop.sh --live-proofs` passed three times, once before the merge, once after it and once after the
+look for a lost worker (2.2) was added: L11 alone, the corpus (3 tests) and the 18 live tests each time. In the last
+run the mean check took 1235 ms and 1226 ms, the slowest check 1837 ms, and the slowest stop 1325 ms against its 1500
+ms bound. The new asserts held with the real Isabelle: a check with a 1 ms limit reads `out_of_time` (L3); the
+request whose check was running when Isabelle was killed reads `failed`, and health goes `failed_will_retry`, then
+starting and ready with no problem (L2, L16); a changed rule file and session files that load another theory read
+`wrong_rules` (L18, L19); health carries no problem while starting (L21); and the two rules of p48 held on every
+owner line of the live harness. The practice application and its own Isabelle server ran on the same Mac. In a
+browser through the harness, in a run without Isabelle, the strip's text began with the sentence for
+`not_configured`, and an allowed request's row read the sentence for `prover_unavailable`.

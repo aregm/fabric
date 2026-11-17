@@ -19,7 +19,7 @@
 //! status and the results that the shell itself learns wait in the shell until the next
 //! [`Shell::turn`].
 //!
-//! "PW" numbers, such as PW 2.2 or the test ids PW sh01 to PW sh09, refer to
+//! "PW" numbers, such as PW 2.2 or the test ids PW sh01 to PW sh11, refer to
 //! `docs/plans/calendar-desktop-prover-wiring-design.md`; bare numbers, such as (D34),
 //! cite the CD-W04 design (`docs/plans/calendar-desktop-w04-design.md`).
 
@@ -49,6 +49,11 @@ use crate::prover::{IsabelleProver, ProverEvent, ProverOptions, QUIT_BOUND, map}
 /// How many events may wait for the main loop. The reader and the workers block beyond this, so
 /// a fast host cannot make the broker hold more than a few frames in memory.
 pub const QUEUED_EVENTS: usize = 4;
+
+/// How long the main loop sleeps at most while a job is out with the Isabelle worker, so that a
+/// worker that ended without a word (a panic sends no event) is noticed within that time and its
+/// jobs are answered then (PW 2.2).
+pub const LOSS_LOOK_MS: u64 = 250;
 
 /// The raw wall clock in Unix milliseconds. The core keeps its own time from it, which never
 /// goes back (design 5.1, D34).
@@ -289,6 +294,9 @@ pub struct Shell<W: Write> {
     handed: Vec<(u64, Id, ProofPurpose)>,
     /// Set at the first sign that the Isabelle worker is lost, so `failed` is fed once.
     prover_lost: bool,
+    /// The raw wall clock time of the last turn's start, from which the next look for a lost
+    /// worker is due while a job is out (PW 2.2).
+    last_turn_ms: u64,
 }
 
 impl<W: Write> Shell<W> {
@@ -326,6 +334,7 @@ impl<W: Write> Shell<W> {
             pending_results: Vec::new(),
             handed: Vec::new(),
             prover_lost: false,
+            last_turn_ms: 0,
         }
     }
 
@@ -472,6 +481,7 @@ impl<W: Write> Shell<W> {
     /// The start of a turn. A worker's result in hand leaves `handed` first, so a loss noticed in
     /// this turn never supersedes it with `NOT_RUNNING`; then `watch_prover` (PW 2.2).
     fn notice(&mut self, input: &Input, now_ms: u64) {
+        self.last_turn_ms = now_ms;
         if let Input::ProofDone(done) = input {
             self.handed.retain(|(job_id, request_id, purpose)| {
                 (*job_id, request_id, *purpose) != (done.job_id, &done.request_id, done.purpose)
@@ -521,17 +531,23 @@ impl<W: Write> Shell<W> {
     }
 
     /// `Some(0)` while a status or a result is pending; else the earliest of the broker's, the
-    /// agent's and the prover's due times.
+    /// agent's and the prover's due times, and, while a job is out with an Isabelle worker not
+    /// known to be lost, the last turn's time plus [`LOSS_LOOK_MS`] (PW 2.2). All are raw wall
+    /// clock times, as [`next_event`] reads them.
     #[must_use]
     pub fn next_due_ms(&self, broker: &Broker) -> Option<u64> {
         if self.pending_health.is_some() || !self.pending_results.is_empty() {
             return Some(0);
         }
-        let prover = match &self.prover {
-            ProverSlot::Isabelle(prover) => prover.next_due_ms(),
-            _ => None,
+        let (prover, look) = match &self.prover {
+            ProverSlot::Isabelle(prover) => (
+                prover.next_due_ms(),
+                (!self.prover_lost && !self.handed.is_empty())
+                    .then(|| self.last_turn_ms.saturating_add(LOSS_LOOK_MS)),
+            ),
+            _ => (None, None),
         };
-        [broker.next_due_ms(), self.agent_due_ms(), prover]
+        [broker.next_due_ms(), self.agent_due_ms(), prover, look]
             .into_iter()
             .flatten()
             .min()
@@ -1378,6 +1394,155 @@ mod tests {
             ]
         );
         assert!(shell.prover_lost && shell.handed.is_empty());
+    }
+
+    /// PW sh10 (PW 2.2): while a job is out with an Isabelle worker not known to be lost, the next
+    /// due time is no later than the last turn's time plus `LOSS_LOOK_MS`. With no job out, or once
+    /// the loss is known, it is the earliest of the other due times.
+    #[cfg(debug_assertions)]
+    #[test]
+    fn a_job_out_bounds_the_next_due_time() {
+        use std::sync::atomic::AtomicU64;
+
+        let dir = TempDir::new("look");
+        let config = config(&dir.data(), false, Some(pinned(&dir.0)));
+        let mut options = ProverOptions::new(&pinned(&dir.0), &config.data_dir);
+        options.restart_waits = Vec::new();
+        options.starter = std::sync::Arc::new(
+            |_: &fabric_broker_policy::GateConfig, _: &fabric_broker_policy::KillHandle| {
+                Ok(Box::new(PanickingGate {
+                    deadline: std::sync::Arc::new(AtomicU64::new(0)),
+                }) as Box<dyn crate::prover::Gate>)
+            },
+        );
+        let plan = Plan {
+            prover: ProverChoice::None,
+            work_dir: config.data_dir.join("prover"),
+            practice: None,
+            agent: None,
+        };
+        let (broker, _) = start(&config, &plan);
+        let (sender, _events) = mpsc::sync_channel(QUEUED_EVENTS);
+        let mut shell = Shell::new(Vec::new(), plan, sender);
+        // The main loop is gone before the worker's first event, so the worker ends at it.
+        shell.prover = ProverSlot::Isabelle(IsabelleProver::spawn(options, Box::new(|_| false)));
+        let ProverSlot::Isabelle(prover) = &shell.prover else {
+            unreachable!("the Isabelle worker runs");
+        };
+        let others = [broker.next_due_ms(), prover.next_due_ms()]
+            .into_iter()
+            .flatten()
+            .min();
+        let last = now_ms();
+        shell.last_turn_ms = last;
+        assert_eq!(shell.next_due_ms(&broker), others, "no job out");
+
+        let job = job_with(6, u64::MAX);
+        shell
+            .handed
+            .push((job.job_id, job.request_id.clone(), job.purpose));
+        let look = last + LOSS_LOOK_MS;
+        let due = shell.next_due_ms(&broker);
+        assert!(due.is_some_and(|due| due <= look), "{due:?}");
+        assert_eq!(due, Some(others.map_or(look, |other| other.min(look))));
+
+        shell.prover_lost = true;
+        assert_eq!(shell.next_due_ms(&broker), others, "the loss is known");
+    }
+
+    /// PW sh11 (PW 2.2), end to end: a worker that panics inside a check whose deadline is 30 s
+    /// ahead, with no other event sent. The loop of `main.rs` wakes within `LOSS_LOOK_MS` of each
+    /// turn, so within a few looks, well before the deadline, the job is answered `NOT_RUNNING`
+    /// and the status is `failed`.
+    #[cfg(debug_assertions)]
+    #[test]
+    fn a_worker_lost_with_a_job_out_is_noticed_within_a_look() {
+        use fabric_broker_core::ports::ProverCause;
+        use std::sync::atomic::AtomicU64;
+
+        let dir = TempDir::new("look-run");
+        let config = config(&dir.data(), false, Some(pinned(&dir.0)));
+        let mut options = ProverOptions::new(&pinned(&dir.0), &config.data_dir);
+        options.restart_waits = Vec::new();
+        // The check panics at once.
+        options.starter = std::sync::Arc::new(
+            |_: &fabric_broker_policy::GateConfig, _: &fabric_broker_policy::KillHandle| {
+                Ok(Box::new(PanickingGate {
+                    deadline: std::sync::Arc::new(AtomicU64::new(0)),
+                }) as Box<dyn crate::prover::Gate>)
+            },
+        );
+        let plan = Plan {
+            prover: ProverChoice::Isabelle(Box::new(options)),
+            work_dir: config.data_dir.join("prover"),
+            practice: None,
+            agent: None,
+        };
+        let (mut broker, started) = start(&config, &plan);
+        assert!(broker.store_ready());
+        let (sender, events) = mpsc::sync_channel(QUEUED_EVENTS);
+        let mut shell = Shell::new(Vec::new(), plan, sender);
+        shell.emit(&broker, started).unwrap();
+        let ready = events
+            .recv_timeout(Duration::from_secs(10))
+            .expect("the worker's status");
+        assert!(matches!(ready, Event::Health(ProverStatus::Ready)));
+        shell
+            .turn(&mut broker, input_of(ready).unwrap(), now_ms())
+            .unwrap();
+
+        let job = job_with(6, now_ms() + 30_000);
+        shell.route(&broker, vec![Job::Prove(job.clone())]);
+        assert_eq!(shell.handed.len(), 1);
+        let began = Instant::now();
+        // The test's own bound, far past a look, so a loop that would sleep longer (until the
+        // check's deadline, or with no due time at all until an event that never comes) fails
+        // here instead of hanging.
+        let bound = now_ms() + 5_000;
+        let mut looks = 0;
+        let mut answered = Vec::new();
+        while !shell.prover_lost {
+            assert!(
+                began.elapsed() < Duration::from_secs(5),
+                "the loss was not noticed in time"
+            );
+            // As in `main.rs`, but no later than the test's bound.
+            let due = shell
+                .next_due_ms(&broker)
+                .map_or(bound, |due| due.min(bound));
+            let input = match next_event(&events, Some(due)) {
+                None => Input::Tick,
+                Some(_) => panic!("no event is sent here"),
+            };
+            looks += 1;
+            let now = now_ms();
+            // The results this turn feeds, seen before `turn` drains them; `turn` notices again,
+            // which sets nothing a second time.
+            shell.notice(&input, now);
+            answered.extend(
+                shell
+                    .pending_results
+                    .iter()
+                    .map(|done| (done.job_id, done.cause)),
+            );
+            shell.turn(&mut broker, input, now).unwrap();
+        }
+        let took = began.elapsed();
+        assert!(took < Duration::from_secs(5), "took {took:?}");
+        assert_eq!(answered, [(job.job_id, Some(ProverCause::NotRunning))]);
+        assert!(shell.handed.is_empty() && shell.pending_results.is_empty());
+        let snapshot = owner(
+            &mut shell,
+            &mut broker,
+            "sh11-1",
+            "get_snapshot",
+            serde_json::json!({}),
+        );
+        assert_eq!(snapshot["health"]["prover"], "unavailable", "{snapshot}");
+        assert_eq!(snapshot["health"]["prover_problem"], "failed", "{snapshot}");
+        eprintln!("sh11: noticed after {looks} looks in {took:?}");
+        // The worker is gone: nothing acknowledges the stop.
+        assert!(!shell.stop(&events));
     }
 
     /// PW sh08 (PW 2.2): a closed classifier channel, no prover, and an Isabelle prover still
