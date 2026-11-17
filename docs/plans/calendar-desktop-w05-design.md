@@ -190,14 +190,16 @@ adapter: verifier, state, nonce (32 random bytes each, base64url, 43 characters)
                  ... the person signs in and decides, in the system browser ...
 listener <── GET /?state=..&code=..   or   ?state=..&error=..
 adapter: code + verifier ──> token endpoint    (3.4)
-         identity token checks                 (3.5)
          granted scopes                        (3.6)
+         identity token checks                 (3.5)
          subject against what the job named    (3.7)
          refresh token ──> token store         (section 4)
          ConnectOutcome ──> core ──> account state (3.7)
 ```
 
-Nothing is written to the token store before every check has passed.
+Nothing is written to the token store before every check has passed. The scopes are judged before the identity
+token: a person who unticked the address leaves the token without one, and that must read as a partial grant, not
+as a failed identity check.
 
 **3.2.1 The authorization address.** `https://accounts.google.com/o/oauth2/v2/auth` with exactly these parameters:
 
@@ -229,6 +231,10 @@ programs of the same user while `open` runs (RK12, LV10); the verifier never lea
 | `PartialGrant { missing }` | The token lacks the address scope or one of the three calendar scopes (PD8) |
 | `AccountMismatch` | A reconnect signed in as another subject, or a new connect as a subject already connected (3.7) |
 | `Cancelled(reason)` | `TimedOut`, `Superseded` (PD5, or the broker quits), `BrowserNotOpened`, `GoogleError` (any other `error`, or an issuer other than Google's in the callback), `ClientRejected` (Google does not accept the client: `invalid_client`, `unauthorized_client`), `Network` (the token or key request failed), `IdentityCheckFailed` (3.5), `UnexpectedScope` (PD9), `NoRefreshToken`, `TokenStore` |
+
+`IdentityCheckFailed` and `TokenStore` carry a fixed label of what failed. A flow that cannot open its listener
+or get random bytes from the system ends `Cancelled(Network)`. A token answer that did not arrive, or is not
+JSON, is `Network`; one that is readable and of the wrong shape, or of another token type, is `GoogleError`.
 
 A flow that ends in anything but `Connected` stores nothing, and wipes from memory whatever Google issued. It does
 **not** ask Google to revoke: as far as is known a revocation ends the whole grant of that person to this client,
@@ -309,6 +315,9 @@ count as the same scope. Then:
 | `openid` missing (then there is no usable identity token) | `Cancelled(IdentityCheckFailed)` |
 | anything beyond the five | `Cancelled(UnexpectedScope)`: store nothing (PD9) |
 
+When more than one row applies: a scope beyond the five wins, then a missing calendar or address scope, then a
+missing `openid`.
+
 G-DOC: a person can untick single scopes on the consent screen, and the app "must verify which scopes were actually
 granted". The granted list is given to the core (ST1) and checked again by the core before it calls an account
 connected. Google may list scopes this person granted to the same client earlier; `UnexpectedScope` then repeats
@@ -317,8 +326,8 @@ until the person removes Fabric Calendar's access in the Google account, and the
 ### 3.7 How the outcomes map to the contract's account states
 
 The job names what the subject must be: for a reconnect the account's stored subject; for a new account the set of
-subjects already connected, none of which it may be. The adapter compares before it writes anything, so
-`AccountMismatch` never touches a stored token.
+subjects that any account record has, none of which it may be. The adapter compares before it writes anything,
+so `AccountMismatch` never writes a token and never touches the token of another account.
 
 | Contract state | Set when | Stored token of the account afterwards |
 |---|---|---|
