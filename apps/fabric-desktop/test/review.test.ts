@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { OwnerError, Request, RequestDetails, Snapshot } from "../../../contracts/desktop/v1/typescript/src/contract.ts";
 import { ReviewModel } from "../ui/src/review.ts";
-import { NO_PROOF } from "../ui/src/text.ts";
+import { NO_PROOF, UNDECIDED_REASON } from "../ui/src/text.ts";
 import { assertRequestsValid, connect, details, entry, fixture, flush, setup } from "./support.ts";
 
 const RICH: Snapshot = fixture("accept-owner-response-get-snapshot-rich.json").result;
@@ -14,6 +14,8 @@ const APPLIED: RequestDetails = result("accept-owner-response-get-request-detail
 const FAILED: RequestDetails = result("accept-owner-response-get-request-details-terminal-failure.json");
 const CONFLICT: OwnerError = fixture("accept-owner-response-error-conflict.json").error; // current_revision 8
 const NOT_FOUND: OwnerError = fixture("accept-owner-response-error-not-found.json").error;
+// request-30 of agent-claude-desktop, revision 3, undecided, redacted; one per recorded reason.
+const UNDECIDED = (reason: string): RequestDetails => result(`accept-owner-response-get-request-details-undecided-${reason}.json`);
 
 // A live model on the rich snapshot (cursor 1287), its request-17 card read, nothing announced.
 function live() {
@@ -123,23 +125,108 @@ test("a failed request shows its reason; redacted details say that the broker di
   assert.deepEqual(d?.event, []);
 });
 
-test("an undecided request says while it is so that the rule checker is not running or is starting", () => {
-  const s = setup();
-  connect(s.host, 1, { ...RICH, health: { prover: "unavailable", prover_problem: null, store: "ready" } });
-  const review = new ReviewModel(s.model);
-  let sequence = RICH.cursor;
-  s.host.notice(++sequence, { kind: "request", request: { ...BLOCKED, revision: 3, status: { state: "undecided" } } });
-  const e = entry(s.model, "request-22");
-  assert.equal(review.lines(e).reason, "The rule checker is not running now.");
-  s.host.notice(++sequence, { kind: "health", health: { prover: "starting", prover_problem: null, store: "ready" } });
-  assert.equal(review.lines(e).reason, "The rule checker is starting now.");
-  s.host.notice(++sequence, { kind: "health", health: { prover: "ready", prover_problem: null, store: "ready" } });
+// The get_request_details frames the model sent for one request.
+const reads = (host: { sent: any[] }, id: string): any[] =>
+  host.sent.filter((f) => f.method === "get_request_details" && f.params.request_id === id).map((f) => f.params);
+
+test("an undecided request is read redacted for its recorded reason, and its row says the reason", () => {
+  for (const [name, reason] of [["prover-unavailable", "prover_unavailable"], ["out-of-time", "out_of_time"], ["failed", "failed"]] as const) {
+    const { host, model, review, notice, announced } = live();
+    const d = UNDECIDED(name);
+    notice({ kind: "request", request: d.request });
+    assert.deepEqual(reads(host, "request-30"), [{ request_id: "request-30", redaction: "redacted" }], name);
+    const e = entry(model, "request-30");
+    assert.equal(review.lines(e).reason, null, "not read yet");
+    host.reply("get_request_details", d);
+    assert.equal(review.lines(e).reason, `Reason: ${UNDECIDED_REASON[reason]}`);
+    assert.equal(e.details, null, "the redacted answer is not kept as the details");
+    assert.equal(e.note, null);
+    assert.deepEqual(announced, []);
+    assertRequestsValid(host);
+  }
+  assert.equal(UNDECIDED_REASON.prover_unavailable, "The rule checker was starting or not running.");
+});
+
+test("an undecided request without a recorded reason has no reason line, also while the rule checker is not running, and is not asked again", () => {
+  const { host, model, review, notice } = live();
+  notice({ kind: "health", health: { prover: "unavailable", prover_problem: null, store: "ready" } });
+  const d = UNDECIDED("reason-unknown");
+  notice({ kind: "request", request: d.request });
+  host.reply("get_request_details", d);
+  const e = entry(model, "request-30");
   assert.equal(review.lines(e).reason, null);
-  // Another state says nothing of the rule checker.
-  s.host.notice(++sequence, { kind: "health", health: { prover: "unavailable", prover_problem: null, store: "ready" } });
-  s.host.notice(++sequence, { kind: "request", request: { ...APPLIED.request, revision: 10, status: { state: "denied" } } });
-  assert.equal(review.lines(entry(s.model, "request-25")).reason, null);
-  assert.equal(review.lines(e).reason, "The rule checker is not running now.");
+  assert.deepEqual(e.undecided, { reason: null });
+  notice({ kind: "request", request: d.request });
+  model.refresh();
+  host.reply("get_snapshot", { ...RICH, cursor: model.cursor });
+  host.reply("subscribe", { cursor: model.cursor });
+  assert.equal(reads(host, "request-30").length, 1, "a reason read once is not asked again");
+});
+
+test("the redacted reason read does not replace the details the card was read with", () => {
+  const { host, model, review, notice } = live();
+  const e = entry(model, "request-17");
+  assert.notEqual(e.details?.card, null);
+  const pending = e.request;
+  notice({ kind: "request", request: { ...pending, revision: pending.revision + 1, status: { state: "approved" } } });
+  const undecided: Request = { ...pending, revision: pending.revision + 2, status: { state: "undecided" } };
+  notice({ kind: "request", request: undecided });
+  assert.deepEqual(reads(host, "request-17").at(-1), { request_id: "request-17", redaction: "redacted" });
+  host.reply("get_request_details", { ...UNDECIDED("out-of-time"), request: undecided });
+  assert.equal(review.lines(e).reason, `Reason: ${UNDECIDED_REASON.out_of_time}`);
+  assert.notEqual(e.details?.card ?? null, null, "the card's details are kept");
+  assert.equal(e.details?.redaction, "full");
+  assert.equal(model.cardStatus(e).kind, "closed");
+  assert.equal(e.request.status.state, "undecided");
+});
+
+test("a failed reason read leaves no note and is tried again after the next snapshot", () => {
+  const { host, model, review, notice, announced } = live();
+  const d = UNDECIDED("failed");
+  notice({ kind: "request", request: d.request });
+  host.error("get_request_details", "internal");
+  const e = entry(model, "request-30");
+  assert.equal(e.note, null);
+  assert.equal(review.lines(e).reason, null);
+  assert.deepEqual(announced, []);
+  assert.equal(reads(host, "request-30").length, 1, "not tried again from the failure");
+  model.refresh();
+  host.reply("get_snapshot", { ...RICH, cursor: model.cursor });
+  assert.deepEqual(reads(host, "request-30"), [
+    { request_id: "request-30", redaction: "redacted" }, { request_id: "request-30", redaction: "redacted" },
+  ]);
+  host.reply("get_request_details", d);
+  assert.equal(review.lines(e).reason, `Reason: ${UNDECIDED_REASON.failed}`);
+});
+
+test("with the details open, an undecided request is read in full only, and that read gives the reason and the fact", () => {
+  const { host, model, review, notice } = live();
+  const d = UNDECIDED("prover-unavailable");
+  const checking: Request = { ...d.request, revision: 2, status: { state: "proving_classification" } };
+  notice({ kind: "request", request: checking });
+  review.toggleDetails("request-30");
+  host.reply("get_request_details", { ...d, request: checking, undecided_reason: null });
+  notice({ kind: "request", request: d.request });
+  assert.deepEqual(reads(host, "request-30"), [
+    { request_id: "request-30", redaction: "full" }, { request_id: "request-30", redaction: "full" },
+  ]);
+  host.reply("get_request_details", d);
+  const e = entry(model, "request-30");
+  assert.equal(review.lines(e).reason, `Reason: ${UNDECIDED_REASON.prover_unavailable}`);
+  assert.deepEqual(review.details(e)?.general.map((f) => f.term), ["Received", "Last change", "Why it was not decided", "Account", "Request digest"]);
+  assert.equal(reads(host, "request-30").length, 2, "no reason read besides");
+});
+
+test("the details of an undecided request say why it was not decided; another state has no such fact", () => {
+  const { model, review } = live();
+  const base = entry(model, "request-17");
+  const why = (d: RequestDetails) => review.details({ ...base, details: d })?.general.find((f) => f.term === "Why it was not decided")?.values;
+  assert.deepEqual(why(UNDECIDED("prover-unavailable")), ["The rule checker was starting or not running."]);
+  assert.deepEqual(why(UNDECIDED("out-of-time")), ["The rule checker did not finish within its time limit."]);
+  assert.deepEqual(why(UNDECIDED("failed")), ["The rule checker ran and did not decide the request, or its report could not be used."]);
+  assert.deepEqual(why(UNDECIDED("reason-unknown")), ["The broker did not record why."]);
+  assert.equal(why(APPLIED), undefined);
+  assert.equal(why(FAILED), undefined);
 });
 
 test("an unknown outcome says what the owner can do today", () => {

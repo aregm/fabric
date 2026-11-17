@@ -2,7 +2,8 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { Snapshot } from "../../../contracts/desktop/v1/typescript/src/contract.ts";
-import { attention, buildLine, calendarLine, connectionText, proverText, storeText } from "../ui/src/status.ts";
+import { attention, buildLine, calendarLine, connectionText, proverCauseText, proverText, storeText } from "../ui/src/status.ts";
+import { PROVER_PROBLEM } from "../ui/src/text.ts";
 import { HELLO_RESULT, connect, details, fixture, request, setup, snapshot } from "./support.ts";
 
 const keys = (s: ReturnType<typeof setup>): string[] => attention(s.model).map((i) => i.key);
@@ -61,7 +62,7 @@ test("the store and the rule checker by the health the broker of this run report
     ["store", "problem", "The broker cannot open its store.", null],
     ["prover", "notice", "The rule checker is not running.", null],
   ]);
-  assert.match(items[1]?.text ?? "", /^Fabric allows nothing it cannot prove/);
+  assert.match(items[1]?.text ?? "", /^The broker did not say why\. Fabric allows nothing it cannot prove/);
   s.host.notice(1, { kind: "health", health: { prover: "starting", prover_problem: null, store: "keychain_refused" } });
   assert.deepEqual(attention(s.model).map((i) => i.title), [
     "macOS did not let the broker use the store key in the Keychain.", "The rule checker is starting.",
@@ -69,6 +70,38 @@ test("the store and the rule checker by the health the broker of this run report
   s.host.state({ name: "disconnected", reason: "exited", detail: "exit code 1" });
   assert.deepEqual(keys(s), ["broker"], "the health of a stopped broker is not shown");
   assert.equal(storeText(s.model), "Not known while the broker's current state has not been read");
+});
+
+test("the rule checker not running: the strip and the Status screen name the cause the broker gives", () => {
+  const s = setup();
+  connect(s.host, 1, snapshot(0));
+  assert.equal(proverCauseText(s.model), null, "ready: no cause");
+  const causes = [
+    ["unavailable", "The broker did not say why."],
+    ["not-configured", PROVER_PROBLEM.not_configured],
+    ["failed-will-retry", PROVER_PROBLEM.failed_will_retry],
+    ["failed", PROVER_PROBLEM.failed],
+    ["wrong-rules", PROVER_PROBLEM.wrong_rules],
+  ] as const;
+  causes.forEach(([name, cause], i) => {
+    s.host.notice(i + 1, fixture(`accept-owner-notice-health-prover-${name}.json`).change);
+    const item = attention(s.model).find((x) => x.key === "prover");
+    assert.equal(item?.title, "The rule checker is not running.", name);
+    assert.ok(item?.text.startsWith(`${cause} Fabric allows nothing it cannot prove`), `${name}: ${item?.text}`);
+    assert.equal(item?.detail, null);
+    assert.equal(proverText(s.model), "Not running");
+    assert.equal(proverCauseText(s.model), cause, name);
+  });
+  assert.equal(PROVER_PROBLEM.wrong_rules, "The rules on this computer are not the ones this broker was built with. Install Fabric Calendar again.");
+  s.host.notice(causes.length + 1, { kind: "health", health: { prover: "starting", prover_problem: null, store: "ready" } });
+  assert.equal(proverCauseText(s.model), null, "starting: no cause");
+  s.host.notice(causes.length + 2, fixture("accept-owner-notice-health-prover-failed.json").change);
+  assert.equal(proverCauseText(s.model), PROVER_PROBLEM.failed);
+  s.host.state({ name: "disconnected", reason: "exited", detail: "exit code 1" });
+  assert.equal(proverCauseText(s.model), null, "the health of a stopped broker is not shown");
+  s.host.state({ name: "connected" }, 2);
+  s.host.reply("hello", HELLO_RESULT);
+  assert.equal(proverCauseText(s.model), null, "a new run before its snapshot: no cause of the earlier run");
 });
 
 test("one item per account that needs the owner", () => {

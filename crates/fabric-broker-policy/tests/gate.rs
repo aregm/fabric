@@ -6,10 +6,15 @@ use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
 
-use fabric_broker_policy::gate::{check_rounds, check_session_dir, remove_stale_checks};
+use fabric_broker_policy::gate::{
+    INSTALLED_ISABELLE_DIR, INSTALLED_RULES_DIR, INSTALLED_USER_HOME_DIR, ISABELLE_VERSION,
+    check_rounds, check_session_dir, isabelle_installation, remove_stale_checks,
+};
 use fabric_broker_policy::report::sha256_hex;
 use fabric_broker_policy::theory::{SESSION_ROOT, THEORY_TEXT};
-use fabric_broker_policy::{Fault, PolicyError, built_theory_sha256};
+use fabric_broker_policy::{
+    Fault, GateConfig, IsabelleInstallation, PolicyError, built_theory_sha256,
+};
 
 fn repository() -> &'static Path {
     Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -305,4 +310,90 @@ mod private_tmp {
         std::os::unix::fs::symlink(root.join("elsewhere"), home_user.join("tmp")).unwrap();
         assert!(prepare_private_tmp(&home, &user_home).is_err());
     }
+}
+
+#[test]
+fn a_configuration_for_an_installation_names_the_folders_of_the_layout() {
+    let resources = Path::new("/Applications/Fabric Calendar.app/Contents/Resources");
+    let support = Path::new("/Users/someone/Library/Application Support/an.example.app");
+    let work = support.join("data").join("prover");
+    let config = GateConfig::for_installation(resources, support, &work, "fabric-broker-1");
+    assert_eq!(
+        config.isabelle_home,
+        support.join("Isabelle2025-2"),
+        "the distribution's folder is named after its version"
+    );
+    assert_eq!(INSTALLED_ISABELLE_DIR, ISABELLE_VERSION);
+    assert_eq!(config.user_home, support.join(INSTALLED_USER_HOME_DIR));
+    assert_eq!(config.rules_dir, resources.join(INSTALLED_RULES_DIR));
+    assert_eq!(config.rules_dir, resources.join("isabelle"));
+    assert_eq!(config.work_dir, work);
+    assert_eq!(config.server_name, "fabric-broker-1");
+    // The limits are those of a repository checkout.
+    let repository = GateConfig::for_repository(Path::new("/checkout"));
+    assert_eq!(config.check_timeout, repository.check_timeout);
+    assert!((config.consolidate_delay_seconds - repository.consolidate_delay_seconds).abs() < 1e-9);
+    assert_eq!(
+        repository.isabelle_home,
+        Path::new("/checkout/.tooling/isabelle/Isabelle2025-2")
+    );
+}
+
+#[test]
+fn an_isabelle_home_is_read_as_missing_another_version_or_found() {
+    let dir = scratch("installation");
+    let home = dir.join("Isabelle with a space");
+    assert_eq!(
+        isabelle_installation(&home).unwrap(),
+        IsabelleInstallation::Missing,
+        "no folder"
+    );
+    fs::create_dir_all(home.join("etc")).unwrap();
+    fs::write(
+        home.join("etc").join("ISABELLE_IDENTIFIER"),
+        ISABELLE_VERSION,
+    )
+    .unwrap();
+    assert_eq!(
+        isabelle_installation(&home).unwrap(),
+        IsabelleInstallation::Missing,
+        "a name without bin/isabelle"
+    );
+    fs::create_dir_all(home.join("bin").join("isabelle")).unwrap();
+    assert_eq!(
+        isabelle_installation(&home).unwrap(),
+        IsabelleInstallation::Missing,
+        "bin/isabelle is a directory"
+    );
+    fs::remove_dir(home.join("bin").join("isabelle")).unwrap();
+    fs::write(home.join("bin").join("isabelle"), "#!/bin/sh\n").unwrap();
+    assert_eq!(
+        isabelle_installation(&home).unwrap(),
+        IsabelleInstallation::Found
+    );
+    fs::write(
+        home.join("etc").join("ISABELLE_IDENTIFIER"),
+        format!("{ISABELLE_VERSION}\n"),
+    )
+    .unwrap();
+    assert_eq!(
+        isabelle_installation(&home).unwrap(),
+        IsabelleInstallation::Found,
+        "a line feed after the name"
+    );
+    fs::write(
+        home.join("etc").join("ISABELLE_IDENTIFIER"),
+        "Isabelle2024\n",
+    )
+    .unwrap();
+    assert_eq!(
+        isabelle_installation(&home).unwrap(),
+        IsabelleInstallation::OtherVersion("Isabelle2024".to_owned())
+    );
+    fs::remove_file(home.join("etc").join("ISABELLE_IDENTIFIER")).unwrap();
+    assert_eq!(
+        isabelle_installation(&home).unwrap(),
+        IsabelleInstallation::OtherVersion(String::new()),
+        "a distribution that does not name itself"
+    );
 }
