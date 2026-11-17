@@ -22,7 +22,7 @@
 //! `QUIT_BOUND` (1.5 s); the worker gives Isabelle at most 1.2 s to stop and then kills its
 //! server, and a failing assertion names the time it took.
 //!
-//! The test ids PW L1 to PW L20 are those of section 7.3 of the prover wiring's design,
+//! The test ids PW L1 to PW L22 are those of section 7.3 of the prover wiring's design,
 //! `docs/plans/calendar-desktop-prover-wiring-design.md`, not the CD-W04 design's package decisions
 //! L1 to L7; a bare DEF-n cites the CD-W04 design (`docs/plans/calendar-desktop-w04-design.md`).
 
@@ -602,8 +602,10 @@ impl Live {
 
     /// Ends the run as main does: quit, then the shell's stop. Returns whether the worker
     /// acknowledged and how long the stop took, which it prints. Without an acknowledgement the
-    /// worker was still in a check (PW K1), or in the kill's wait; it waits for the server to
-    /// go, so the server does not outlive the test process.
+    /// worker was late: a kill (the gate's at its bound, or the kill handle's of a check still
+    /// running at the stop's instant) or what follows it took longer than `QUIT_BOUND`, as on a
+    /// busy Mac, or the kill failed (PW K1); it waits for the server to go, so the server does
+    /// not outlive the test process.
     fn stop(&mut self) -> (bool, Duration) {
         let mut shell = self.shell.take().expect("the shell runs");
         shell
@@ -1684,6 +1686,122 @@ fn quit_kills_a_server_that_does_not_answer() {
         "the Isabelle server is left"
     );
     assert!(!dir.data().join("prover").exists());
+}
+
+/// PW L21: a quit while the gate is still starting leaves no server. Once a process names the
+/// server and the owner channel still reports the prover `starting`, end of input ends the built
+/// broker within the relay's drain: the worker kills the start through its kill handle before it
+/// acknowledges. No server is left 500 ms later and the prover's directory is gone. A prover
+/// already ready by then fails the test, since the quit would not be one during a start.
+#[test]
+#[ignore = "live: needs Isabelle; run sh scripts/verify-desktop.sh --live-proofs"]
+fn quit_during_a_gate_start_leaves_no_server() {
+    let _live = live_lock();
+    let dir = TempDir::new("quit-starting");
+    let isabelle = isabelle();
+    let server = server_name(&dir.data());
+    // Dropped after the broker: a server a failure leaves is killed.
+    let _servers = KillServersOnDrop(server.clone());
+    let mut broker = Process::start(&dir.data(), &isabelle, false);
+    let began = Instant::now();
+    loop {
+        if !servers(&server).is_empty() {
+            let snapshot = broker.result("get_snapshot", json!({}));
+            let prover = &snapshot["health"]["prover"];
+            assert!(
+                *prover != "ready",
+                "the prover was ready before the test could quit during its start: no quit during a start was tried"
+            );
+            assert_eq!(
+                *prover, "starting",
+                "a process names the server, but the prover is not starting: {}",
+                snapshot["health"]
+            );
+            break;
+        }
+        assert!(
+            !broker.given_up.load(Ordering::SeqCst),
+            "the broker gave up its prover for the run (its stderr is above)"
+        );
+        assert!(
+            began.elapsed() < START,
+            "no process named the server {server} within {START:?}"
+        );
+        thread::sleep(Duration::from_millis(10));
+    }
+    let took = broker
+        .quit(DRAIN)
+        .expect("the broker exits within the drain");
+    println!(
+        "LIVE built broker quit during a gate start in {} ms",
+        took.as_millis()
+    );
+    assert!(
+        servers_gone(&server, Duration::from_millis(500)),
+        "the Isabelle server is left"
+    );
+    assert!(
+        !dir.data().join("prover").exists(),
+        "the prover's directory is left"
+    );
+}
+
+/// PW L22: a quit while the worker is inside a check that does not end (its server's processes
+/// stopped with SIGSTOP) is still acknowledged within `QUIT_BOUND`: at the stop's instant, 1.2 s
+/// after the stop began, the calling thread finds the check running and kills its server through
+/// the kill handle; the check fails, the broken gate's stop returns at once and the worker
+/// acknowledges. A check theory in the work directory shows that the check runs when the stop
+/// begins. No server is left 500 ms later and the work directory is gone. The test kills the
+/// stopped processes itself at its end, so a failure leaves nothing stopped.
+#[test]
+#[ignore = "live: needs Isabelle; run sh scripts/verify-desktop.sh --live-proofs"]
+fn quit_during_a_check_kills_its_server() {
+    let _live = live_lock();
+    let mut live = Live::start("quit-checking", Faults::default(), |_| {});
+    live.subscribe();
+    live.health_becomes(ProverHealth::Ready, START);
+    // A's classification check has ended: A waits for the owner.
+    let a = live.pending(&[]);
+    let pids = servers(&live.server);
+    assert!(
+        !pids.is_empty(),
+        "no process names the server {}",
+        live.server
+    );
+    for pid in &pids {
+        let _ = Command::new("kill")
+            .arg("-STOP")
+            .arg(pid.to_string())
+            .status();
+    }
+    let _stopped = KillOnDrop(pids);
+    live.approve(&a, json!({"kind": "one_request"}));
+    // The fresh permit's job is with the worker now; the main loop is not run before the stop.
+    // A check theory is on disk only while a check runs, and with the server stopped this one
+    // does not end: its limit is the job's deadline, far beyond this test's few seconds.
+    let deadline = Instant::now() + Duration::from_secs(10);
+    let check = loop {
+        if let Some(check) = check_files(&live.work_dir()).pop() {
+            break check;
+        }
+        assert!(Instant::now() < deadline, "no check theory appeared");
+        thread::sleep(Duration::from_millis(2));
+    };
+    assert!(check.exists(), "the check ended before the stop");
+    let took = live.stop_within_bound();
+    println!("LIVE stop during a check took {} ms", took.as_millis());
+    // The gate's stop bound (`GATE_STOP_BOUND` in the prover adapter, not visible here): the
+    // check is killed only at the stop's instant, this long after the stop began.
+    let gate_stop_bound = Duration::from_millis(1_200);
+    assert!(
+        took >= gate_stop_bound,
+        "the stop took {took:?}, less than the gate's stop bound {gate_stop_bound:?}: the check was not running at the stop's instant"
+    );
+    assert!(
+        servers_gone(&live.server, Duration::from_millis(500)),
+        "the Isabelle server is left"
+    );
+    assert!(!live.work_dir().exists(), "the work directory is left");
 }
 
 /// PW L5 (PLAN 11): a dispatch whose answer is lost changes the practice calendar once and ends

@@ -7,6 +7,10 @@
 //! (`Gate`, `Starter`) is crate-private; test doubles of it exist only under `cfg(test)` and
 //! can only fail.
 //!
+//! At a stop the adapter kills, on Unix, what an orderly stop cannot end in time (PW 2.5, PW K1):
+//! the worker kills a gate start in progress through its kill handle before it acknowledges, and
+//! the calling thread kills the server of a check still running at the stop's instant.
+//!
 //! "PW" numbers refer to `docs/plans/calendar-desktop-prover-wiring-design.md`, whose
 //! section 2 describes this module.
 
@@ -21,7 +25,9 @@ use std::time::{Duration, Instant};
 use fabric_broker_core::ports::{ProofDone, ProofJob, ProverIdentity, ProverKind};
 use fabric_broker_policy::report::sha256_hex;
 use fabric_broker_policy::theory::SESSION_ROOT;
-use fabric_broker_policy::{Action, BrokerGate, Check, Context, GateConfig, PolicyError};
+use fabric_broker_policy::{
+    Action, BrokerGate, Check, Context, GateConfig, KillHandle, PolicyError,
+};
 use fabric_desktop_contracts::owner::ProverHealth;
 
 use self::map::{GateFate, JobRefused};
@@ -44,8 +50,11 @@ pub const RESTART_WAITS: [std::time::Duration; 2] = [
 /// How long a stop at quit waits for the worker; under the relay's 2 s drain.
 pub const QUIT_BOUND: std::time::Duration = std::time::Duration::from_millis(1_500);
 
-/// What a stop at quit keeps back from `QUIT_BOUND` for the gate's kill to send its signals (one
-/// `ps` and two `kill`; the whole kill was measured at 0.06 s on an idle Mac).
+/// What a stop at quit keeps back from `QUIT_BOUND` after the stop's instant (PW X9, PW 2.5): for
+/// the gate's kill at its bound, or, when a check still runs at that instant, for the kill of its
+/// server through the kill handle, the check's failure, the broken gate's stop (which returns at
+/// once) and the acknowledgement. The kill's helper process was measured at about 0.03 s on an
+/// idle Mac.
 const KILL_ALLOWANCE: Duration = Duration::from_millis(300);
 
 /// The bound of every stop of a gate: past it the gate kills its server's process groups (Unix).
@@ -95,9 +104,11 @@ impl Gate for BrokerGate {
     }
 }
 
-/// Starts a gate from its configuration; the real starter calls `BrokerGate::start`.
-pub(crate) type Starter =
-    std::sync::Arc<dyn Fn(&GateConfig) -> Result<Box<dyn Gate>, PolicyError> + Send + Sync>;
+/// Starts a gate from its configuration, killable through the kill handle it is given, a new one
+/// for every start (PW 2.2, PW X7); the real starter calls `BrokerGate::start_with_kill`.
+pub(crate) type Starter = std::sync::Arc<
+    dyn Fn(&GateConfig, &KillHandle) -> Result<Box<dyn Gate>, PolicyError> + Send + Sync,
+>;
 
 /// The gate configuration: the three Isabelle paths, the work directory
 /// `<data_dir>/prover`, the server name of [`server_name`] and [`CHECK_TIMEOUT`].
@@ -127,19 +138,20 @@ pub struct ProverOptions {
     pub gate: GateConfig,
     /// The waits after consecutive failures; after the last one the prover stays unavailable.
     pub restart_waits: Vec<std::time::Duration>,
-    /// Starts a gate; `BrokerGate::start` outside unit tests.
+    /// Starts a gate; `BrokerGate::start_with_kill` outside unit tests.
     pub(crate) starter: Starter,
 }
 
 impl ProverOptions {
-    /// `gate_config(..)`, `RESTART_WAITS`, and a starter calling `BrokerGate::start`.
+    /// `gate_config(..)`, `RESTART_WAITS`, and a starter calling `BrokerGate::start_with_kill`.
     #[must_use]
     pub fn new(isabelle: &crate::config::IsabelleSettings, data_dir: &Path) -> ProverOptions {
         ProverOptions {
             gate: gate_config(isabelle, data_dir),
             restart_waits: RESTART_WAITS.to_vec(),
-            starter: Arc::new(|config: &GateConfig| {
-                BrokerGate::start(config.clone()).map(|gate| Box::new(gate) as Box<dyn Gate>)
+            starter: Arc::new(|config: &GateConfig, kill: &KillHandle| {
+                BrokerGate::start_with_kill(config.clone(), kill)
+                    .map(|gate| Box::new(gate) as Box<dyn Gate>)
             }),
         }
     }
@@ -180,13 +192,19 @@ enum Msg {
 struct Shared {
     /// The health last sent to the main loop, by the worker or through [`IsabelleProver::poll`].
     health: ProverHealth,
-    /// The deadline of the check now running.
+    /// The deadline of the check now running. `check_job` sets it only while no stop was sent,
+    /// in the same critical section that reads `stop_by`, so once the stop's instant has passed
+    /// it is set if and only if a check that began before the stop still runs (PW 2.5).
     running: Option<u64>,
     /// True once the poll reported the running check past its deadline.
     overrun: bool,
     /// Set once by the handle before it sends `Stop`: the instant by which a gate's stop must
-    /// end. While it is set, queued jobs are not checked and no start begins.
+    /// end. While it is set, queued jobs are not checked, no check and no start begins.
     stop_by: Option<Instant>,
+    /// The kill handle of the latest gate start: of the start in progress, or of the gate it
+    /// gave (PW 2.2). `None` until the first start is about to spawn its starter thread. It is
+    /// never cleared: the handle of a server that was stopped and reaped reaches nothing.
+    kill: Option<KillHandle>,
 }
 
 fn lock(shared: &Mutex<Shared>) -> MutexGuard<'_, Shared> {
@@ -226,6 +244,7 @@ impl IsabelleProver {
             running: None,
             overrun: false,
             stop_by: None,
+            kill: None,
         }));
         let work_dir = options.gate.work_dir.clone();
         let worker = Worker {
@@ -279,13 +298,24 @@ impl IsabelleProver {
     ///
     /// Before the send it records the instant by which the gate's stop must end: `bound` less
     /// `KILL_ALLOWANCE`, at most `GATE_STOP_BOUND`, so the gate's kill goes out within `bound`.
+    ///
+    /// The first time it finds that instant passed without an acknowledgement, it looks once at
+    /// the shared record: a check that still runs then is not ended in time by any bound of the
+    /// gate's, so on Unix it kills that check's server through the kill handle (PW 2.5, PW K1).
+    /// The check then fails, the worker fails the broken gate as for any broken gate (its
+    /// result, a failure line, health `unavailable`, no retry once a stop was sent), its stop
+    /// returns at once, and the worker acknowledges. With no check running nothing is killed
+    /// here: the worker is then in its gate's stop, where the gate kills at that same instant
+    /// itself, or in its own kill of a start. It keeps waiting and draining until `bound` as
+    /// before.
     pub fn stop(self, bound: std::time::Duration, drain: &mut dyn FnMut()) -> bool {
-        lock(&self.shared).stop_by.get_or_insert(
+        let stop_by = *lock(&self.shared).stop_by.get_or_insert(
             Instant::now() + bound.saturating_sub(KILL_ALLOWANCE).min(GATE_STOP_BOUND),
         );
         let (ack, acknowledged) = mpsc::channel();
         if self.sender.send(Msg::Stop(ack)).is_ok() {
             let until = Instant::now().checked_add(bound);
+            let mut looked = false;
             loop {
                 let left = until.map_or(STOP_SLICE, |until| {
                     until.saturating_duration_since(Instant::now())
@@ -293,6 +323,10 @@ impl IsabelleProver {
                 match acknowledged.recv_timeout(left.min(STOP_SLICE)) {
                     Ok(()) => return true,
                     Err(RecvTimeoutError::Timeout) => {
+                        if !looked && Instant::now() >= stop_by {
+                            looked = true;
+                            self.kill_running_check();
+                        }
                         drain();
                         if until.is_none_or(|until| Instant::now() >= until) {
                             break;
@@ -305,6 +339,39 @@ impl IsabelleProver {
         // Removes a check file a running check still holds open, too (Unix allows it).
         let _ = remove_work_dir(&self.work_dir);
         false
+    }
+
+    /// On Unix, kills the server of the check that still runs, if one does and a gate start
+    /// gave a kill handle (PW 2.5). The kill runs on a short-lived thread, so the calling
+    /// thread keeps its slices, its drain and its bound although the kill may wait up to 2 s
+    /// for its helper; only if that thread cannot be spawned is the kill made here. Outside
+    /// Unix the handle reaches nothing, and its flag alone would only make the gate's later
+    /// stop skip its orderly steps, so nothing is killed there.
+    fn kill_running_check(&self) {
+        if !cfg!(unix) {
+            return;
+        }
+        // The guard is dropped at the end of this statement: no lock is held across the kill.
+        let kill = {
+            let shared = lock(&self.shared);
+            if shared.running.is_some() {
+                shared.kill.clone()
+            } else {
+                None
+            }
+        };
+        let Some(kill) = kill else {
+            return;
+        };
+        let killing = kill.clone();
+        let spawned = thread::Builder::new()
+            .name("fabric-prover-kill".to_owned())
+            .spawn(move || {
+                let _ = killing.kill();
+            });
+        if spawned.is_err() {
+            let _ = kill.kill();
+        }
     }
 }
 
@@ -448,7 +515,7 @@ impl Worker {
     }
 
     /// Enters `Starting`: a fresh private work directory, the pin of PW 2.1, then a starter
-    /// thread.
+    /// thread with a new kill handle, which `Shared.kill` holds from then on (PW 2.2).
     fn enter_starting(&mut self) {
         // No start begins once a stop was sent (PW 2.5); the `Stop` that follows ends the worker.
         if lock(&self.shared).stop_by.is_some() {
@@ -471,9 +538,16 @@ impl Worker {
             }
             Ok(true) => {}
         }
-        // A stop sent during the work directory's preparation or the pin starts no gate either.
-        if lock(&self.shared).stop_by.is_some() {
-            return;
+        // Every start gets a new handle: a killed handle stays killed (PW X7). A stop sent during
+        // the work directory's preparation or the pin starts no gate either; one sent after this
+        // section finds the handle, so the worker's stop can kill the start (PW 2.5).
+        let kill = KillHandle::new();
+        {
+            let mut shared = lock(&self.shared);
+            if shared.stop_by.is_some() {
+                return;
+            }
+            shared.kill = Some(kill.clone());
         }
         let starter = Arc::clone(&self.options.starter);
         let config = self.options.gate.clone();
@@ -482,11 +556,14 @@ impl Worker {
         let spawned = thread::Builder::new()
             .name("fabric-prover-start".to_owned())
             .spawn(move || {
-                // After a stop the worker is gone: the starter stops its own gate within
-                // `GATE_STOP_BOUND`; if the process has ended first, the server outlives it
-                // (PW K1).
+                // After a stop the worker is gone, and on Unix it killed this start's handle
+                // before it acknowledged (PW 2.2 step 3, PW K1): a server the start spawned is
+                // ended, and the start returns an error. A gate it still returns is stopped here
+                // within `stop_bound`, which with the killed handle returns at once and sends
+                // `shutdown` to a server found already running. What is left: if the process ends
+                // before the start returns, a found server outlives it.
                 if let Err(mpsc::SendError(Msg::Started(Ok(mut gate)))) =
-                    sender.send(Msg::Started(starter(&config)))
+                    sender.send(Msg::Started(starter(&config, &kill)))
                 {
                     let _ = gate.stop_within(stop_bound(&shared));
                 }
@@ -581,13 +658,35 @@ impl Worker {
         self.set_health(ProverHealth::Unavailable);
     }
 
-    /// At a stop, or when the main loop is gone: stops a ready gate here, within what is left of
-    /// the stop's instant, then removes the work directory.
+    /// At a stop, or when the channel is closed or the main loop is gone: stops a ready gate
+    /// here, within what is left of the stop's instant; on Unix kills a start in progress
+    /// through its kill handle; then removes the work directory. The stop is acknowledged only
+    /// after this (PW 2.5).
+    ///
+    /// The kill refuses a start that has not spawned its server yet, and ends a server being
+    /// started, so the start returns an error. A gate already started whose `Started` is in the
+    /// channel, or that its starter cannot send any more, has the killed handle: its stop, by
+    /// the channel's drop or by the starter, returns at once. The kill does not reach a server
+    /// `isabelle server` found already running: its `shutdown` is sent by whoever stops its
+    /// gate, after a quit during its start only after the acknowledgement (by the starter thread,
+    /// or by the worker thread as it drops the channel), so it goes out only if the process is
+    /// still alive (PW K1). A server this broker spawned was ended before the acknowledgement.
+    /// In `Starting` `Shared.kill` is the handle of the start in progress, or, when a stop came
+    /// before its starter thread, a stale one whose server was stopped, which reaches nothing,
+    /// or none when that start was the first.
     fn shut_down(&mut self) {
-        if let State::Ready(gate) =
-            std::mem::replace(&mut self.state, State::Down { retry_at: None })
-        {
-            stop_gate(gate, &self.shared);
+        match std::mem::replace(&mut self.state, State::Down { retry_at: None }) {
+            State::Ready(gate) => stop_gate(gate, &self.shared),
+            // Outside Unix the handle reaches nothing, and its flag alone would only make the
+            // gate's later stop skip its orderly steps.
+            State::Starting if cfg!(unix) => {
+                // Cloned out first: no lock on `Shared` is held across the kill.
+                let kill = lock(&self.shared).kill.clone();
+                if let Some(kill) = kill {
+                    let _ = kill.kill();
+                }
+            }
+            State::Starting | State::Down { .. } => {}
         }
         let _ = remove_work_dir(&self.options.gate.work_dir);
     }
@@ -608,7 +707,8 @@ fn stop_gate(mut gate: Box<dyn Gate>, shared: &Mutex<Shared>) {
     drop(gate);
 }
 
-/// One job in `Ready`.
+/// One job in `Ready`: refused without a check once a stop was sent, past its deadline, or when
+/// it cannot be mapped; otherwise checked within the time left before its deadline (PW 2.3).
 fn check_job(gate: &mut dyn Gate, shared: &Mutex<Shared>, job: &ProofJob) -> Checked {
     // One clock read for the refusal and the limit: the time left before the job's deadline.
     let left = job.deadline_ms.saturating_sub(now_ms());
@@ -621,6 +721,13 @@ fn check_job(gate: &mut dyn Gate, shared: &Mutex<Shared>, job: &ProofJob) -> Che
     };
     {
         let mut shared = lock(shared);
+        // No check starts once a stop was sent (PW 2.5). Read where `running` is set, so a check
+        // that runs at the stop's instant had set it before, and the handle's one look at that
+        // instant sees it (`IsabelleProver::stop`). `Worker::job`'s earlier read refuses queued
+        // jobs first; this one closes the gap between that read and here.
+        if shared.stop_by.is_some() {
+            return Checked::refused(job, map::NOT_RUNNING);
+        }
         shared.running = Some(job.deadline_ms);
         shared.overrun = false;
     }
@@ -724,6 +831,8 @@ mod tests {
     const PATIENCE: Duration = Duration::from_secs(10);
     /// How long a test waits to see that an event does not come.
     const QUIET: Duration = Duration::from_millis(250);
+    /// How long a double's check waits for its kill handle at most.
+    const KILLED_CHECK_SAFETY: Duration = Duration::from_secs(5);
 
     struct TempDir(PathBuf);
 
@@ -792,6 +901,14 @@ mod tests {
         limits: Arc<Mutex<Vec<Duration>>>,
         /// The bound of each stop.
         stop_bounds: Arc<Mutex<Vec<Duration>>>,
+        /// The kill handle of the start that gave this gate, set by a starter that hands it
+        /// on. The check then waits until it is killed (polling, up to a safety timeout),
+        /// breaks the gate and fails with an I/O error, one of the errors a gate's check gives
+        /// when its server is killed.
+        kill: Option<KillHandle>,
+        /// The stop returns only this long after its bound, as a gate that kills its server at
+        /// its bound does.
+        stop_overrun: Option<Duration>,
     }
 
     impl Double {
@@ -808,6 +925,8 @@ mod tests {
                 stops: Arc::default(),
                 limits: Arc::default(),
                 stop_bounds: Arc::default(),
+                kill: None,
+                stop_overrun: None,
             }
         }
     }
@@ -827,6 +946,14 @@ mod tests {
             if self.breaks {
                 self.broken.store(true, Ordering::SeqCst);
             }
+            if let Some(kill) = &self.kill {
+                let until = Instant::now() + KILLED_CHECK_SAFETY;
+                while !kill.is_killed() && Instant::now() < until {
+                    thread::sleep(Duration::from_millis(5));
+                }
+                self.broken.store(true, Ordering::SeqCst);
+                return Err(io());
+            }
             if let Some(latch) = &self.check_latch {
                 latch.wait();
             }
@@ -839,6 +966,9 @@ mod tests {
 
         fn stop_within(&mut self, bound: Duration) -> Result<(), PolicyError> {
             self.stop_bounds.lock().unwrap().push(bound);
+            if let Some(overrun) = self.stop_overrun {
+                thread::sleep(bound + overrun);
+            }
             if let Some(latch) = &self.stop_latch {
                 latch.wait();
             }
@@ -863,13 +993,16 @@ mod tests {
         PolicyError::Isabelle("no heap".to_owned())
     }
 
-    /// A starter that counts its calls and starts each gate with `start(call)`, `call` from 1.
-    fn counting(
-        calls: &Arc<AtomicUsize>,
-        start: impl Fn(usize) -> Result<Box<dyn Gate>, PolicyError> + Send + Sync + 'static,
-    ) -> Starter {
+    /// A starter that counts its calls and starts each gate with `start(call, kill)`, `call`
+    /// from 1, `kill` the handle of that start.
+    fn counting<F>(calls: &Arc<AtomicUsize>, start: F) -> Starter
+    where
+        F: Fn(usize, &KillHandle) -> Result<Box<dyn Gate>, PolicyError> + Send + Sync + 'static,
+    {
         let calls = Arc::clone(calls);
-        Arc::new(move |_: &GateConfig| start(calls.fetch_add(1, Ordering::SeqCst) + 1))
+        Arc::new(move |_: &GateConfig, kill: &KillHandle| {
+            start(calls.fetch_add(1, Ordering::SeqCst) + 1, kill)
+        })
     }
 
     fn repository_rules() -> PathBuf {
@@ -935,7 +1068,7 @@ mod tests {
     }
 
     fn ready(gate: Double) -> Starter {
-        Arc::new(move |_: &GateConfig| Ok(Box::new(gate.clone()) as Box<dyn Gate>))
+        Arc::new(move |_: &GateConfig, _: &KillHandle| Ok(Box::new(gate.clone()) as Box<dyn Gate>))
     }
 
     fn stop(prover: IsabelleProver) -> bool {
@@ -956,7 +1089,7 @@ mod tests {
         let latch = Latch::default();
         let gate = Double::new(io);
         let waiting = latch.clone();
-        let starter: Starter = Arc::new(move |_: &GateConfig| {
+        let starter: Starter = Arc::new(move |_: &GateConfig, _: &KillHandle| {
             waiting.wait();
             Ok(Box::new(gate.clone()) as Box<dyn Gate>)
         });
@@ -977,7 +1110,7 @@ mod tests {
         let calls = Arc::new(AtomicUsize::new(0));
         let times = Arc::new(Mutex::new(Vec::new()));
         let recorded = Arc::clone(&times);
-        let starter = counting(&calls, move |_| {
+        let starter = counting(&calls, move |_, _| {
             recorded.lock().unwrap().push(Instant::now());
             Err(isabelle())
         });
@@ -1008,7 +1141,7 @@ mod tests {
         let data = TempDir::new("w03");
         let latch = Latch::default();
         let waiting = latch.clone();
-        let starter: Starter = Arc::new(move |_: &GateConfig| {
+        let starter: Starter = Arc::new(move |_: &GateConfig, _: &KillHandle| {
             waiting.wait();
             Err(isabelle())
         });
@@ -1049,7 +1182,9 @@ mod tests {
         let stops = Arc::clone(&gate.stops);
         let stop_bounds = Arc::clone(&gate.stop_bounds);
         let calls = Arc::new(AtomicUsize::new(0));
-        let starter = counting(&calls, move |_| Ok(Box::new(gate.clone()) as Box<dyn Gate>));
+        let starter = counting(&calls, move |_, _| {
+            Ok(Box::new(gate.clone()) as Box<dyn Gate>)
+        });
         let waits = [Duration::from_millis(50)];
         let (prover, events) = spawn(options(data.path(), &waits, starter));
         assert_eq!(health(&events), ProverHealth::Ready);
@@ -1075,7 +1210,9 @@ mod tests {
         let gate = Double::new(render);
         let checks = Arc::clone(&gate.checks);
         let calls = Arc::new(AtomicUsize::new(0));
-        let starter = counting(&calls, move |_| Ok(Box::new(gate.clone()) as Box<dyn Gate>));
+        let starter = counting(&calls, move |_, _| {
+            Ok(Box::new(gate.clone()) as Box<dyn Gate>)
+        });
         let (prover, events) = spawn(options(data.path(), &[], starter));
         assert_eq!(health(&events), ProverHealth::Ready);
         for _ in 0..2 {
@@ -1096,7 +1233,7 @@ mod tests {
         let data = TempDir::new("w07-starting");
         let latch = Latch::default();
         let waiting = latch.clone();
-        let starter: Starter = Arc::new(move |_: &GateConfig| {
+        let starter: Starter = Arc::new(move |_: &GateConfig, _: &KillHandle| {
             waiting.wait();
             Err(isabelle())
         });
@@ -1132,7 +1269,7 @@ mod tests {
         let data = TempDir::new("w08-starting");
         let latch = Latch::default();
         let waiting = latch.clone();
-        let starter: Starter = Arc::new(move |_: &GateConfig| {
+        let starter: Starter = Arc::new(move |_: &GateConfig, _: &KillHandle| {
             waiting.wait();
             Err(isabelle())
         });
@@ -1157,7 +1294,7 @@ mod tests {
 
         // Down.
         let data = TempDir::new("w08-down");
-        let starter: Starter = Arc::new(|_: &GateConfig| Err(isabelle()));
+        let starter: Starter = Arc::new(|_: &GateConfig, _: &KillHandle| Err(isabelle()));
         let (prover, events) = spawn(options(data.path(), &[], starter));
         assert_eq!(health(&events), ProverHealth::Unavailable);
         let work_dir = data.path().join("prover");
@@ -1226,7 +1363,7 @@ mod tests {
         .unwrap();
         fs::write(rules.join("Fabric_Broker").join("ROOT"), SESSION_ROOT).unwrap();
         let calls = Arc::new(AtomicUsize::new(0));
-        let starter = counting(&calls, |_| Err(isabelle()));
+        let starter = counting(&calls, |_, _| Err(isabelle()));
         let mut options = options(data.path(), &[Duration::from_millis(10)], starter);
         options.gate.rules_dir = rules;
         let (prover, events) = spawn(options);
@@ -1277,7 +1414,7 @@ mod tests {
             let rules = rules_with_a_copy(data.path());
             fs::write(rules.join(file), text).unwrap();
             let calls = Arc::new(AtomicUsize::new(0));
-            let starter = counting(&calls, |_| Err(isabelle()));
+            let starter = counting(&calls, |_, _| Err(isabelle()));
             let mut options = options(data.path(), &[Duration::from_millis(10)], starter);
             options.gate.rules_dir = rules;
             let (prover, events) = spawn(options);
@@ -1308,7 +1445,7 @@ mod tests {
                 fs::write(rules.join("ROOTS"), "Rules2\n").unwrap();
             }
             let calls = Arc::new(AtomicUsize::new(0));
-            let starter = counting(&calls, |_| Err(isabelle()));
+            let starter = counting(&calls, |_, _| Err(isabelle()));
             let mut options = options(data.path(), &[], starter);
             options.gate.rules_dir = rules;
             let (prover, events) = spawn(options);
@@ -1326,7 +1463,9 @@ mod tests {
         let checks = Arc::clone(&gate.checks);
         let stops = Arc::clone(&gate.stops);
         let calls = Arc::new(AtomicUsize::new(0));
-        let starter = counting(&calls, move |_| Ok(Box::new(gate.clone()) as Box<dyn Gate>));
+        let starter = counting(&calls, move |_, _| {
+            Ok(Box::new(gate.clone()) as Box<dyn Gate>)
+        });
         let (prover, events) = spawn(options(data.path(), &[Duration::from_millis(10)], starter));
         assert_eq!(health(&events), ProverHealth::Unavailable);
         assert!(prover.prove(job()));
@@ -1370,7 +1509,7 @@ mod tests {
         let mut broken = Double::new(io);
         broken.stop_latch = Some(stop_latch.clone());
         let calls = Arc::new(AtomicUsize::new(0));
-        let starter = counting(&calls, move |call| {
+        let starter = counting(&calls, move |call, _| {
             let gate = if call == 1 {
                 broken.clone()
             } else {
@@ -1427,7 +1566,7 @@ mod tests {
         fs::write(work_dir.join("Check_000009.thy"), "left by a killed broker").unwrap();
         let seen = Arc::new(Mutex::new(Vec::new()));
         let recorded = Arc::clone(&seen);
-        let starter: Starter = Arc::new(move |config: &GateConfig| {
+        let starter: Starter = Arc::new(move |config: &GateConfig, _: &KillHandle| {
             let entries = fs::read_dir(&config.work_dir).unwrap().count();
             #[cfg(unix)]
             let mode = {
@@ -1499,7 +1638,7 @@ mod tests {
         first.breaks = true;
         let stops = Arc::clone(&first.stops);
         let calls = Arc::new(AtomicUsize::new(0));
-        let starter = counting(&calls, move |call| {
+        let starter = counting(&calls, move |call, _| {
             let gate = if call == 1 {
                 first.clone()
             } else {
@@ -1640,7 +1779,7 @@ mod tests {
             let stops = Arc::clone(&gate.stops);
             let stop_bounds = Arc::clone(&gate.stop_bounds);
             let waiting = latch.clone();
-            let starter: Starter = Arc::new(move |_: &GateConfig| {
+            let starter: Starter = Arc::new(move |_: &GateConfig, _: &KillHandle| {
                 waiting.wait();
                 Ok(Box::new(gate.clone()) as Box<dyn Gate>)
             });
@@ -1679,7 +1818,7 @@ mod tests {
     fn no_start_begins_once_a_stop_was_sent() {
         let data = TempDir::new("w28");
         let calls = Arc::new(AtomicUsize::new(0));
-        let starter = counting(&calls, |_| Err(isabelle()));
+        let starter = counting(&calls, |_, _| Err(isabelle()));
         // The worker sends `Unavailable` after the first start failed, with a retry due at
         // once, and then waits in `emit` until the stop was sent.
         let held = Latch::default();
@@ -1727,6 +1866,7 @@ mod tests {
                 running: None,
                 overrun: false,
                 stop_by,
+                kill: None,
             })),
             sender,
             state,
@@ -1741,7 +1881,7 @@ mod tests {
     fn a_stop_sent_before_the_first_start_starts_nothing() {
         let data = TempDir::new("w29");
         let calls = Arc::new(AtomicUsize::new(0));
-        let starter = counting(&calls, |_| Err(isabelle()));
+        let starter = counting(&calls, |_, _| Err(isabelle()));
         let (worker, messages) =
             worker(data.path(), starter, State::Starting, Some(Instant::now()));
         let (ack, acknowledged) = mpsc::channel();
@@ -1752,5 +1892,135 @@ mod tests {
         assert_eq!(acknowledged.try_recv(), Ok(()));
         assert_eq!(calls.load(Ordering::SeqCst), 0);
         assert!(!data.path().join("prover").exists());
+    }
+
+    /// A starter that records the kill handle of each start and gives the start's gate, a clone
+    /// of `gate`, that handle.
+    fn handing_on(gate: Double, handles: &Arc<Mutex<Vec<KillHandle>>>) -> Starter {
+        let handles = Arc::clone(handles);
+        Arc::new(move |_: &GateConfig, kill: &KillHandle| {
+            handles.lock().unwrap().push(kill.clone());
+            let mut gate = gate.clone();
+            gate.kill = Some(kill.clone());
+            Ok(Box::new(gate) as Box<dyn Gate>)
+        })
+    }
+
+    /// PW w30 (PW 2.5, PW K1): a stop while a starter is inside its gate's start kills that
+    /// start's handle before the stop is acknowledged, on Unix; elsewhere the handle is not
+    /// killed.
+    #[test]
+    fn a_stop_while_starting_kills_the_start() {
+        let data = TempDir::new("w30");
+        let latch = Latch::default();
+        let waiting = latch.clone();
+        let handles = Arc::new(Mutex::new(Vec::new()));
+        let recorded = Arc::clone(&handles);
+        let starter: Starter = Arc::new(move |_: &GateConfig, kill: &KillHandle| {
+            recorded.lock().unwrap().push(kill.clone());
+            waiting.wait();
+            Err(isabelle())
+        });
+        let (prover, _events) = spawn(options(data.path(), &[], starter));
+        wait_until("the start", || !handles.lock().unwrap().is_empty());
+        assert!(stop(prover));
+        let handles = handles.lock().unwrap().clone();
+        assert_eq!(handles.len(), 1);
+        assert_eq!(handles[0].is_killed(), cfg!(unix));
+        latch.open();
+    }
+
+    /// PW w31 (PW 2.5, PW K1): a check still running at the stop's instant has its server killed
+    /// through the kill handle; the check fails, the broken gate is stopped and the stop is
+    /// acknowledged soon after that instant.
+    #[cfg(unix)]
+    #[test]
+    fn a_check_still_running_at_the_stop_instant_is_killed() {
+        let data = TempDir::new("w31");
+        let gate = Double::new(io);
+        let checks = Arc::clone(&gate.checks);
+        let stops = Arc::clone(&gate.stops);
+        let handles = Arc::new(Mutex::new(Vec::new()));
+        let (prover, events) = spawn(options(data.path(), &[], handing_on(gate, &handles)));
+        assert_eq!(health(&events), ProverHealth::Ready);
+        assert!(prover.prove(job()));
+        wait_until("the check", || checks.load(Ordering::SeqCst) == 1);
+        let started = Instant::now();
+        assert!(prover.stop(PATIENCE, &mut || {}));
+        let elapsed = started.elapsed();
+        assert!(
+            elapsed >= GATE_STOP_BOUND && elapsed < GATE_STOP_BOUND + Duration::from_millis(700),
+            "{elapsed:?}"
+        );
+        assert!(handles.lock().unwrap()[0].is_killed());
+        assert_eq!(stops.load(Ordering::SeqCst), 1);
+    }
+
+    /// PW w32 (PW 2.5): a stop whose gate is idle kills nothing through the handle, even when
+    /// the gate's stop returns only after the stop's instant.
+    #[test]
+    fn a_stop_kills_no_server_whose_check_is_not_running() {
+        let data = TempDir::new("w32");
+        let mut gate = Double::new(render);
+        gate.stop_overrun = Some(Duration::from_millis(200));
+        let handles = Arc::new(Mutex::new(Vec::new()));
+        let (prover, events) = spawn(options(data.path(), &[], handing_on(gate, &handles)));
+        assert_eq!(health(&events), ProverHealth::Ready);
+        let started = Instant::now();
+        assert!(prover.stop(PATIENCE, &mut || {}));
+        let elapsed = started.elapsed();
+        assert!(elapsed >= GATE_STOP_BOUND, "{elapsed:?}");
+        assert!(!handles.lock().unwrap()[0].is_killed());
+    }
+
+    /// PW w33 (PW 2.2, PW X7): every start gets a new kill handle, so a retry after a start whose
+    /// handle was killed is not refused for it.
+    #[test]
+    fn each_start_gets_its_own_kill_handle() {
+        let data = TempDir::new("w33");
+        let calls = Arc::new(AtomicUsize::new(0));
+        let retried = Arc::new(Mutex::new(None));
+        let recorded = Arc::clone(&retried);
+        let starter = counting(&calls, move |call, kill| {
+            if call == 1 {
+                kill.kill().unwrap();
+            } else {
+                *recorded.lock().unwrap() = Some(kill.is_killed());
+            }
+            Err(isabelle())
+        });
+        let (prover, events) = spawn(options(data.path(), &[Duration::from_millis(10)], starter));
+        for expected in [
+            ProverHealth::Unavailable,
+            ProverHealth::Starting,
+            ProverHealth::Unavailable,
+        ] {
+            assert_eq!(health(&events), expected);
+        }
+        assert_eq!(calls.load(Ordering::SeqCst), 2);
+        assert_eq!(*retried.lock().unwrap(), Some(false));
+        assert!(stop(prover));
+    }
+
+    /// PW w34 (PW 2.5): a job that `Worker::job` let through because no stop was sent yet is not
+    /// checked when the stop was sent before its check began, and no check is marked running.
+    #[test]
+    fn no_check_starts_once_a_stop_was_sent() {
+        let data = TempDir::new("w34");
+        let gate = Double::new(render);
+        let checks = Arc::clone(&gate.checks);
+        let (mut worker, _messages) = worker(
+            data.path(),
+            ready(Double::new(render)),
+            State::Ready(Box::new(gate)),
+            Some(Instant::now()),
+        );
+        let State::Ready(gate) = &mut worker.state else {
+            unreachable!("the worker was built ready");
+        };
+        let checked = check_job(gate.as_mut(), &worker.shared, &job());
+        assert_eq!(reason(&checked.done), map::NOT_RUNNING);
+        assert_eq!(checks.load(Ordering::SeqCst), 0);
+        assert!(lock(&worker.shared).running.is_none());
     }
 }
