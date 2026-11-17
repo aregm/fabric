@@ -76,13 +76,29 @@ pub struct GateConfig {
     pub consolidate_delay_seconds: f64,
 }
 
+/// The Isabelle distribution the rule theory and its checks were verified with. A
+/// distribution names itself in `etc/ISABELLE_IDENTIFIER`, and its server reports the same
+/// name.
+pub const ISABELLE_VERSION: &str = "Isabelle2025-2";
+
+/// In an installation's support folder, the folder that holds the Isabelle distribution: its
+/// `bin/isabelle` is directly inside.
+pub const INSTALLED_ISABELLE_DIR: &str = ISABELLE_VERSION;
+
+/// In an installation's support folder, Isabelle's user home. Isabelle keeps the heap of the
+/// `Fabric_Broker` session, its server registry and its temporary files below it.
+pub const INSTALLED_USER_HOME_DIR: &str = "isabelle-user-home";
+
+/// In an application bundle's resources, the folder that holds `Fabric_Broker/`.
+pub const INSTALLED_RULES_DIR: &str = "isabelle";
+
 impl GateConfig {
     /// Defaults for a repository checkout set up with `scripts/setup-demo.sh`.
     #[must_use]
     pub fn for_repository(root: &Path) -> Self {
         let isabelle = root.join(".tooling").join("isabelle");
         Self {
-            isabelle_home: isabelle.join("Isabelle2025-2"),
+            isabelle_home: isabelle.join(ISABELLE_VERSION),
             user_home: isabelle.join("home"),
             rules_dir: root.join("isabelle"),
             work_dir: root.join(".local").join("broker-checks"),
@@ -90,6 +106,70 @@ impl GateConfig {
             check_timeout: Duration::from_secs(30),
             consolidate_delay_seconds: 0.1,
         }
+    }
+
+    /// For an installed application (plan Q09): the rule theory comes with the application,
+    /// and Isabelle is installed once into a fixed folder of the user.
+    ///
+    /// - `resources_dir` is the application bundle's resources. The theory is read from
+    ///   `<resources_dir>/isabelle/Fabric_Broker/`. Nothing is written there, so the bundle
+    ///   may be read-only and signed.
+    /// - `support_dir` is the application's own folder for this user. The distribution is
+    ///   `<support_dir>/Isabelle2025-2`, and Isabelle's user home is
+    ///   `<support_dir>/isabelle-user-home`, which the gate creates.
+    /// - `work_dir` and `server_name` are the caller's, as for any other configuration.
+    ///
+    /// The paths may contain spaces. [`isabelle_installation`] says whether the distribution
+    /// is there. The first start builds the session's heap in the user home, and so does the
+    /// first start after the application was moved or its theory changed.
+    #[must_use]
+    pub fn for_installation(
+        resources_dir: &Path,
+        support_dir: &Path,
+        work_dir: &Path,
+        server_name: &str,
+    ) -> Self {
+        Self {
+            isabelle_home: support_dir.join(INSTALLED_ISABELLE_DIR),
+            user_home: support_dir.join(INSTALLED_USER_HOME_DIR),
+            rules_dir: resources_dir.join(INSTALLED_RULES_DIR),
+            work_dir: work_dir.to_path_buf(),
+            server_name: server_name.to_owned(),
+            check_timeout: Duration::from_secs(30),
+            consolidate_delay_seconds: 0.1,
+        }
+    }
+}
+
+/// What an Isabelle home holds, as [`isabelle_installation`] reads it.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum IsabelleInstallation {
+    /// No Isabelle: `bin/isabelle` is not a file there.
+    Missing,
+    /// An Isabelle that is not [`ISABELLE_VERSION`]. It holds the name the distribution
+    /// gives itself, which is empty when it gives none.
+    OtherVersion(String),
+    /// The distribution the rule theory was verified with.
+    Found,
+}
+
+/// Reads what `isabelle_home` holds from two of its files, `bin/isabelle` and
+/// `etc/ISABELLE_IDENTIFIER`. Nothing is run, so a caller can say that Isabelle is not
+/// installed before it starts a gate. It does not tell whether that Isabelle works.
+pub fn isabelle_installation(isabelle_home: &Path) -> io::Result<IsabelleInstallation> {
+    if !isabelle_home.join("bin").join("isabelle").is_file() {
+        return Ok(IsabelleInstallation::Missing);
+    }
+    let identifier = match fs::read_to_string(isabelle_home.join("etc").join("ISABELLE_IDENTIFIER"))
+    {
+        Ok(text) => text.trim().to_owned(),
+        Err(error) if error.kind() == io::ErrorKind::NotFound => String::new(),
+        Err(error) => return Err(error),
+    };
+    if identifier == ISABELLE_VERSION {
+        Ok(IsabelleInstallation::Found)
+    } else {
+        Ok(IsabelleInstallation::OtherVersion(identifier))
     }
 }
 

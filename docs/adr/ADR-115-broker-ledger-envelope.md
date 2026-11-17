@@ -1,12 +1,12 @@
 # ADR-115: Broker ledger envelope
 
-**Status:** Proposed
+**Status:** Accepted on 2026-11-16
 **Date:** 2026-11-16
 **Deciders:** the owner
 **Owner:** the owner
 **Related:** [Roadmap](../roadmap.md) `RD-14`, §4.4, §5, §8.3 · [Calendar Desktop plan](../plans/calendar-desktop-plan.md) §4.3, §11 · [ADR-107](ADR-107-operation-log-and-sync-evolution.md) D1 to D3 (Proposed) · [ADR-108](ADR-108-agent-and-mcp-permission-model.md) (Proposed) · `crates/fabric-storage` (`ledger.rs`, `migrations/0001_initial.sql`) · [CD-W04 design](../plans/calendar-desktop-w04-design.md) section 4
 
-This record is a proposal. It is not accepted. It asks the owner to decide `RD-14` for the broker. The code of work package `CD-W04` already implements it as written. Merging the pull request that carries this file is the owner's acceptance. Before the merge it is his chance to change it.
+This record decides `RD-14` for the broker. The code of work package `CD-W04` implements it as written. The owner accepted it on 2026-11-16 by merging the pull request that carries this file, pull request 23 of `CD-W04`.
 
 ## Context
 
@@ -142,15 +142,14 @@ No store with real data exists yet. The only stores are test stores in temporary
 
 - `RD-14`'s first question for Fabric as a whole: whether Fabric keeps an operation log beyond the broker, now that the vault is PIM's. The roadmap decides it after `CD-G2a`, on evidence from this ledger.
 - Whether to anchor the ledger head outside the file, to detect a whole-file rollback.
-- Whether `CD-W06` adds a request signature by the agent's bridge (the first option above). Answered on
-  2026-11-17 for version 1: no (action item 4).
+- Whether `CD-W06` adds a request signature by the agent's bridge (the first option above). Answered by the owner on 2026-11-17: no request signature in version 1; the key is checked once per connection (plan §15.2, `NOV17-SIGN`).
 - Replay is not version-aware. `verify_replay` applies this build's apply code to every earlier row, so a migration that changes a table the apply code writes (a renamed or retyped column, a changed constraint) would replay the rows before it wrongly. Until replay chooses its apply and decode rules by the replay database's schema version, and verification accepts every known payload version, migrations may only add tables, nullable or defaulted columns and indexes. This must be settled before `CD-W05`'s migration 2.
 
 ## Action Items
 
-1. [ ] The owner accepts this record by merging the `CD-W04` pull request, or asks for changes before the merge.
+1. [x] The owner accepts this record by merging the `CD-W04` pull request, or asks for changes before the merge. Merged as pull request 23 on 2026-11-16.
 2. [x] `CD-W04` implements D1 to D7 in `crates/fabric-storage`.
-3. [ ] On acceptance, mark `RD-14` decided for the broker in the roadmap, and set this record to Accepted.
+3. [x] On acceptance, mark `RD-14` decided for the broker in the roadmap, and set this record to Accepted.
 4. [x] `CD-W06` records whether the agent channel signs requests. It signs none in version 1: the bridge proves
    its enrolled key once per connection, in the handshake
    ([CD-W06 design](../plans/calendar-desktop-w06-design.md) section 4.4; the owner's decision of 2026-11-17).
