@@ -14,7 +14,10 @@ section 6.2, `Rn` the risks of section 11.1 (two-digit ids such as `R08` are the
 implements today. The Calendar Desktop plan and the contract (`contracts/desktop/v1`) win wherever they differ
 from this document. Section 4 is proposed to the owner as ADR-115 (Proposed).
 
-Date 2026-11-16. Status: as built, describing the worktree of `CD-W04` before merge.
+Date 2026-11-16. Status: as built, describing the worktree of `CD-W04` before merge; updated 2026-11-17 by the broker
+part of contract schema version 2 (branch `claude/cd-broker-prover-reasons`): the stored cause of a move to
+`undecided` (3.6, 4, 5.7), the prover's status (10.3) and the synthetic classifier's health (5.10), with the tests
+s18 to s23 and c32 to c36.
 
 Abbreviations (paths relative to the repository root):
 
@@ -524,6 +527,12 @@ What `apply` guards (each mutation runs in a savepoint, so a refused guard leave
   `verify_chain` accepting every known `payload_version`, and a rehearsal migration that alters a projection table),
   a migration may only add: new tables, new nullable or defaulted columns, new indexes. This must be settled before
   CD-W05's migration 2 (R22).
+- Under `payload_version` 1 a stored JSON shape (a `Mutation` variant or a record it holds) may gain a member only
+  when the member is optional, left out when absent (`skip_serializing_if`), defaulted when read, and its decoding
+  accepts values it does not know. Then every earlier row, and every row without it, keeps its bytes, and older
+  builds of the same schema decode it (`Mutation` has no `deny_unknown_fields`). Any other change needs a
+  `payload_version` bump. The first such member is `RequestMoved.undecided_cause` (4); s18 pins the bytes of a
+  payload of every variant as written before it, and s21 its tolerant decoding.
 
 ---------------------------------------------------------------------------------------------------------------------
 
@@ -553,6 +562,18 @@ every hash vector changes.
 | `payload`, `payload_hash` | canonical JSON `{"mutations":[...]}`; `sha256_hex(payload)` | same |
 | `previous_hash`, `envelope_hash` | see below | `previous_device_hash` (SHA-256, no BLAKE3 in tree) |
 | absent | `space_id`, `key_epoch`, HLC, COSE signature | deferred to ADR107 S1 (PLAN 11 para 3) |
+
+`RequestMoved` may carry `undecided_cause`, the broker's cause of a move to `undecided` (5.7), as its bare stored
+text. It is written only on that move, and every such move this build writes carries it: `WriteTx::apply` refuses a
+move to `undecided` without a cause and a cause on any other move, beside its other write-only refusals, and
+`ledger::append` refuses a cause in a commit whose `correlation_id` is not that request's id. Replay applies neither
+rule and writes the member into no table, so a verified row of an older build (no member) or of a newer one (a cause
+this build does not know) replays to the same projection (s20, s23). `ReadTx::undecided_cause_of(request_id)` reads
+it with SQLite's JSON functions over the request's committed ledger rows (`correlation_id` = request id, the index
+`ledger_correlation`): SQLite parses each row's payload and the query returns one text, the cause of the request's
+newest move to `undecided`; an unknown text, another JSON type or no member reads as no cause (s22). The value is
+ledger-only: no table holds it, so replay does not compare it and only the chain protects it, until a version-aware
+replay (CD-W05) may build a column from it.
 
 Idempotency: `owner_command`/`<command id>` on a command's transaction or on its `owner.refused` transaction (only
 one of the two ever commits for one id); `agent_call`/`<agent_id>/<call_id>` only on the transaction that inserts the
@@ -785,16 +806,16 @@ Handling a result, in order:
 1. A result for an unknown or expired job id, one whose `request_id` or `purpose` differs from its job's, or one for
    a request no longer in the job's proving state is ignored and not recorded.
 2. Binding (D39): a report whose `request_id`, `purpose` or `action_digest` is not its job's proves nothing. The
-   request goes `undecided` in one commit (`request.proof`); nothing is recorded and the relied list is unchanged, so
-   no proof is filed under the request the report names.
+   request goes `undecided` (`report_unusable`) in one commit (`request.proof`); nothing is recorded and the relied
+   list is unchanged, so no proof is filed under the request the report names.
 3. Grant check (D17): each id in `ProofDone.authorizing_grants` must be among the grant ids of the job's
    `facts.grants`, kept with the in-flight job (5.1). If one is not (a wrong adapter, a grant of another agent, an
    unknown id), the result is refused in one commit (`request.proof`): `ProofRecorded` (the report and list as
    received, `undecided_reason` "authorizing grant outside the facts"), no `ReliedGrantSet`, and the request goes
-   `undecided`, for every purpose and verdict. It is not a re-proof. So a prover result never becomes a
-   `StoreFault`, and a restart cannot replay a halt (c18). Grant ids are unique within one context: the offered
-   grants come from one list of the agent's grants.
-4. No report: `undecided`, nothing recorded.
+   `undecided` (`report_unusable`), for every purpose and verdict. It is not a re-proof. So a prover result never
+   becomes a `StoreFault`, and a restart cannot replay a halt (c18). Grant ids are unique within one context: the
+   offered grants come from one list of the agent's grants.
+4. No report: `undecided` with the cause the result states (`not_stated` when it states none), nothing recorded.
 5. Fence changed, or a fresh Permit naming a grant no longer valid now (5.5): recorded with the job's fence and
    discarded; proved again while the purpose's counter allows.
 6. Otherwise accepted: recorded, and the verdict decides (table below).
@@ -825,6 +846,38 @@ Handling a result, in order:
 | retry_wait -> proving_fresh_permit | pump at `due`; fresh proof (relied list kept) and a new authorization |
 | outcome_unknown -> reconciling -> ...; applied -> reconciled | CD-W05; in W04 these stay open and visible |
 | any -> cancelled | not driven (no cancel message in v1) |
+
+Undecided and its cause. Only `pipeline::undecide(tx, cx, request_id, cause)` moves a request to `undecided`, and it
+stores the cause on that move (`RequestMoved.undecided_cause`, 4), in the commit that sends the request notice:
+`advance` refuses `Event::Undecide`, and `move_request_with` refuses a move to `undecided` without a cause and a
+cause on any other move (c34). The causes are one closed list, `fabric_storage::UndecidedCause`; a stored text is
+never renamed or reused (s19). A prover states its own cause on a result that decides nothing (`ProofDone.cause`, a
+`ProverCause`, 10.3), and `stored_cause` converts it. `get_request_details` gives `undecided_reason` only while the
+request is `undecided`, mapped by `reason_of`, in full and redacted details alike (c35); a request whose move has no
+cause (as builds before it wrote) reads null.
+
+| Stored cause | Stated by | `undecided_reason` |
+|---|---|---|
+| `prover_starting` | the adapter's STARTING | `prover_unavailable` |
+| `prover_not_running` | the adapter's NOT_RUNNING (down, a stop sent); the shell for a lost worker and a job it cannot hand over | `prover_unavailable` |
+| `no_prover` | `start_proof` with no prover attached; `accepted()` and a result with no report for a kind that is not Isabelle | `prover_unavailable` |
+| `deadline_passed` | the watchdog; the adapter's PAST_DEADLINE; a check that returned at or after its job's deadline without deciding | `out_of_time` |
+| `check_limit_reached` | the adapter: a check that took its whole limit before the deadline without deciding | `out_of_time` |
+| `check_not_decided` | an Undecided verdict in time and under the limit (also when no cause is stated); the adapter's FAILED | `failed` |
+| `report_unusable` | the adapter's OTHER_THEORY, UNBOUND, NOT_FIT; a report bound to another job (D39); a grant outside the facts (D17) | `failed` |
+| `no_ruling` | `accepted()`: Block or NeedApproval without a `Ruling` | `failed` |
+| `no_grant` | `accepted()`: an Isabelle fresh Permit that names no authorizing grant (L7(d)) | `failed` |
+| `reproofs_spent` | a classification whose counter is spent (D16) | `failed` |
+| `job_refused` | the adapter's refusals before any check that are not about the prover's state or time, and RENDER | `failed` |
+| `no_provider` | `accepted()`: an Isabelle fresh Permit with grants, no provider | null |
+| `agent_paused` | `accepted()`: the same with the agent paused; defensive, since a correct gate blocks it first | null |
+| `read_tool` | `accepted()`: the same for a tool that changes no calendar | null |
+| `no_scope` | `accepted()`: NeedApproval with a `Ruling` for a request with no scope | null |
+| `not_stated` | a result with no report and no stated cause | null |
+
+For an Isabelle fresh Permit `accepted()` checks in this order: no grant, a read tool, a paused agent, no provider,
+then it authorizes. A null-mapped cause is recorded although the contract has no value for it; a fourth value could
+serve those rows later.
 
 The reducer drives 25 of the contract's 39 transitions; the rest belong to later packages. An attempt result for
 another attempt than the open one is ignored.
@@ -876,11 +929,14 @@ learns the request id from the reply (main hands it every `AgentReply` on its co
 most 2 proposals per run. If the broker closes its connection it stops for the run.
 
 A `SyntheticClassifier` is the attached prover (`Attachments.prover = Some({kind: Synthetic, health:
-Unavailable})`), run on a worker thread: classification -> `need_approval` with rule `synthetic_no_rule_theory`,
-`isabelle_version` "synthetic (no prover)", `authorizing_grants` empty; fresh permit -> `undecided` with an
-`undecided_reason`. Its result type cannot express permit, and the core refuses any non-Isabelle permit. Health stays
-`prover: unavailable`. `hello`'s build label is `"<version> CD-W04 synthetic"`. Its reports are stored but
-`get_proof` answers `not_found` for them (6.1).
+Unavailable(Some(NotConfigured))})`), run on a worker thread: classification -> `need_approval` with rule
+`synthetic_no_rule_theory`, `isabelle_version` "synthetic (no prover)", `authorizing_grants` empty; fresh permit ->
+`undecided` with an `undecided_reason`. Its result type cannot express permit, and the core refuses any non-Isabelle
+permit. Health stays `prover: unavailable` with `prover_problem: not_configured`: this run has no rule prover. Inside
+`accepted()`, and for a result with no report, a kind that is not Isabelle stores `no_prover` whatever the result
+states; outside it (spent re-proofs, a report bound to another job, a grant outside the facts, the watchdog) a
+synthetic run stores the same cause as an Isabelle run (5.7). `hello`'s build label is `"<version> CD-W04
+synthetic"`. Its reports are stored but `get_proof` answers `not_found` for them (6.1).
 
 ---------------------------------------------------------------------------------------------------------------------
 
@@ -1240,6 +1296,14 @@ Each name states what the test proves.
 | — | `fitness.rs` | `the_scan_finds_projection_writes_and_ignores_comments` | the scan itself |
 | s17 | `secrecy.rs` | `failures_print_no_key_and_no_content` | D37: a wrong key (macOS), an injected trigger, a JSON column corrupted to hold a marker (as a JSON string, which serde would quote), a failed backup; no Display, Debug or owner message holds the key's hex or the marker |
 | M1 | `keychain.rs` (macOS, ignored) | `keychain_key_round_trip` | 3.2: the key goes into the Keychain and comes back unchanged |
+| s18 | `src/ledger.rs` (unit) | `old_payloads_decode_and_encode_to_the_same_bytes` | 3.6: a payload of every `Mutation` variant as the store wrote it before `undecided_cause` existed decodes and encodes to the same bytes; a move with the member does too, and the reader finds it |
+| s19 | `src/rows.rs` (unit) | `every_undecided_cause_has_its_stored_text` | 5.7: each cause keeps its stored text, serde writes the same text, and `ALL` holds each once |
+| s20 | `src/tx.rs` (unit) | `only_a_move_to_undecided_names_its_cause` | 4: `WriteTx::apply` refuses a move to `undecided` without a cause and a cause on another move; the moves it applies pass `verify_chain` and `verify_replay` |
+| s20 | `src/ledger.rs` (unit) | `a_move_that_names_its_cause_is_correlated_to_its_request` | 4: `append` refuses a cause in a commit correlated to another id |
+| s21 | `src/ledger.rs` (unit) | `an_unknown_or_odd_cause_decodes_as_none` | 3.6: a newer text, a number, `null` and an unknown member decode, as no cause |
+| s22 | `src/read.rs` (unit) | `the_reader_finds_the_cause_of_the_undecided_move` | 4: the newest move of the request itself, not another request's move in the same row; an unknown text and a number read as no cause without a fault; committed rows only |
+| s23 | `src/ledger.rs` (unit) | `a_store_with_causes_replays` | 4: `verify_chain` and `verify_replay` over an old move with no member and a cause this build does not know; the `requests` row has the same bytes with and without a cause |
+| s23 | `replay.rs` | `replay_rebuilds_every_projection_table` | 4: the random model's moves to `undecided`, with causes drawn from `UndecidedCause::ALL`, replay |
 
 ### 9.3 Core acceptance (`crates/fabric-broker-core/tests/`; in-process, test key)
 
@@ -1305,6 +1369,23 @@ true }` where needed and feed `ProofDone` / `AttemptDone`. The shared harness is
 | c30 | `sessions.rs` | `activity_never_raises_the_agent_revision` | 5.4, D35 |
 | c30 | `sessions.rs` | `a_connect_that_replaces_a_live_session_raises_the_agent_revision_once` | 5.4, 5.5 |
 | c31 | `proofs.rs` | `the_reproof_counter_is_per_purpose_and_survives_a_retry` | D16 |
+| c32 | `src/ports.rs` (unit) | `prover_status_has_no_cause_unless_unavailable` | 10.3: only `Unavailable` names a problem |
+| c32 | `src/service/core.rs` (unit) | `health_follows_the_status` | 10.3: `Core::health()` follows the status; no prover reads `not_configured` |
+| c32 | `src/service/core.rs` (unit) | `a_change_of_cause_alone_sends_one_notice` | 10.3: the filter drops only a repeat of the whole status |
+| c33 | `src/service/pipeline.rs` (unit) | `accepted_states_each_cause` | 5.7: every undecided outcome of `accepted()` names its cause, in the order of 5.7 |
+| c33 | `src/service/pipeline.rs` (unit) | `each_prover_cause_has_its_stored_cause` | 5.7: `stored_cause` |
+| c33 | `src/service/tests.rs` (unit) | `a_discarded_classification_is_proved_again_until_its_counter_is_spent` | 5.7, D16: a spent classification counter stores `reproofs_spent` |
+| c33 | `proofs.rs` | `each_stated_no_report_cause_reads_its_value` | 5.7: each cause a result with no report states, and `not_stated` |
+| c33 | `proofs.rs` | `an_undecided_verdict_reads_its_stated_cause` | 5.7: an Undecided verdict's stated cause, and `check_not_decided` without one |
+| c33 | `proofs.rs` | `an_approval_with_no_scope_stores_its_cause_and_reads_null` | 5.7: a null-mapped cause end to end (`no_scope`) |
+| c34 | `src/service/tests.rs` (unit) | `advance_refuses_undecide` | 5.7: `advance` and `move_request_with` refuse; `undecide` moves |
+| c34 | `fitness.rs` | `only_undecide_moves_a_request_to_undecided` | 5.7: no production file outside the reducer and `undecide` names `Event::Undecide` or passes a cause |
+| c34 | `common/mod.rs` | `Harness::verify` (every test that calls it) | 5.7: every move to `undecided` in the ledger has a known cause and the request's correlation |
+| c35 | `src/owner/views.rs` (unit) | `each_cause_reads_its_contract_value` | 5.7: `reason_of`, one row per cause |
+| c35 | `src/owner/tests.rs` (unit) | `details_carry_a_reason_only_when_undecided` | 5.7, CR 7: null in every other state; redacted details carry the reason |
+| c35 | `proofs.rs` | `the_state_check_in_read_details_matters` | 5.7: a forged cause on a request that is not `undecided` reads null |
+| c35 | `proofs.rs` | `an_old_move_without_a_cause_reads_null` | 5.7: a move as earlier builds wrote it, and an unknown text, read null |
+| c36 | `proofs.rs` | `a_restart_keeps_the_cause_and_restates_starting` | 5.7, 5.8: a stored cause survives a restart; a job proved again while Isabelle starts reads `prover_unavailable`; health reads `starting` |
 | — | `fitness.rs` | `forbidden_dependencies_are_absent` | the table of section 2 |
 | — | `fitness.rs` | `the_manifest_scan_reads_every_dependency_form` | the scan itself |
 
@@ -1390,9 +1471,16 @@ connection to the store, except the tests' second connection for fault injection
   `ProofAction::Agent(Action)`, the contract `action_digest` (`sha256:` + 64 hex; the W03 adapter strips the prefix),
   `TrustedFacts`, the `Fence`, the start and the deadline (start + 35 s). A `ProofDone` carries the job id, request
   id, purpose, an optional `ProofReport`, an optional `Ruling` (required for block and need_approval),
-  `authorizing_grants` in the prover's order, and `undecided_reason` and `check_theory_text`, kept only in the
-  encrypted store. A prover never errs: every failure of the prover itself is a `ProofDone` without a permit.
-  `ProverIdentity { kind, health }` is fixed at start (D13).
+  `authorizing_grants` in the prover's order, `undecided_reason` and `check_theory_text`, kept only in the encrypted
+  store, and `cause`: a `ProverCause` (`Starting`, `NotRunning`, `DeadlinePassed`, `CheckLimitReached`,
+  `CheckNotDecided`, `ReportUnusable`, `JobRefused`) that says why the result decides nothing, required with no
+  report and with an Undecided verdict and `None` otherwise; the core ignores it for a kind that is not Isabelle
+  (5.7). A prover never errs: every failure of the prover itself is a `ProofDone` without a permit. `ProverIdentity {
+  kind, health }` is fixed at start (D13); its `health` is a `ProverStatus { Starting, Ready,
+  Unavailable(Option<ProverProblem>) }`, the contract's `prover` and, while unavailable, its `prover_problem`, and
+  `Input::ProverHealth` carries the same type. With no prover attached the core's status is
+  `Unavailable(Some(NotConfigured))`. `Core::health()` is the only place that builds the contract's `Health`, and the
+  core sends a health notice for every change of the whole status, a change of the problem alone included (c32).
 - Provider: `Provider::dispatch(&DispatchOrder) -> AttemptDone` runs on a worker thread. A `DispatchOrder` carries the
   consumed `Authorization`, the action, account, calendar, attempt number, the provider event id reserved for a
   create, and the deadline (start + 30 s). `AttemptReport` is `Applied`, `Transient { retry_after_ms }`,
