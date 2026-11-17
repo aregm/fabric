@@ -7,7 +7,10 @@ import type {
   Request, RequestDetails, ResultHello, SCHEMA_VERSION as SchemaVersion, Snapshot, UndecidedReason,
 } from "../../../../contracts/desktop/v1/typescript/src/contract.ts";
 import type { Host, HostMessage, HostState, SendRefusal } from "./host.ts";
-import { ALLOWED_TEXT, CHECKING_STATES, OPERATION, STATE_TEXT, STORE_PROBLEM, TERMINAL, agentName, changeText, proverProblemText } from "./text.ts";
+import {
+  ALLOWED_TEXT, CHECKING_STATES, DURATIONS, DURATION_TEXT, OPERATION, STATE_TEXT, STORE_PROBLEM, TERMINAL, agentName, approvalHolds, changeText,
+  durationWithin, lastingCoversText, proverProblemText,
+} from "./text.ts";
 import type { Names } from "./text.ts";
 
 const PROTOCOL: Protocol = "fabric-desktop/1";
@@ -51,8 +54,7 @@ export interface Entry {
   reasonReading: boolean; // a redacted read for the reason alone is in flight
   detailsOpen: boolean; // the owner has the details open: they are read, and read again when the request changes
   changed: boolean; // the digest differs from the card read before; the owner must acknowledge
-  duration: DurationKind; // the owner's choice, kept across a disconnect
-  durationChosen: boolean;
+  duration: DurationKind; // the owner's choice, the shortest until they choose; kept across a disconnect
   command: { readonly id: string; inFlight: boolean } | null;
   approval: Approval | null;
   note: string | null; // the last problem with this request, in words
@@ -243,14 +245,17 @@ export class Model {
     return true;
   }
 
-  // "session" is not taken while the request's agent has no live session (the broker would refuse
-  // it); the views render again, so that a radio the owner pressed shows the choice that holds.
+  // A duration the card does not offer is not taken, nor "session" while the request's agent has no
+  // live session (the broker would refuse either); the views render again, so that a radio the owner
+  // pressed shows the choice that holds. A choice that was taken and lasts longer than the request
+  // is followed by what it covers.
   chooseDuration(requestId: string, kind: DurationKind): void {
     const e = this.requests.get(requestId);
     if (e === undefined || this.cardStatus(e).kind === "closed") return;
-    if (kind !== "session" || this.sessionAvailable(e)) {
+    if (this.offeredDurations(e).includes(kind) && (kind !== "session" || this.sessionAvailable(e))) {
       e.duration = kind;
-      e.durationChosen = true;
+      const covers = this.lastingCovers(e);
+      if (covers !== null) this.deps.announce(covers);
     }
     this.deps.changed();
   }
@@ -302,6 +307,12 @@ export class Model {
       if (f.code === "stale_request") {
         e.note = "The request changed after you saw it. It is read again before you can decide.";
         if (e.request.status.state === "pending_approval") this.readDetails(e);
+      } else if (f.error?.code === "invalid_params" && f.error.detail.pointer === "/params/duration/kind") {
+        // The broker offers less than the duration sent. No ordinary path leads here (a new card raises
+        // the revision and gets stale_request first); the card is read again so that it shows the current proposal.
+        e.duration = "one_request";
+        e.note = `The broker does not offer the duration you chose for this request. The request is read again, with “${DURATION_TEXT.one_request}” selected.`;
+        if (e.request.status.state === "pending_approval") this.readDetails(e);
       } else if (f.code === null) {
         e.note = `Your decision was not answered: ${f.text}. It is not known whether it was recorded. Deciding the same way again is safe.`;
       } else {
@@ -351,9 +362,24 @@ export class Model {
     return e.duration === "session" && !this.sessionAvailable(e) ? "one_request" : e.duration;
   }
 
+  // The durations the card offers: the one it proposes and the shorter ones (contract README,
+  // section 10). Without a card only the shortest.
+  offeredDurations(e: Entry): readonly DurationKind[] {
+    const ceiling = e.details?.card?.proposed_duration.kind ?? "one_request";
+    return DURATIONS.filter((kind) => durationWithin(kind, ceiling));
+  }
+
+  // What the permission would cover beyond this request, in words, while the duration that a
+  // decision would send lasts longer than the request; null for "only this request".
+  lastingCovers(e: Entry): string | null {
+    return this.duration(e) === "one_request" ? null : lastingCoversText(e.request.tool);
+  }
+
+  // The owner's decision of the request's current round; null when there is none. An approval of a
+  // request that waits again or expired is of an earlier round.
   decisionText(e: Entry): string | null {
     const a = e.approval;
-    if (a === null) return null;
+    if (a === null || !approvalHolds(e.request.status.state)) return null;
     return a.decision === "approve" ? ALLOWED_TEXT[a.duration.kind] : "You denied this.";
   }
 
@@ -549,7 +575,7 @@ export class Model {
     if (e === undefined) {
       e = {
         request: r, requestRun: this.run, available: true, checkingDelayMs: null, details: null, detailsRun: -1,
-        reading: false, undecided: null, reasonReading: false, detailsOpen: false, changed: false, duration: "one_request", durationChosen: false, command: null, approval: null,
+        reading: false, undecided: null, reasonReading: false, detailsOpen: false, changed: false, duration: "one_request", command: null, approval: null,
         note: null,
       };
       this.requests.set(r.request_id, e);
@@ -560,7 +586,11 @@ export class Model {
       e.requestRun = this.run;
       e.available = true;
     }
-    if (r.status.state === "pending_approval") e.approval = null; // pending again: an earlier decision no longer holds
+    // Pending again, or expired waiting: an earlier decision no longer holds, and a new round starts from the shortest duration.
+    if (!approvalHolds(r.status.state)) {
+      if (e.approval !== null) e.duration = "one_request";
+      e.approval = null;
+    }
     // Measured only when the text first appears for a request that came in a notice; a request first
     // seen in a snapshot was received earlier, and a negative difference means the clocks disagree.
     if (firstShown && e.checkingDelayMs === null && live) {
@@ -605,12 +635,14 @@ export class Model {
       e.reading = false;
       const before = e.details;
       if (before !== null && before.card !== null && before.request.request_digest !== d.request.request_digest) e.changed = true;
-      if (!e.durationChosen && d.card !== null) e.duration = d.card.proposed_duration.kind;
       e.details = d;
+      if (!this.offeredDurations(e).includes(e.duration)) e.duration = "one_request"; // the card now proposes less than the kept choice
       e.detailsRun = this.run;
       if (d.request.revision >= e.request.revision) e.request = d.request;
       if (TERMINAL[e.request.status.state]) e.available = true; // it ended; the broker lists only open ones
-      e.approval = d.approval; // the broker is the authority on whether it is decided
+      // The broker is the authority on whether it is decided. An approval in the details of a request
+      // that waits again or expired is of an earlier round and is not its decision.
+      e.approval = approvalHolds(e.request.status.state) ? d.approval : null;
       if (d.request.status.state === "undecided") e.undecided = { reason: d.undecided_reason };
       if (this.needsRead(e)) return this.readDetails(e); // a newer revision arrived meanwhile
       if (this.needsReason(e)) this.readReason(e); // it became undecided meanwhile

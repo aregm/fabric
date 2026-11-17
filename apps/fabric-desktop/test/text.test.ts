@@ -2,13 +2,13 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
-import { ACCOUNT_STATES, CALENDAR_ACCESS, GRANT_END_REASONS, PROVER_PROBLEMS, UNDECIDED_REASONS } from "../../../contracts/desktop/v1/typescript/src/contract.ts";
+import { ACCOUNT_STATES, CALENDAR_ACCESS, DURATION_KINDS, GRANT_END_REASONS, PROVER_PROBLEMS, UNDECIDED_REASONS } from "../../../contracts/desktop/v1/typescript/src/contract.ts";
 import type { Action, Grant, ProofReport, RecipientSet, RequestDetails, SendUpdates, Snapshot } from "../../../contracts/desktop/v1/typescript/src/contract.ts";
 import { CONTRACT_ROOT } from "../../../contracts/desktop/v1/typescript/src/judge.ts";
 import {
-  ACCESS_TEXT, ACCOUNT_TEXT, ALLOWED_TEXT, ATTEMPT_TEXT, DURATION_TEXT, GRANT_END_TEXT, OWNER_CAN_DO, PROOF_OUTCOME, PROOF_PURPOSE, PROVER_PROBLEM,
-  PROVER_PROBLEM_UNKNOWN, PROVER_TEXT, STATE_TEXT, STORE_TEXT, UNDECIDED_REASON, UNDECIDED_REASON_UNKNOWN, VERDICT_TEXT, bannerText, cardFacts,
-  formatInstant, proofFacts, scopeFacts, termText,
+  ACCESS_TEXT, ACCOUNT_TEXT, ALLOWED_TEXT, ATTEMPT_TEXT, DURATIONS, DURATION_NOTE, DURATION_ONLY, DURATION_TEXT, GRANT_END_TEXT, OWNER_CAN_DO,
+  PROOF_OUTCOME, PROOF_PURPOSE, PROVER_PROBLEM, PROVER_PROBLEM_UNKNOWN, PROVER_TEXT, STATE_TEXT, STORE_TEXT, UNDECIDED_REASON, UNDECIDED_REASON_UNKNOWN,
+  VERDICT_TEXT, bannerText, cardFacts, durationWithin, formatInstant, lastingCoversText, proofFacts, scopeFacts, termText,
 } from "../ui/src/text.ts";
 import { assertValid, details, request } from "./support.ts";
 
@@ -200,7 +200,8 @@ test("no text that a practice run can show names Google", () => {
       STATE_TEXT, ALLOWED_TEXT, DURATION_TEXT, OWNER_CAN_DO, PROOF_PURPOSE, PROOF_OUTCOME, VERDICT_TEXT, ATTEMPT_TEXT, PROVER_TEXT, STORE_TEXT, ends,
       PROVER_PROBLEM, UNDECIDED_REASON,
     ].flatMap((words) => Object.values(words)),
-    PROVER_PROBLEM_UNKNOWN, UNDECIDED_REASON_UNKNOWN,
+    PROVER_PROBLEM_UNKNOWN, UNDECIDED_REASON_UNKNOWN, DURATION_ONLY, DURATION_NOTE,
+    lastingCoversText("fabric_calendar_propose_create"), lastingCoversText("fabric_calendar_propose_update"),
   ];
   const create = details(request("pending_approval", 4));
   const cards = [create, ...(["all", "external_only", "none"] as const).flatMap((u) => [waiting(moveTime(u)), waiting(remove(u))])];
@@ -216,4 +217,14 @@ test("a configuration error: the app's settings or the installation", () => {
     title: "Fabric Calendar is not installed correctly.",
     text: "The app found a problem before it started the broker, so nothing was started. If you started the app with settings of your own, as for a test run, correct them and start it again. Otherwise installing the app again may fix it.",
   });
+});
+
+test("the durations in the contract's order, and which lie within a proposed one", () => {
+  assert.deepEqual(DURATIONS, DURATION_KINDS);
+  assert.equal(durationWithin("one_request", "one_request"), true);
+  assert.equal(durationWithin("session", "one_request"), false);
+  assert.equal(durationWithin("one_request", "session"), true);
+  assert.equal(durationWithin("until_revoked", "session"), false);
+  assert.equal(durationWithin("session", "until_revoked"), true);
+  assert.equal(durationWithin("until_revoked", "until_revoked"), true);
 });

@@ -4,7 +4,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import type {
-  Agent, ErrorCode, OwnerError, OwnerMethod, OwnerNotice, OwnerResponse, Request, RequestDetails, RequestState, Snapshot,
+  Agent, DurationKind, ErrorCode, OwnerError, OwnerMethod, OwnerNotice, OwnerResponse, Request, RequestDetails, RequestState, Snapshot,
 } from "../../../contracts/desktop/v1/typescript/src/contract.ts";
 import { CONTRACT_ROOT, judge, loadContract } from "../../../contracts/desktop/v1/typescript/src/judge.ts";
 import type { Host, HostMessage, HostState, SendRefusal } from "../ui/src/host.ts";
@@ -47,7 +47,8 @@ export function request(state: RequestState, revision: number, digest: `sha256:$
   };
 }
 
-export function details(r: Request): RequestDetails {
+// `proposed`: the longest duration the card offers.
+export function details(r: Request, proposed: DurationKind = "one_request"): RequestDetails {
   return {
     request: r, redaction: "full",
     private: {
@@ -67,7 +68,7 @@ export function details(r: Request): RequestDetails {
     },
     card: {
       scope: { calendars: [{ account_id: "spike-account", calendar_id: "spike-calendar" }], window: null, fields: null, recipients: null, send_updates: null },
-      proposed_duration: { kind: "one_request" },
+      proposed_duration: { kind: proposed },
       insufficiency: { rule: "spike_no_rule_theory", explanation: "Synthetic: no rule theory.", proof_id: "spike-no-proof" },
       expires_at: "2026-11-21T16:00:00.000Z",
     },
@@ -178,12 +179,12 @@ export function connect(host: FakeHost, run: number, snap: Snapshot): void {
   host.reply("subscribe", { cursor: snap.cursor });
 }
 
-// A request waiting with its card read; returns the model ready to decide.
-export function pendingCard() {
+// A request waiting with its card read, the card proposing `proposed`; returns the model ready to decide.
+export function pendingCard(proposed: DurationKind = "one_request") {
   const s = setup();
   connect(s.host, 1, snapshot(0));
   s.host.notice(1, { kind: "request", request: request("pending_approval", 4) });
-  s.host.reply("get_request_details", details(request("pending_approval", 4)));
+  s.host.reply("get_request_details", details(request("pending_approval", 4), proposed));
   return s;
 }
 

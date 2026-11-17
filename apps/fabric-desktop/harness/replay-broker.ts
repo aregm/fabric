@@ -7,12 +7,18 @@
 // the causes of a rule checker that is not running. It is for looking at the page only, never
 // evidence for a gate.
 //
+// No fixture proposes a duration longer than one request. So that a card with three durations can
+// be looked at, one more pending request is made here from the create fixture: its card proposes
+// "until_revoked". Its agent has no live session in the snapshot, so the session choice is there
+// and cannot be taken.
+//
 // It answers hello and get_snapshot with the rich fixtures, get_request_details and get_proof with
 // the fixture whose id matches (otherwise not_found), and every command with `internal`: it changes
 // nothing. The four undecided fixtures share one request id; here each gets its own, from its file
 // name. The first subscribe of the process is followed by notices built from the fixtures: eight
-// requests, three grant changes, four seconds later the prover becoming unavailable with no cause
-// named, and then, six seconds apart, each cause the broker can name, the wrong rules last. Every
+// requests and the one made here, three grant changes, four seconds later the prover becoming
+// unavailable with no cause named, and then, six seconds apart, each cause the broker can name,
+// the wrong rules last. Every
 // frame is judged by the contract's checker before it is written; a frame the checker does not
 // accept is not written, and one line about it goes to stderr. stdout carries frames only.
 //
@@ -45,7 +51,24 @@ const UNDECIDED: any[] = ["prover-unavailable", "out-of-time", "failed", "reason
   const d = value(`${UNDECIDED_PREFIX}${name}.json`).result;
   return { ...d, request: { ...d.request, request_id: `${d.request.request_id}-${name}` } };
 });
-const DETAILS: any[] = [...valuesOf("accept-owner-response-get-request-details-", UNDECIDED_PREFIX).map((v) => v.result), ...UNDECIDED];
+// The create fixture as a pending request whose card proposes "until_revoked", with only what a
+// pending request has: no approval, authorization, attempt or event, and the one proof that led to
+// its card.
+const LONGER: any = (() => {
+  const d = value("accept-owner-response-get-request-details-applied-create.json").result;
+  return {
+    ...d,
+    request: {
+      ...d.request, request_id: "request-25-until-revoked",
+      status: { state: "pending_approval", approval_expires_at: d.card.expires_at },
+    },
+    card: { ...d.card, proposed_duration: { kind: "until_revoked" } },
+    approval: null, proof_ids: [d.card.insufficiency.proof_id], authorization: null, attempts: [], provider_event: null,
+  };
+})();
+const DETAILS: any[] = [
+  ...valuesOf("accept-owner-response-get-request-details-", UNDECIDED_PREFIX).map((v) => v.result), ...UNDECIDED, LONGER,
+];
 const PROOFS: any[] = valuesOf("accept-owner-response-get-proof-").map((v) => v.result);
 
 // The changes announced after the first subscribe, in order; the health changes come later.
@@ -55,6 +78,7 @@ const CHANGES: object[] = [
     request: value(`accept-owner-response-get-request-details-${name}.json`).result.request,
   })),
   ...UNDECIDED.map((d) => ({ kind: "request", request: d.request })),
+  { kind: "request", request: LONGER.request },
   ...["grant-created", "grant-ended-consumed", "grant-ended-session-idle-timeout"].map(
     (name) => value(`accept-owner-notice-${name}.json`).change,
   ),

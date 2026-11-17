@@ -8,12 +8,11 @@ import type { Entry, Model } from "./model.ts";
 import { ReviewModel, requestTitle } from "./review.ts";
 import type { DetailsParts } from "./review.ts";
 import {
-  DURATION_NOTE, DURATION_TEXT, ENDED_REQUESTS_NOTE, PAUSE_NOTE, REVOKE_NOTE, SESSION_UNAVAILABLE, STATE_TEXT, cardFacts,
-  grantTitle,
+  DURATION_NOTE, DURATION_ONLY, DURATION_TEXT, ENDED_REQUESTS_NOTE, PAUSE_NOTE, REVOKE_NOTE, SESSION_UNAVAILABLE, STATE_TEXT,
+  cardFacts, grantTitle,
 } from "./text.ts";
 import type { Fact } from "./text.ts";
 
-const DURATIONS: readonly DurationKind[] = ["one_request", "session", "until_revoked"];
 const CHECKING_TARGET_MS = 500;
 
 function part(section: HTMLElement, title: string): { readonly part: HTMLDivElement; readonly heading: HTMLHeadingElement } {
@@ -108,8 +107,12 @@ interface RequestDom {
   readonly card: HTMLDivElement;
   readonly facts: FactsDom;
   readonly fieldset: HTMLFieldSetElement;
-  readonly radios: ReadonlyMap<DurationKind, HTMLInputElement>;
+  readonly durations: HTMLDivElement; // a label per offered duration, stacked
+  readonly radios: Map<DurationKind, HTMLInputElement>; // the radios made so far, in the page or not
+  readonly radioName: string;
+  readonly only: HTMLParagraphElement; // the single line of a card that offers one duration
   readonly sessionReason: HTMLParagraphElement;
+  readonly covers: HTMLParagraphElement; // what a lasting choice covers
   readonly why: FactsDom;
   readonly whyProof: ProofDom;
   readonly changed: HTMLDivElement;
@@ -284,6 +287,12 @@ export class ReviewView {
     this.updateProof(dom.whyProof, `${e.request.request_id}:why`, card.insufficiency.proof_id, dom.heading);
     const open = status.kind !== "closed";
     show(dom.fieldset, open, dom.heading);
+    // Only the offered durations are radios. A card that offers one says so in a line and offers no choice.
+    const offered = m.offeredDurations(e);
+    const single = offered.length === 1;
+    keyed(dom.durations, single ? [] : offered, (kind) => kind, (kind) => this.durationChoice(e.request.request_id, dom, kind),
+      () => undefined, dom.heading);
+    textLine(dom.only, single ? DURATION_ONLY : null, dom.heading);
     const chosen = m.duration(e);
     for (const [kind, radio] of dom.radios) if (radio.checked !== (kind === chosen)) radio.checked = kind === chosen;
     // The session radio cannot be chosen while the agent has no live session. `disabled` is set only
@@ -295,7 +304,8 @@ export class ReviewView {
       const disabled = !sessionOk && document.activeElement !== session;
       if (session.disabled !== disabled) session.disabled = disabled;
     }
-    textLine(dom.sessionReason, sessionOk ? null : SESSION_UNAVAILABLE, dom.heading);
+    textLine(dom.sessionReason, offered.includes("session") && !sessionOk ? SESSION_UNAVAILABLE : null, dom.heading);
+    textLine(dom.covers, open ? m.lastingCovers(e) : null, dom.heading);
     show(dom.changed, status.kind === "changed", dom.heading);
     if (status.kind === "changed") setText(dom.changedText, status.text);
     show(dom.controls, open, dom.heading);
@@ -399,22 +409,14 @@ export class ReviewView {
     const cardFactsDom = facts();
     const fieldset = make("fieldset");
     fieldset.append(make("legend", "", "How long this approval lasts"));
+    const durations = make("div");
+    const only = make("p");
     const sessionReason = make("p", "note");
     sessionReason.id = uid("session-reason");
-    const radios = new Map<DurationKind, HTMLInputElement>();
-    for (const kind of DURATIONS) {
-      const label = make("label", "choice");
-      const radio = make("input");
-      radio.type = "radio";
-      radio.name = `request-${n}-duration`;
-      radio.value = kind;
-      radio.addEventListener("change", () => this.model.chooseDuration(id, kind));
-      if (kind === "session") radio.setAttribute("aria-describedby", sessionReason.id);
-      label.append(radio, ` ${DURATION_TEXT[kind]}`);
-      fieldset.append(label);
-      radios.set(kind, radio);
-    }
-    fieldset.append(sessionReason, make("p", "note", DURATION_NOTE));
+    // Part of the choice, not small print.
+    const covers = make("p");
+    covers.id = `request-${n}-covers`;
+    fieldset.append(durations, only, sessionReason, covers, make("p", "note", DURATION_NOTE));
     const why = facts();
     const whyProof = this.createProof(`${id}:why`);
     const changed = make("div", "changed");
@@ -426,7 +428,8 @@ export class ReviewView {
     status.id = `request-${n}-status`;
     const deny = button("Deny", () => this.model.decide(id, "deny"));
     const allow = button("Allow", () => this.model.decide(id, "approve"), "primary");
-    for (const b of [deny, allow]) b.setAttribute("aria-describedby", status.id);
+    deny.setAttribute("aria-describedby", status.id);
+    allow.setAttribute("aria-describedby", `${status.id} ${covers.id}`);
     controls.append(deny, allow, status);
     const outcome = make("p", "outcome");
     card.append(cardFactsDom.list, fieldset, why.list, whyProof.node, changed, controls, outcome);
@@ -441,11 +444,29 @@ export class ReviewView {
     });
     this.list.append(article);
     const dom: RequestDom = {
-      article, heading, state, ruling, rulingProof, reason, help, delay, note, card, facts: cardFactsDom, fieldset, radios,
-      sessionReason, why, whyProof, changed, changedText, controls, deny, allow, status, outcome, details,
+      article, heading, state, ruling, rulingProof, reason, help, delay, note, card, facts: cardFactsDom, fieldset, durations,
+      radios: new Map(), radioName: `request-${n}-duration`, only, sessionReason, covers, why, whyProof, changed, changedText, controls,
+      deny, allow, status, outcome, details,
     };
     this.cards.set(id, dom);
     return dom;
+  }
+
+  // The label of one duration's radio, made once per kind and kept in `dom.radios` while it is out
+  // of the page.
+  private durationChoice(id: string, dom: RequestDom, kind: DurationKind): HTMLLabelElement {
+    const held = dom.radios.get(kind)?.parentElement;
+    if (held instanceof HTMLLabelElement) return held;
+    const label = make("label", "choice");
+    const radio = make("input");
+    radio.type = "radio";
+    radio.name = dom.radioName;
+    radio.value = kind;
+    radio.addEventListener("change", () => this.model.chooseDuration(id, kind));
+    if (kind === "session") radio.setAttribute("aria-describedby", dom.sessionReason.id);
+    label.append(radio, ` ${DURATION_TEXT[kind]}`);
+    dom.radios.set(kind, radio);
+    return label;
   }
 
   // ---- Permissions and agents ----

@@ -43,6 +43,13 @@ export const TERMINAL: Record<RequestState, boolean> = {
   needs_owner_resolution: true,
 };
 
+// Whether an approval the broker reports for a request in this state is its decision. A request
+// that waits for a decision again, or that expired waiting, has none: an approval still in its
+// details is of an earlier round.
+export function approvalHolds(state: RequestState): boolean {
+  return state !== "pending_approval" && state !== "expired";
+}
+
 export const CHECKING_STATES: readonly RequestState[] = ["received", "validating", "proving_classification"];
 
 export const OPERATION: Record<ToolName, string> = {
@@ -70,6 +77,28 @@ export const DURATION_TEXT: Record<DurationKind, string> = {
   session: "Until this agent's current session ends",
   until_revoked: "Until I take it back",
 };
+
+// The durations from shortest to longest, in the contract's order (a test compares them).
+export const DURATIONS: readonly DurationKind[] = ["one_request", "session", "until_revoked"];
+
+// Whether `kind` is at most `ceiling` in that order.
+export function durationWithin(kind: DurationKind, ceiling: DurationKind): boolean {
+  return DURATIONS.indexOf(kind) <= DURATIONS.indexOf(ceiling);
+}
+
+// The single line of a card that offers one duration.
+export const DURATION_ONLY = "Only this request.";
+
+// What a permission covers when it lasts longer than the request on the card. One sentence per
+// tool; a tool without its own gets the general one.
+const LASTING_COVERS: Partial<Record<ToolName, string>> = {
+  fabric_calendar_propose_create: "This permission covers more than the request shown: every new event this agent creates in the calendar shown above, for as long as the permission lasts.",
+};
+const LASTING_COVERS_OTHER = "This permission covers more than the request shown: later requests of the same kind from this agent, for as long as the permission lasts.";
+
+export function lastingCoversText(tool: ToolName): string {
+  return LASTING_COVERS[tool] ?? LASTING_COVERS_OTHER;
+}
 
 const NOTIFIED: Record<SendUpdates, string> = {
   all: "Everyone invited gets an email.",
@@ -347,7 +376,7 @@ export const OWNER_CAN_DO: Partial<Record<RequestState, string>> = {
 };
 
 export const SESSION_UNAVAILABLE = "This agent is not connected now, so there is no session to tie the permission to.";
-export const DURATION_NOTE = "A permission that lasts longer is used for later requests only where your profile allows it; where the profile says Ask, the agent still asks each time.";
+export const DURATION_NOTE = "Fabric offers a longer permission only where it would also serve later requests. Elsewhere it offers only this request.";
 export const ENDED_REQUESTS_NOTE = "Requests that ended before this window opened are not listed; this build has no way to ask the broker for them.";
 export const REVOKE_NOTE = "Taking a permission back stops calls that have not been sent yet. It cannot undo what the calendar already accepted, and a call already on its way may still arrive.";
 export const PAUSE_NOTE = "A paused agent can do nothing. Resuming does not bring back a permission you took back or one that ended with an earlier session.";
