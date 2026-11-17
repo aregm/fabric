@@ -156,10 +156,12 @@ fabric-mcp-bridge --version
 ```
 
 - `<id>` is a contract `Id` (`^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$`), so it is safe in a file name and in every
-  configuration format.
+  configuration format. Reading it as an `Id` is the first thing the bridge does with it: `..`, `a/b` and
+  `.hidden` are a wrong command line, before any file is touched, and the key store takes only the typed `Id`.
 - `--socket` and `--key-dir` exist only in debug builds (A23), take absolute paths, and when serving come together
   or not at all. A debug build without them behaves as a release build does.
-- A wrong command line prints one line to stderr and exits 64, before anything is read from stdin.
+- A wrong command line prints one line to stderr and exits 64, before anything is read from stdin. Arguments
+  must be UTF-8, because they end up in JSON and TOML.
 - No argument and no environment variable carries a secret. The bridge reads one variable, `HOME`, to find the
   installed socket (4.1).
 
@@ -187,8 +189,9 @@ broker ends the session (W04 5.5).
 - stdout: one JSON-RPC message per line and nothing else, written through `serde_json`, so no line holds a line
   feed.
 - stderr: A25. Example: `fabric-mcp-bridge: call call-9f.. tool fabric_calendar_propose_create state pending_approval`.
-- Exit codes: 0 at end of input; 64 for a wrong command line; 70 after a panic, whose hook prints one fixed line
-  and nothing of the panic's message. Nothing else ends the process (A5).
+- Exit codes: 0 at end of input (a read error on stdin or a closed stdout counts as the end); 64 for a wrong
+  command line; 1 when `code` or `config` cannot answer; 70 after a panic, whose hook prints one fixed line and
+  nothing of the panic's message. Nothing else ends the serving process (A5).
 
 ### 2.5 Limits
 
@@ -199,6 +202,7 @@ broker ends the session (W04 5.5).
 | Calls in flight | 16 | A tool error, "too many calls at once" |
 | Open `subscriptions/listen` | 8 | JSON-RPC error `-32603` |
 | Connect and handshake | 5 s | A tool error, `broker_not_running` |
+| One write to the broker | 5 s | The connection is dropped: a frame may be half written |
 | The answer to one call | 30 s | That call alone is a tool error (3.7); the connection stays |
 
 One tool call therefore ends within 35 s. Codex ends a tool call after 60 s by default and Claude Code after far
@@ -206,7 +210,7 @@ longer (appendix A).
 
 Dropping a connection ends the agent's session and with it every grant "for this session" (W04 5.5). The bridge
 drops one only when the frames on it can no longer be trusted: a frame over the bound, or one that is not a
-contract frame. A slow answer does not drop it.
+contract frame, or a write that did not finish. A slow answer does not drop it.
 
 ---------------------------------------------------------------------------------------------------------------------
 
@@ -222,7 +226,8 @@ contract frame. A slow answer does not drop it.
 | Conformance risk | Ours. Met by a test client written from the specification text by another hand than the server's (10.2), and by the live runs | The SDK's |
 | Audit surface of a key-holding binary | Small | Large |
 
-The MCP test client is also own code. A second opinion from the SDK is cheap to add later as a test dependency
+The handshake's text, signature and pairing code are checked against vectors that the contract session computed
+on its own (k04). The MCP test client is also own code. A second opinion from the SDK is cheap to add later as a test dependency
 if a live run shows a misreading; it is not added now.
 
 ### 3.2 Revisions
@@ -366,6 +371,7 @@ adds none.
 | `not_found` | the broker | No request of this agent has that id. |
 | `unsupported_schema_version` | the handshake | Fabric Calendar and its bridge are different versions. The owner must install Fabric Calendar again. |
 | `internal` | the broker (also the handshake while the store cannot be opened), or the bridge after 30 s without an answer | Fabric Calendar had a fault or did not answer. If a proposal was in flight it may have been recorded: do not repeat it. The owner must look in Fabric Calendar. |
+| `internal`, made by the bridge for its own faults | too many calls at once (2.5); a key that cannot be read or stored (5.4); a handshake answer the bridge cannot read (4.4) | One fixed sentence for each, saying which. Nothing was sent to Fabric Calendar. |
 | `malformed_frame`, `unsupported_protocol`, `unknown_method` | the broker | The same wording as `internal`: the bridge and the broker disagree, which the agent cannot mend. |
 
 An error the bridge makes itself is written as the contract's agent error with that code, so the second block has
@@ -461,7 +467,9 @@ The signature is Ed25519 over the UTF-8 bytes of
                                                    "public_key": ..., "schema_version": ...})
 ```
 
-with the contract's canonical form (CR 3). The two leading lines are the contract's digest prefix with a new
+with the contract's canonical form (CR 3). The two answers are response frames as the contract writes them (CR
+1): `protocol`, the request's `id` and `method`, and either `result` or `error`, the error being the contract's
+agent error. The two leading lines of the signed text are the contract's digest prefix with a new
 domain, so the signed bytes can be mistaken for nothing else the product hashes or signs. The only part a broker
 chooses is the nonce, a string inside the canonical object, so nothing useful elsewhere can be had from the
 bridge's signature.
@@ -476,8 +484,9 @@ bridge's signature.
   now the pending agent's key (5.1) and the owner has not approved yet; the bridge closes the connection and
   answers the tool call with the pairing code (3.7). The next tool call tries again.
 - The bridge reads the answers strictly: the nonce is exactly 64 lowercase hexadecimal digits, the answer's
-  `schema_version` equals the bridge's own, the frame ids match, and any other frame before the handshake ends
-  closes the connection. There is no negotiation, so there is nothing to downgrade.
+  `schema_version` equals the bridge's own (another one is `unsupported_schema_version`), the frame ids match,
+  and any other frame before the handshake ends closes the connection. There is no negotiation, so there is
+  nothing to downgrade.
 - `internal` at either step is the broker saying that it cannot open its store (today it closes such a
   connection, CORE `broker.rs`).
 - The bridge sends its key and proves it once. Later frames are not signed (S6). ADR-115 action item 4 is
@@ -579,7 +588,9 @@ with the same id has the same key and the same code (T3).
   the installed one's keys), account the agent's id, not synchronized, this device only. The bridge's items and
   the broker's (the store key, later Google's tokens) must not be readable by each other's program. Built in
   phase 2 with an `#[ignore]` test for the owner. Until then such a build has no key store and answers every tool
-  call `broker_not_running`, with the reason on stderr.
+  call `broker_not_running`, with the reason on stderr. In phase 2 the bridge also checks the socket before it
+  opens the key store, so that no Keychain item is made or read while Fabric Calendar is not running; today the
+  key file is made at the first tool call whether or not a broker listens.
 - The key never leaves the bridge. The public key and signatures are the only things derived from it that are
   sent.
 
@@ -622,8 +633,8 @@ agent `removed`. The agent stays readable for the history. The bridge's next cal
 
 ## 6. The configuration text
 
-One function, `config_text(client, bridge_path, id, debug_extras)`, makes the text. Nothing but the path and the
-id is in it.
+One function, `config_text`, makes the text from the client, the bridge's path, the id, the debug extras and the
+path rule of the build. Nothing but the path and the id is in the text.
 
 - `bridge_path` is the path of the bridge that will run: in the bundle,
   `<Fabric Calendar.app>/Contents/MacOS/fabric-mcp-bridge`. The `config` command uses its own resolved path; the
@@ -804,7 +815,7 @@ socket mode is not an OS sandbox."
 | T1 | Another user of the Mac connects, or puts his own socket in the path | The bridge connects only inside a directory of its own user, mode 0700 (4.2); the broker checks the peer's user id (LR-B3). |
 | T2 | Software of the same user connects without a key | The handshake fails; the broker counts it (LR-S4). |
 | T3 | Software of the same user starts the bundled bridge and speaks MCP to it | Residual. Any process of this user can start the bridge with any agent's id from a configuration file and act as that agent. An enrolled agent that has a shell (Claude Code, Codex) is such a process, and text in an event may steer it to do so (T7). Enrollments separate the record and the pause of clients that behave; they are not a wall between agents. The broker's rules, the owner's approvals and pause bound what any of them can do. A changed `HOME` in a client's entry is the same case. |
-| T4 | Software of the same user puts itself between the bridge and the broker | Residual. It can do so at any time by renaming the socket and binding its own. It then acts as the agent (T3), and also reads and changes that agent's traffic and what the model is told. It learns no key, and it cannot put its words into the bridge's guidance (A27). |
+| T4 | Software of the same user puts itself between the bridge and the broker | Residual. It can do so at any time by renaming the socket and binding its own. It then acts as the agent (T3), and also reads and changes that agent's traffic and what the model is told. It learns no key. It cannot put free text into the bridge's guidance (A27); what it can place there is a request id or a rule's name, at most 128 or 64 characters of letters, digits, `.`, `_` and `-`. |
 | T5 | A pending agent's key is proven by another program first | The bridge's next call puts its own key in place (5.1); the owner approves by the code (5.3). A program that proves keys in a loop can keep the owner from approving: a denial of service by same-user software, residual. |
 | T6 | A recorded handshake is replayed | The broker's nonce (4.4). |
 | T7 | Text in an event steers the model | ADR108 D11, accepted. The bridge's guidance is fixed wording (A27); content is data in the second block. |
@@ -873,12 +884,13 @@ directory.
 | b09 | `bridge` | a result shown in one call's answer appears in no later answer (A12) |
 | k01 | `broker/handshake` | the signed text and the signature for a fixed seed and nonce; a changed nonce changes it; an answer with a wrong nonce form, another schema version or another id is refused |
 | k02 | `broker/key` | the pairing code of a fixed key, twelve digits in three groups |
+| k04 | `broker/handshake` | the public key, the pairing code, the signed text and the signature equal two vectors of the contract draft's own fixture (schema version 3, pull request 36), the first on the seed of RFC 8032 test 1 |
 | k03 | `broker/key` | a key file is made 0600 in a 0700 directory and read back; a link, a file others can read and a loose directory are refused; two makers at once end with one key; an error never repeats the file's content |
 | s01 | `broker/socket` | the path from `HOME`; no `HOME` is a refusal |
 | s02 | `broker/socket` | a directory not 0700, a socket not 0600, a link in place of the socket and a plain file in its place are refused |
 | c01 | `config_text` | the three texts for a path with a space, a double quote, a single quote, `$`, a backtick and a backslash parse back to the same path, the shell line included |
 | c02 | `config_text` | a text holds the path and the id and nothing else; the debug extras appear only when given; a path with a line feed, a tab or a direction mark is refused; a release build refuses a path outside the two application folders |
-| a01 | `cli` | a wrong command line is exit 64; a release build refuses `--socket` and `--key-dir` |
+| a01 | `cli` | a wrong command line is exit 64; a release build refuses `--socket` and `--key-dir`; the ids `..`, `a/b`, `.hidden` and the empty one are refused before any file is touched |
 
 ### 10.2 Process tests (`tests/`, the real binary, Unix, debug builds)
 
@@ -965,6 +977,12 @@ None of this is checked by phase 1 or phase 2:
   an agent.
 - R10 The own MCP code and the own test client could share a misreading of the specification. The two are written
   apart (10.2); the live runs decide.
+- R11 Under CD-W05's design a read also ends `reconciled` (the lead's notice of 2026-11-17). The wording of 3.7
+  for `applied` and `reconciled` speaks of a change and must then tell a read from a change. Not changed here; it
+  follows the lead's design for phase 2.
+- R12 The contract draft for schema version 3 makes a waiting enrollment a record of its own, with no agent until
+  the approval, where 5.1 puts `pending` on the agent (the lead's notice of 2026-11-17). The lead settles which
+  in the store design. The bridge sees only `pending` or `approved` in the handshake's answer, so either fits it.
 
 ### 11.2 Questions
 
