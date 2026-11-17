@@ -26,7 +26,7 @@ use std::time::{Duration, Instant};
 
 use fabric_broker_policy::gate::{CHECK_GRACE, SESSION};
 use fabric_broker_policy::{
-    BrokerGate, Fault, GateConfig, PolicyError, Verdict, built_theory_sha256,
+    BrokerGate, Fault, GateConfig, KillHandle, PolicyError, Verdict, built_theory_sha256,
 };
 use fabric_policy::server::{Server, ServerOptions};
 
@@ -361,5 +361,305 @@ fn a_stop_out_of_time_kills_the_server() {
     eprintln!("  processes right after the kill: {at_once:?}");
     let left = processes_left(&running);
     eprintln!("  processes left after the group kill: {left:?}");
+    assert!(left.is_empty(), "server processes left: {left:?}");
+}
+
+/// [`config`] with a server name that ends in the process id, so no earlier run's server of
+/// that name is found.
+fn own_config(name: &str) -> GateConfig {
+    let mut config = config(name);
+    config.server_name = format!("{}-{}", config.server_name, std::process::id());
+    config
+}
+
+/// The TCP ports the processes of `seen` listen on, from `lsof` (empty without it).
+fn listening_ports(seen: &[(u32, String)]) -> Vec<u16> {
+    let mut ports = Vec::new();
+    for (pid, _) in seen {
+        let Ok(output) = Command::new("lsof")
+            .args([
+                "-nP",
+                "-a",
+                "-p",
+                &pid.to_string(),
+                "-iTCP",
+                "-sTCP:LISTEN",
+                "-Fn",
+            ])
+            .output()
+        else {
+            continue;
+        };
+        for line in String::from_utf8_lossy(&output.stdout).lines() {
+            if let Some(port) = line
+                .strip_prefix('n')
+                .and_then(|address| address.rsplit_once(':'))
+                .and_then(|(_, port)| port.parse().ok())
+            {
+                ports.push(port);
+            }
+        }
+    }
+    ports
+}
+
+/// A kill from another thread while the gate starts: the start is an error soon after, and
+/// no process of the server is left, zombies included (`ps` lists them).
+#[test]
+#[ignore = "needs Isabelle from scripts/setup-demo.sh; run with --ignored"]
+fn a_kill_during_start_ends_the_start_and_leaves_nothing() {
+    let _live = LIVE.lock().unwrap_or_else(PoisonError::into_inner);
+    // Early, the gate is still asking Isabelle for its settings or the server has not printed
+    // its address; about a second in, the gate is connecting; later, the session is starting.
+    for (round, delay) in [
+        Duration::from_millis(300),
+        Duration::from_millis(1000),
+        Duration::from_millis(3000),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let config = own_config(&format!("kill-start-{round}"));
+        let kill = KillHandle::new();
+        let killer = {
+            let kill = kill.clone();
+            let name = config.server_name.clone();
+            thread::spawn(move || {
+                thread::sleep(delay);
+                let seen = server_processes(&name);
+                let ports = listening_ports(&seen);
+                let at = Instant::now();
+                kill.kill().expect("the kill helper runs");
+                (seen, ports, at, at.elapsed())
+            })
+        };
+        let started = Instant::now();
+        let result = BrokerGate::start_with_kill(config.clone(), &kill);
+        let returned = Instant::now();
+        let (seen, ports, killed_at, kill_took) = killer.join().unwrap();
+        let Err(error) = result else {
+            panic!("the start finished before the kill at {delay:?}");
+        };
+        let after_kill = returned.saturating_duration_since(killed_at);
+        eprintln!(
+            "  kill {:.1}s into the start: {} processes and ports {ports:?} seen, the kill took \
+             {:.3}s, start returned {:.3}s after the kill ({:.3}s in all): {error}",
+            delay.as_secs_f64(),
+            seen.len(),
+            kill_took.as_secs_f64(),
+            after_kill.as_secs_f64(),
+            started.elapsed().as_secs_f64()
+        );
+        assert_eq!(Fault::of(&error), Fault::Gate);
+        assert!(after_kill < Duration::from_secs(3), "{after_kill:?}");
+        for port in ports {
+            assert!(!listening(port), "nothing listens on port {port}");
+        }
+        let at_once = still_running(&seen);
+        eprintln!("  processes right after the start returned: {at_once:?}");
+        let left = processes_left(&seen);
+        assert!(left.is_empty(), "server processes left: {left:?}");
+        let named = server_processes(&config.server_name);
+        assert!(named.is_empty(), "server processes left: {named:?}");
+        assert!(kill.is_killed());
+    }
+}
+
+/// A kill from another thread during a check: the check fails as the gate's fault, the gate
+/// is broken, and the stop returns at once with nothing left.
+#[test]
+#[ignore = "needs Isabelle from scripts/setup-demo.sh; run with --ignored"]
+fn a_kill_during_a_check_fails_it_and_breaks_the_gate() {
+    let _live = LIVE.lock().unwrap_or_else(PoisonError::into_inner);
+    let config = own_config("kill-check");
+    let kill = KillHandle::new();
+    let mut gate = BrokerGate::start_with_kill(config.clone(), &kill).expect("the gate starts");
+    assert!(!gate.kill_handle().is_killed());
+    let port = gate.port();
+    // A first check warms the session, so the measured one is typical.
+    let started = Instant::now();
+    gate.check(&common::context(), &common::action())
+        .expect("the first check runs");
+    eprintln!(
+        "  an undisturbed check took {:.3}s",
+        started.elapsed().as_secs_f64()
+    );
+    let running = server_processes(&config.server_name);
+    assert!(running.len() >= 3, "wrapper, Java and poly: {running:?}");
+
+    let delay = Duration::from_millis(100);
+    let killer = {
+        let kill = gate.kill_handle();
+        thread::spawn(move || {
+            thread::sleep(delay);
+            let at = Instant::now();
+            kill.kill().expect("the kill helper runs");
+            (at, at.elapsed())
+        })
+    };
+    let started = Instant::now();
+    let result = gate.check_within(
+        &common::context(),
+        &common::action(),
+        Duration::from_secs(30),
+    );
+    let returned = Instant::now();
+    let (killed_at, kill_took) = killer.join().unwrap();
+    let error = match result {
+        Ok(check) => panic!(
+            "the check finished before the kill: {:?} in {:.3}s",
+            check.verdict, check.seconds
+        ),
+        Err(error) => error,
+    };
+    eprintln!(
+        "  kill {:.3}s into the check took {:.3}s; the check failed {:.3}s after the kill: {error}",
+        delay.as_secs_f64(),
+        kill_took.as_secs_f64(),
+        returned.saturating_duration_since(killed_at).as_secs_f64(),
+    );
+    assert!(started.elapsed() < Duration::from_secs(5));
+    assert_eq!(Fault::of(&error), Fault::Gate);
+    assert!(gate.is_broken());
+
+    let started = Instant::now();
+    let stop = gate.stop_within(Duration::from_secs(20));
+    let stopped = started.elapsed();
+    eprintln!(
+        "  stop_within(20s) after the kill took {:.3}s: {stop:?}",
+        stopped.as_secs_f64()
+    );
+    assert!(stop.is_err());
+    assert!(stopped < Duration::from_secs(1), "{stopped:?}");
+    assert!(!listening(port), "nothing listens on port {port}");
+    let left = processes_left(&running);
+    assert!(left.is_empty(), "server processes left: {left:?}");
+}
+
+/// Isabelle reads a `ROOTS` beside the session's `ROOT`: the gate refuses to start, and stops
+/// the server it started.
+#[test]
+#[ignore = "needs Isabelle from scripts/setup-demo.sh; run with --ignored"]
+fn a_roots_beside_the_root_fails_the_start_and_leaves_no_server() {
+    let _live = LIVE.lock().unwrap_or_else(PoisonError::into_inner);
+    let mut config = own_config("roots");
+    let rules = local().join("rules-roots");
+    let session = rules.join(SESSION);
+    let _ = fs::remove_dir_all(&rules);
+    fs::create_dir_all(&session).unwrap();
+    for file in ["ROOT", "Fabric_Broker.thy"] {
+        fs::copy(
+            repository().join("isabelle").join(SESSION).join(file),
+            session.join(file),
+        )
+        .unwrap();
+    }
+    fs::write(session.join("ROOTS"), "").unwrap();
+    config.rules_dir = rules;
+
+    let started = Instant::now();
+    let Err(error) = BrokerGate::start(config.clone()) else {
+        panic!("a gate started beside a ROOTS");
+    };
+    eprintln!(
+        "  the start failed after {:.3}s: {error}",
+        started.elapsed().as_secs_f64()
+    );
+    assert!(matches!(error, PolicyError::Isabelle(_)), "{error}");
+    assert!(error.to_string().contains("ROOTS"), "{error}");
+    let started = Instant::now();
+    while !server_processes(&config.server_name).is_empty()
+        && started.elapsed() < Duration::from_secs(5)
+    {
+        thread::sleep(Duration::from_millis(100));
+    }
+    let left = server_processes(&config.server_name);
+    assert!(left.is_empty(), "server processes left: {left:?}");
+}
+
+/// A gate whose `isabelle server` found a server of the same name already running cannot
+/// kill it; a stop with no time still sends it `shutdown`, and the server goes away.
+#[test]
+#[ignore = "needs Isabelle from scripts/setup-demo.sh; run with --ignored"]
+fn a_found_server_still_gets_shutdown_from_a_stop_with_no_time() {
+    let _live = LIVE.lock().unwrap_or_else(PoisonError::into_inner);
+    found_server_stop("found", false);
+}
+
+/// The same after a kill through the handle, which cannot reach a found server either: the
+/// stop that follows still sends it `shutdown`.
+#[test]
+#[ignore = "needs Isabelle from scripts/setup-demo.sh; run with --ignored"]
+fn a_found_server_still_gets_shutdown_from_a_stop_after_a_kill() {
+    let _live = LIVE.lock().unwrap_or_else(PoisonError::into_inner);
+    found_server_stop("found-killed", true);
+}
+
+/// Starts a server, then a gate under the same name, which finds it; stops the gate with no
+/// time (after a kill through its handle when `kill_first`), and expects the found server
+/// to go away.
+fn found_server_stop(name: &str, kill_first: bool) {
+    let config = own_config(name);
+    fabric_broker_policy::gate::prepare_private_tmp(&config.isabelle_home, &config.user_home)
+        .unwrap();
+    let first_logs = config.work_dir.join("first");
+    fs::create_dir_all(&first_logs).unwrap();
+    let mut first = Server::start_in_group(&ServerOptions {
+        isabelle_home: &config.isabelle_home,
+        user_home: &config.user_home,
+        name: &config.server_name,
+        log_dir: &first_logs,
+    })
+    .expect("the first server starts");
+    let running = server_processes(&config.server_name);
+    assert!(
+        !running.is_empty(),
+        "the first server's Java process is found"
+    );
+
+    let mut gate = start(&config);
+    assert_eq!(gate.port(), first.port, "the gate found the first server");
+    if kill_first {
+        gate.kill_handle().kill().expect("the kill runs");
+        assert!(
+            listening(first.port),
+            "the kill does not reach a found server"
+        );
+    }
+
+    let started = Instant::now();
+    let error = gate
+        .stop_within(Duration::ZERO)
+        .expect_err("a found server's shutdown cannot be acknowledged in no time");
+    let returned = started.elapsed();
+    eprintln!(
+        "  stop_within(0) returned after {:.3}s: {error}",
+        returned.as_secs_f64()
+    );
+    assert!(
+        error.to_string().contains("without confirmation"),
+        "{error}"
+    );
+    assert!(
+        returned < fabric_broker_policy::gate::FOUND_SHUTDOWN_GRACE + Duration::from_millis(100),
+        "{returned:?}"
+    );
+    while listening(first.port) && started.elapsed() < Duration::from_secs(10) {
+        thread::sleep(Duration::from_millis(5));
+    }
+    let closed = started.elapsed();
+    eprintln!(
+        "  the found server stopped listening {:.3}s after the stop began",
+        closed.as_secs_f64()
+    );
+    let listening_still = listening(first.port);
+    // Clean up whatever happened: the first server is this test's child.
+    first.wait_or_kill(Duration::from_secs(10));
+    eprintln!(
+        "  the found server's wrapper exited {:.3}s after the stop began",
+        started.elapsed().as_secs_f64()
+    );
+    let left = processes_left(&running);
+    assert!(!listening_still, "the found server still listens");
     assert!(left.is_empty(), "server processes left: {left:?}");
 }
