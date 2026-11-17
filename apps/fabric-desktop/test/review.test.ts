@@ -123,6 +123,25 @@ test("a failed request shows its reason; redacted details say that the broker di
   assert.deepEqual(d?.event, []);
 });
 
+test("an undecided request says while it is so that the rule checker is not running or is starting", () => {
+  const s = setup();
+  connect(s.host, 1, { ...RICH, health: { prover: "unavailable", store: "ready" } });
+  const review = new ReviewModel(s.model);
+  let sequence = RICH.cursor;
+  s.host.notice(++sequence, { kind: "request", request: { ...BLOCKED, revision: 3, status: { state: "undecided" } } });
+  const e = entry(s.model, "request-22");
+  assert.equal(review.lines(e).reason, "The rule checker is not running now.");
+  s.host.notice(++sequence, { kind: "health", health: { prover: "starting", store: "ready" } });
+  assert.equal(review.lines(e).reason, "The rule checker is starting now.");
+  s.host.notice(++sequence, { kind: "health", health: { prover: "ready", store: "ready" } });
+  assert.equal(review.lines(e).reason, null);
+  // Another state says nothing of the rule checker.
+  s.host.notice(++sequence, { kind: "health", health: { prover: "unavailable", store: "ready" } });
+  s.host.notice(++sequence, { kind: "request", request: { ...APPLIED.request, revision: 10, status: { state: "denied" } } });
+  assert.equal(review.lines(entry(s.model, "request-25")).reason, null);
+  assert.equal(review.lines(e).reason, "The rule checker is not running now.");
+});
+
 test("an unknown outcome says what the owner can do today", () => {
   const { model, review, notice } = live();
   notice({ kind: "request", request: { ...APPLIED.request, revision: 10, status: { state: "outcome_unknown" } } });

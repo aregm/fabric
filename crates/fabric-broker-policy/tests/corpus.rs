@@ -34,10 +34,13 @@ fn repository() -> &'static Path {
         .expect("the crate lives two levels below the repository root")
 }
 
+/// The server's name ends in this process's id: `isabelle server` reuses a running server of
+/// the same name, and every checkout on a machine shares one Isabelle user home, so two runs
+/// with one name would share a server and the first to finish would stop it under the other.
 fn config(name: &str) -> GateConfig {
     let mut config = GateConfig::for_repository(repository());
     config.work_dir = repository().join(".local").join(name);
-    config.server_name = name.to_owned();
+    config.server_name = format!("{name}-{}", std::process::id());
     config
 }
 
