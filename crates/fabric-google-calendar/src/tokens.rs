@@ -156,6 +156,43 @@ impl fmt::Debug for AccessCache {
     }
 }
 
+/// Why an account's sign-in is gone (3.8).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum AuthLostCause {
+    /// Google no longer honours the refresh token (`invalid_grant`, `admin_policy_enforced`,
+    /// a token whose scopes changed). The account must sign in again.
+    GrantEnded,
+    /// Google no longer accepts the client (`invalid_client`, `unauthorized_client`). Signing
+    /// in again will not help until the client is repaired.
+    ClientRejected,
+}
+
+/// Why no access token could be had for a call (3.8, section 4). In every case nothing was
+/// sent to the Calendar host.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum AccessFailure {
+    /// The refresh was not answered, or answered with a failure that may pass, or the token
+    /// store is locked. Transient for the call.
+    Transient,
+    /// The account's sign-in is gone. Its stored refresh token and its cached access token
+    /// were deleted. Rejected `account_authentication_required` for the call.
+    AuthLost(AuthLostCause),
+    /// The token store refused or failed (`Refused` or `Failed`, never `Locked`). Rejected
+    /// `account_authentication_required` for the call.
+    Store(TokenStoreError),
+}
+
+/// Where a Calendar call gets the access token of its account (3.8). `oauth::access`
+/// implements it with the token store, the cache and the token endpoint; a test may implement
+/// it with fixed tokens.
+pub trait AccessTokens: Send {
+    /// The account's access token, valid for at least 60 s more, refreshed when needed. One
+    /// refresh attempt at most, inside `deadline_ms` (Unix ms).
+    fn access_token(&mut self, account: &Id, deadline_ms: u64) -> Result<Secret, AccessFailure>;
+    /// Drops the account's cached access token, after a 401 from a Calendar call (3.8).
+    fn drop_cached(&mut self, account: &Id);
+}
+
 /// Removes the account from the token store and from the cache in one step (section 4):
 /// `AuthLost`, a failed reconnect and `disconnect_google` all go through it. The cached access
 /// token is dropped first and always, so it never outlives the refresh token even when the

@@ -25,17 +25,25 @@
 //!   (section 4).
 //! - [`time`] turns RFC 3339 to instants and to the contract's time types (6.9).
 
+pub mod calendar;
 pub mod client;
 pub mod clock;
 pub mod endpoints;
 pub mod http;
+pub mod oauth;
+pub mod outcome;
+pub mod reconcile;
 pub mod secret;
 pub mod time;
 pub mod tokens;
+pub mod translate;
 
 pub use client::{ClientConfig, ClientFileError, ClientFileProblem};
 pub use clock::{Clock, ManualClock, SharedClock, SystemClock};
 pub use endpoints::{Endpoint, Endpoints, Scheme, Service};
 pub use http::ids::{CalendarId, EventId, IdError, ReservedEventId, Revision};
 pub use secret::Secret;
-pub use tokens::{AccessCache, MemoryTokenStore, TokenStore, TokenStoreError, forget};
+pub use tokens::{
+    AccessCache, AccessFailure, AccessTokens, AuthLostCause, MemoryTokenStore, TokenStore,
+    TokenStoreError, forget,
+};
