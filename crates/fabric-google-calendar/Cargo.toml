@@ -13,7 +13,7 @@ getrandom = "0.3"
 # helpers, no proxy from the environment, no compression, no cookies.
 reqwest = { version = "0.13", default-features = false, features = ["blocking"] }
 # Verification of Google's identity token only (PD4); no private-key operation.
-rsa = { version = "0.10", default-features = false, features = ["std"] }
+rsa = { version = "0.10", default-features = false, features = ["std", "pkcs1v15"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 sha2 = "0.11"
