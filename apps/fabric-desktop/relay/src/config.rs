@@ -21,7 +21,7 @@ pub const BROKER_SYNTHETIC_AGENT: &str = "FABRIC_BROKER_SYNTHETIC_AGENT";
 pub const BROKER_ISABELLE_HOME: &str = "FABRIC_BROKER_ISABELLE_HOME";
 /// Isabelle's per-user directory (`USER_HOME`): its settings, heaps and server registry.
 pub const BROKER_ISABELLE_USER_HOME: &str = "FABRIC_BROKER_ISABELLE_USER_HOME";
-/// The directory that holds the rule theory: `ROOTS` and `Fabric_Broker/`.
+/// The directory that holds the rule theory: `Fabric_Broker/` with its `ROOT` and `Fabric_Broker.thy`.
 pub const BROKER_RULES_DIR: &str = "FABRIC_BROKER_RULES_DIR";
 
 /// The names of the host's environment variables that the broker child receives. Every other

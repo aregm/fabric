@@ -16,10 +16,11 @@ use std::path::{Path, PathBuf};
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use std::thread;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use fabric_broker_core::ports::{ProofDone, ProofJob, ProverIdentity, ProverKind};
 use fabric_broker_policy::report::sha256_hex;
+use fabric_broker_policy::theory::SESSION_ROOT;
 use fabric_broker_policy::{Action, BrokerGate, Check, Context, GateConfig, PolicyError};
 use fabric_desktop_contracts::owner::ProverHealth;
 
@@ -29,7 +30,8 @@ use crate::shell::now_ms;
 
 pub mod map;
 
-/// The limit of one check (plan section 5).
+/// The longest limit of one check (plan section 5). Each check gets the time left before its
+/// job's deadline; the gate takes the smaller.
 pub const CHECK_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
 
 /// The waits after the first and the second consecutive failure; after a third the prover
@@ -42,48 +44,50 @@ pub const RESTART_WAITS: [std::time::Duration; 2] = [
 /// How long a stop at quit waits for the worker; under the relay's 2 s drain.
 pub const QUIT_BOUND: std::time::Duration = std::time::Duration::from_millis(1_500);
 
-/// The rule theory this broker was built with, to which the worker pins the theory in
-/// `FABRIC_BROKER_RULES_DIR` and the gate's before anything is proved.
-const BUILT_THEORY: &str = include_str!("../../../../isabelle/Fabric_Broker/Fabric_Broker.thy");
+/// What a stop at quit keeps back from `QUIT_BOUND` for the gate's kill to send its signals (one
+/// `ps` and two `kill`; the whole kill was measured at 0.06 s on an idle Mac).
+const KILL_ALLOWANCE: Duration = Duration::from_millis(300);
 
-/// The session files this broker was built with: `<rules_dir>/ROOTS` and
-/// `<rules_dir>/Fabric_Broker/ROOT` decide which theory Isabelle loads as the session the checks
-/// import, so they are pinned with the theory. Any other `ROOT` that also defines the
-/// session makes Isabelle refuse a duplicate session, so the gate does not start.
-const BUILT_SESSION_FILES: [(&str, &str); 2] = [
-    ("ROOTS", include_str!("../../../../isabelle/ROOTS")),
-    (
-        "Fabric_Broker/ROOT",
-        include_str!("../../../../isabelle/Fabric_Broker/ROOT"),
-    ),
-];
+/// The bound of every stop of a gate: past it the gate kills its server's process groups (Unix).
+const GATE_STOP_BOUND: Duration = QUIT_BOUND.saturating_sub(KILL_ALLOWANCE);
 
-/// SHA-256 of the rule theory this broker was built with, in lowercase hex, as
-/// `BrokerGate::theory_sha256` reports a loaded theory.
-#[must_use]
-pub fn built_theory_sha256() -> &'static str {
-    static HASH: std::sync::OnceLock<String> = std::sync::OnceLock::new();
-    HASH.get_or_init(|| sha256_hex(BUILT_THEORY.as_bytes()))
-}
+/// The policy crate's hash of the rule theory this broker was built with.
+pub use fabric_broker_policy::built_theory_sha256;
 
 /// What the worker needs of a gate; `BrokerGate` in the product, failing doubles under
 /// `cfg(test)`.
 pub(crate) trait Gate: Send {
-    /// Checks one action in one context.
-    fn check(&mut self, context: &Context, action: &Action) -> Result<Check, PolicyError>;
-    /// Stops the gate's Isabelle server.
-    fn stop(&mut self) -> Result<(), PolicyError>;
+    /// Checks one action in one context within `limit` (`BrokerGate::check_within`).
+    fn check_within(
+        &mut self,
+        context: &Context,
+        action: &Action,
+        limit: Duration,
+    ) -> Result<Check, PolicyError>;
+    /// Whether a failure broke the gate; its checks then fail at once (`BrokerGate::is_broken`).
+    fn is_broken(&self) -> bool;
+    /// Stops the gate's Isabelle server within `bound`, then kills it (`BrokerGate::stop_within`).
+    fn stop_within(&mut self, bound: Duration) -> Result<(), PolicyError>;
     /// The SHA-256 of the rule theory the gate loaded, in lowercase hex.
     fn theory_sha256(&self) -> &str;
 }
 
 impl Gate for BrokerGate {
-    fn check(&mut self, context: &Context, action: &Action) -> Result<Check, PolicyError> {
-        BrokerGate::check(self, context, action)
+    fn check_within(
+        &mut self,
+        context: &Context,
+        action: &Action,
+        limit: Duration,
+    ) -> Result<Check, PolicyError> {
+        BrokerGate::check_within(self, context, action, limit)
     }
 
-    fn stop(&mut self) -> Result<(), PolicyError> {
-        BrokerGate::stop(self)
+    fn is_broken(&self) -> bool {
+        BrokerGate::is_broken(self)
+    }
+
+    fn stop_within(&mut self, bound: Duration) -> Result<(), PolicyError> {
+        BrokerGate::stop_within(self, bound)
     }
 
     fn theory_sha256(&self) -> &str {
@@ -164,13 +168,15 @@ enum Msg {
     Job(Box<ProofJob>),
     /// The starter thread's result.
     Started(Result<Box<dyn Gate>, PolicyError>),
-    /// A dropper thread finished stopping and dropping a gate.
-    Dropped,
     /// Stop now, then acknowledge.
     Stop(Sender<()>),
 }
 
-/// What the worker and the main loop's overrun poll share.
+/// What the worker, the main loop's overrun poll and the handle's stop share.
+///
+/// The overrun poll is a backstop: the gate answers by the check's limit and its grace, but a
+/// hung gate is reported at the job's deadline, the gate does not bound its theory file's write
+/// and removal, and a step of the wall clock can move the deadline.
 struct Shared {
     /// The health last sent to the main loop, by the worker or through [`IsabelleProver::poll`].
     health: ProverHealth,
@@ -178,6 +184,9 @@ struct Shared {
     running: Option<u64>,
     /// True once the poll reported the running check past its deadline.
     overrun: bool,
+    /// Set once by the handle before it sends `Stop`: the instant by which a gate's stop must
+    /// end. While it is set, queued jobs are not checked and no start begins.
+    stop_by: Option<Instant>,
 }
 
 fn lock(shared: &Mutex<Shared>) -> MutexGuard<'_, Shared> {
@@ -206,8 +215,9 @@ impl IsabelleProver {
 
     /// Spawns the worker. Called only once the store is open.
     ///
-    /// The worker starts its first gate at once. If the thread cannot be spawned, every
-    /// [`prove`](Self::prove) returns false, so the shell reports the prover unavailable.
+    /// The worker starts its first gate at once, unless a stop was already sent. If the thread
+    /// cannot be spawned, every [`prove`](Self::prove) returns false, so the shell reports the
+    /// prover unavailable.
     #[must_use]
     pub fn spawn(options: ProverOptions, emit: Emit) -> IsabelleProver {
         let (sender, messages) = mpsc::channel();
@@ -215,6 +225,7 @@ impl IsabelleProver {
             health: ProverHealth::Starting,
             running: None,
             overrun: false,
+            stop_by: None,
         }));
         let work_dir = options.gate.work_dir.clone();
         let worker = Worker {
@@ -224,7 +235,6 @@ impl IsabelleProver {
             sender: sender.clone(),
             state: State::Starting,
             failures: 0,
-            droppers: 0,
             gone: false,
         };
         // A failed spawn drops the worker and its receiver: every send then fails.
@@ -266,7 +276,13 @@ impl IsabelleProver {
     /// Stops the worker: sends the stop and waits up to `bound`, calling `drain` between
     /// short waits. Without an acknowledgement it removes the work directory itself and returns
     /// false.
+    ///
+    /// Before the send it records the instant by which the gate's stop must end: `bound` less
+    /// `KILL_ALLOWANCE`, at most `GATE_STOP_BOUND`, so the gate's kill goes out within `bound`.
     pub fn stop(self, bound: std::time::Duration, drain: &mut dyn FnMut()) -> bool {
+        lock(&self.shared).stop_by.get_or_insert(
+            Instant::now() + bound.saturating_sub(KILL_ALLOWANCE).min(GATE_STOP_BOUND),
+        );
         let (ack, acknowledged) = mpsc::channel();
         if self.sender.send(Msg::Stop(ack)).is_ok() {
             let until = Instant::now().checked_add(bound);
@@ -294,8 +310,12 @@ impl IsabelleProver {
 
 impl Drop for IsabelleProver {
     /// A handle dropped without [`IsabelleProver::stop`] still stops the worker, without
-    /// waiting. After a stop the worker is gone and the send fails.
+    /// waiting, and gives the gate's stop `GATE_STOP_BOUND`. After a stop the worker is gone and
+    /// the send fails.
     fn drop(&mut self) {
+        lock(&self.shared)
+            .stop_by
+            .get_or_insert(Instant::now() + GATE_STOP_BOUND);
         let (ack, _) = mpsc::channel();
         let _ = self.sender.send(Msg::Stop(ack));
     }
@@ -341,18 +361,17 @@ impl Checked {
     }
 }
 
-/// The worker thread: it owns the gate, and every gate start and drop happens off it.
+/// The worker thread: it owns the gate; every gate start happens off it; a gate's stop is
+/// bounded and runs on it.
 struct Worker {
     options: ProverOptions,
     emit: Emit,
     shared: Arc<Mutex<Shared>>,
-    /// For the starter and dropper threads.
+    /// For the starter threads.
     sender: Sender<Msg>,
     state: State,
     /// Consecutive failures since the last `Ready`.
     failures: usize,
-    /// Dropper threads still stopping a gate.
-    droppers: usize,
     /// The main loop no longer takes events.
     gone: bool,
 }
@@ -391,16 +410,15 @@ impl Worker {
         match message {
             Msg::Job(job) => self.job(&job),
             Msg::Started(started) => self.started(started),
-            Msg::Dropped => self.droppers = self.droppers.saturating_sub(1),
             Msg::Stop(ack) => return Err(ack),
         }
         Ok(())
     }
 
-    /// While `Down` with a retry and no dropper alive: how long until the retry.
+    /// While `Down` with a retry and no stop sent: how long until the retry.
     fn retry_wait(&self) -> Option<std::time::Duration> {
         match self.state {
-            State::Down { retry_at: Some(at) } if self.droppers == 0 => {
+            State::Down { retry_at: Some(at) } if lock(&self.shared).stop_by.is_none() => {
                 Some(at.saturating_duration_since(Instant::now()))
             }
             _ => None,
@@ -429,56 +447,48 @@ impl Worker {
         self.send(ProverEvent::Health(health));
     }
 
-    /// Enters `Starting`: a fresh private work directory, the theory pin on the file and on
-    /// the session files, then a starter thread. Called only while no dropper is alive.
+    /// Enters `Starting`: a fresh private work directory, the pin of PW 2.1, then a starter
+    /// thread.
     fn enter_starting(&mut self) {
+        // No start begins once a stop was sent (PW 2.5); the `Stop` that follows ends the worker.
+        if lock(&self.shared).stop_by.is_some() {
+            return;
+        }
         self.state = State::Starting;
         self.set_health(ProverHealth::Starting);
         if prepare_work_dir(&self.options.gate.work_dir).is_err() {
             self.fail(Failure::Start, "I/O");
             return;
         }
-        let theory = self
-            .options
-            .gate
-            .rules_dir
-            .join(fabric_broker_policy::gate::SESSION)
-            .join("Fabric_Broker.thy");
-        match fs::read(theory) {
+        match pin(&self.options.gate.rules_dir) {
             Err(_) => {
                 self.fail(Failure::Start, "I/O");
                 return;
             }
-            Ok(bytes) if sha256_hex(&bytes) != built_theory_sha256() => {
+            Ok(false) => {
                 self.other_theory();
                 return;
             }
-            Ok(_) => {}
+            Ok(true) => {}
         }
-        for (name, built) in BUILT_SESSION_FILES {
-            match fs::read(self.options.gate.rules_dir.join(name)) {
-                Err(_) => {
-                    self.fail(Failure::Start, "I/O");
-                    return;
-                }
-                Ok(bytes) if bytes != built.as_bytes() => {
-                    self.other_theory();
-                    return;
-                }
-                Ok(_) => {}
-            }
+        // A stop sent during the work directory's preparation or the pin starts no gate either.
+        if lock(&self.shared).stop_by.is_some() {
+            return;
         }
         let starter = Arc::clone(&self.options.starter);
         let config = self.options.gate.clone();
         let sender = self.sender.clone();
+        let shared = Arc::clone(&self.shared);
         let spawned = thread::Builder::new()
             .name("fabric-prover-start".to_owned())
             .spawn(move || {
-                // After a stop the worker is gone: the starter stops its own gate.
+                // After a stop the worker is gone: the starter stops its own gate within
+                // `GATE_STOP_BOUND`; if the process has ended first, the server outlives it
+                // (PW K1).
                 if let Err(mpsc::SendError(Msg::Started(Ok(mut gate)))) =
                     sender.send(Msg::Started(starter(&config)))
                 {
-                    let _ = gate.stop();
+                    let _ = gate.stop_within(stop_bound(&shared));
                 }
             });
         if spawned.is_err() {
@@ -489,14 +499,14 @@ impl Worker {
     fn started(&mut self, started: Result<Box<dyn Gate>, PolicyError>) {
         if !matches!(self.state, State::Starting) {
             if let Ok(gate) = started {
-                self.drop_gate(gate);
+                stop_gate(gate, &self.shared);
             }
             return;
         }
         match started {
             Ok(gate) if gate.theory_sha256() != built_theory_sha256() => {
-                self.drop_gate(gate);
                 self.other_theory();
+                stop_gate(gate, &self.shared);
             }
             Ok(gate) => {
                 self.state = State::Ready(gate);
@@ -508,19 +518,23 @@ impl Worker {
     }
 
     fn job(&mut self, job: &ProofJob) {
+        // Read before the match: `check_job` locks the record again.
+        let stop_sent = lock(&self.shared).stop_by.is_some();
         let checked = match &mut self.state {
             State::Starting => Checked::refused(job, map::STARTING),
             State::Down { .. } => Checked::refused(job, map::NOT_RUNNING),
+            // A job still queued at a stop is not checked.
+            State::Ready(_) if stop_sent => Checked::refused(job, map::NOT_RUNNING),
             State::Ready(gate) => check_job(gate.as_mut(), &self.shared, job),
         };
         self.send(ProverEvent::Done(Box::new(checked.done)));
         match checked.fate {
             GateFate::Restart => {
                 let broken = std::mem::replace(&mut self.state, State::Down { retry_at: None });
-                if let State::Ready(gate) = broken {
-                    self.drop_gate(gate);
-                }
                 self.fail(Failure::Broken, checked.category);
+                if let State::Ready(gate) = broken {
+                    stop_gate(gate, &self.shared);
+                }
             }
             GateFate::Keep if checked.overrun => self.set_health(ProverHealth::Ready),
             GateFate::Keep => {}
@@ -567,40 +581,38 @@ impl Worker {
         self.set_health(ProverHealth::Unavailable);
     }
 
-    /// Hands a gate to a dropper thread, which stops it, drops it and reports back. A gate's
-    /// stop can block for over a minute, so the worker never waits for it.
-    fn drop_gate(&mut self, gate: Box<dyn Gate>) {
-        let sender = self.sender.clone();
-        let spawned = thread::Builder::new()
-            .name("fabric-prover-drop".to_owned())
-            .spawn(move || {
-                let mut gate = gate;
-                let _ = gate.stop();
-                drop(gate);
-                let _ = sender.send(Msg::Dropped);
-            });
-        // Without a thread the closure, and the gate in it, is already dropped.
-        if spawned.is_ok() {
-            self.droppers += 1;
-        }
-    }
-
-    /// At a stop, or when the main loop is gone: stops a ready gate here, then removes the work
-    /// directory.
+    /// At a stop, or when the main loop is gone: stops a ready gate here, within what is left of
+    /// the stop's instant, then removes the work directory.
     fn shut_down(&mut self) {
-        if let State::Ready(mut gate) =
+        if let State::Ready(gate) =
             std::mem::replace(&mut self.state, State::Down { retry_at: None })
         {
-            let _ = gate.stop();
-            drop(gate);
+            stop_gate(gate, &self.shared);
         }
         let _ = remove_work_dir(&self.options.gate.work_dir);
     }
 }
 
+/// What a stop of a gate may take now: `GATE_STOP_BOUND`, or what is left of the quit's deadline
+/// if a stop was sent (zero: the gate kills its server at once).
+fn stop_bound(shared: &Mutex<Shared>) -> Duration {
+    lock(shared).stop_by.map_or(GATE_STOP_BOUND, |by| {
+        by.saturating_duration_since(Instant::now())
+            .min(GATE_STOP_BOUND)
+    })
+}
+
+/// Stops a gate on the worker within [`stop_bound`] and its kill (PW 2.2), then drops it.
+fn stop_gate(mut gate: Box<dyn Gate>, shared: &Mutex<Shared>) {
+    let _ = gate.stop_within(stop_bound(shared));
+    drop(gate);
+}
+
 /// One job in `Ready`.
 fn check_job(gate: &mut dyn Gate, shared: &Mutex<Shared>, job: &ProofJob) -> Checked {
-    if now_ms() >= job.deadline_ms {
+    // One clock read for the refusal and the limit: the time left before the job's deadline.
+    let left = job.deadline_ms.saturating_sub(now_ms());
+    if left == 0 {
         return Checked::refused(job, map::PAST_DEADLINE);
     }
     let (context, action) = match map::context_of(job) {
@@ -612,14 +624,22 @@ fn check_job(gate: &mut dyn Gate, shared: &Mutex<Shared>, job: &ProofJob) -> Che
         shared.running = Some(job.deadline_ms);
         shared.overrun = false;
     }
-    let result = gate.check(&context, &action);
+    let result = gate.check_within(&context, &action, Duration::from_millis(left));
+    // A broken gate is restarted whatever the result; an `Ok` check's result stands.
+    let broken = gate.is_broken();
     let overrun = {
         let mut shared = lock(shared);
         shared.running = None;
         std::mem::take(&mut shared.overrun)
     };
-    let category = result.as_ref().err().map_or("Isabelle", category);
+    let category = match &result {
+        Err(error) => category(error),
+        // The check returned, but the purge after it broke the gate.
+        Ok(_) if broken => "connection",
+        Ok(_) => "Isabelle",
+    };
     let (done, fate) = map::done_of(job, &context, built_theory_sha256(), result);
+    let fate = if broken { GateFate::Restart } else { fate };
     Checked {
         done,
         fate,
@@ -652,6 +672,24 @@ pub(crate) fn remove_work_dir(dir: &Path) -> io::Result<()> {
     }
 }
 
+/// The pin of PW 2.1: true when `<rules_dir>/Fabric_Broker` holds the theory this broker was
+/// built with (by its SHA-256) and the built session `ROOT` (byte for byte), and no `ROOTS`,
+/// which would add another directory to the session's. Nothing else under `rules_dir` is read.
+fn pin(rules_dir: &Path) -> io::Result<bool> {
+    let session = rules_dir.join(fabric_broker_policy::gate::SESSION);
+    if sha256_hex(&fs::read(session.join("Fabric_Broker.thy"))?) != built_theory_sha256() {
+        return Ok(false);
+    }
+    if fs::read(session.join("ROOT"))? != SESSION_ROOT.as_bytes() {
+        return Ok(false);
+    }
+    match fs::symlink_metadata(session.join("ROOTS")) {
+        Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(true),
+        Err(error) => Err(error),
+        Ok(_) => Ok(false),
+    }
+}
+
 /// Empties the work directory and makes it again, private on Unix. The create is not
 /// recursive, so it never makes the data directory itself.
 fn prepare_work_dir(dir: &Path) -> io::Result<()> {
@@ -668,12 +706,15 @@ fn prepare_work_dir(dir: &Path) -> io::Result<()> {
 
 #[cfg(test)]
 mod tests {
-    //! The worker with gate doubles. A double's `check` only fails, or blocks and then fails;
-    //! no double returns a `Check`.
+    //! The worker with gate doubles. A double's `check_within` only fails, or blocks and then
+    //! fails; no double returns a `Check`.
 
-    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
     use std::sync::{Condvar, mpsc::RecvTimeoutError};
     use std::time::Duration;
+
+    use fabric_broker_policy::gate::CHECK_GRACE;
+    use fabric_broker_policy::theory::THEORY_TEXT;
 
     use super::*;
     use crate::config::IsabelleSettings;
@@ -741,8 +782,16 @@ mod tests {
         stop_latch: Option<Latch>,
         /// A file the check writes before it waits, as the gate's check theory.
         check_file: Option<PathBuf>,
+        /// The check breaks the gate before it fails.
+        breaks: bool,
+        /// What `is_broken` returns: set by a check that breaks the gate.
+        broken: Arc<AtomicBool>,
         checks: Arc<AtomicUsize>,
         stops: Arc<AtomicUsize>,
+        /// The limit of each check.
+        limits: Arc<Mutex<Vec<Duration>>>,
+        /// The bound of each stop.
+        stop_bounds: Arc<Mutex<Vec<Duration>>>,
     }
 
     impl Double {
@@ -753,17 +802,30 @@ mod tests {
                 check_latch: None,
                 stop_latch: None,
                 check_file: None,
+                breaks: false,
+                broken: Arc::default(),
                 checks: Arc::default(),
                 stops: Arc::default(),
+                limits: Arc::default(),
+                stop_bounds: Arc::default(),
             }
         }
     }
 
     impl Gate for Double {
-        fn check(&mut self, _: &Context, _: &Action) -> Result<Check, PolicyError> {
+        fn check_within(
+            &mut self,
+            _: &Context,
+            _: &Action,
+            limit: Duration,
+        ) -> Result<Check, PolicyError> {
+            self.limits.lock().unwrap().push(limit);
             self.checks.fetch_add(1, Ordering::SeqCst);
             if let Some(file) = &self.check_file {
                 fs::write(file, "calendar data").unwrap();
+            }
+            if self.breaks {
+                self.broken.store(true, Ordering::SeqCst);
             }
             if let Some(latch) = &self.check_latch {
                 latch.wait();
@@ -771,7 +833,12 @@ mod tests {
             Err((self.error)())
         }
 
-        fn stop(&mut self) -> Result<(), PolicyError> {
+        fn is_broken(&self) -> bool {
+            self.broken.load(Ordering::SeqCst)
+        }
+
+        fn stop_within(&mut self, bound: Duration) -> Result<(), PolicyError> {
+            self.stop_bounds.lock().unwrap().push(bound);
             if let Some(latch) = &self.stop_latch {
                 latch.wait();
             }
@@ -976,10 +1043,11 @@ mod tests {
     }
 
     #[test]
-    fn a_broken_gate_is_dropped_off_the_worker_and_restarted() {
+    fn a_broken_gate_is_stopped_on_the_worker_and_restarted() {
         let data = TempDir::new("w05");
         let gate = Double::new(io);
         let stops = Arc::clone(&gate.stops);
+        let stop_bounds = Arc::clone(&gate.stop_bounds);
         let calls = Arc::new(AtomicUsize::new(0));
         let starter = counting(&calls, move |_| Ok(Box::new(gate.clone()) as Box<dyn Gate>));
         let waits = [Duration::from_millis(50)];
@@ -996,6 +1064,7 @@ mod tests {
         }
         assert_eq!(calls.load(Ordering::SeqCst), 2);
         assert_eq!(stops.load(Ordering::SeqCst), 1);
+        assert_eq!(stop_bounds.lock().unwrap()[0], GATE_STOP_BOUND);
         assert!(stop(prover));
         assert_eq!(stops.load(Ordering::SeqCst), 2);
     }
@@ -1152,9 +1221,10 @@ mod tests {
         fs::create_dir_all(rules.join("Fabric_Broker")).unwrap();
         fs::write(
             rules.join("Fabric_Broker").join("Fabric_Broker.thy"),
-            format!("{BUILT_THEORY} "),
+            format!("{THEORY_TEXT} "),
         )
         .unwrap();
+        fs::write(rules.join("Fabric_Broker").join("ROOT"), SESSION_ROOT).unwrap();
         let calls = Arc::new(AtomicUsize::new(0));
         let starter = counting(&calls, |_| Err(isabelle()));
         let mut options = options(data.path(), &[Duration::from_millis(10)], starter);
@@ -1168,38 +1238,43 @@ mod tests {
         assert!(stop(prover));
     }
 
-    /// The theory pin: the built theory stays in place, but `ROOTS` or the session's
-    /// `ROOT` points the session at a copied, changed theory. The prover is unavailable for the
-    /// run and no gate starts.
+    /// A rules directory with the built theory, the built session `ROOT`, and a `Rules2/`
+    /// beside them with a changed theory.
+    fn rules_with_a_copy(data: &Path) -> PathBuf {
+        let rules = data.join("rules");
+        for dir in ["Fabric_Broker", "Rules2"] {
+            fs::create_dir_all(rules.join(dir)).unwrap();
+        }
+        fs::write(
+            rules.join("Fabric_Broker").join("Fabric_Broker.thy"),
+            THEORY_TEXT,
+        )
+        .unwrap();
+        fs::write(rules.join("Fabric_Broker").join("ROOT"), SESSION_ROOT).unwrap();
+        fs::write(
+            rules.join("Rules2").join("Fabric_Broker.thy"),
+            format!("{THEORY_TEXT} "),
+        )
+        .unwrap();
+        fs::write(rules.join("Rules2").join("ROOT"), SESSION_ROOT).unwrap();
+        rules
+    }
+
+    /// The theory pin: the built theory stays in place, but the session's `ROOT` points the
+    /// session at a copied, changed theory, or a `ROOTS` beside it adds a directory. The prover
+    /// is unavailable for the run and no gate starts.
     #[test]
     fn session_files_that_point_elsewhere_leave_the_prover_unavailable_and_start_nothing() {
         let redirects: [(&str, &str); 2] = [
-            ("ROOTS", "Rules2\n"),
             (
                 "Fabric_Broker/ROOT",
                 "session Fabric_Broker in \"../Rules2\" = HOL +\n  theories\n    Fabric_Broker\n",
             ),
+            ("Fabric_Broker/ROOTS", "../Rules2\n"),
         ];
         for (file, text) in redirects {
             let data = TempDir::new("w11-session");
-            let rules = data.path().join("rules");
-            for dir in ["Fabric_Broker", "Rules2"] {
-                fs::create_dir_all(rules.join(dir)).unwrap();
-            }
-            fs::write(
-                rules.join("Fabric_Broker").join("Fabric_Broker.thy"),
-                BUILT_THEORY,
-            )
-            .unwrap();
-            for (name, built) in BUILT_SESSION_FILES {
-                fs::write(rules.join(name), built).unwrap();
-            }
-            fs::write(
-                rules.join("Rules2").join("Fabric_Broker.thy"),
-                format!("{BUILT_THEORY} "),
-            )
-            .unwrap();
-            fs::write(rules.join("Rules2").join("ROOT"), BUILT_SESSION_FILES[1].1).unwrap();
+            let rules = rules_with_a_copy(data.path());
             fs::write(rules.join(file), text).unwrap();
             let calls = Arc::new(AtomicUsize::new(0));
             let starter = counting(&calls, |_| Err(isabelle()));
@@ -1211,6 +1286,34 @@ mod tests {
             assert_eq!(calls.load(Ordering::SeqCst), 0, "{file}");
             assert!(prover.prove(job()));
             assert_eq!(reason(&done(&events)), map::NOT_RUNNING);
+            assert!(stop(prover));
+        }
+    }
+
+    /// PW 2.1: the pin reads only `Fabric_Broker/`, so a rules directory without `ROOTS`, or
+    /// with one that names another directory, reaches the starter.
+    #[test]
+    fn a_rules_dir_without_roots_reaches_the_starter() {
+        for with_roots in [false, true] {
+            let data = TempDir::new("w21");
+            let rules = data.path().join("rules");
+            fs::create_dir_all(rules.join("Fabric_Broker")).unwrap();
+            fs::write(
+                rules.join("Fabric_Broker").join("Fabric_Broker.thy"),
+                THEORY_TEXT,
+            )
+            .unwrap();
+            fs::write(rules.join("Fabric_Broker").join("ROOT"), SESSION_ROOT).unwrap();
+            if with_roots {
+                fs::write(rules.join("ROOTS"), "Rules2\n").unwrap();
+            }
+            let calls = Arc::new(AtomicUsize::new(0));
+            let starter = counting(&calls, |_| Err(isabelle()));
+            let mut options = options(data.path(), &[], starter);
+            options.gate.rules_dir = rules;
+            let (prover, events) = spawn(options);
+            assert_eq!(health(&events), ProverHealth::Unavailable, "{with_roots}");
+            assert_eq!(calls.load(Ordering::SeqCst), 1, "{with_roots}");
             assert!(stop(prover));
         }
     }
@@ -1229,7 +1332,7 @@ mod tests {
         assert!(prover.prove(job()));
         assert_eq!(reason(&done(&events)), map::NOT_RUNNING);
         quiet(&events);
-        wait_until("the dropper", || stops.load(Ordering::SeqCst) == 1);
+        wait_until("the stop", || stops.load(Ordering::SeqCst) == 1);
         assert_eq!(checks.load(Ordering::SeqCst), 0);
         assert_eq!(calls.load(Ordering::SeqCst), 1);
         assert!(stop(prover));
@@ -1244,6 +1347,8 @@ mod tests {
         let mut gate = Double::new(io);
         gate.check_latch = Some(latch.clone());
         gate.check_file = Some(check_file.clone());
+        let stops = Arc::clone(&gate.stops);
+        let stop_bounds = Arc::clone(&gate.stop_bounds);
         let (prover, events) = spawn(options(data.path(), &[], ready(gate)));
         assert_eq!(health(&events), ProverHealth::Ready);
         assert!(prover.prove(job()));
@@ -1252,6 +1357,10 @@ mod tests {
         assert!(!check_file.exists());
         assert!(!work_dir.exists());
         latch.open();
+        // The check then breaks the gate: its stop gets what is left of the stop's instant, which
+        // is nothing; the handle's drop at the end of `stop` did not move that instant.
+        wait_until("the stop", || stops.load(Ordering::SeqCst) == 1);
+        assert_eq!(*stop_bounds.lock().unwrap(), [Duration::ZERO]);
     }
 
     #[test]
@@ -1347,17 +1456,12 @@ mod tests {
 
     #[test]
     fn the_built_theory_is_the_repository_theory() {
+        assert!(pin(&repository_rules()).unwrap());
         let file = repository_rules()
             .join("Fabric_Broker")
             .join("Fabric_Broker.thy");
-        assert_eq!(sha256_hex(&fs::read(file).unwrap()), built_theory_sha256());
+        assert_eq!(fs::read(file).unwrap(), THEORY_TEXT.as_bytes());
         assert_eq!(built_theory_sha256().len(), 64);
-        for (name, built) in BUILT_SESSION_FILES {
-            assert_eq!(
-                fs::read(repository_rules().join(name)).unwrap(),
-                built.as_bytes()
-            );
-        }
     }
 
     #[test]
@@ -1384,5 +1488,269 @@ mod tests {
         wait_until("the stop", || stops.load(Ordering::SeqCst) == 1);
         wait_until("the removal", || !data.path().join("prover").exists());
         wait_until("the worker's end", || !prover.prove(job()));
+    }
+
+    /// PW 2.3: `is_broken` is read after the check, and a broken gate is restarted although
+    /// its error alone (a render error) would keep it.
+    #[test]
+    fn a_gate_broken_by_a_check_is_restarted_even_when_its_error_would_keep_it() {
+        let data = TempDir::new("w22");
+        let mut first = Double::new(render);
+        first.breaks = true;
+        let stops = Arc::clone(&first.stops);
+        let calls = Arc::new(AtomicUsize::new(0));
+        let starter = counting(&calls, move |call| {
+            let gate = if call == 1 {
+                first.clone()
+            } else {
+                Double::new(render)
+            };
+            Ok(Box::new(gate) as Box<dyn Gate>)
+        });
+        let (prover, events) = spawn(options(data.path(), &[Duration::from_millis(50)], starter));
+        assert_eq!(health(&events), ProverHealth::Ready);
+        assert!(prover.prove(job()));
+        assert_eq!(reason(&done(&events)), map::RENDER);
+        for expected in [
+            ProverHealth::Unavailable,
+            ProverHealth::Starting,
+            ProverHealth::Ready,
+        ] {
+            assert_eq!(health(&events), expected);
+        }
+        assert_eq!(calls.load(Ordering::SeqCst), 2);
+        assert_eq!(stops.load(Ordering::SeqCst), 1);
+        assert!(stop(prover));
+    }
+
+    /// PW 2.3: a check's limit is the time left before its job's deadline.
+    #[test]
+    fn each_check_gets_the_time_left_before_its_deadline() {
+        let data = TempDir::new("w23");
+        let gate = Double::new(render);
+        let limits = Arc::clone(&gate.limits);
+        let (prover, events) = spawn(options(data.path(), &[], ready(gate)));
+        assert_eq!(health(&events), ProverHealth::Ready);
+        let mut due = job();
+        due.deadline_ms = now_ms() + 20_000;
+        assert!(prover.prove(due));
+        assert_eq!(reason(&done(&events)), map::RENDER);
+        let limits = limits.lock().unwrap().clone();
+        assert_eq!(limits.len(), 1);
+        assert!(
+            limits[0] > Duration::from_secs(19) && limits[0] <= Duration::from_secs(20),
+            "{limits:?}"
+        );
+        assert!(stop(prover));
+    }
+
+    /// PW 2.5: a quit gives the gate's stop what is left of `QUIT_BOUND` less `KILL_ALLOWANCE`,
+    /// counted from the send.
+    #[test]
+    fn a_quit_gives_the_gate_what_is_left_of_the_quit_bound() {
+        // An idle gate.
+        let data = TempDir::new("w24-idle");
+        let gate = Double::new(render);
+        let stop_bounds = Arc::clone(&gate.stop_bounds);
+        let (prover, events) = spawn(options(data.path(), &[], ready(gate)));
+        assert_eq!(health(&events), ProverHealth::Ready);
+        assert!(prover.stop(QUIT_BOUND, &mut || {}));
+        let bounds = stop_bounds.lock().unwrap().clone();
+        assert_eq!(bounds.len(), 1);
+        assert!(bounds[0] <= GATE_STOP_BOUND, "{bounds:?}");
+
+        // A gate in a check that ends at least 800 ms after the stop was sent.
+        let data = TempDir::new("w24-check");
+        let latch = Latch::default();
+        let mut gate = Double::new(render);
+        gate.check_latch = Some(latch.clone());
+        let checks = Arc::clone(&gate.checks);
+        let stop_bounds = Arc::clone(&gate.stop_bounds);
+        let (prover, events) = spawn(options(data.path(), &[], ready(gate)));
+        assert_eq!(health(&events), ProverHealth::Ready);
+        assert!(prover.prove(job()));
+        wait_until("the check", || checks.load(Ordering::SeqCst) == 1);
+        let mut first_drain: Option<Instant> = None;
+        assert!(prover.stop(PATIENCE, &mut || {
+            let first = *first_drain.get_or_insert_with(Instant::now);
+            if first.elapsed() >= Duration::from_millis(800) {
+                latch.open();
+            }
+        }));
+        let bounds = stop_bounds.lock().unwrap().clone();
+        assert_eq!(bounds.len(), 1);
+        assert!(
+            bounds[0] <= GATE_STOP_BOUND - Duration::from_millis(800),
+            "{bounds:?}"
+        );
+
+        // A stop whose bound is the kill's allowance leaves the gate's stop no time.
+        let data = TempDir::new("w24-allowance");
+        let gate = Double::new(render);
+        let stops = Arc::clone(&gate.stops);
+        let stop_bounds = Arc::clone(&gate.stop_bounds);
+        let (prover, events) = spawn(options(data.path(), &[], ready(gate)));
+        assert_eq!(health(&events), ProverHealth::Ready);
+        let _ = prover.stop(KILL_ALLOWANCE, &mut || {});
+        wait_until("the stop", || stops.load(Ordering::SeqCst) == 1);
+        assert_eq!(*stop_bounds.lock().unwrap(), [Duration::ZERO]);
+    }
+
+    /// PW 2.5: jobs still queued when a stop is sent are answered without a check.
+    #[test]
+    fn queued_jobs_are_not_checked_once_a_stop_is_sent() {
+        for dropped in [false, true] {
+            let data = TempDir::new("w25");
+            let latch = Latch::default();
+            let mut gate = Double::new(render);
+            gate.check_latch = Some(latch.clone());
+            let checks = Arc::clone(&gate.checks);
+            let (prover, events) = spawn(options(data.path(), &[], ready(gate)));
+            assert_eq!(health(&events), ProverHealth::Ready);
+            assert!(prover.prove(job()));
+            wait_until("the check", || checks.load(Ordering::SeqCst) == 1);
+            assert!(prover.prove(job()));
+            assert!(prover.prove(job()));
+            if dropped {
+                drop(prover);
+                latch.open();
+            } else {
+                assert!(prover.stop(PATIENCE, &mut || latch.open()));
+            }
+            let reasons = (0..3)
+                .map(|_| reason(&done(&events)).to_owned())
+                .collect::<Vec<_>>();
+            assert_eq!(
+                reasons,
+                [map::RENDER, map::NOT_RUNNING, map::NOT_RUNNING],
+                "{dropped}"
+            );
+            assert_eq!(checks.load(Ordering::SeqCst), 1, "{dropped}");
+        }
+    }
+
+    /// PW 2.2 step 3: a gate whose start returns after the worker is gone is stopped by its
+    /// starter within `GATE_STOP_BOUND`.
+    #[test]
+    fn a_gate_started_after_the_stop_is_stopped_by_its_starter() {
+        for stop_sent in [false, true] {
+            let data = TempDir::new("w26");
+            let latch = Latch::default();
+            let gate = Double::new(render);
+            let stops = Arc::clone(&gate.stops);
+            let stop_bounds = Arc::clone(&gate.stop_bounds);
+            let waiting = latch.clone();
+            let starter: Starter = Arc::new(move |_: &GateConfig| {
+                waiting.wait();
+                Ok(Box::new(gate.clone()) as Box<dyn Gate>)
+            });
+            let (prover, events) = spawn(options(data.path(), &[], starter));
+            drop(events);
+            assert!(prover.prove(job()));
+            wait_until("the worker's end", || !prover.prove(job()));
+            if stop_sent {
+                lock(&prover.shared).stop_by = Some(Instant::now());
+            }
+            latch.open();
+            wait_until("the starter's stop", || stops.load(Ordering::SeqCst) == 1);
+            let expected = if stop_sent {
+                Duration::ZERO
+            } else {
+                GATE_STOP_BOUND
+            };
+            assert_eq!(*stop_bounds.lock().unwrap(), [expected], "{stop_sent}");
+            drop(prover);
+        }
+    }
+
+    /// PW X9 and PW X11: the bounds fit the relay's drain and the core's proof watchdog.
+    #[test]
+    fn the_bounds_fit_the_core_and_the_relay() {
+        assert!(QUIT_BOUND < fabric_desktop_relay::QUIT_DRAIN);
+        assert!(KILL_ALLOWANCE < QUIT_BOUND);
+        assert!(
+            CHECK_TIMEOUT + CHECK_GRACE
+                <= Duration::from_millis(fabric_broker_core::PROOF_WATCHDOG_MS)
+        );
+    }
+
+    /// PW 2.5: once a stop was sent, a retry that is due does not start a gate.
+    #[test]
+    fn no_start_begins_once_a_stop_was_sent() {
+        let data = TempDir::new("w28");
+        let calls = Arc::new(AtomicUsize::new(0));
+        let starter = counting(&calls, |_| Err(isabelle()));
+        // The worker sends `Unavailable` after the first start failed, with a retry due at
+        // once, and then waits in `emit` until the stop was sent.
+        let held = Latch::default();
+        let release = held.clone();
+        let (sender, events) = mpsc::channel();
+        let emit: Emit = Box::new(move |event| {
+            let unavailable = matches!(event, ProverEvent::Health(ProverHealth::Unavailable));
+            let sent = sender.send(event).is_ok();
+            if unavailable {
+                release.wait();
+            }
+            sent
+        });
+        let prover = IsabelleProver::spawn(options(data.path(), &[Duration::ZERO], starter), emit);
+        assert_eq!(health(&events), ProverHealth::Unavailable);
+        assert!(prover.stop(PATIENCE, &mut || held.open()));
+        // A start would have sent `Starting` before the acknowledgement.
+        assert!(events.try_iter().next().is_none());
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
+        // The retry itself: due without a stop, neither waited for nor due once one was sent.
+        for (stop_by, due) in [(None, true), (Some(Instant::now()), false)] {
+            let retry = State::Down {
+                retry_at: Some(Instant::now()),
+            };
+            let (worker, _messages) =
+                worker(data.path(), ready(Double::new(render)), retry, stop_by);
+            assert_eq!(worker.retry_wait().is_some(), due);
+            assert_eq!(worker.retry_due(), due);
+        }
+    }
+
+    /// A worker built by hand, with its own channel.
+    fn worker(
+        data: &Path,
+        starter: Starter,
+        state: State,
+        stop_by: Option<Instant>,
+    ) -> (Worker, Receiver<Msg>) {
+        let (sender, messages) = mpsc::channel();
+        let worker = Worker {
+            options: options(data, &[], starter),
+            emit: Box::new(|_| true),
+            shared: Arc::new(Mutex::new(Shared {
+                health: ProverHealth::Starting,
+                running: None,
+                overrun: false,
+                stop_by,
+            })),
+            sender,
+            state,
+            failures: 0,
+            gone: false,
+        };
+        (worker, messages)
+    }
+
+    /// PW 2.5: a stop sent before the worker has run starts no gate at all.
+    #[test]
+    fn a_stop_sent_before_the_first_start_starts_nothing() {
+        let data = TempDir::new("w29");
+        let calls = Arc::new(AtomicUsize::new(0));
+        let starter = counting(&calls, |_| Err(isabelle()));
+        let (worker, messages) =
+            worker(data.path(), starter, State::Starting, Some(Instant::now()));
+        let (ack, acknowledged) = mpsc::channel();
+        worker.sender.send(Msg::Stop(ack)).unwrap();
+        worker.run(&messages);
+        // `run` dropped the worker's sender; a starter thread would hold a clone and send `Started`.
+        assert!(messages.recv().is_err());
+        assert_eq!(acknowledged.try_recv(), Ok(()));
+        assert_eq!(calls.load(Ordering::SeqCst), 0);
+        assert!(!data.path().join("prover").exists());
     }
 }

@@ -10,8 +10,8 @@ use fabric_broker_core::ports::{
 };
 use fabric_broker_policy::{
     Action, ActiveSession, Actor, Calendar, CalendarKey, Check, Context, Duration, Event,
-    EventField, Grant, PendingEffect, PolicyError, Profile, Recipient, RecipientRule, RecipientSet,
-    Tool, Verdict, Window,
+    EventField, Fault, Grant, PendingEffect, PolicyError, Profile, Recipient, RecipientRule,
+    RecipientSet, Tool, Verdict, Window,
 };
 use fabric_desktop_contracts::common::{CalendarRef, ToolName};
 use fabric_desktop_contracts::owner::{self, GrantTerm};
@@ -128,9 +128,9 @@ pub enum GateFate {
 /// The result for the core and what happens to the gate.
 ///
 /// A report comes only from a check on `expected_theory` that names the context's action and
-/// context digests and fits the contract; every other result is [`no_report`]. Only a render
-/// error and a check keep the gate: any other error may leave the gate's connection out of
-/// step, and a check on another theory means the gate must meet the pin again.
+/// context digests and fits the contract; every other result is [`no_report`]. Only a request's
+/// fault (`Fault::Request`) and a check keep the gate; a gate's fault restarts it, and a check on
+/// another theory means the gate must meet the pin again.
 #[must_use]
 pub fn done_of(
     job: &ProofJob,
@@ -140,8 +140,12 @@ pub fn done_of(
 ) -> (ProofDone, GateFate) {
     let check = match result {
         Ok(check) => check,
-        Err(PolicyError::Render(_)) => return (no_report(job, RENDER), GateFate::Keep),
-        Err(_) => return (no_report(job, FAILED), GateFate::Restart),
+        Err(error) => {
+            return match Fault::of(&error) {
+                Fault::Request => (no_report(job, RENDER), GateFate::Keep),
+                Fault::Gate => (no_report(job, FAILED), GateFate::Restart),
+            };
+        }
     };
     if check.theory_sha256 != expected_theory {
         return (no_report(job, OTHER_THEORY), GateFate::Restart);
@@ -898,10 +902,14 @@ pub(crate) mod tests {
     fn only_a_render_error_keeps_the_gate() {
         let job = job_of(create());
         let context = checked(&job);
+        let faults = errors("x").iter().map(Fault::of).collect::<Vec<_>>();
         let fates = errors("x")
             .into_iter()
             .map(|error| done_of(&job, &context, built_theory_sha256(), Err(error)))
             .collect::<Vec<_>>();
+        for (fault, (_, fate)) in faults.iter().zip(&fates) {
+            assert_eq!(*fate == GateFate::Restart, *fault == Fault::Gate);
+        }
         assert_eq!(
             fates,
             vec![

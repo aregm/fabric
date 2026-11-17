@@ -40,7 +40,7 @@ pub const SYNTHETIC_AGENT: &str = "FABRIC_BROKER_SYNTHETIC_AGENT";
 pub const ISABELLE_HOME: &str = "FABRIC_BROKER_ISABELLE_HOME";
 /// Isabelle's per-user directory (`USER_HOME`): settings, heaps, server registry.
 pub const ISABELLE_USER_HOME: &str = "FABRIC_BROKER_ISABELLE_USER_HOME";
-/// The directory with `ROOTS` and `Fabric_Broker/`.
+/// The directory with `Fabric_Broker/`, which holds the session's `ROOT` and `Fabric_Broker.thy`.
 pub const RULES_DIR: &str = "FABRIC_BROKER_RULES_DIR";
 
 /// Where the store key comes from.
@@ -192,7 +192,7 @@ const NOT_TOGETHER: &str = "fabric-broker: the rule prover needs FABRIC_BROKER_I
 ///   symbolic link, as the `.app` layout needs) that, on Unix, may be executed.
 /// - [`ISABELLE_USER_HOME`] must be absolute and an existing directory; the broker never creates
 ///   it.
-/// - [`RULES_DIR`] must be absolute and hold the files `ROOTS`, `Fabric_Broker/ROOT` and
+/// - [`RULES_DIR`] must be absolute and hold the files `Fabric_Broker/ROOT` and
 ///   `Fabric_Broker/Fabric_Broker.thy`.
 ///
 /// Nothing heavier than a look at the file's metadata runs here.
@@ -249,11 +249,7 @@ fn isabelle_from(
         ));
     }
     let rules_dir = absolute(RULES_DIR, rules_dir)?;
-    for file in [
-        "ROOTS",
-        "Fabric_Broker/ROOT",
-        "Fabric_Broker/Fabric_Broker.thy",
-    ] {
+    for file in ["Fabric_Broker/ROOT", "Fabric_Broker/Fabric_Broker.thy"] {
         if !std::fs::metadata(rules_dir.join(file)).is_ok_and(|m| m.is_file()) {
             return Err(refuse(
                 RULES_DIR,
@@ -549,11 +545,7 @@ mod tests {
                 use std::os::unix::fs::PermissionsExt as _;
                 std::fs::set_permissions(&program, std::fs::Permissions::from_mode(0o755)).unwrap();
             }
-            for file in [
-                "ROOTS",
-                "Fabric_Broker/ROOT",
-                "Fabric_Broker/Fabric_Broker.thy",
-            ] {
+            for file in ["Fabric_Broker/ROOT", "Fabric_Broker/Fabric_Broker.thy"] {
                 std::fs::write(rules.join(file), b"").unwrap();
             }
             Layout {
@@ -609,6 +601,7 @@ mod tests {
     fn isabelle_variables_are_all_or_none() {
         let dir = absolute();
         let layout = Layout::new("all-or-none");
+        assert!(!layout.rules.join("ROOTS").exists());
         let all = layout.variables();
         let none = config_from(vars(&with_base(&dir, &[]))).unwrap();
         assert_eq!(none.isabelle, None);
@@ -650,7 +643,7 @@ mod tests {
         let user = Layout::text(&layout.user);
         let rules = Layout::text(&layout.rules);
         let missing = Layout::text(&layout.root.join("missing"));
-        let file = Layout::text(&layout.rules.join("ROOTS"));
+        let file = Layout::text(&layout.rules.join("Fabric_Broker").join("ROOT"));
         let cases: Vec<(&str, [&str; 3], &str)> = vec![
             (
                 "a relative home",
@@ -692,11 +685,7 @@ mod tests {
             );
             assert!(!line.contains('\n'), "{case}: {line}");
         }
-        for file in [
-            "ROOTS",
-            "Fabric_Broker/ROOT",
-            "Fabric_Broker/Fabric_Broker.thy",
-        ] {
+        for file in ["Fabric_Broker/ROOT", "Fabric_Broker/Fabric_Broker.thy"] {
             let layout = Layout::new("rules-file");
             std::fs::remove_file(layout.rules.join(file)).unwrap();
             let all = layout.variables();
