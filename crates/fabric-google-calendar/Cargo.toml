@@ -1,0 +1,31 @@
+[package]
+name = "fabric-google-calendar"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+base64 = "0.23"
+fabric-desktop-contracts = { path = "../fabric-desktop-contracts" }
+getrandom = "0.3"
+# Blocking calls on a worker thread (CD-W05 design PD3). No default features: no redirect
+# helpers, no proxy from the environment, no compression, no cookies.
+reqwest = { version = "0.13", default-features = false, features = ["blocking"] }
+# Verification of Google's identity token only (PD4); no private-key operation.
+rsa = { version = "0.10", default-features = false, features = ["std"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.11"
+zeroize = "1"
+
+# TLS through the operating system, as the demo does: Security.framework on macOS, Schannel on
+# Windows. Elsewhere the adapter can reach only the loopback double of its tests (design 2.1).
+[target.'cfg(any(windows, target_os = "macos"))'.dependencies]
+reqwest = { version = "0.13", default-features = false, features = ["blocking", "native-tls"] }
+
+[dev-dependencies]
+fabric-google-fake = { path = "../fabric-google-fake" }
+
+[lints]
+workspace = true
