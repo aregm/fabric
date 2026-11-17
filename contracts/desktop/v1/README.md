@@ -105,7 +105,7 @@ The schemas are JSON Schema 2020-12 restricted to these keywords: `$schema`, `$d
 - **get_snapshot** returns the state at a cursor: health, profiles, accounts, agents, recipient sets, preferences, the open requests and the grants that have not ended.
 - **subscribe** asks for every change after a cursor. Notices then arrive with sequences rising by one. If the cursor is older than the history the broker kept, the answer is `snapshot_required`; if a subscriber falls more than `subscriber_queue_notices` behind, it receives the change `snapshot_required` and must take a snapshot and subscribe again.
 - **Commands** name the revision they were written against (`expected_revision`). A revision that is no longer current gets `conflict` and nothing is overwritten. A successful command returns `commit_sequence`, the sequence of the notice that carries its effect; the broker commits before it answers.
-- **decide_request** names the request, its revision and the `request_digest` the owner saw. If the request has changed, the answer is `stale_request`. `selected` is null to approve the scope as asked, or a scope that narrows it. A recipient rule may name recipient sets in place of exact addresses.
+- **decide_request** names the request, its revision and the `request_digest` the owner saw. If the request has changed, the answer is `stale_request`. `selected` is null to approve the scope as asked, or a scope that narrows it. `duration` is the card's `proposed_duration` or a shorter one (section 10); a longer one gets `invalid_params`. A recipient rule may name recipient sets in place of exact addresses.
 - **save_profile** either puts a profile in force (`activate`) or saves a custom profile (`save_custom`). When a save makes a row more permissive, the broker answers `expansion_not_acknowledged` with the expansion and its digest; the interface shows it, and the owner's confirmation is a new command that carries that digest.
 - **pause_agent** pauses or resumes one agent or all of them.
 - **get_request_details** returns the request, its approval card, the approval, the proofs, the authorization and the attempts. With `redaction` `redacted`, `private` is null and no event content leaves the broker's store. For a request that no proof decided, the details say why in `undecided_reason`: `prover_unavailable` when the rule prover was starting or not running, `out_of_time` when the proof did not finish within its time limit, and `failed` when the check ran and did not decide the request, or its report could not be used. It is null when the broker did not record why, and null for a request in any other state. The schema cannot state the tie to the state; the broker must uphold it.
@@ -160,6 +160,10 @@ A scope names calendars, each with its account, and where they apply a date wind
 A recipient rule names exact addresses or recipient sets. No rule covers everyone, so an invitation to an address outside every approved recipient set always asks. A recipient set is a selector with a source: curated in Fabric, or imported from Google People.
 
 An approval has one of three durations: `one_request`, `session`, `until_revoked`. A grant's `term` binds it: to one action digest, to one agent session, or to nothing but revocation, in which case it carries `"expires_at": null`. A session ends on disconnect, on app quit, on broker restart, or after `session_idle_timeout_seconds` without activity.
+
+The durations are ordered from shortest to longest: `one_request`, `session`, `until_revoked`. A card's `proposed_duration` is the longest one the owner may choose for that request. The interface offers it and the shorter ones: the owner can narrow a duration, like a scope, and cannot widen it.
+
+The broker does not propose a duration whose grant would not serve the request. Under a row whose mode is `ask`, every request needs the owner's own approval, so a grant for a session or until revoked does not serve it and the card proposes `one_request`. The matrix states two exceptions, where such a grant does serve: a read of event details (CD-M02), and an edit of an event Fabric created in Agent Drafts (CD-M05). This is the rule theory's reading of the matrix; the owner confirmed it on 2026-11-16.
 
 ## 11. The authorization
 
@@ -270,6 +274,10 @@ Version 2:
 39. There are three reasons. A check that ran and did not decide, and a report that could not be used, share the value `failed`.
 40. `prover_unavailable` carries no detail. The broker may answer it while the prover is not ready, but need not: it may accept the request, which then ends `undecided`.
 41. A change of this kind raises `schema_version` and not the protocol major (section 12).
+42. A card's `proposed_duration` is the longest duration the owner may choose, not only the one shown first. The plan says the owner can narrow the duration and the interface cannot widen a request (its section 6, S03). No member is added for it.
+43. The durations are ordered `one_request`, `session`, `until_revoked`.
+44. A decision with a longer duration than the card proposes gets `invalid_params`.
+45. The broker does not propose a duration whose grant would not serve the request. Which of the durations that would serve it the broker proposes, and which one the interface selects at first, are not fixed (section 15).
 
 ## 15. Not covered
 
@@ -277,6 +285,6 @@ Version 2:
 - The agent channel's connection handshake, which proves possession of the enrolled key (CD-W06).
 - Actions the broker starts itself, such as refresh and reconciliation reads, and the formal context with its digest (CD-W03, CD-W04).
 - A marker for practice accounts, attempts and reports.
-- Which durations an approval card may offer.
+- Which of the durations that would serve a request the broker proposes on its card, and which duration the interface selects at first.
 - The names of the rules. The contract fixes their form; the rule theory names them. The rule names in the fixtures are examples.
-- Facts that tie several members together, which a schema cannot state and the broker must uphold: that a snapshot's requests are open and its grants have not ended, that an expansion names each row once, that the active profile exists, that an approval card expires 24 hours after it opens, and that an authorization expires 60 seconds after it is issued (the Rust crate offers a check for the last).
+- Facts that tie several members together, which a schema cannot state and the broker must uphold: that a snapshot's requests are open and its grants have not ended, that an expansion names each row once, that the active profile exists, that an approval card expires 24 hours after it opens, that a card proposes no duration whose grant would not serve its request, and that an authorization expires 60 seconds after it is issued (the Rust crate offers a check for the last).
