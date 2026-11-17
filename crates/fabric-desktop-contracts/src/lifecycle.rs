@@ -2,7 +2,7 @@
 
 use serde::{Deserialize, Serialize};
 
-/// `common#/$defs/request_state`: the 25 states of one logical request.
+/// `common#/$defs/request_state`: the 26 states of one logical request.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum RequestState {
@@ -31,13 +31,14 @@ pub enum RequestState {
     NeedsOwnerResolution,
     ResolvedAsApplied,
     ResolvedAsAbsent,
+    Completed,
 }
 
 use RequestState as S;
 
 impl RequestState {
     /// Every state, in the order of `data/request-lifecycle.json`.
-    pub const ALL: [RequestState; 25] = [
+    pub const ALL: [RequestState; 26] = [
         S::Received,
         S::Validating,
         S::ProvingClassification,
@@ -63,6 +64,7 @@ impl RequestState {
         S::NeedsOwnerResolution,
         S::ResolvedAsApplied,
         S::ResolvedAsAbsent,
+        S::Completed,
     ];
 
     /// A request starts here.
@@ -96,6 +98,7 @@ impl RequestState {
             S::NeedsOwnerResolution => "needs_owner_resolution",
             S::ResolvedAsApplied => "resolved_as_applied",
             S::ResolvedAsAbsent => "resolved_as_absent",
+            S::Completed => "completed",
         }
     }
 
@@ -122,11 +125,12 @@ impl RequestState {
                 | S::AbsenceConfirmed
                 | S::ResolvedAsApplied
                 | S::ResolvedAsAbsent
+                | S::Completed
         )
     }
 
-    /// Whether `self → next` is one of the 41 listed transitions: the 24 of plan section 11
-    /// and the 17 this contract adds (README section 9).
+    /// Whether `self → next` is one of the 42 listed transitions: the 24 of plan section 11
+    /// and the 18 this contract adds (README section 9).
     #[must_use]
     pub const fn can_transition_to(self, next: RequestState) -> bool {
         matches!(
@@ -182,10 +186,12 @@ impl RequestState {
                     S::NeedsOwnerResolution,
                     S::ResolvedAsApplied | S::ResolvedAsAbsent
                 )
+                // added: a request the broker completes itself, with no call to Google (plan 9.2)
+                | (S::ProvingFreshPermit, S::Completed)
         )
     }
 
-    /// The 22 states whose status carries nothing but the state, or `None` for
+    /// The 23 states whose status carries nothing but the state, or `None` for
     /// `pending_approval`, `blocked` and `terminal_failure`.
     #[must_use]
     pub fn plain(self) -> Option<PlainRequestState> {
@@ -238,10 +244,11 @@ pub enum PlainRequestState {
     NeedsOwnerResolution,
     ResolvedAsApplied,
     ResolvedAsAbsent,
+    Completed,
 }
 
 impl PlainRequestState {
-    pub const ALL: [PlainRequestState; 22] = [
+    pub const ALL: [PlainRequestState; 23] = [
         PlainRequestState::Received,
         PlainRequestState::Validating,
         PlainRequestState::ProvingClassification,
@@ -264,6 +271,7 @@ impl PlainRequestState {
         PlainRequestState::NeedsOwnerResolution,
         PlainRequestState::ResolvedAsApplied,
         PlainRequestState::ResolvedAsAbsent,
+        PlainRequestState::Completed,
     ];
 
     #[must_use]
@@ -291,6 +299,7 @@ impl PlainRequestState {
             PlainRequestState::NeedsOwnerResolution => S::NeedsOwnerResolution,
             PlainRequestState::ResolvedAsApplied => S::ResolvedAsApplied,
             PlainRequestState::ResolvedAsAbsent => S::ResolvedAsAbsent,
+            PlainRequestState::Completed => S::Completed,
         }
     }
 }

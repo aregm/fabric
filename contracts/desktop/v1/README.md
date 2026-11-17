@@ -198,9 +198,9 @@ No tool carries a warning: warnings are for the owner only in version 1 of Fabri
 
 ## 9. The request lifecycle
 
-`data/request-lifecycle.json` lists the 25 states and the legal transitions. A request starts in `received`. It is open while its state is not terminal; the open-request limits count open requests, and an open approval card is a request in `pending_approval`.
+`data/request-lifecycle.json` lists the 26 states and the legal transitions. A request starts in `received`. It is open while its state is not terminal; the open-request limits count open requests, and an open approval card is a request in `pending_approval`.
 
-The 24 transitions marked `plan` are the state grammar of plan section 11. The 17 marked `added` close it, and each cites the plan text it rests on.
+The 24 transitions marked `plan` are the state grammar of plan section 11. The 18 marked `added` close it, and each cites the plan text it rests on.
 
 A request's `status` is its state and what that state always carries, and the schema will not accept one without the other:
 
@@ -212,6 +212,8 @@ A request's `status` is its state and what that state always carries, and the sc
 The reason a request is `undecided` is in its details (section 7), not in its status.
 
 A request in `needs_owner_resolution` is open: it stays in the snapshot until the owner resolves it (`resolve_outcome`, section 7), and it counts against the open-request limits. `resolved_as_applied` and `resolved_as_absent` record the owner's statement, not an observation of the broker. The interface must not show them as confirmed by Google.
+
+`completed` ends a request that the broker serves itself, without a call to Google: a calendar list, and the release of a result (`fabric_request_result`). It is reached from `proving_fresh_permit`.
 
 ## 10. Profiles, grants and durations
 
@@ -243,7 +245,7 @@ It is the internal authorization type that plan section 8 allows. The CBOR token
 
 Version 2 added why the rule prover is unavailable (`prover_problem` in `health`), why a request is undecided (`undecided_reason` in the request's details) and the agent error `prover_unavailable`. The protocol name stays `fabric-desktop/1`: `hello`, the frame format and the error envelope did not change, so a version 1 peer can still read the refusal `unsupported_schema_version`.
 
-Version 3 added the commands that the plan's text needs and its method table does not list: selecting calendars and naming Agent Drafts, adding, approving and removing an agent, and resolving an unknown outcome by hand. With them came the agent's enrollment state and pairing code, the configuration texts, the agent channel's handshake, two request states, a second origin of a grant, and a scope that names no calendar. It also added the list of ended requests, the deletion of a custom profile, and the prover problem `not_installed`. Every request, card, grant and account that was valid under version 2 is valid under version 3, so what a broker stored stays readable.
+Version 3 added the commands that the plan's text needs and its method table does not list: selecting calendars and naming Agent Drafts, adding, approving and removing an agent, and resolving an unknown outcome by hand. With them came the agent's enrollment state and pairing code, the configuration texts, the agent channel's handshake, three request states, a second origin of a grant, and a scope that names no calendar. It also added the list of ended requests, the deletion of a custom profile, and the prover problem `not_installed`. Every request, card, grant and account that was valid under version 2 is valid under version 3, so what a broker stored stays readable.
 
 ## 13. Fixtures and the contract suite
 
@@ -373,6 +375,7 @@ Version 3:
 65. A tool frame before an approved handshake gets `not_permitted`.
 66. When the answer to an action comes (section 8). How long the broker waits at most is the broker's to set.
 67. In a request's details, `approval` is the decision on the card now shown, so it is null while a request waits again after an earlier approval. A grant that the earlier approval created still names that approval in its origin.
+68. A request the broker serves itself ends in `completed`, a state of its own reached from `proving_fresh_permit`. Such a request has no call to Google, so it cannot end `reconciled`. The broker's design asked for the state and proposed its name.
 
 ## 15. Not covered
 

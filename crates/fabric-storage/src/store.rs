@@ -927,10 +927,10 @@ const INVARIANTS: [(&str, &str); 7] = [
          'approved', 'denied', 'expired', 'cancelled', 'stale', 'proving_fresh_permit', 'queued', \
          'dispatching', 'applied', 'reconciled', 'retry_wait', 'outcome_unknown', \
          'terminal_failure', 'reconciling', 'absence_confirmed', 'needs_owner_resolution', \
-         'resolved_as_applied', 'resolved_as_absent') \
+         'resolved_as_applied', 'resolved_as_absent', 'completed') \
          OR terminal != (state IN ('blocked', 'undecided', 'denied', 'expired', 'cancelled', \
          'stale', 'reconciled', 'terminal_failure', 'absence_confirmed', \
-         'resolved_as_applied', 'resolved_as_absent')) LIMIT 1",
+         'resolved_as_applied', 'resolved_as_absent', 'completed')) LIMIT 1",
     ),
     (
         "pending request without a card",

@@ -1,0 +1,25 @@
+{
+  "description": "A status answer for a request in state completed.",
+  "schema": "agent-channel.schema.json#/$defs/agent_response",
+  "value": {
+    "protocol": "fabric-desktop/1",
+    "id": "call-33",
+    "method": "fabric_request_status",
+    "result": {
+      "request": {
+        "request_id": "request-27",
+        "updated_at": "2026-11-20T16:20:00.400Z",
+        "status": {
+          "state": "completed"
+        }
+      },
+      "result": null
+    }
+  },
+  "expect": {
+    "verdict": "accept",
+    "canonical": "{\"id\":\"call-33\",\"method\":\"fabric_request_status\",\"protocol\":\"fabric-desktop/1\",\"result\":{\"request\":{\"request_id\":\"request-27\",\"status\":{\"state\":\"completed\"},\"updated_at\":\"2026-11-20T16:20:00.400Z\"},\"result\":null}}",
+    "command_digest": null,
+    "action_digest": null
+  }
+}

@@ -34,6 +34,7 @@ export const STATE_TEXT: Record<RequestState, string> = {
   needs_owner_resolution: "Fabric cannot tell what happened and needs you to check",
   resolved_as_applied: "Resolved by you: the change is in the calendar",
   resolved_as_absent: "Resolved by you: the change is not in the calendar",
+  completed: "Done",
 };
 
 // The states after which a request never changes (data/request-lifecycle.json; a test compares them).
@@ -43,6 +44,7 @@ export const TERMINAL: Record<RequestState, boolean> = {
   proving_fresh_permit: false, queued: false, dispatching: false, applied: false, reconciled: true,
   retry_wait: false, outcome_unknown: false, terminal_failure: true, reconciling: false, absence_confirmed: true,
   needs_owner_resolution: false, resolved_as_applied: true, resolved_as_absent: true,
+  completed: true,
 };
 
 export const CHECKING_STATES: readonly RequestState[] = ["received", "validating", "proving_classification"];

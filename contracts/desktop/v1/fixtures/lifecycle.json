@@ -878,5 +878,87 @@
     ],
     "valid": false,
     "first_invalid": 9
+  },
+  {
+    "name": "allowed-and-completed",
+    "states": [
+      "received",
+      "validating",
+      "proving_classification",
+      "allowed",
+      "proving_fresh_permit",
+      "completed"
+    ],
+    "valid": true,
+    "first_invalid": null
+  },
+  {
+    "name": "asked-approved-and-completed",
+    "states": [
+      "received",
+      "validating",
+      "proving_classification",
+      "pending_approval",
+      "approved",
+      "proving_fresh_permit",
+      "completed"
+    ],
+    "valid": true,
+    "first_invalid": null
+  },
+  {
+    "name": "queued-then-completed",
+    "states": [
+      "received",
+      "validating",
+      "proving_classification",
+      "allowed",
+      "proving_fresh_permit",
+      "queued",
+      "completed"
+    ],
+    "valid": false,
+    "first_invalid": 6
+  },
+  {
+    "name": "applied-then-completed",
+    "states": [
+      "received",
+      "validating",
+      "proving_classification",
+      "allowed",
+      "proving_fresh_permit",
+      "queued",
+      "dispatching",
+      "applied",
+      "completed"
+    ],
+    "valid": false,
+    "first_invalid": 8
+  },
+  {
+    "name": "completed-then-reconciled",
+    "states": [
+      "received",
+      "validating",
+      "proving_classification",
+      "allowed",
+      "proving_fresh_permit",
+      "completed",
+      "reconciled"
+    ],
+    "valid": false,
+    "first_invalid": 6
+  },
+  {
+    "name": "completed-without-a-fresh-proof",
+    "states": [
+      "received",
+      "validating",
+      "proving_classification",
+      "completed"
+    ],
+    "valid": false,
+    "first_invalid": 3
   }
 ]

@@ -26,7 +26,8 @@
     { "state": "absence_confirmed", "terminal": true },
     { "state": "needs_owner_resolution", "terminal": false },
     { "state": "resolved_as_applied", "terminal": true },
-    { "state": "resolved_as_absent", "terminal": true }
+    { "state": "resolved_as_absent", "terminal": true },
+    { "state": "completed", "terminal": true }
   ],
   "transitions": [
     { "from": "received", "to": "validating", "basis": "plan", "reason": null },
@@ -70,6 +71,7 @@
     { "from": "queued", "to": "proving_fresh_permit", "basis": "added", "reason": "plan 8, steps 5 to 7: an authorization that expired or whose facts changed before the handoff is discarded and proved again" },
     { "from": "retry_wait", "to": "proving_fresh_permit", "basis": "added", "reason": "plan 5 and 7: a fresh proof per retry" },
     { "from": "needs_owner_resolution", "to": "resolved_as_applied", "basis": "added", "reason": "plan S05: an explicit manual resolution path for an unknown outcome" },
-    { "from": "needs_owner_resolution", "to": "resolved_as_absent", "basis": "added", "reason": "plan S05: an explicit manual resolution path for an unknown outcome" }
+    { "from": "needs_owner_resolution", "to": "resolved_as_absent", "basis": "added", "reason": "plan S05: an explicit manual resolution path for an unknown outcome" },
+    { "from": "proving_fresh_permit", "to": "completed", "basis": "added", "reason": "plan 9.2: Allow returns the proven result; a calendar list and the release of a result have no call to Google" }
   ]
 }

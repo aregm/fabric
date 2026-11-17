@@ -203,18 +203,20 @@ mod tests {
                     .map(move |to| (from, to))
             })
             .collect();
-        assert_eq!(contract.len(), 41);
+        assert_eq!(contract.len(), 42);
         let driven = produced();
         let left: Vec<_> = contract
             .into_iter()
             .filter(|pair| !driven.contains(pair))
             .collect();
-        // Cancellation (no message in v1), reconciliation (CD-W05), and the owner's resolution
-        // of an unknown outcome (resolve_outcome, not implemented in this build).
+        // Cancellation (no message in v1), reconciliation (CD-W05), the owner's resolution of an
+        // unknown outcome (resolve_outcome, not implemented in this build), and the end of a
+        // request the broker completes itself (completed, not implemented in this build).
         assert!(left.iter().all(|(from, to)| *to == S::Cancelled
             || *from == S::Reconciling
             || *to == S::Reconciling
             || *to == S::Reconciled
-            || *from == S::NeedsOwnerResolution));
+            || *from == S::NeedsOwnerResolution
+            || *to == S::Completed));
     }
 }

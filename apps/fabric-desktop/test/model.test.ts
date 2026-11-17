@@ -98,8 +98,8 @@ test("'Received, checking' and how long after received_at it was first shown", (
   assert.equal(entry(model).checkingDelayMs, 137, "measured once, when the text was first shown");
 });
 
-test("all 25 states have a text, and TERMINAL equals the lifecycle data", () => {
-  assert.equal(REQUEST_STATES.length, 25);
+test("all 26 states have a text, and TERMINAL equals the lifecycle data", () => {
+  assert.equal(REQUEST_STATES.length, 26);
   for (const s of REQUEST_STATES) assert.ok(STATE_TEXT[s].length > 0, s);
   assert.deepEqual(Object.keys(STATE_TEXT).sort(), [...REQUEST_STATES].sort());
   const lifecycle = JSON.parse(readFileSync(`${CONTRACT_ROOT}data/request-lifecycle.json`, "utf8"));

@@ -92,7 +92,7 @@ export const REQUEST_STATES = [
   "received", "validating", "proving_classification", "allowed", "pending_approval", "blocked", "undecided",
   "approved", "denied", "expired", "cancelled", "stale", "proving_fresh_permit", "queued", "dispatching", "applied",
   "reconciled", "retry_wait", "outcome_unknown", "terminal_failure", "reconciling", "absence_confirmed",
-  "needs_owner_resolution", "resolved_as_applied", "resolved_as_absent",
+  "needs_owner_resolution", "resolved_as_applied", "resolved_as_absent", "completed",
 ] as const;
 export type RequestState = (typeof REQUEST_STATES)[number];
 
@@ -101,7 +101,7 @@ export const PLAIN_REQUEST_STATES = [
   "received", "validating", "proving_classification", "allowed", "undecided", "approved", "denied", "expired",
   "cancelled", "stale", "proving_fresh_permit", "queued", "dispatching", "applied", "reconciled", "retry_wait",
   "outcome_unknown", "reconciling", "absence_confirmed", "needs_owner_resolution", "resolved_as_applied",
-  "resolved_as_absent",
+  "resolved_as_absent", "completed",
 ] as const;
 export type PlainRequestState = (typeof PLAIN_REQUEST_STATES)[number];
 

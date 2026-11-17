@@ -249,7 +249,8 @@
         "absence_confirmed",
         "needs_owner_resolution",
         "resolved_as_applied",
-        "resolved_as_absent"
+        "resolved_as_absent",
+        "completed"
       ]
     },
     "plain_request_state": {
@@ -276,7 +277,8 @@
         "absence_confirmed",
         "needs_owner_resolution",
         "resolved_as_applied",
-        "resolved_as_absent"
+        "resolved_as_absent",
+        "completed"
       ]
     },
     "failure_code": {
