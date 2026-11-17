@@ -1661,6 +1661,13 @@ They stay open for the owner; the code runs on the default after each (L3).
   results (D33). Accept for G2a? Default: accepted for this package; the owner's answer is needed before G2a is put
   to him.
 
+Q1 was answered on 2026-11-16: the owner accepted ADR-115 by merging pull request 23. On 2026-11-17 he kept the
+defaults of Q2 to Q7 and Q10 (PLAN 15.2 NOV17-STORE). Q10's default still asks for his answer before G2a is put to
+him. On the same day he gave the go for the contract session to draft contract schema version 3 (PLAN 15.2
+NOV17-SCHEMA3), which would cover choosing calendars and naming Agent Drafts, approving and removing an agent, and
+resolving an unknown outcome. His approval of the schema is the merge of its pull request. Q8 is answered for those
+commands only; the other commands of CCR-11 stay open.
+
 ### 11.3 Readings of the W03 interface
 
 They do not wait on the owner; the code runs on the reading written here.

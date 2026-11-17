@@ -2,12 +2,13 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
-import { ACCOUNT_STATES, CALENDAR_ACCESS, GRANT_END_REASONS } from "../../../contracts/desktop/v1/typescript/src/contract.ts";
+import { ACCOUNT_STATES, CALENDAR_ACCESS, GRANT_END_REASONS, PROVER_PROBLEMS, UNDECIDED_REASONS } from "../../../contracts/desktop/v1/typescript/src/contract.ts";
 import type { Action, Grant, ProofReport, RecipientSet, RequestDetails, SendUpdates, Snapshot } from "../../../contracts/desktop/v1/typescript/src/contract.ts";
 import { CONTRACT_ROOT } from "../../../contracts/desktop/v1/typescript/src/judge.ts";
 import {
-  ACCESS_TEXT, ACCOUNT_TEXT, ALLOWED_TEXT, ATTEMPT_TEXT, DURATION_TEXT, GRANT_END_TEXT, OWNER_CAN_DO, PROOF_OUTCOME, PROOF_PURPOSE, PROVER_TEXT,
-  STATE_TEXT, STORE_TEXT, VERDICT_TEXT, bannerText, cardFacts, formatInstant, proofFacts, scopeFacts, termText,
+  ACCESS_TEXT, ACCOUNT_TEXT, ALLOWED_TEXT, ATTEMPT_TEXT, DURATION_TEXT, GRANT_END_TEXT, OWNER_CAN_DO, PROOF_OUTCOME, PROOF_PURPOSE, PROVER_PROBLEM,
+  PROVER_PROBLEM_UNKNOWN, PROVER_TEXT, STATE_TEXT, STORE_TEXT, UNDECIDED_REASON, UNDECIDED_REASON_UNKNOWN, VERDICT_TEXT, bannerText, cardFacts,
+  formatInstant, proofFacts, scopeFacts, termText,
 } from "../ui/src/text.ts";
 import { assertValid, details, request } from "./support.ts";
 
@@ -29,10 +30,11 @@ test("the card's facts: who asks, the agent's words marked untrusted, the operat
   assert.deepEqual(facts.at(-1)?.values, ["Everyone invited gets an email."]);
 });
 
-test("every account state, calendar access and health value has words", () => {
+test("every account state, calendar access, health value, rule checker cause and undecided reason has words", () => {
   const all: [Record<string, string>, readonly string[]][] = [
     [ACCOUNT_TEXT, ACCOUNT_STATES], [ACCESS_TEXT, CALENDAR_ACCESS],
     [PROVER_TEXT, ["ready", "starting", "unavailable"]], [STORE_TEXT, ["ready", "locked", "keychain_refused"]],
+    [PROVER_PROBLEM, PROVER_PROBLEMS], [UNDECIDED_REASON, UNDECIDED_REASONS],
   ];
   for (const [words, values] of all) {
     assert.deepEqual(Object.keys(words).sort(), [...values].sort());
@@ -194,8 +196,11 @@ test("an update that changes nothing says so; an answer to one occurrence names 
 test("no text that a practice run can show names Google", () => {
   const { account_disconnected: _, ...ends } = GRANT_END_TEXT;
   const texts: string[] = [
-    ...[STATE_TEXT, ALLOWED_TEXT, DURATION_TEXT, OWNER_CAN_DO, PROOF_PURPOSE, PROOF_OUTCOME, VERDICT_TEXT, ATTEMPT_TEXT, PROVER_TEXT, STORE_TEXT, ends]
-      .flatMap((words) => Object.values(words)),
+    ...[
+      STATE_TEXT, ALLOWED_TEXT, DURATION_TEXT, OWNER_CAN_DO, PROOF_PURPOSE, PROOF_OUTCOME, VERDICT_TEXT, ATTEMPT_TEXT, PROVER_TEXT, STORE_TEXT, ends,
+      PROVER_PROBLEM, UNDECIDED_REASON,
+    ].flatMap((words) => Object.values(words)),
+    PROVER_PROBLEM_UNKNOWN, UNDECIDED_REASON_UNKNOWN,
   ];
   const create = details(request("pending_approval", 4));
   const cards = [create, ...(["all", "external_only", "none"] as const).flatMap((u) => [waiting(moveTime(u)), waiting(remove(u))])];

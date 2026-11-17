@@ -542,7 +542,7 @@ These are deliberately unresolved, not assumptions implementers may fill silentl
 | Q06 | Accept manually curated contacts/groups and exact/domain recipient sets, or require Google People import? Answered at G0 (2026-11-15): People import required in version 1; see section 15.1. | W01/W08 |
 | Q07 | Product/app name, reverse-DNS bundle ID, Apple Developer team/Developer ID certificates, and distribution owner. Partly answered at G0 (2026-11-15): product name Fabric Calendar; distribution owner the owner as an individual; an Apple Developer Program team exists; bundle-id prefix `ai.paracels.fabric`, given by the owner on 2026-11-15; see section 15.1. | W02 identity, W11 signing |
 | Q08 | Google project owner, consent branding/domain/privacy policy/support contact, verification audience | W05 setup; external distribution before G5 |
-| Q09 | Bundled versus explicitly installed pinned Isabelle runtime; redistributed component licenses/signing and cache location. Dates set at G0: RD-8, a private byte-exact copy of the pinned Isabelle2025-2 archive before W03 starts, with a fallback URL in the setup script, the broker's Isabelle version chosen at G1 with Q09, no public mirror until the bundled licences are reviewed; RD-7, Isabelle in CI decided before W03 starts, release only until then. | G1 packaging |
+| Q09 | Bundled versus explicitly installed pinned Isabelle runtime; redistributed component licenses/signing and cache location. Dates set at G0: RD-8, a private byte-exact copy of the pinned Isabelle2025-2 archive before W03 starts, with a fallback URL in the setup script, the broker's Isabelle version chosen at G1 with Q09, no public mirror until the bundled licences are reviewed; RD-7, Isabelle in CI decided before W03 starts, release only until then. Partly answered on 2026-11-17: installed once by a script into a fixed folder that the app finds, version Isabelle2025-2; bundling or download is decided at release (W11); see section 15.2. | G1 packaging |
 | Q10 | Ollama model/hardware budget and client versions to support; installed models have not been inspected | W07/G2d |
 | Q11 | Exact duration/timeout/rate-limit defaults, audit retention/export policy and warning workday defaults. Answered at G0 (2026-11-15); see section 15.1. | W00/W01; do not invent user work hours |
 
@@ -616,6 +616,29 @@ Interpretations of the answers, which the owner confirmed on 2026-11-15:
 3. "Everything to CD-G5" authorizes all work packages, but the plan's dependency order, the single contract owner for schemas, token format and rule theory, the independent reviewer, and the owner's approval at each gate in order all still apply.
 
 Authorization: CD-G0 authorizes all work packages up to CD-G5 (W01 to W11), with the conditions in interpretation 3. Implementation starts from the `main` commit that records these decisions, one branch and pull request per work package.
+
+### 15.2 Decision record (2026-11-17)
+
+On 2026-11-17 the owner answered eight decisions with one answer. Before them he had written: "And next steps should be building CD-W05, CD-W06 and rule checker. Is there any inputs pending from me?" He was shown a table headed "Decisions, each with my recommendation", with the session lead's recommendation for each, and asked: "Take my recommended answer for all eight decisions?" He answered: "Yes, defaults". The Owner's choice column gives each recommendation in the words he was shown. CD-Q09 refers to this plan's Q09; NOV17-* are the other decisions of that day, in the order he was shown them. No gate is closed by these answers.
+
+| ID | Question | Owner's choice | What it changes |
+|---|---|---|---|
+| CD-Q09 | How the installed app gets Isabelle | Installed once by a script into a fixed folder that the app finds, version 2025-2. Bundling or download is decided at release | Q09 is answered for now in its form and in its version, Isabelle2025-2 (RD-8 left the version to G1 with Q09). Bundling against download stays open until release (W11). The gate configuration for a packaged layout can now be designed (T4 in section 9.2 of `docs/plans/calendar-desktop-prover-wiring-design.md`) |
+| NOV17-SCHEMA3 | Contract schema version 3 with the missing owner commands | Go: the contract session drafts it. Your approval is the merge | Schema version 3 would cover choosing calendars and naming Agent Drafts, approving and removing an agent, and resolving an unknown outcome. Answers, for those commands, CCR-11 of the CD-W04 design and the roadmap's commands that "need your decision before `CD-W04` and `CD-W08`". The owner's approval of the schema is the merge of its pull request, as with schema version 2 |
+| NOV17-LIST | How an agent may list your calendars. Today it cannot | Approving an agent's enrollment also gives it this permission | Pull request 24 told the contract owner that `fabric_calendar_list` has no scope and so never gets an approval card. The approval of an enrollment, a command of schema version 3 (NOV17-SCHEMA3), carries the permission to list calendars |
+| NOV17-PRACTICE | A real agent on the practice calendar before Google exists | Yes, in debug builds only | Pull request 25 allowed the practice calendar only with the synthetic agent. A real enrolled agent may use it too, in debug builds only. It is evidence for the wiring only; gate G2c still needs a real Google effect (section 9.3) |
+| NOV17-SIGN | Whether the bridge signs every agent request | No in version 1. The key is checked once per connection | Answers the open question of ADR-115 whether W06 adds a request signature by the agent's bridge |
+| NOV17-SESSIONS | How to run the work | CD-W05 and CD-W06 as two parallel sessions. The rule checker stays here, after the broker part | Two sessions, started on 2026-11-17, build W05 and W06 and add new crates only. The session that owns the broker core and the store keeps them until its broker part of schema version 2 is merged, then builds the rule checker for the installed application |
+| NOV17-STORE | The store's open questions Q2 to Q7 and Q10 | Keep the defaults the code runs on | Each default of section 11.2 of `docs/plans/calendar-desktop-w04-design.md` stands: Q2 "these names"; Q3 "accept the prompt"; Q4 "opt-in, and only with the test key and an explicit scratch data directory"; Q5 "yes"; Q6 "yes"; Q7 "ends none"; Q10 "accepted for this package; the owner's answer is needed before G2a is put to him" |
+| NOV17-DURATION | Which duration a card selects first | The shortest | Answers half of choice 11 of pull request 28: the page selects the shortest offered duration first; today it selects the proposed one |
+
+Still open after these answers:
+
+- Bundling against download of the Isabelle runtime (Q09), decided at release (W11).
+- Which duration the broker proposes when more than one would serve (the other half of choice 11 of pull request 28).
+- Whether to anchor the ledger head outside the store file, to detect a whole-file rollback (ADR-115).
+- Q10 of the CD-W04 design for gate G2a: its default says the owner's answer is needed before G2a is put to him.
+- The CD-W04 design's Q8 is answered by NOV17-SCHEMA3 only as far as the commands it names. Cancelling a request, starting a People import and listing ended requests are not covered by it.
 
 ## 16. Copyable handoff instruction for an implementation agent
 
