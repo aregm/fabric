@@ -4,7 +4,7 @@
 **Date:** 2026-11-17
 **Deciders:** the owner
 **Owner:** the owner
-**Related:** [Technical architecture](../architecture.md) §19 item 13 · [Calendar Desktop plan](../plans/calendar-desktop-plan.md) §1, §2.3, §7, §8, §9.2, §10.3, §11, §15.1 (`CD-Q05a`, `CD-Q05b`, `CD-Q11e`, `CD-Q11f`, `G0-INVITE`) · [CD-W05 design](../plans/calendar-desktop-w05-design.md) PD13 to PD20, PD23, PD28, PD29, PD32, PD35, sections 5.3, 6.6 to 6.12, 7, 9 · [ADR-108](ADR-108-agent-and-mcp-permission-model.md) D6, D7, D9 (Proposed) · [ADR-111](ADR-111-calendar-authority-and-time-model.md) (Proposed) · [ADR-115](ADR-115-broker-ledger-envelope.md) (Proposed) · [Calendar specification](../calendar.md) §23.10, §23.11
+**Related:** [Technical architecture](../architecture.md) §19 item 13 · [Calendar Desktop plan](../plans/calendar-desktop-plan.md) §1, §2.3, §7, §8, §9.2, §10.3, §11, §15.1 (`CD-Q05a`, `CD-Q05b`, `CD-Q11e`, `CD-Q11f`, `G0-INVITE`) · [CD-W05 design](../plans/calendar-desktop-w05-design.md) PD13 to PD20, PD23, PD28, PD29, PD32, PD35, sections 5.3, 6.6 to 6.12, 7, 9 · [ADR-108](ADR-108-agent-and-mcp-permission-model.md) D6, D7, D9 (Proposed) · [ADR-111](ADR-111-calendar-authority-and-time-model.md) (Proposed) · [ADR-115](ADR-115-broker-ledger-envelope.md) (Accepted) · [Calendar specification](../calendar.md) §23.10, §23.11
 
 This record is a proposal. It is not accepted. It settles the broker's part of ADR-113 before `CD-G5`, as architecture §19 asks; the Rendezvous part stays parked. Work package `CD-W05` builds to it as written. Merging the pull request that carries this file is the owner's acceptance. Before the merge it is his chance to change it.
 

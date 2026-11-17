@@ -153,10 +153,12 @@ Linux GC can reach only the loopback double, which is all a test needs (the brok
 ### 2.2 Public surface of GC (phase 1)
 
 - `ClientConfig`, `Endpoints`, `Clock` (`SystemClock`), `Secret`.
-- `oauth::Flow::start(...) -> PendingFlow` and `PendingFlow::wait(...) -> ConnectOutcome` (3.2); `oauth::revoke`;
-  `BrowserOpener` (a recording double in tests; `SystemBrowser` comes in phase 2).
-- `tokens::{TokenStore, MemoryTokenStore, TokenStoreError, AccessCache}` and `forget`.
-- `Google::new(endpoints, client, store, cache, clock)` with `list_calendars`, `free_busy`, `read_events`,
+- `oauth::Flow::new(transport, client, clock)`, `Flow::start(ConnectJob, &mut dyn BrowserOpener) -> PendingFlow`
+  and `PendingFlow::wait(store, cache) -> ConnectOutcome` (3.2); `oauth::GoogleAccess`, which gives a call its
+  access token (3.8); `oauth::revoke`; `BrowserOpener` (a recording double in debug builds; `SystemBrowser` comes
+  in phase 2).
+- `tokens::{TokenStore, MemoryTokenStore, TokenStoreError, AccessCache, AccessTokens}` and `forget`.
+- `calendar::Google::new(transport, access tokens, clock)` with `list_calendars`, `free_busy`, `read_events`,
   `observe`, `change`, `reconcile_read`. `CalendarTarget` names a calendar for them (6.4).
 - `outcome::{ChangeOutcome, ReadFailure, RetryPolicy, RetryDecision, next_attempt}`.
 - `reconcile::{Effect, ReadBack, Verdict, decide, earliest_read_ms}`.
@@ -244,7 +246,9 @@ and wiped are held by nobody and age out at Google.
 ### 3.3 The loopback listener
 
 - Binds `127.0.0.1:0`, IPv4 only, never another interface.
-- Lives at most 300 s from `Flow::start`, or until the flow is superseded (a flag it reads at least every 250 ms).
+- Lives at most 300 s from `Flow::start`, on the adapter's clock and on a clock that cannot be set back,
+  whichever ends first, or until the flow is superseded (a flag it reads at least every 250 ms). Starting a flow
+  supersedes the one before it (PD5), and a superseded flow never deletes what a later flow stored.
   Nothing else ends it without a result: no number of wrong requests does, so that neither another local program
   nor a web page can end a sign-in by sending requests.
 - Serves up to 8 connections at once; a ninth waits. Each has 2 s to send its request head of at most 8 KiB. No
@@ -418,7 +422,8 @@ pub enum TokenStoreError { Refused, Locked, Failed { status: i32 } }           /
   `ai.paracels.fabric.calendar.google.test` and is the owner's manual check (LV9). It is not written in phase 1.
 - `AccessCache`: account id to `(access token, end time)`, memory only, shared the same way.
 - `forget(account)` removes the account from the token store and from `AccessCache` in one step. `AuthLost`, a
-  failed reconnect and `disconnect_google` all go through it, so no access token outlives its refresh token.
+  failed reconnect and `disconnect_google` all go through it, so no access token outlives its refresh token. A
+  refresh that was under way when the account was forgotten stores nothing when it returns.
 - A token-store failure during a call happens before anything is sent: `Locked` is Transient (the Mac may be
   locked for the whole retry budget; the request then ends `retry_budget_exhausted`), `Refused` and `Failed` are
   Rejected with `account_authentication_required` and the fixed sentence "Fabric could not read this account's
@@ -449,6 +454,9 @@ impl Endpoints {
 | revocation | `https://oauth2.googleapis.com/revoke` | refresh token |
 | keys | `https://www.googleapis.com/oauth2/v3/certs` | nothing |
 | Calendar | `https://www.googleapis.com/calendar/v3` | the access token, as `Authorization: Bearer` |
+
+The transport refuses a bearer token on any target but the Calendar API, and a form body on any target but the
+token and revocation endpoints, so that one wrong call cannot send a token to the wrong host.
 
 The addresses are the ones G-DOC's discovery document shows. They are constants: the discovery document is not
 read at run time, so no answer of a server can move a token to another host. If Google changes an address the
@@ -732,7 +740,7 @@ else that is not a plain yes or a plain refusal is an unknown outcome. For a cha
 | 400 | Rejected `invalid_arguments` |
 | 401 | Transient; the cached access token is dropped (3.8) |
 | the refresh before the call ended `AuthLost` | Rejected `account_authentication_required`, and `AuthLost(cause)` for the account |
-| 403 or 429 with reason `rateLimitExceeded` or `userRateLimitExceeded` | Transient, with `Retry-After` in whole seconds when present (at most 120 s) |
+| 429, or 403 with reason `rateLimitExceeded` or `userRateLimitExceeded` | Transient, with `Retry-After` in whole seconds when present (at most 120 s) |
 | 403 with reason `quotaExceeded` | Rejected `provider_rejected` ("Google's usage limit for this calendar is reached") |
 | 403 with reason `forbiddenForNonOrganizer` | Rejected `provider_rejected` ("only the organizer can change this") |
 | 403 with reason `insufficientPermissions` | Rejected `account_authentication_required`, and `AuthLost(GrantEnded)`: the token no longer carries the scope |
@@ -742,8 +750,8 @@ else that is not a plain yes or a plain refusal is an unknown outcome. For a cha
 
 The reasons are read against this closed list; an unknown reason is "any other" (PD27).
 
-For a read (6.2 to 6.5, and the reads of section 7) there is no NoAnswer: an unanswered read and a 5xx are
-Transient. 404 on a calendar is Rejected `provider_rejected`; 404 on an event is `Absent`; the other rows hold.
+For a read (6.2 to 6.5, and the reads of section 7) there is no NoAnswer: an unanswered read, a 5xx and a 2xx
+whose body cannot be read are Transient. 404 on a calendar is Rejected `provider_rejected`; 404 on an event is `Absent`; the other rows hold.
 
 `AuthLost` and `AccessChanged` are side results beside the outcome (PO6).
 
@@ -819,7 +827,8 @@ take over.
 - A read that fails is Transient or Rejected by 6.10; the core repeats it by 6.11 and after the budget moves the
   request to `needs_owner_resolution` (CO8).
 - Notification: a change with `send_updates` other than `none` that is found applied by reading carries
-  `notification: Unknown`: whether Google sent the messages is not known. Nothing is sent again (PLAN 11). The
+  `notification: Unknown`: whether Google sent the messages is not known. With `none`, and for a create, it is
+  `NotRequested`. Nothing is sent again (PLAN 11). The
   owner sees it (V3-4).
 - `absence_confirmed` ends the request. The agent may ask again; that is a new request with a new proof and, for a
   create, a new reserved id. The two reads of PD20 are what stands between that and a change made twice (RK3).
@@ -1249,6 +1258,12 @@ decision. Merging the pull request that carries them is the owner's acceptance.
 - RK16 A guest of an event Fabric made can invite others (Google's default), outside every Fabric rule (OQ13).
 - RK17 An event whose id is not of the form of 5.3, or whose etag is not a quoted string, cannot be changed
   through Fabric (FA11, FA17).
+- RK18 On Windows another program of the same user could bind the listener's port beside it and receive the
+  redirect; closing that needs a socket option the workspace's no-`unsafe` rule keeps out of reach. The broker is a
+  macOS product and Windows only runs its tests. On every platform a local program can also hold the listener's
+  eight places and delay a sign-in until its 300 s end (3.3).
+- RK19 The two bounds of a read nearly coincide: 2 500 events with ordinary ids already pass 768 KiB, so the byte
+  bound is the one that usually applies.
 
 ### 18.2 Questions only the owner can answer
 
