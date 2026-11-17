@@ -154,13 +154,13 @@ consent screen, where a person can untick single scopes. Fabric Calendar checks 
 the console. A Desktop app client needs no redirect address: Fabric Calendar listens on a local port of this Mac
 while you sign in.
 
-6.3 **Open choice, yours to make: "Use this client for an AI-powered agent".** Google's page offers this as an
-optional switch and says: "If your app is an AI agent that takes actions on behalf of users, select Use this client
-for an AI-powered agent", and "You can't change this setting after you create the client." Google requires it only
-for clients that call Google's own hosted Workspace MCP servers. Fabric Calendar calls the Calendar API directly and
-is the broker a person uses to control agents, not an agent. Recommendation: leave it **off** for this development
-client. If you later decide otherwise, you create a second client; this one cannot be switched. Nothing in the
-repository records a decision on this yet, so the session has asked for one.
+6.3 **Leave "Use this client for an AI-powered agent" off.** Google's page offers this as an optional switch and
+says: "If your app is an AI agent that takes actions on behalf of users, select Use this client for an AI-powered
+agent", and "You can't change this setting after you create the client." Google requires it only for clients that
+call Google's own hosted Workspace MCP servers. Fabric Calendar calls the Calendar API directly and is the broker a
+person uses to control agents, not an agent. Your decision of 2026-11-17, asked "Leave Google's AI-agent switch off
+for the test OAuth client?": "Yes, leave it off". It covers this development client. If you later decide
+otherwise, you create a second client; this one cannot be switched.
 
 6.4 Click Create. Google now shows the client ID and the client secret. **Download the client file (JSON) in this
 dialog, now.** Google shows and lets you download the full secret only once, when the client is created; afterwards
@@ -316,11 +316,10 @@ design takes them up.
 
 ## 11. When you are done
 
-Tell the session three things, and nothing more:
+Tell the session two things, and nothing more:
 
 1. That sections 1 to 8 are done, and any label that differed from this document.
 2. The path of the client file.
-3. Your choice at step 6.3.
 
 The test accounts' addresses, the project ID and the client ID are not secrets, but they do not need to be in the
 repository or in a chat.
