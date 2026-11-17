@@ -65,7 +65,7 @@ test("the judge applies the layers in order", () => {
   assert.equal(j(req, '{"protocol":"fabric-desktop/1","id":"a","method":"fabric_calendar_list","params":{}}'), "schema unknown_method");
   assert.equal(j(req, '{"protocol":"fabric-desktop/1","id":"a","method":"get_snapshot","params":[]}'), "schema invalid_params");
   // The protocol layer and the size bound are for the five frame entries only.
-  assert.equal(j("owner-channel.schema.json#/$defs/health", '{"prover":"ready","store":"ready"}'), "accept");
+  assert.equal(j("owner-channel.schema.json#/$defs/health", '{"prover":"ready","prover_problem":null,"store":"ready"}'), "accept");
   assert.equal(j("owner-channel.schema.json#/$defs/health", '{"protocol":"x"}'), "schema invalid_params");
   assert.equal(j("owner-channel.schema.json#/$defs/health", '"ready"'), "frame malformed_frame");
   const big = '{"protocol":"fabric-desktop/1","id":"a","method":"subscribe","params":{"cursor":1}}';

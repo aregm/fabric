@@ -192,6 +192,8 @@ impl Core {
     pub(crate) fn health(&self) -> Health {
         Health {
             prover: self.prover_health,
+            // The broker does not record why the prover is unavailable yet.
+            prover_problem: None,
             store: StoreHealth::Ready,
         }
     }

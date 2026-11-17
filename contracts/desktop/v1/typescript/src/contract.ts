@@ -8,7 +8,7 @@
 
 export const PROTOCOL = "fabric-desktop/1";
 export type Protocol = typeof PROTOCOL;
-export const SCHEMA_VERSION = 1;
+export const SCHEMA_VERSION = 2;
 export const AUTHORIZATION_PROFILE = "fabric-broker-authorization/1";
 
 export interface Limits {
@@ -110,10 +110,14 @@ export const BUSY_LIMITS = [
 ] as const;
 export type BusyLimit = (typeof BUSY_LIMITS)[number];
 
+export const UNDECIDED_REASONS = ["prover_unavailable", "out_of_time", "failed"] as const;
+export type UndecidedReason = (typeof UNDECIDED_REASONS)[number];
+
 export const ERROR_CODES = [
   "malformed_frame", "unsupported_protocol", "unsupported_schema_version", "unknown_method", "invalid_params",
   "not_found", "internal", "conflict", "command_reused", "stale_request", "expansion_not_acknowledged",
   "snapshot_required", "store_unavailable", "busy", "not_permitted", "broker_not_running",
+  "prover_unavailable",
 ] as const;
 export type ErrorCode = (typeof ERROR_CODES)[number];
 
@@ -214,6 +218,7 @@ export type ErrorBusy = ErrorOf<"busy", true, "retry_later",
   { readonly limit: BusyLimit; readonly maximum: PositiveCount; readonly retry_after_ms: Count }>;
 export type ErrorNotPermitted = ErrorOf<"not_permitted", false, "none", null>;
 export type ErrorBrokerNotRunning = ErrorOf<"broker_not_running", true, "start_fabric", null>;
+export type ErrorProverUnavailable = ErrorOf<"prover_unavailable", true, "retry_later", null>;
 
 export type OwnerError =
   | ErrorMalformedFrame | ErrorUnsupportedProtocol | ErrorUnsupportedSchemaVersion | ErrorUnknownMethod
@@ -221,7 +226,8 @@ export type OwnerError =
   | ErrorExpansionNotAcknowledged | ErrorSnapshotRequired | ErrorStoreUnavailable;
 export type AgentError =
   | ErrorMalformedFrame | ErrorUnsupportedProtocol | ErrorUnsupportedSchemaVersion | ErrorUnknownMethod
-  | ErrorInvalidParams | ErrorNotFound | ErrorInternal | ErrorBusy | ErrorNotPermitted | ErrorBrokerNotRunning;
+  | ErrorInvalidParams | ErrorNotFound | ErrorInternal | ErrorBusy | ErrorNotPermitted | ErrorBrokerNotRunning
+  | ErrorProverUnavailable;
 
 // ---- Profiles (owner-channel.schema.json) ----
 
@@ -404,8 +410,12 @@ export interface Account {
   readonly email: Email | null;
   readonly calendars: readonly Calendar[];
 }
+export const PROVER_PROBLEMS = ["not_configured", "failed_will_retry", "failed", "wrong_rules"] as const;
+export type ProverProblem = (typeof PROVER_PROBLEMS)[number];
+// `prover_problem` is null while the prover is ready or starting.
 export interface Health {
   readonly prover: "ready" | "starting" | "unavailable";
+  readonly prover_problem: ProverProblem | null;
   readonly store: "ready" | "locked" | "keychain_refused";
 }
 export interface TimeRange {
@@ -543,6 +553,7 @@ export interface RequestDetails {
   readonly authorization: Authorization | null;
   readonly attempts: readonly Attempt[];
   readonly provider_event: EventRef | null;
+  readonly undecided_reason: UndecidedReason | null; // null unless the request is undecided
 }
 
 // ---- Snapshot and changes ----

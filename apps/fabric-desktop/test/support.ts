@@ -71,14 +71,14 @@ export function details(r: Request): RequestDetails {
       insufficiency: { rule: "spike_no_rule_theory", explanation: "Synthetic: no rule theory.", proof_id: "spike-no-proof" },
       expires_at: "2026-11-21T16:00:00.000Z",
     },
-    approval: null, proof_ids: [], authorization: null, attempts: [], provider_event: null,
+    approval: null, proof_ids: [], authorization: null, attempts: [], provider_event: null, undecided_reason: null,
   };
 }
 
 // The first run's snapshot with a healthy broker, the test agent and these requests.
 export function snapshot(cursor: number, requests: Request[] = []): Snapshot {
   const first: Snapshot = fixture("accept-owner-response-get-snapshot-first-run.json").result;
-  return { ...first, cursor, health: { prover: "ready", store: "ready" }, agents: [AGENT], requests };
+  return { ...first, cursor, health: { prover: "ready", prover_problem: null, store: "ready" }, agents: [AGENT], requests };
 }
 
 // The error each code carries by the contract, with the test's message.

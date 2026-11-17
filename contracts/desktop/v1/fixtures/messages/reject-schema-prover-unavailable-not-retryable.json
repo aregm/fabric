@@ -1,0 +1,22 @@
+{
+  "description": "prover_unavailable with retryable false.",
+  "schema": "agent-channel.schema.json#/$defs/agent_response",
+  "value": {
+    "protocol": "fabric-desktop/1",
+    "id": "call-23",
+    "method": "fabric_calendar_propose_create",
+    "error": {
+      "code": "prover_unavailable",
+      "message": "The rule checker is not ready yet; try again in a moment.",
+      "retryable": false,
+      "recovery": "retry_later",
+      "correlation_id": "corr-0002",
+      "detail": null
+    }
+  },
+  "expect": {
+    "verdict": "reject",
+    "layer": "schema",
+    "error": "invalid_params"
+  }
+}

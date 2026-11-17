@@ -1,0 +1,21 @@
+{
+  "description": "A health notice whose prover_problem is not in the list.",
+  "schema": "owner-channel.schema.json#/$defs/owner_notice",
+  "value": {
+    "protocol": "fabric-desktop/1",
+    "sequence": 1331,
+    "change": {
+      "kind": "health",
+      "health": {
+        "prover": "unavailable",
+        "prover_problem": "crashed",
+        "store": "ready"
+      }
+    }
+  },
+  "expect": {
+    "verdict": "reject",
+    "layer": "schema",
+    "error": "invalid_params"
+  }
+}

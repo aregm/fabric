@@ -16,7 +16,7 @@ use fabric_storage::{AuthorizationState, SCHEMA_VERSION, Unavailable};
 use serde_json::{Value, json};
 
 fn hello() -> Value {
-    json!({"client": {"name": "Fabric Calendar", "build": "test"}, "schema_version": 1})
+    json!({"client": {"name": "Fabric Calendar", "build": "test"}, "schema_version": 2})
 }
 
 fn store_unavailable(response: &Value) -> Value {
@@ -317,7 +317,7 @@ fn an_unavailable_store_answers_hello_and_refuses_everything_else() {
     assert!(!h.broker().store_ready());
 
     let answer = h.ok("hello", hello());
-    assert_eq!(answer["schema_version"], json!(1));
+    assert_eq!(answer["schema_version"], json!(2));
 
     let message = Unavailable::NewerSchema {
         found: 2,

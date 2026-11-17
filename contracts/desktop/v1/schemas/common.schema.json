@@ -286,6 +286,10 @@
       ],
       "additionalProperties": false
     },
+    "undecided_reason": {
+      "description": "Why no proof decided a request. The meaning of each value is in README section 7.",
+      "enum": ["prover_unavailable", "out_of_time", "failed"]
+    },
     "busy_limit": {
       "description": "The limit a busy answer names.",
       "enum": [
@@ -588,6 +592,20 @@
       "required": ["code", "message", "retryable", "recovery", "correlation_id", "detail"],
       "additionalProperties": false
     },
+    "error_prover_unavailable": {
+      "description": "The rule prover is not ready. No request was created.",
+      "type": "object",
+      "properties": {
+        "code": { "const": "prover_unavailable" },
+        "message": { "$ref": "#/$defs/explanation" },
+        "retryable": { "const": true },
+        "recovery": { "const": "retry_later" },
+        "correlation_id": { "$ref": "#/$defs/nullable_id" },
+        "detail": { "type": "null" }
+      },
+      "required": ["code", "message", "retryable", "recovery", "correlation_id", "detail"],
+      "additionalProperties": false
+    },
 
     "owner_error": {
       "description": "Every error the broker may answer on the owner channel.",
@@ -619,7 +637,8 @@
         { "$ref": "#/$defs/error_internal" },
         { "$ref": "#/$defs/error_busy" },
         { "$ref": "#/$defs/error_not_permitted" },
-        { "$ref": "#/$defs/error_broker_not_running" }
+        { "$ref": "#/$defs/error_broker_not_running" },
+        { "$ref": "#/$defs/error_prover_unavailable" }
       ]
     }
   }

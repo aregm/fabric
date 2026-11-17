@@ -1,5 +1,5 @@
 {
-  "description": "The prover became unavailable.",
+  "description": "The prover became unavailable and the broker does not know why.",
   "schema": "owner-channel.schema.json#/$defs/owner_notice",
   "value": {
     "protocol": "fabric-desktop/1",
@@ -8,13 +8,14 @@
       "kind": "health",
       "health": {
         "prover": "unavailable",
+        "prover_problem": null,
         "store": "ready"
       }
     }
   },
   "expect": {
     "verdict": "accept",
-    "canonical": "{\"change\":{\"health\":{\"prover\":\"unavailable\",\"store\":\"ready\"},\"kind\":\"health\"},\"protocol\":\"fabric-desktop/1\",\"sequence\":1317}",
+    "canonical": "{\"change\":{\"health\":{\"prover\":\"unavailable\",\"prover_problem\":null,\"store\":\"ready\"},\"kind\":\"health\"},\"protocol\":\"fabric-desktop/1\",\"sequence\":1317}",
     "command_digest": null,
     "action_digest": null
   }

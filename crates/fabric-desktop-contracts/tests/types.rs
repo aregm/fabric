@@ -30,7 +30,7 @@ fn hello() -> Value {
         "protocol": "fabric-desktop/1",
         "id": "hello-1",
         "method": "hello",
-        "params": {"client": {"name": "Fabric", "build": "0.1.0"}, "schema_version": 1}
+        "params": {"client": {"name": "Fabric", "build": "0.1.0"}, "schema_version": 2}
     })
 }
 

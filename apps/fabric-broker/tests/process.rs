@@ -521,7 +521,7 @@ fn assert_consecutive(notices: &[OwnerNotice]) {
 #[test]
 fn hello_reports_the_limits_of_the_contract() {
     let mut broker = Broker::start();
-    let OwnerResult::Hello(result) = broker.result(&hello(1)) else {
+    let OwnerResult::Hello(result) = broker.result(&hello(2)) else {
         panic!()
     };
     let text = std::fs::read_to_string(contract_dir().join("data/limits.json")).unwrap();
@@ -535,21 +535,21 @@ fn hello_reports_the_limits_of_the_contract() {
         result.broker.build.as_str(),
         format!("{} CD-W04", env!("CARGO_PKG_VERSION"))
     );
-    assert_eq!(result.schema_version.get(), 1);
+    assert_eq!(result.schema_version.get(), 2);
     assert!(result.capabilities.is_empty());
 }
 
 #[test]
 fn hello_with_another_schema_version_is_refused() {
     let mut broker = Broker::start();
-    let response = broker.ask(&hello(2));
+    let response = broker.ask(&hello(1));
     assert_eq!(
         error_of(&response),
         (
             ErrorCode::UnsupportedSchemaVersion,
             Some("hello-1".into()),
             Some("hello".into()),
-            json!({"received": 2, "supported": 1})
+            json!({"received": 1, "supported": 2})
         )
     );
 }
@@ -561,7 +561,7 @@ fn the_first_run_snapshot() {
     assert_eq!(value["cursor"], 0);
     assert_eq!(
         value["health"],
-        json!({"prover": "unavailable", "store": "ready"})
+        json!({"prover": "unavailable", "prover_problem": null, "store": "ready"})
     );
     assert_eq!(value["profiles"]["revision"], 0);
     assert_eq!(value["profiles"]["active_profile_id"], "careful");
@@ -828,7 +828,7 @@ fn malformed_frames() {
     assert_eq!(error_of(&broker.response().0), malformed);
     // Still answering.
     assert!(matches!(
-        broker.ask(&hello(1)),
+        broker.ask(&hello(2)),
         OwnerResponse::Result { .. }
     ));
 }
@@ -846,7 +846,7 @@ fn a_line_of_exactly_the_bound_is_read_as_a_frame() {
     );
     // Exactly one answer: the next one is the hello's.
     assert!(matches!(
-        broker.ask(&hello(1)),
+        broker.ask(&hello(2)),
         OwnerResponse::Result { .. }
     ));
 }
@@ -864,7 +864,7 @@ fn an_oversized_line_is_answered_once_and_skipped() {
             error_of(&broker.response().0),
             (ErrorCode::MalformedFrame, None, None, Value::Null)
         );
-        let OwnerResponse::Result { id, .. } = broker.ask(&hello(1)) else {
+        let OwnerResponse::Result { id, .. } = broker.ask(&hello(2)) else {
             panic!()
         };
         assert_eq!(id.as_str(), "hello-1");
@@ -874,7 +874,7 @@ fn an_oversized_line_is_answered_once_and_skipped() {
 #[test]
 fn wrong_protocol() {
     let mut broker = Broker::start();
-    let mut frame = hello(1);
+    let mut frame = hello(2);
     frame["protocol"] = json!("fabric-desktop/2");
     assert_eq!(
         error_of(&broker.ask(&frame)),
@@ -959,7 +959,7 @@ fn an_argument_is_a_usage_error() {
 #[test]
 fn end_of_input_stops_the_broker_and_stdout_holds_only_frames() {
     let mut broker = Broker::synthetic();
-    broker.result(&hello(1));
+    broker.result(&hello(2));
     broker.result(&subscribe(0));
     broker.notice(|n| n.change.kind() == "account");
     // A request written just before the end is still answered.
@@ -999,7 +999,7 @@ fn a_write_error_ends_the_broker() {
     );
     drop(child.stdout.take());
     let mut stdin = child.stdin.take().unwrap();
-    let mut line = canonical(&hello(1)).into_bytes();
+    let mut line = canonical(&hello(2)).into_bytes();
     line.push(b'\n');
     // The broker may already be gone after the first answer, so later writes may fail.
     for _ in 0..3 {
@@ -1253,10 +1253,10 @@ fn configuration_errors_exit_78_before_any_frame() {
 fn a_second_broker_on_the_same_directory_answers_store_unavailable() {
     let dir = TempDir::new("second");
     let mut first = Broker::on(&dir.data(), false);
-    assert!(matches!(first.ask(&hello(1)), OwnerResponse::Result { .. }));
+    assert!(matches!(first.ask(&hello(2)), OwnerResponse::Result { .. }));
     let mut second = Broker::on(&dir.data(), false);
     assert!(matches!(
-        second.ask(&hello(1)),
+        second.ask(&hello(2)),
         OwnerResponse::Result { .. }
     ));
     let (code, id, method, detail) =
@@ -1306,7 +1306,7 @@ fn a_newer_schema_store_is_refused_but_hello_answers() {
     let before = std::fs::read(&database).unwrap();
 
     let mut broker = Broker::on(&dir.data(), false);
-    let OwnerResult::Hello(hello) = broker.result(&hello(1)) else {
+    let OwnerResult::Hello(hello) = broker.result(&hello(2)) else {
         panic!()
     };
     assert_eq!(hello.broker.name.as_str(), "fabric-broker");
@@ -1501,7 +1501,7 @@ fn end_of_input_ends_sessions_and_exits_within_the_bound() {
 #[test]
 fn the_synthetic_agent_waits_for_subscribe_asks_and_an_approval_ends_undecided() {
     let mut broker = Broker::synthetic();
-    let OwnerResult::Hello(hello) = broker.result(&hello(1)) else {
+    let OwnerResult::Hello(hello) = broker.result(&hello(2)) else {
         panic!()
     };
     assert_eq!(
@@ -1712,7 +1712,7 @@ fn an_isabelle_that_cannot_start_leaves_the_prover_unavailable_and_proposes_noth
     let dir = TempDir::new("no-isabelle");
     let fake = FakeIsabelle::new(&dir.0.join("fake"));
     let mut broker = Broker::spawn_from(fake.command(&dir.data()), true);
-    let OwnerResult::Hello(hello) = broker.result(&hello(1)) else {
+    let OwnerResult::Hello(hello) = broker.result(&hello(2)) else {
         panic!()
     };
     assert_eq!(
@@ -1757,7 +1757,7 @@ fn a_second_broker_on_a_locked_directory_leaves_the_first_brokers_prover_alone()
     std::fs::write(&marker, b"the first broker's").expect("the first broker's prover directory");
     let mut second = Broker::spawn_from(fake.command(&dir.data()), false);
     assert!(matches!(
-        second.ask(&hello(1)),
+        second.ask(&hello(2)),
         OwnerResponse::Result { .. }
     ));
     let (code, ..) = error_of(&second.ask(&request("snap-2", "get_snapshot", json!({}))));
@@ -1790,7 +1790,7 @@ fn a_start_without_isabelle_removes_a_check_theory_a_killed_broker_left() {
     let left = work_dir.join("Check_000001.thy");
     std::fs::write(&left, "theory Check_000001 (* left by a killed broker *)").unwrap();
     let mut broker = Broker::on(&dir.data(), false);
-    let OwnerResult::Hello(_) = broker.result(&hello(1)) else {
+    let OwnerResult::Hello(_) = broker.result(&hello(2)) else {
         panic!()
     };
     assert!(!work_dir.exists(), "the left check theory stays");

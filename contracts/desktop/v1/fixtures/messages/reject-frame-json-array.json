@@ -11,7 +11,7 @@
           "name": "Fabric Calendar",
           "build": "0.1.0-dev+20261115"
         },
-        "schema_version": 1
+        "schema_version": 2
       }
     }
   ],
