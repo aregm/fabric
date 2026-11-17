@@ -19,7 +19,7 @@ pub mod theory;
 pub use check::{GrantResult, Reading, RuleOutcome, RuleResult, Verdict};
 pub use fabric_policy::server::KillHandle;
 pub use fabric_policy::{PolicyError, ServerAddress};
-pub use gate::{BrokerGate, Check, Fault, GateConfig};
+pub use gate::{BrokerGate, Check, Fault, GateConfig, IsabelleInstallation};
 pub use model::{
     Action, ActiveSession, Actor, Calendar, CalendarKey, Context, Duration, Event, EventField,
     Grant, Mode, Outcome, PendingEffect, Profile, Recipient, RecipientRule, RecipientSet, Response,
