@@ -1,5 +1,5 @@
 {
-  "description": "A snapshot without its enrollments.",
+  "description": "A snapshot with enrollments, which is not a member of a snapshot.",
   "schema": "owner-channel.schema.json#/$defs/owner_response",
   "value": {
     "protocol": "fabric-desktop/1",
@@ -69,7 +69,8 @@
         }
       },
       "requests": [],
-      "grants": []
+      "grants": [],
+      "enrollments": []
     }
   },
   "expect": {

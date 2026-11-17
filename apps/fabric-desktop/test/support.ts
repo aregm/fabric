@@ -32,7 +32,8 @@ export const DIGEST_B = `sha256:${"b".repeat(64)}` as const;
 
 export const AGENT: Agent = {
   agent_id: "spike-agent", revision: 1, registered_name: "Synthetic agent (spike)",
-  destination: { kind: "local", endpoint: "inside the broker spike" }, paused: false,
+  destination: { kind: "local", endpoint: "inside the broker spike" }, enrollment: "approved", pairing_code: null,
+  added_at: RECEIVED_AT, key_proven_at: null, approved_at: RECEIVED_AT, removed_at: null, paused: false,
   session: { session_id: "spike-session", started_at: RECEIVED_AT, last_active_at: RECEIVED_AT }, last_tool_call_at: null,
 };
 

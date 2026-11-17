@@ -10,6 +10,7 @@ use crate::common::{
     SendUpdates, ToolName, Window,
 };
 use crate::error::AgentError;
+use crate::handshake::{AgentHelloParams, AgentHelloResult, AgentProveParams, AgentProveResult};
 use crate::scalar::{
     AnyList, Date, Email, EventDescription, EventLocation, EventTitle, Explanation, Id, Label,
     List, NameToken, ProviderRef, ReadTitle, Task, Timestamp, nullable,
@@ -616,36 +617,63 @@ pub struct ToolOutcome {
     pub result: Option<ToolResult>,
 }
 
-/// The method and params of an agent request frame: an action, or the status tool.
+/// The method and params of an agent request frame: one of the two handshake methods, an
+/// action, or the status tool.
 #[allow(
     clippy::large_enum_variant,
     reason = "a transport value is built once per frame; boxing would only complicate its use"
 )]
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum AgentCall {
+    /// `agent_hello`, the first frame of a connection (README section 8).
+    Hello(AgentHelloParams),
+    /// `agent_prove`, the signature over the handshake text.
+    Prove(AgentProveParams),
     Action(Action),
     RequestStatus(RequestIdArguments),
 }
 
 impl AgentCall {
+    /// The tool, or `None` for a handshake method, which is not a tool.
     #[must_use]
-    pub fn tool(&self) -> ToolName {
+    pub fn tool(&self) -> Option<ToolName> {
         match self {
-            AgentCall::Action(a) => a.tool(),
-            AgentCall::RequestStatus(_) => ToolName::RequestStatus,
+            AgentCall::Hello(_) | AgentCall::Prove(_) => None,
+            AgentCall::Action(a) => Some(a.tool()),
+            AgentCall::RequestStatus(_) => Some(ToolName::RequestStatus),
         }
+    }
+
+    /// The frame's method: a handshake method or the tool's name.
+    #[must_use]
+    pub fn method(&self) -> &'static str {
+        match self {
+            AgentCall::Hello(_) => "agent_hello",
+            AgentCall::Prove(_) => "agent_prove",
+            AgentCall::Action(a) => a.tool().as_str(),
+            AgentCall::RequestStatus(_) => ToolName::RequestStatus.as_str(),
+        }
+    }
+
+    /// Whether `name` is a method of the agent channel: a tool or a handshake method.
+    #[must_use]
+    pub fn is_method(name: &str) -> bool {
+        ToolName::from_name(name).is_some() || crate::handshake::HANDSHAKE_METHODS.contains(&name)
     }
 
     #[must_use]
     pub fn params(&self) -> Value {
         match self {
+            AgentCall::Hello(p) => crate::digest::to_value(p),
+            AgentCall::Prove(p) => crate::digest::to_value(p),
             AgentCall::Action(a) => a.arguments(),
             AgentCall::RequestStatus(a) => crate::digest::to_value(a),
         }
     }
 }
 
-/// `agent#/$defs/agent_request`: a frame from an agent adapter. The method is the tool.
+/// `agent#/$defs/agent_request`: a frame from an agent adapter. The method is a tool, or one
+/// of the two handshake methods.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct AgentRequest {
     pub id: Id,
@@ -654,12 +682,12 @@ pub struct AgentRequest {
 
 impl AgentRequest {
     /// The action digest of `{"tool": method, "arguments": params}`, or `None` for the
-    /// status tool, which is not an action (README sections 4 and 13).
+    /// status tool and the handshake, which are not actions (README sections 4 and 13).
     #[must_use]
     pub fn action_digest(&self) -> Option<crate::scalar::Digest> {
         match &self.call {
             AgentCall::Action(a) => Some(a.digest()),
-            AgentCall::RequestStatus(_) => None,
+            AgentCall::Hello(_) | AgentCall::Prove(_) | AgentCall::RequestStatus(_) => None,
         }
     }
 }
@@ -669,7 +697,7 @@ impl Serialize for AgentRequest {
         json!({
             "protocol": crate::common::PROTOCOL,
             "id": self.id,
-            "method": self.call.tool().as_str(),
+            "method": self.call.method(),
             "params": self.call.params(),
         })
         .serialize(s)
@@ -679,15 +707,23 @@ impl Serialize for AgentRequest {
 impl<'de> Deserialize<'de> for AgentRequest {
     fn deserialize<D: Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
         let (method, mut rest) = tagged::split(d, "method")?;
-        let tool =
-            ToolName::from_name(&method).ok_or_else(|| tagged::unknown("method", &method))?;
+        let tool = match method.as_str() {
+            "agent_hello" | "agent_prove" => None,
+            other => {
+                Some(ToolName::from_name(other).ok_or_else(|| tagged::unknown("method", other))?)
+            }
+        };
         let _: crate::common::Protocol = tagged::read(tagged::take(&mut rest, "protocol")?)?;
         let id = tagged::read(tagged::take(&mut rest, "id")?)?;
         let params = tagged::take(&mut rest, "params")?;
         tagged::nothing(&rest)?;
-        let call = match Action::from_parts(tool, params.clone())? {
-            Some(action) => AgentCall::Action(action),
-            None => AgentCall::RequestStatus(tagged::read(params)?),
+        let call = match tool {
+            None if method == "agent_hello" => AgentCall::Hello(tagged::read(params)?),
+            None => AgentCall::Prove(tagged::read(params)?),
+            Some(tool) => match Action::from_parts(tool, params.clone())? {
+                Some(action) => AgentCall::Action(action),
+                None => AgentCall::RequestStatus(tagged::read(params)?),
+            },
         };
         Ok(AgentRequest { id, call })
     }
@@ -696,6 +732,10 @@ impl<'de> Deserialize<'de> for AgentRequest {
 /// `agent#/$defs/agent_response`: the broker's answer to an agent frame.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum AgentResponse {
+    /// The answer to `agent_hello`.
+    Hello { id: Id, result: AgentHelloResult },
+    /// The answer to `agent_prove`.
+    Prove { id: Id, result: AgentProveResult },
     /// The tool's outcome, under the request's id and method.
     Result {
         id: Id,
@@ -714,6 +754,12 @@ impl Serialize for AgentResponse {
     fn serialize<S: Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
         let p = crate::common::PROTOCOL;
         match self {
+            AgentResponse::Hello { id, result } => {
+                json!({ "protocol": p, "id": id, "method": "agent_hello", "result": result })
+            }
+            AgentResponse::Prove { id, result } => {
+                json!({ "protocol": p, "id": id, "method": "agent_prove", "result": result })
+            }
             AgentResponse::Result { id, method, result } => {
                 json!({ "protocol": p, "id": id, "method": method, "result": result })
             }
@@ -737,10 +783,21 @@ impl<'de> Deserialize<'de> for AgentResponse {
                 error: tagged::read(error)?,
             }
         } else {
-            AgentResponse::Result {
-                id: tagged::read(id)?,
-                method: tagged::read(method)?,
-                result: tagged::read(tagged::take(&mut rest, "result")?)?,
+            let result = tagged::take(&mut rest, "result")?;
+            match method.as_str() {
+                Some("agent_hello") => AgentResponse::Hello {
+                    id: tagged::read(id)?,
+                    result: tagged::read(result)?,
+                },
+                Some("agent_prove") => AgentResponse::Prove {
+                    id: tagged::read(id)?,
+                    result: tagged::read(result)?,
+                },
+                _ => AgentResponse::Result {
+                    id: tagged::read(id)?,
+                    method: tagged::read(method)?,
+                    result: tagged::read(result)?,
+                },
             }
         };
         tagged::nothing(&rest)?;

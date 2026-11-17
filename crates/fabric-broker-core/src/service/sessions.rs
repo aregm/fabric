@@ -1,7 +1,7 @@
 //! Agent sessions (5.5) and the contract view of an agent.
 
 use fabric_desktop_contracts::RequestState;
-use fabric_desktop_contracts::owner::{Agent, Change, GrantTerm, Session};
+use fabric_desktop_contracts::owner::{Agent, AgentEnrollment, Change, GrantTerm, Session};
 use fabric_desktop_contracts::scalar::{Id, PositiveCount};
 use fabric_storage::{Mutation, ReadTx, SessionEndReason, SessionRow, StoreFault, WriteTx};
 
@@ -139,12 +139,22 @@ pub(crate) fn agent_view(
             last_active_at: timestamp(last_active_ms),
         }
     });
+    // Contract schema version 3: an agent the store holds is approved; the store keeps no key,
+    // so it has no pairing code, and its enrollment time stands for when it was added and
+    // approved.
+    let enrolled_at = timestamp(row.enrolled_at_ms);
     Ok(Some(Agent {
         agent_id: row.agent_id,
         revision: PositiveCount::new(row.revision)
             .map_err(|_| invariant("an agent revision is positive"))?,
         registered_name: row.registered_name,
         destination: row.destination,
+        enrollment: AgentEnrollment::Approved,
+        pairing_code: None,
+        added_at: enrolled_at.clone(),
+        key_proven_at: None,
+        approved_at: Some(enrolled_at),
+        removed_at: None,
         paused: row.paused,
         session,
         last_tool_call_at: activity

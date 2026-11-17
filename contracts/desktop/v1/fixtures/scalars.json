@@ -377,5 +377,87 @@
       "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
       null
     ]
+  },
+  "common.schema.json#/$defs/public_key": {
+    "accept": [
+      "ed25519:d75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a",
+      "ed25519:095acc33714f1c29e75bc9445d03e517ee55a0ebeb01b7a420e96e505abf5429",
+      "ed25519:0000000000000000000000000000000000000000000000000000000000000000"
+    ],
+    "reject": [
+      "ed25519:D75A980182B10AB7D54BFED3C964073A0EE172F3DAA62325AF021A68F707511A",
+      "d75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a",
+      "ed25519:d75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511",
+      "ed25519:d75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a0",
+      "Ed25519:d75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a",
+      "ed25519: d75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511",
+      "ed25519:gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg",
+      "",
+      null
+    ]
+  },
+  "common.schema.json#/$defs/nonce": {
+    "accept": [
+      "b79397ae9847146259d1600abb8bdaa0075e9bec5fd00fd2792b0f24f7484543",
+      "0000000000000000000000000000000000000000000000000000000000000000"
+    ],
+    "reject": [
+      "b79397ae9847146259d1600abb8bdaa0075e9bec5fd00fd2792b0f24f748454",
+      "b79397ae9847146259d1600abb8bdaa0075e9bec5fd00fd2792b0f24f74845430",
+      "B79397AE9847146259D1600ABB8BDAA0075E9BEC5FD00FD2792B0F24F7484543",
+      "0xb79397ae9847146259d1600abb8bdaa0075e9bec5fd00fd2792b0f24f74845",
+      "gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg",
+      "",
+      null,
+      0
+    ]
+  },
+  "common.schema.json#/$defs/signature": {
+    "accept": [
+      "d5ba4c39e5a5c2ca8df6b302cc6515cd4b0213691a9146e59922cf042791c2967625fa44fe6d402e34419b967b3e74595b98101ba6466040344b62360896f207",
+      "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+    ],
+    "reject": [
+      "d5ba4c39e5a5c2ca8df6b302cc6515cd4b0213691a9146e59922cf042791c2967625fa44fe6d402e34419b967b3e74595b98101ba6466040344b62360896f20",
+      "d5ba4c39e5a5c2ca8df6b302cc6515cd4b0213691a9146e59922cf042791c2967625fa44fe6d402e34419b967b3e74595b98101ba6466040344b62360896f2070",
+      "D5BA4C39E5A5C2CA8DF6B302CC6515CD4B0213691A9146E59922CF042791C2967625FA44FE6D402E34419B967B3E74595B98101BA6466040344B62360896F207",
+      "ed25519:d5ba4c39e5a5c2ca8df6b302cc6515cd4b0213691a9146e59922cf042791c2967625fa44fe6d402e34419b967b3e74595b98101ba6466040344b62360896f207",
+      "",
+      null
+    ]
+  },
+  "common.schema.json#/$defs/pairing_code": {
+    "accept": [
+      "4E7A-9852-EC06",
+      "0000-0000-0000",
+      "FFFF-FFFF-FFFF"
+    ],
+    "reject": [
+      "4e7a-9852-ec06",
+      "4E7A9852EC06",
+      "4E7A-9852-EC0",
+      "4E7A-9852-EC06-0000",
+      "GE7A-9852-EC06",
+      "4E7A_9852_EC06",
+      "4E7A 9852 EC06",
+      " 4E7A-9852-EC06",
+      "",
+      null
+    ]
+  },
+  "common.schema.json#/$defs/configuration_text": {
+    "accept": [
+      "x",
+      "line one\nline two\n",
+      "Add this to .codex/config.toml in a folder of its own that you use only for calendar work, which Codex reads for a trusted project, or to ~/.codex/config.toml. The folder is safer.\n\n[mcp_servers.fabric-calendar]\ncommand = \"/Applications/Fabric Calendar.app/Contents/MacOS/fabric-mcp-bridge\"\nargs = [\"--enrollment\", \"agent-0123456789abcdef0123456789abcdef\"]\n"
+    ],
+    "reject": [
+      "",
+      null,
+      1,
+      [
+        "x"
+      ]
+    ]
   }
 }

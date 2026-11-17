@@ -1,9 +1,11 @@
 // Every fixture entry, computed by this side and compared with its expectation.
 import assert from "node:assert/strict";
+import { createPublicKey, verify } from "node:crypto";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { test } from "node:test";
 import { canonical, digest } from "../src/canonical.ts";
+import { handshakeText, pairingCode } from "../src/handshake.ts";
 import { CONTRACT_ROOT, checkLifecycle, judge, loadContract } from "../src/judge.ts";
 import { frameDigests, sourceBytes } from "../src/report.ts";
 import { parseStrict } from "../src/strict-json.ts";
@@ -52,6 +54,30 @@ test("lifecycle.json", async (t) => {
     await t.test(e.name, () => {
       const r = checkLifecycle(contract, e.states);
       assert.deepEqual([r.valid, r.firstInvalid], [e.valid, e.first_invalid], `lifecycle ${e.name}`);
+    });
+  }
+});
+
+// An Ed25519 public key as a DER SubjectPublicKeyInfo: the fixed prefix of RFC 8410 and the 32 bytes.
+function ed25519Key(publicKey: string) {
+  const raw = Buffer.from(publicKey.replace(/^ed25519:/, ""), "hex");
+  assert.equal(raw.length, 32, "an Ed25519 public key has 32 bytes");
+  const der = Buffer.concat([Buffer.from("302a300506032b6570032100", "hex"), raw]);
+  return createPublicKey({ key: der, format: "der", type: "spki" });
+}
+
+test("handshake.json", async (t) => {
+  const entries = read("handshake.json");
+  assert.ok(entries.length >= 3, "handshake.json holds fewer than three entries");
+  for (const e of entries) {
+    await t.test(e.name, () => {
+      assert.equal(pairingCode(e.public_key), e.pairing_code, `handshake ${e.name}: pairing code`);
+      const text = handshakeText(e.schema_version, e.enrollment_id, e.public_key, e.broker_nonce);
+      assert.equal(text, e.text, `handshake ${e.name}: text`);
+      const signature = Buffer.from(e.signature, "hex");
+      assert.ok(verify(null, Buffer.from(text, "utf8"), ed25519Key(e.public_key), signature), `handshake ${e.name}: signature`);
+      const other = Buffer.from(text.replace(e.broker_nonce, "0".repeat(64)), "utf8");
+      assert.ok(!verify(null, other, ed25519Key(e.public_key), signature), `handshake ${e.name}: another nonce`);
     });
   }
 });

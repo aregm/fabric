@@ -1,0 +1,35 @@
+[
+  {
+    "name": "rfc8032-test-1",
+    "seed": "9d61b19deffd5a60ba844af492ec2cc44449c5697b326919703bac031cae7f60",
+    "schema_version": 3,
+    "enrollment_id": "agent-claude-desktop",
+    "broker_nonce": "aa0cd311e9453e1fb9b9e14fda1ab4aa2d5858c2a9488a95be640274f3f8afa2",
+    "public_key": "ed25519:d75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a",
+    "pairing_code": "100D-25BE-C78D",
+    "text": "fabric-desktop/1\nagent_handshake\n{\"broker_nonce\":\"aa0cd311e9453e1fb9b9e14fda1ab4aa2d5858c2a9488a95be640274f3f8afa2\",\"enrollment_id\":\"agent-claude-desktop\",\"public_key\":\"ed25519:d75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a\",\"schema_version\":3}",
+    "signature": "c383528ffd1bc133d8d9501443bebdf77662283fde39b099e5888a99b7ccf268909b38c22e252c2006894be09c8dd1c25f8711268ba44104e8777c0a5c32ad05"
+  },
+  {
+    "name": "claude-code-folder",
+    "seed": "ba4c2cafa66cd16ed5b68653cad1ba510f4cfd7a04ab89f653486aa3691c3992",
+    "schema_version": 3,
+    "enrollment_id": "agent-0123456789abcdef0123456789abcdef",
+    "broker_nonce": "b79397ae9847146259d1600abb8bdaa0075e9bec5fd00fd2792b0f24f7484543",
+    "public_key": "ed25519:095acc33714f1c29e75bc9445d03e517ee55a0ebeb01b7a420e96e505abf5429",
+    "pairing_code": "4E7A-9852-EC06",
+    "text": "fabric-desktop/1\nagent_handshake\n{\"broker_nonce\":\"b79397ae9847146259d1600abb8bdaa0075e9bec5fd00fd2792b0f24f7484543\",\"enrollment_id\":\"agent-0123456789abcdef0123456789abcdef\",\"public_key\":\"ed25519:095acc33714f1c29e75bc9445d03e517ee55a0ebeb01b7a420e96e505abf5429\",\"schema_version\":3}",
+    "signature": "d5ba4c39e5a5c2ca8df6b302cc6515cd4b0213691a9146e59922cf042791c2967625fa44fe6d402e34419b967b3e74595b98101ba6466040344b62360896f207"
+  },
+  {
+    "name": "codex-desktop",
+    "seed": "26046e16adc3cd88b04ac47bbba48d5e581c28fbb61b698d8a4e5f2e4c2c8ad0",
+    "schema_version": 3,
+    "enrollment_id": "agent-codex-desktop",
+    "broker_nonce": "ea03b5b3cf9818fe9d74edc405212a6498fd223a32209ed3e8a6abe4543240bf",
+    "public_key": "ed25519:0652bfd936a8687899a2f366830ac94224567e1952e1f678df6522b50bcc6b93",
+    "pairing_code": "D559-F078-3B34",
+    "text": "fabric-desktop/1\nagent_handshake\n{\"broker_nonce\":\"ea03b5b3cf9818fe9d74edc405212a6498fd223a32209ed3e8a6abe4543240bf\",\"enrollment_id\":\"agent-codex-desktop\",\"public_key\":\"ed25519:0652bfd936a8687899a2f366830ac94224567e1952e1f678df6522b50bcc6b93\",\"schema_version\":3}",
+    "signature": "317654e06350a20c8a618d116530ebaf6d9a998ea17a25f107f49bade3e22e37cb560e3c48d11f9bf9a3f2c9c6dc163fef23ac72d03d4f8e55930c905593f103"
+  }
+]

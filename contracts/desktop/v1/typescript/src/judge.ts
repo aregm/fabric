@@ -2,6 +2,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { HANDSHAKE_METHODS } from "./contract.ts";
 import { createValidator, loadSchemaFiles } from "./schema.ts";
 import type { Validate } from "./schema.ts";
 import { parseStrict } from "./strict-json.ts";
@@ -25,6 +26,8 @@ export interface Contract {
   readonly ownerMethods: readonly string[];
   readonly commands: readonly string[];
   readonly tools: readonly string[];
+  // The methods of the agent channel: the tools and the two handshake methods (README section 8).
+  readonly agentMethods: readonly string[];
   readonly actions: readonly string[];
   readonly initialState: string;
   readonly transitions: ReadonlySet<string>;
@@ -52,6 +55,7 @@ export function loadContract(root: string = CONTRACT_ROOT): Contract {
     ownerMethods: methods.map((m) => m.method),
     commands: methods.filter((m) => m.command).map((m) => m.method),
     tools: tools.map((t) => t.name),
+    agentMethods: [...HANDSHAKE_METHODS, ...tools.map((t) => t.name)],
     actions: tools.filter((t) => t.creates_request).map((t) => t.name),
     initialState: lifecycle.initial,
     transitions: new Set(lifecycle.transitions.map((t: { from: string; to: string }) => `${t.from} ${t.to}`)),
@@ -79,7 +83,7 @@ export function judge(contract: Contract, entry: string, bytes: Uint8Array): Ver
   }
   if (!contract.validate(entry, value)) {
     const method = object.method;
-    const names = entry === OWNER_REQUEST ? contract.ownerMethods : entry === AGENT_REQUEST ? contract.tools : null;
+    const names = entry === OWNER_REQUEST ? contract.ownerMethods : entry === AGENT_REQUEST ? contract.agentMethods : null;
     const known = typeof method === "string" && names !== null && names.includes(method);
     return { verdict: "reject", layer: "schema", error: names !== null && !known ? "unknown_method" : "invalid_params" };
   }

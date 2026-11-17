@@ -1,0 +1,18 @@
+{
+  "description": "get_agent_configuration asks for the texts that start an agent's bridge.",
+  "schema": "owner-channel.schema.json#/$defs/owner_request",
+  "value": {
+    "protocol": "fabric-desktop/1",
+    "id": "config-1",
+    "method": "get_agent_configuration",
+    "params": {
+      "agent_id": "agent-0123456789abcdef0123456789abcdef"
+    }
+  },
+  "expect": {
+    "verdict": "accept",
+    "canonical": "{\"id\":\"config-1\",\"method\":\"get_agent_configuration\",\"params\":{\"agent_id\":\"agent-0123456789abcdef0123456789abcdef\"},\"protocol\":\"fabric-desktop/1\"}",
+    "command_digest": null,
+    "action_digest": null
+  }
+}

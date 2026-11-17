@@ -22,7 +22,7 @@
     },
     "origin": {
       "kind": "enrollment",
-      "enrollment_id": "enrollment-3"
+      "enrollment_id": "agent-cursor"
     },
     "policy": {
       "profile_id": "careful",

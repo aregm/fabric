@@ -17,6 +17,7 @@ pub mod common;
 pub mod digest;
 pub mod error;
 pub mod frame;
+pub mod handshake;
 pub mod json;
 pub mod lifecycle;
 pub mod owner;
@@ -33,6 +34,7 @@ pub use digest::{
     request_digest,
 };
 pub use frame::{Entry, Frame, Layer, Refusal, decode, decode_record, encode};
+pub use handshake::{handshake_text, pairing_code};
 pub use json::{StrictJsonError, canonical, parse_strict};
 pub use lifecycle::{PlainRequestState, RequestState, first_invalid};
 pub use owner::AUTHORIZATION_PROFILE;

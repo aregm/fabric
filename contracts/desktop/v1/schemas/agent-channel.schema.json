@@ -509,9 +509,70 @@
       "additionalProperties": false
     },
 
+    "params_agent_hello": {
+      "description": "The first frame of a connection: the agent's id, its public key and the adapter's schema version.",
+      "type": "object",
+      "properties": {
+        "schema_version": { "$ref": "common.schema.json#/$defs/count" },
+        "enrollment_id": { "$ref": "common.schema.json#/$defs/id" },
+        "public_key": { "$ref": "common.schema.json#/$defs/public_key" }
+      },
+      "required": ["schema_version", "enrollment_id", "public_key"],
+      "additionalProperties": false
+    },
+    "result_agent_hello": {
+      "type": "object",
+      "properties": {
+        "schema_version": { "$ref": "common.schema.json#/$defs/positive_count" },
+        "broker_nonce": { "$ref": "common.schema.json#/$defs/nonce" }
+      },
+      "required": ["schema_version", "broker_nonce"],
+      "additionalProperties": false
+    },
+    "params_agent_prove": {
+      "description": "The Ed25519 signature over the handshake text (README section 8), made with the key of the hello.",
+      "type": "object",
+      "properties": {
+        "signature": { "$ref": "common.schema.json#/$defs/signature" }
+      },
+      "required": ["signature"],
+      "additionalProperties": false
+    },
+    "result_agent_prove": {
+      "description": "`approved`: the session has started. `pending`: the proved key is now the waiting agent's key, and the owner has not approved yet.",
+      "type": "object",
+      "properties": {
+        "enrollment": { "enum": ["approved", "pending"] }
+      },
+      "required": ["enrollment"],
+      "additionalProperties": false
+    },
+
     "agent_request": {
-      "description": "A frame from an agent adapter to the broker. The method is the tool.",
+      "description": "A frame from an agent adapter to the broker. The method is a tool, or one of the two handshake methods.",
       "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "protocol": { "$ref": "common.schema.json#/$defs/protocol" },
+            "id": { "$ref": "common.schema.json#/$defs/id" },
+            "method": { "const": "agent_hello" },
+            "params": { "$ref": "#/$defs/params_agent_hello" }
+          },
+          "required": ["protocol", "id", "method", "params"],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "protocol": { "$ref": "common.schema.json#/$defs/protocol" },
+            "id": { "$ref": "common.schema.json#/$defs/id" },
+            "method": { "const": "agent_prove" },
+            "params": { "$ref": "#/$defs/params_agent_prove" }
+          },
+          "required": ["protocol", "id", "method", "params"],
+          "additionalProperties": false
+        },
         {
           "type": "object",
           "properties": {
@@ -627,6 +688,28 @@
     "agent_response": {
       "description": "The broker's answer to an agent frame: the same id and method, and either a result or an error.",
       "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "protocol": { "$ref": "common.schema.json#/$defs/protocol" },
+            "id": { "$ref": "common.schema.json#/$defs/id" },
+            "method": { "const": "agent_hello" },
+            "result": { "$ref": "#/$defs/result_agent_hello" }
+          },
+          "required": ["protocol", "id", "method", "result"],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "protocol": { "$ref": "common.schema.json#/$defs/protocol" },
+            "id": { "$ref": "common.schema.json#/$defs/id" },
+            "method": { "const": "agent_prove" },
+            "result": { "$ref": "#/$defs/result_agent_prove" }
+          },
+          "required": ["protocol", "id", "method", "result"],
+          "additionalProperties": false
+        },
         {
           "type": "object",
           "properties": {

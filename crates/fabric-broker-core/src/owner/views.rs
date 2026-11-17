@@ -62,7 +62,6 @@ fn read_snapshot(
         profiles: r.profiles()?,
         accounts: any_list(r.accounts()?)?,
         agents: any_list(agents)?,
-        enrollments: any_list(Vec::new())?,
         recipient_sets: any_list(r.recipient_sets()?)?,
         preferences: r.preferences()?,
         requests: any_list(requests)?,

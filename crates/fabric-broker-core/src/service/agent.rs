@@ -80,7 +80,7 @@ pub(crate) fn status_reply(
 pub(crate) fn error_reply(
     connection: ConnectionId,
     call_id: Id,
-    tool: ToolName,
+    method: &str,
     fault: AgentFault,
     message: &str,
 ) -> AgentReply {
@@ -88,7 +88,7 @@ pub(crate) fn error_reply(
         connection,
         frame: Frame::AgentResponse(AgentResponse::Error {
             id: Some(call_id),
-            method: MethodText::new(tool.as_str()).ok(),
+            method: MethodText::new(method).ok(),
             error: AgentError {
                 fault,
                 message: Text::new(message)
@@ -173,7 +173,17 @@ impl Core {
     /// One call. A connection with no live session of its agent is `not_permitted` (audited);
     /// every other call is activity, then a status read or a proposal.
     fn call(&mut self, connection: ConnectionId, request: AgentRequest) -> Result<(), StoreFault> {
-        let tool = request.call.tool();
+        let Some(tool) = request.call.tool() else {
+            // the handshake is not implemented in this build (contract schema version 3)
+            self.outbox.agent.push(error_reply(
+                connection,
+                request.id,
+                request.call.method(),
+                AgentFault::NotPermitted,
+                "This broker does not take the agent handshake.",
+            ));
+            return Ok(());
+        };
         let bound = self.connections.get(&connection).cloned().filter(|c| {
             self.activity
                 .sessions
@@ -184,7 +194,7 @@ impl Core {
             self.outbox.agent.push(error_reply(
                 connection,
                 request.id.clone(),
-                tool,
+                tool.as_str(),
                 AgentFault::NotPermitted,
                 "This connection has no live session of an enrolled agent.",
             ));
@@ -210,7 +220,7 @@ impl Core {
                     _ => error_reply(
                         connection,
                         request.id,
-                        tool,
+                        tool.as_str(),
                         AgentFault::NotFound,
                         "No request of this agent has that id.",
                     ),
@@ -219,6 +229,8 @@ impl Core {
                 Ok(())
             }
             AgentCall::Action(action) => self.propose(connection, &bound, request.id, action),
+            // Refused above, before the session check.
+            AgentCall::Hello(_) | AgentCall::Prove(_) => Ok(()),
         }
     }
 
@@ -242,7 +254,7 @@ impl Core {
                 error_reply(
                     connection,
                     call_id,
-                    tool,
+                    tool.as_str(),
                     AgentFault::InvalidParams(InvalidParams {
                         pointer: Text::new("/params").map_err(|_| invariant("a pointer"))?,
                     }),
@@ -310,7 +322,7 @@ impl Core {
                 self.outbox.agent.push(error_reply(
                     connection,
                     call_id,
-                    tool,
+                    tool.as_str(),
                     AgentFault::Busy(refusal),
                     "Too many requests: wait and try again.",
                 ));
@@ -320,7 +332,7 @@ impl Core {
                 self.outbox.agent.push(error_reply(
                     connection,
                     call_id,
-                    tool,
+                    tool.as_str(),
                     AgentFault::Internal,
                     "The broker could not record the request and stopped.",
                 ));

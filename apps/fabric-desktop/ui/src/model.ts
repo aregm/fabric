@@ -2,7 +2,7 @@
 // host come in through `Deps`. The views read the fields below after every `changed()` call.
 // The page keeps no state the broker owns: everything here is what the broker last reported.
 import type {
-  Account, Agent, Approval, DurationKind, Enrollment, ErrorCode, Grant, Health, OwnerCommand, OwnerError, OwnerMethod, OwnerMethods,
+  Account, Agent, Approval, DurationKind, ErrorCode, Grant, Health, OwnerCommand, OwnerError, OwnerMethod, OwnerMethods,
   OwnerNotice, OwnerRequest, OwnerResponse, ParamsDecideRequest, Party, Preferences, Profiles, Protocol, RecipientSet,
   Request, RequestDetails, ResultHello, SCHEMA_VERSION as SchemaVersion, Snapshot, UndecidedReason,
 } from "../../../../contracts/desktop/v1/typescript/src/contract.ts";
@@ -103,7 +103,6 @@ export class Model {
   profiles: Profiles | null = null;
   preferences: Preferences | null = null;
   agents = new Map<string, Agent>();
-  enrollments = new Map<string, Enrollment>(); // the enrollments that wait for the owner
   accounts = new Map<string, Account>();
   recipientSets = new Map<string, RecipientSet>();
   readonly grants = new Map<string, Grant>(); // live ones, and those that ended while this window was open
@@ -417,9 +416,6 @@ export class Model {
     switch (c.kind) {
       case "account": this.accounts.set(c.account.account_id, c.account); break;
       case "agent": this.agents.set(c.agent.agent_id, c.agent); break;
-      case "agent_removed": this.agents.delete(c.agent_id); break;
-      case "enrollment": this.enrollments.set(c.enrollment.enrollment_id, c.enrollment); break;
-      case "enrollment_closed": this.enrollments.delete(c.enrollment_id); break;
       case "profiles": this.profiles = c.profiles; break;
       case "preferences": this.preferences = c.preferences; break;
       case "recipient_set": this.recipientSets.set(c.recipient_set.recipient_set_id, c.recipient_set); break;
@@ -505,7 +501,6 @@ export class Model {
   private applySnapshot(s: Snapshot): void {
     this.cursor = s.cursor;
     this.agents = new Map(s.agents.map((a) => [a.agent_id, a]));
-    this.enrollments = new Map(s.enrollments.map((e) => [e.enrollment_id, e]));
     this.accounts = new Map(s.accounts.map((a) => [a.account_id, a]));
     this.recipientSets = new Map(s.recipient_sets.map((r) => [r.recipient_set_id, r]));
     this.profiles = s.profiles;

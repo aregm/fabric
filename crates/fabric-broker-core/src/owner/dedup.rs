@@ -47,8 +47,10 @@ fn operation_type(method: OwnerMethod) -> Option<&'static str> {
         // not implemented in this build (contract schema version 3)
         | OwnerMethod::SelectCalendars
         | OwnerMethod::ResolveOutcome
-        | OwnerMethod::DecideEnrollment
+        | OwnerMethod::AddAgent
+        | OwnerMethod::ApproveAgent
         | OwnerMethod::RemoveAgent
+        | OwnerMethod::GetAgentConfiguration
         | OwnerMethod::ListEndedRequests => return None,
     })
 }
@@ -103,8 +105,10 @@ fn execute(
         // not implemented in this build (contract schema version 3): answered before dedup
         | OwnerCall::SelectCalendars(_)
         | OwnerCall::ResolveOutcome(_)
-        | OwnerCall::DecideEnrollment(_)
+        | OwnerCall::AddAgent(_)
+        | OwnerCall::ApproveAgent(_)
         | OwnerCall::RemoveAgent(_)
+        | OwnerCall::GetAgentConfiguration(_)
         | OwnerCall::ListEndedRequests(_) => {
             return Err(TxError::Fault(invariant("only a command is executed")));
         }

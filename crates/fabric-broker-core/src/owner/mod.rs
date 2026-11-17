@@ -153,8 +153,10 @@ impl OwnerChannel {
             // not implemented in this build (contract schema version 3)
             OwnerCall::SelectCalendars(_)
             | OwnerCall::ResolveOutcome(_)
-            | OwnerCall::DecideEnrollment(_)
+            | OwnerCall::AddAgent(_)
+            | OwnerCall::ApproveAgent(_)
             | OwnerCall::RemoveAgent(_)
+            | OwnerCall::GetAgentConfiguration(_)
             | OwnerCall::ListEndedRequests(_) => out.push(frames::refuse(
                 &frame_id,
                 request.call.method(),

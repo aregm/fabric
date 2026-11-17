@@ -72,7 +72,18 @@ test("vocabularies equal the schema enums", () => {
     ["account state", c.ACCOUNT_STATES, owner.account.properties.state.enum],
     ["response_status", c.RESPONSE_STATUSES, agent.response_status.enum],
     ["owner_request methods", c.OWNER_METHODS, owner.owner_request.oneOf.map((b: any) => b.properties.method.const)],
-    ["agent_request methods", c.TOOL_NAMES, agent.agent_request.oneOf.map((b: any) => b.properties.method.const)],
+    [
+      "agent_request methods",
+      [...c.HANDSHAKE_METHODS, ...c.TOOL_NAMES],
+      agent.agent_request.oneOf.map((b: any) => b.properties.method.const),
+    ],
+    [
+      "agent_response handshake methods",
+      c.HANDSHAKE_METHODS,
+      agent.agent_response.oneOf.map((b: any) => b.properties.method.const).filter((x: unknown) => x !== undefined),
+    ],
+    ["agent enrollment", c.AGENT_ENROLLMENTS, owner.agent.properties.enrollment.enum],
+    ["add_agent client", c.AGENT_CLIENTS, owner.params_add_agent.properties.client.enum],
     ["action tools", c.ACTION_TOOLS, agent.action.oneOf.map((b: any) => b.properties.tool.const)],
     ["limits", Object.keys(c.LIMITS), Object.keys(common.limits.properties)],
   ];

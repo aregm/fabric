@@ -4,9 +4,13 @@
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 
+use fabric_desktop_contracts::agent::AgentCall;
 use fabric_desktop_contracts::common::ToolName;
 use fabric_desktop_contracts::error::ErrorCode;
-use fabric_desktop_contracts::owner::{BuiltInProfile, Mode, OwnerMethod, PolicyRow};
+use fabric_desktop_contracts::handshake::HANDSHAKE_METHODS;
+use fabric_desktop_contracts::owner::{
+    AgentClient, AgentEnrollment, BuiltInProfile, Mode, OwnerMethod, PolicyRow,
+};
 use fabric_desktop_contracts::suite::read_json;
 use fabric_desktop_contracts::{
     AUTHORIZATION_LIFETIME_SECONDS, AUTHORIZATION_PROFILE, Limits, PROTOCOL, PlainRequestState,
@@ -93,6 +97,65 @@ fn tool_names_and_actions_match_the_catalog() {
     }
     let schema_enum = schema_def("common.schema.json#/$defs/tool_name").unwrap();
     assert_eq!(names(&schema_enum["enum"]), listed);
+}
+
+#[test]
+fn agent_request_methods_are_the_handshake_and_the_tools() {
+    let schema = schema_def("agent-channel.schema.json#/$defs/agent_request").unwrap();
+    let listed: Vec<String> = schema["oneOf"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|b| {
+            b["properties"]["method"]["const"]
+                .as_str()
+                .unwrap()
+                .to_owned()
+        })
+        .collect();
+    let rust: Vec<String> = HANDSHAKE_METHODS
+        .iter()
+        .map(|m| (*m).to_owned())
+        .chain(ToolName::ALL.iter().map(|t| t.as_str().to_owned()))
+        .collect();
+    assert_eq!(rust, listed);
+    for method in &listed {
+        assert!(AgentCall::is_method(method), "{method}");
+    }
+    let response = schema_def("agent-channel.schema.json#/$defs/agent_response").unwrap();
+    let handshake: Vec<&str> = response["oneOf"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter_map(|b| b["properties"]["method"]["const"].as_str())
+        .collect();
+    assert_eq!(handshake, HANDSHAKE_METHODS);
+}
+
+#[test]
+fn agent_enrollments_and_clients_match_the_schema() {
+    let enrollment =
+        schema_def("owner-channel.schema.json#/$defs/agent/properties/enrollment").unwrap();
+    let rust: Vec<String> = [
+        AgentEnrollment::Pending,
+        AgentEnrollment::Approved,
+        AgentEnrollment::Removed,
+    ]
+    .iter()
+    .map(|e| encode(e).trim_matches('"').to_owned())
+    .collect();
+    assert_eq!(rust, names(&enrollment["enum"]));
+    let client =
+        schema_def("owner-channel.schema.json#/$defs/params_add_agent/properties/client").unwrap();
+    let rust: Vec<String> = [
+        AgentClient::ClaudeDesktop,
+        AgentClient::ClaudeCode,
+        AgentClient::CodexDesktop,
+    ]
+    .iter()
+    .map(|c| encode(c).trim_matches('"').to_owned())
+    .collect();
+    assert_eq!(rust, names(&client["enum"]));
 }
 
 #[test]

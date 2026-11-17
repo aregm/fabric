@@ -16,6 +16,12 @@
             "kind": "cloud",
             "processor": "Anthropic"
           },
+          "enrollment": "approved",
+          "pairing_code": "991B-797A-B0EB",
+          "added_at": "2026-11-18T09:00:00.000Z",
+          "key_proven_at": "2026-11-18T09:02:13.000Z",
+          "approved_at": "2026-11-18T09:04:40.000Z",
+          "removed_at": null,
           "paused": true,
           "session": {
             "session_id": "session-claude-code-7",
@@ -29,7 +35,7 @@
   },
   "expect": {
     "verdict": "accept",
-    "canonical": "{\"id\":\"command-47\",\"method\":\"pause_agent\",\"protocol\":\"fabric-desktop/1\",\"result\":{\"agents\":[{\"agent_id\":\"agent-claude-code\",\"destination\":{\"kind\":\"cloud\",\"processor\":\"Anthropic\"},\"last_tool_call_at\":\"2026-11-20T15:12:41.503Z\",\"paused\":true,\"registered_name\":\"Claude Code\",\"revision\":6,\"session\":{\"last_active_at\":\"2026-11-20T15:12:41.503Z\",\"session_id\":\"session-claude-code-7\",\"started_at\":\"2026-11-20T14:00:00.000Z\"}}],\"commit_sequence\":1295}}",
+    "canonical": "{\"id\":\"command-47\",\"method\":\"pause_agent\",\"protocol\":\"fabric-desktop/1\",\"result\":{\"agents\":[{\"added_at\":\"2026-11-18T09:00:00.000Z\",\"agent_id\":\"agent-claude-code\",\"approved_at\":\"2026-11-18T09:04:40.000Z\",\"destination\":{\"kind\":\"cloud\",\"processor\":\"Anthropic\"},\"enrollment\":\"approved\",\"key_proven_at\":\"2026-11-18T09:02:13.000Z\",\"last_tool_call_at\":\"2026-11-20T15:12:41.503Z\",\"pairing_code\":\"991B-797A-B0EB\",\"paused\":true,\"registered_name\":\"Claude Code\",\"removed_at\":null,\"revision\":6,\"session\":{\"last_active_at\":\"2026-11-20T15:12:41.503Z\",\"session_id\":\"session-claude-code-7\",\"started_at\":\"2026-11-20T14:00:00.000Z\"}}],\"commit_sequence\":1295}}",
     "command_digest": null,
     "action_digest": null
   }

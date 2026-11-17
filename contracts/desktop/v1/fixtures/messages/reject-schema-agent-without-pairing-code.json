@@ -1,0 +1,26 @@
+{
+  "description": "An agent without pairing_code.",
+  "schema": "owner-channel.schema.json#/$defs/agent",
+  "value": {
+    "agent_id": "agent-0123456789abcdef0123456789abcdef",
+    "revision": 1,
+    "registered_name": "Claude Code (calendar folder)",
+    "destination": {
+      "kind": "cloud",
+      "processor": "Anthropic"
+    },
+    "enrollment": "pending",
+    "added_at": "2026-11-20T16:00:00.000Z",
+    "key_proven_at": null,
+    "approved_at": null,
+    "removed_at": null,
+    "paused": false,
+    "session": null,
+    "last_tool_call_at": null
+  },
+  "expect": {
+    "verdict": "reject",
+    "layer": "schema",
+    "error": "invalid_params"
+  }
+}

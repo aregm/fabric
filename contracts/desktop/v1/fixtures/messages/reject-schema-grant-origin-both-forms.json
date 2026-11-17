@@ -28,7 +28,7 @@
     "origin": {
       "request_id": "request-19",
       "approval_digest": "sha256:902819aeacc9eefb1a3ab249f04765d76ca09734f204f7971813eb766cac163e",
-      "enrollment_id": "enrollment-3"
+      "enrollment_id": "agent-claude-desktop"
     },
     "policy": {
       "profile_id": "careful",

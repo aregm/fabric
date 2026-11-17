@@ -141,6 +141,12 @@
             "kind": "cloud",
             "processor": "Anthropic"
           },
+          "enrollment": "approved",
+          "pairing_code": "100D-25BE-C78D",
+          "added_at": "2026-11-18T09:00:00.000Z",
+          "key_proven_at": "2026-11-18T09:02:13.000Z",
+          "approved_at": "2026-11-18T09:04:40.000Z",
+          "removed_at": null,
           "paused": false,
           "session": null,
           "last_tool_call_at": "2026-11-20T09:41:00.000Z"
@@ -153,6 +159,12 @@
             "kind": "cloud",
             "processor": "Anthropic"
           },
+          "enrollment": "approved",
+          "pairing_code": "991B-797A-B0EB",
+          "added_at": "2026-11-18T09:00:00.000Z",
+          "key_proven_at": "2026-11-18T09:02:13.000Z",
+          "approved_at": "2026-11-18T09:04:40.000Z",
+          "removed_at": null,
           "paused": false,
           "session": {
             "session_id": "session-claude-code-7",
@@ -168,6 +180,12 @@
             "kind": "cloud",
             "processor": "OpenAI"
           },
+          "enrollment": "approved",
+          "pairing_code": "D559-F078-3B34",
+          "added_at": "2026-11-18T09:00:00.000Z",
+          "key_proven_at": "2026-11-18T09:02:13.000Z",
+          "approved_at": "2026-11-18T09:04:40.000Z",
+          "removed_at": null,
           "paused": true,
           "session": null,
           "last_tool_call_at": null
@@ -180,12 +198,17 @@
             "kind": "local",
             "endpoint": "Embedded Ollama runtime on this Mac"
           },
+          "enrollment": "approved",
+          "pairing_code": "1C2E-22D3-7429",
+          "added_at": "2026-11-18T09:00:00.000Z",
+          "key_proven_at": "2026-11-18T09:02:13.000Z",
+          "approved_at": "2026-11-18T09:04:40.000Z",
+          "removed_at": null,
           "paused": false,
           "session": null,
           "last_tool_call_at": null
         }
       ],
-      "enrollments": [],
       "recipient_sets": [
         {
           "recipient_set_id": "rset-team",

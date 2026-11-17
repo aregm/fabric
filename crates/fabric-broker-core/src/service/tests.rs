@@ -729,6 +729,23 @@ fn a_call_on_a_connection_without_a_session_is_not_permitted() {
 }
 
 #[test]
+fn the_handshake_is_refused_even_on_a_connection_with_a_session() {
+    let mut run = Run::new();
+    run.setup();
+    let hello = json!({"schema_version": 3, "enrollment_id": AGENT,
+                       "public_key": format!("ed25519:{}", "0".repeat(64))});
+    let prove = json!({"signature": "0".repeat(128)});
+    for (method, params) in [("agent_hello", hello), ("agent_prove", prove)] {
+        let out = run.call(1, "hello-1", method, params);
+        assert_eq!(out.agent.len(), 1, "{method}");
+        let reply = out.agent[0].frame.to_value();
+        assert_eq!(reply["error"]["code"], "not_permitted", "{method}");
+        assert_eq!(reply["method"], method);
+        assert!(out.notices.is_empty(), "{method}");
+    }
+}
+
+#[test]
 fn quit_ends_live_sessions_and_their_grants_with_app_quit() {
     let mut run = Run::new();
     run.setup();

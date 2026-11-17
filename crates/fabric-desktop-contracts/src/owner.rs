@@ -16,9 +16,9 @@ use crate::error::OwnerError;
 use crate::json::canonical;
 use crate::lifecycle::{PlainRequestState, RequestState};
 use crate::scalar::{
-    AnyList, ConstText, Count, CustomProfileId, Digest, DomainName, Email, Explanation, Fixed,
-    IanaZone, Id, Integer, Label, List, LocalTime, MethodText, NameToken, PositiveCount, Task,
-    Timestamp, nullable,
+    AnyList, ConfigurationText, ConstText, Count, CustomProfileId, Digest, DomainName, Email,
+    Explanation, Fixed, IanaZone, Id, Integer, Label, List, LocalTime, MethodText, NameToken,
+    PairingCode, PositiveCount, Task, Timestamp, nullable,
 };
 use crate::tagged;
 
@@ -563,6 +563,7 @@ pub enum GrantOrigin {
         approval_digest: Digest,
     },
     /// The owner's approval of the agent's enrollment, which gives the agent the calendar list.
+    /// `enrollment_id` is the agent's id.
     Enrollment { enrollment_id: Id },
 }
 
@@ -698,7 +699,18 @@ pub struct Session {
     pub last_active_at: Timestamp,
 }
 
-/// `owner#/$defs/agent`: an enrolled agent, shown by its registered name.
+/// `owner#/$defs/agent.enrollment`: whether an agent waits for the owner's approval, is
+/// approved, or was removed.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AgentEnrollment {
+    Pending,
+    Approved,
+    Removed,
+}
+
+/// `owner#/$defs/agent`: an agent the owner added. `pairing_code` is the code of the key the
+/// agent proved, and `None` until it has proved one.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Agent {
@@ -706,23 +718,21 @@ pub struct Agent {
     pub revision: PositiveCount,
     pub registered_name: Label,
     pub destination: Destination,
+    pub enrollment: AgentEnrollment,
+    #[serde(deserialize_with = "nullable")]
+    pub pairing_code: Option<PairingCode>,
+    pub added_at: Timestamp,
+    #[serde(deserialize_with = "nullable")]
+    pub key_proven_at: Option<Timestamp>,
+    #[serde(deserialize_with = "nullable")]
+    pub approved_at: Option<Timestamp>,
+    #[serde(deserialize_with = "nullable")]
+    pub removed_at: Option<Timestamp>,
     pub paused: bool,
     #[serde(deserialize_with = "nullable")]
     pub session: Option<Session>,
     #[serde(deserialize_with = "nullable")]
     pub last_tool_call_at: Option<Timestamp>,
-}
-
-/// `owner#/$defs/enrollment`: an agent that asked to be enrolled and waits for the owner.
-/// `registered_name` and `destination` are what the agent's record will carry if approved.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct Enrollment {
-    pub enrollment_id: Id,
-    pub revision: PositiveCount,
-    pub registered_name: Label,
-    pub destination: Destination,
-    pub requested_at: Timestamp,
 }
 
 /// `owner#/$defs/calendar`.
@@ -1281,7 +1291,6 @@ pub struct Snapshot {
     pub profiles: Profiles,
     pub accounts: AnyList<Account>,
     pub agents: AnyList<Agent>,
-    pub enrollments: AnyList<Enrollment>,
     pub recipient_sets: AnyList<RecipientSet>,
     pub preferences: Preferences,
     pub requests: AnyList<Request>,
@@ -1293,15 +1302,6 @@ pub struct Snapshot {
 pub enum Change {
     Account(Account),
     Agent(Agent),
-    /// The owner removed the agent. It is no longer in the snapshot.
-    AgentRemoved(Id),
-    Enrollment(Enrollment),
-    /// A waiting enrollment was decided or withdrawn. `agent_id` names the agent an approval
-    /// created, and is `None` otherwise.
-    EnrollmentClosed {
-        enrollment_id: Id,
-        agent_id: Option<Id>,
-    },
     Profiles(Profiles),
     RecipientSet(RecipientSet),
     RecipientSetDeleted(Id),
@@ -1319,9 +1319,6 @@ impl Change {
         match self {
             Change::Account(_) => "account",
             Change::Agent(_) => "agent",
-            Change::AgentRemoved(_) => "agent_removed",
-            Change::Enrollment(_) => "enrollment",
-            Change::EnrollmentClosed { .. } => "enrollment_closed",
             Change::Profiles(_) => "profiles",
             Change::RecipientSet(_) => "recipient_set",
             Change::RecipientSetDeleted(_) => "recipient_set_deleted",
@@ -1340,12 +1337,6 @@ impl Serialize for Change {
         let body = match self {
             Change::Account(v) => json!({ "account": v }),
             Change::Agent(v) => json!({ "agent": v }),
-            Change::AgentRemoved(v) => json!({ "agent_id": v }),
-            Change::Enrollment(v) => json!({ "enrollment": v }),
-            Change::EnrollmentClosed {
-                enrollment_id,
-                agent_id,
-            } => json!({ "enrollment_id": enrollment_id, "agent_id": agent_id }),
             Change::Profiles(v) => json!({ "profiles": v }),
             Change::RecipientSet(v) => json!({ "recipient_set": v }),
             Change::RecipientSetDeleted(v) => json!({ "recipient_set_id": v }),
@@ -1366,12 +1357,6 @@ impl<'de> Deserialize<'de> for Change {
         let change = match kind.as_str() {
             "account" => Change::Account(tagged::read(member("account")?)?),
             "agent" => Change::Agent(tagged::read(member("agent")?)?),
-            "agent_removed" => Change::AgentRemoved(tagged::read(member("agent_id")?)?),
-            "enrollment" => Change::Enrollment(tagged::read(member("enrollment")?)?),
-            "enrollment_closed" => Change::EnrollmentClosed {
-                enrollment_id: tagged::read(member("enrollment_id")?)?,
-                agent_id: tagged::read::<Option<Id>, _>(member("agent_id")?)?,
-            },
             "profiles" => Change::Profiles(tagged::read(member("profiles")?)?),
             "recipient_set" => Change::RecipientSet(tagged::read(member("recipient_set")?)?),
             "recipient_set_deleted" => {
@@ -1901,36 +1886,53 @@ pub struct ResolveOutcomeResult {
     pub request: Request,
 }
 
-/// The owner's decision in `decide_enrollment`.
+/// The kind of client an added agent is (`owner#/$defs/params_add_agent.client`).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
-pub enum EnrollmentDecision {
-    Approve,
-    Reject,
+pub enum AgentClient {
+    ClaudeDesktop,
+    ClaudeCode,
+    CodexDesktop,
 }
 
-/// `owner#/$defs/params_decide_enrollment`: an approval creates the agent and, in the same
-/// commit, a grant until revoked for the calendar list.
+/// `owner#/$defs/params_add_agent`: adds an agent that waits for approval. The broker gives
+/// it an id and, from the kind of client, where its data goes.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct DecideEnrollmentParams {
-    pub enrollment_id: Id,
-    pub expected_revision: Count,
-    pub decision: EnrollmentDecision,
+pub struct AddAgentParams {
+    pub registered_name: Label,
+    pub client: AgentClient,
 }
 
-/// `owner#/$defs/result_decide_enrollment`: `agent` is the agent an approval created, and
-/// `None` for a rejection.
+/// `owner#/$defs/result_add_agent`.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct DecideEnrollmentResult {
+pub struct AddAgentResult {
     pub commit_sequence: PositiveCount,
-    #[serde(deserialize_with = "nullable")]
-    pub agent: Option<Agent>,
+    pub agent: Agent,
 }
 
-/// `owner#/$defs/params_remove_agent`: ends the agent's session and its grants, and cancels
-/// its requests that were not yet handed to Google.
+/// `owner#/$defs/params_approve_agent`: approves a waiting agent. `pairing_code` is the code
+/// the owner saw; it must be the code of the key the agent proved last.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ApproveAgentParams {
+    pub agent_id: Id,
+    pub expected_revision: Count,
+    pub pairing_code: PairingCode,
+}
+
+/// `owner#/$defs/result_approve_agent`.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ApproveAgentResult {
+    pub commit_sequence: PositiveCount,
+    pub agent: Agent,
+}
+
+/// `owner#/$defs/params_remove_agent`: removes an agent, waiting or approved. Ends its
+/// session and its grants, and cancels its requests that were not yet handed to Google. The
+/// agent's record stays, marked removed.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct RemoveAgentParams {
@@ -1938,13 +1940,38 @@ pub struct RemoveAgentParams {
     pub expected_revision: Count,
 }
 
-/// `owner#/$defs/result_remove_agent`.
+/// `owner#/$defs/result_remove_agent`: the removed agent and the grants its removal ended.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct RemoveAgentResult {
     pub commit_sequence: PositiveCount,
-    pub agent_id: Id,
+    pub agent: Agent,
     pub ended_grant_ids: List<Id, 0, { usize::MAX }, true>,
+}
+
+/// `owner#/$defs/params_get_agent_configuration`.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct GetAgentConfigurationParams {
+    pub agent_id: Id,
+}
+
+/// The texts that start an agent's bridge, one for each kind of client.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct AgentConfiguration {
+    pub claude_desktop: ConfigurationText,
+    pub claude_code: ConfigurationText,
+    pub codex_desktop: ConfigurationText,
+}
+
+/// `owner#/$defs/result_get_agent_configuration`: `configuration` is `None` when the broker
+/// cannot name an installed bridge.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct GetAgentConfigurationResult {
+    #[serde(deserialize_with = "nullable")]
+    pub configuration: Option<AgentConfiguration>,
 }
 
 /// `owner#/$defs/params_list_ended_requests`: requests that have ended, newest first.
@@ -1965,7 +1992,7 @@ pub struct ListEndedRequestsResult {
     pub more: bool,
 }
 
-/// The owner methods of `data/owner-methods.json`: the thirteen of plan section 9.1 and five
+/// The owner methods of `data/owner-methods.json`: the thirteen of plan section 9.1 and seven
 /// that the plan's text needs (README section 7).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum OwnerMethod {
@@ -1984,14 +2011,16 @@ pub enum OwnerMethod {
     DisconnectGoogle,
     SelectCalendars,
     ResolveOutcome,
-    DecideEnrollment,
+    AddAgent,
+    ApproveAgent,
     RemoveAgent,
+    GetAgentConfiguration,
     ListEndedRequests,
 }
 
 impl OwnerMethod {
     /// Every method, in the order of `data/owner-methods.json`.
-    pub const ALL: [OwnerMethod; 18] = [
+    pub const ALL: [OwnerMethod; 20] = [
         OwnerMethod::Hello,
         OwnerMethod::GetSnapshot,
         OwnerMethod::ConnectGoogle,
@@ -2007,8 +2036,10 @@ impl OwnerMethod {
         OwnerMethod::DisconnectGoogle,
         OwnerMethod::SelectCalendars,
         OwnerMethod::ResolveOutcome,
-        OwnerMethod::DecideEnrollment,
+        OwnerMethod::AddAgent,
+        OwnerMethod::ApproveAgent,
         OwnerMethod::RemoveAgent,
+        OwnerMethod::GetAgentConfiguration,
         OwnerMethod::ListEndedRequests,
     ];
 
@@ -2030,8 +2061,10 @@ impl OwnerMethod {
             OwnerMethod::DisconnectGoogle => "disconnect_google",
             OwnerMethod::SelectCalendars => "select_calendars",
             OwnerMethod::ResolveOutcome => "resolve_outcome",
-            OwnerMethod::DecideEnrollment => "decide_enrollment",
+            OwnerMethod::AddAgent => "add_agent",
+            OwnerMethod::ApproveAgent => "approve_agent",
             OwnerMethod::RemoveAgent => "remove_agent",
+            OwnerMethod::GetAgentConfiguration => "get_agent_configuration",
             OwnerMethod::ListEndedRequests => "list_ended_requests",
         }
     }
@@ -2057,7 +2090,8 @@ impl OwnerMethod {
                 | OwnerMethod::DisconnectGoogle
                 | OwnerMethod::SelectCalendars
                 | OwnerMethod::ResolveOutcome
-                | OwnerMethod::DecideEnrollment
+                | OwnerMethod::AddAgent
+                | OwnerMethod::ApproveAgent
                 | OwnerMethod::RemoveAgent
         )
     }
@@ -2081,8 +2115,10 @@ impl OwnerMethod {
             OwnerMethod::DisconnectGoogle => "params_disconnect_google",
             OwnerMethod::SelectCalendars => "params_select_calendars",
             OwnerMethod::ResolveOutcome => "params_resolve_outcome",
-            OwnerMethod::DecideEnrollment => "params_decide_enrollment",
+            OwnerMethod::AddAgent => "params_add_agent",
+            OwnerMethod::ApproveAgent => "params_approve_agent",
             OwnerMethod::RemoveAgent => "params_remove_agent",
+            OwnerMethod::GetAgentConfiguration => "params_get_agent_configuration",
             OwnerMethod::ListEndedRequests => "params_list_ended_requests",
         }
     }
@@ -2106,8 +2142,10 @@ impl OwnerMethod {
             OwnerMethod::DisconnectGoogle => "result_disconnect_google",
             OwnerMethod::SelectCalendars => "result_select_calendars",
             OwnerMethod::ResolveOutcome => "result_resolve_outcome",
-            OwnerMethod::DecideEnrollment => "result_decide_enrollment",
+            OwnerMethod::AddAgent => "result_add_agent",
+            OwnerMethod::ApproveAgent => "result_approve_agent",
             OwnerMethod::RemoveAgent => "result_remove_agent",
+            OwnerMethod::GetAgentConfiguration => "result_get_agent_configuration",
             OwnerMethod::ListEndedRequests => "result_list_ended_requests",
         }
     }
@@ -2131,8 +2169,10 @@ pub enum OwnerCall {
     DisconnectGoogle(DisconnectGoogleParams),
     SelectCalendars(SelectCalendarsParams),
     ResolveOutcome(ResolveOutcomeParams),
-    DecideEnrollment(DecideEnrollmentParams),
+    AddAgent(AddAgentParams),
+    ApproveAgent(ApproveAgentParams),
     RemoveAgent(RemoveAgentParams),
+    GetAgentConfiguration(GetAgentConfigurationParams),
     ListEndedRequests(ListEndedRequestsParams),
 }
 
@@ -2155,8 +2195,10 @@ impl OwnerCall {
             OwnerCall::DisconnectGoogle(_) => OwnerMethod::DisconnectGoogle,
             OwnerCall::SelectCalendars(_) => OwnerMethod::SelectCalendars,
             OwnerCall::ResolveOutcome(_) => OwnerMethod::ResolveOutcome,
-            OwnerCall::DecideEnrollment(_) => OwnerMethod::DecideEnrollment,
+            OwnerCall::AddAgent(_) => OwnerMethod::AddAgent,
+            OwnerCall::ApproveAgent(_) => OwnerMethod::ApproveAgent,
             OwnerCall::RemoveAgent(_) => OwnerMethod::RemoveAgent,
+            OwnerCall::GetAgentConfiguration(_) => OwnerMethod::GetAgentConfiguration,
             OwnerCall::ListEndedRequests(_) => OwnerMethod::ListEndedRequests,
         }
     }
@@ -2179,8 +2221,10 @@ impl OwnerCall {
             OwnerCall::DisconnectGoogle(p) => to_value(p),
             OwnerCall::SelectCalendars(p) => to_value(p),
             OwnerCall::ResolveOutcome(p) => to_value(p),
-            OwnerCall::DecideEnrollment(p) => to_value(p),
+            OwnerCall::AddAgent(p) => to_value(p),
+            OwnerCall::ApproveAgent(p) => to_value(p),
             OwnerCall::RemoveAgent(p) => to_value(p),
+            OwnerCall::GetAgentConfiguration(p) => to_value(p),
             OwnerCall::ListEndedRequests(p) => to_value(p),
         }
     }
@@ -2203,8 +2247,10 @@ impl OwnerCall {
             OwnerMethod::DisconnectGoogle => OwnerCall::DisconnectGoogle(read(params)?),
             OwnerMethod::SelectCalendars => OwnerCall::SelectCalendars(read(params)?),
             OwnerMethod::ResolveOutcome => OwnerCall::ResolveOutcome(read(params)?),
-            OwnerMethod::DecideEnrollment => OwnerCall::DecideEnrollment(read(params)?),
+            OwnerMethod::AddAgent => OwnerCall::AddAgent(read(params)?),
+            OwnerMethod::ApproveAgent => OwnerCall::ApproveAgent(read(params)?),
             OwnerMethod::RemoveAgent => OwnerCall::RemoveAgent(read(params)?),
+            OwnerMethod::GetAgentConfiguration => OwnerCall::GetAgentConfiguration(read(params)?),
             OwnerMethod::ListEndedRequests => OwnerCall::ListEndedRequests(read(params)?),
         })
     }
@@ -2279,8 +2325,10 @@ pub enum OwnerResult {
     DisconnectGoogle(DisconnectGoogleResult),
     SelectCalendars(SelectCalendarsResult),
     ResolveOutcome(ResolveOutcomeResult),
-    DecideEnrollment(DecideEnrollmentResult),
+    AddAgent(AddAgentResult),
+    ApproveAgent(ApproveAgentResult),
     RemoveAgent(RemoveAgentResult),
+    GetAgentConfiguration(GetAgentConfigurationResult),
     ListEndedRequests(ListEndedRequestsResult),
 }
 
@@ -2303,8 +2351,10 @@ impl OwnerResult {
             OwnerResult::DisconnectGoogle(_) => OwnerMethod::DisconnectGoogle,
             OwnerResult::SelectCalendars(_) => OwnerMethod::SelectCalendars,
             OwnerResult::ResolveOutcome(_) => OwnerMethod::ResolveOutcome,
-            OwnerResult::DecideEnrollment(_) => OwnerMethod::DecideEnrollment,
+            OwnerResult::AddAgent(_) => OwnerMethod::AddAgent,
+            OwnerResult::ApproveAgent(_) => OwnerMethod::ApproveAgent,
             OwnerResult::RemoveAgent(_) => OwnerMethod::RemoveAgent,
+            OwnerResult::GetAgentConfiguration(_) => OwnerMethod::GetAgentConfiguration,
             OwnerResult::ListEndedRequests(_) => OwnerMethod::ListEndedRequests,
         }
     }
@@ -2327,8 +2377,10 @@ impl OwnerResult {
             OwnerResult::DisconnectGoogle(r) => to_value(r),
             OwnerResult::SelectCalendars(r) => to_value(r),
             OwnerResult::ResolveOutcome(r) => to_value(r),
-            OwnerResult::DecideEnrollment(r) => to_value(r),
+            OwnerResult::AddAgent(r) => to_value(r),
+            OwnerResult::ApproveAgent(r) => to_value(r),
             OwnerResult::RemoveAgent(r) => to_value(r),
+            OwnerResult::GetAgentConfiguration(r) => to_value(r),
             OwnerResult::ListEndedRequests(r) => to_value(r),
         }
     }
@@ -2351,8 +2403,10 @@ impl OwnerResult {
             OwnerMethod::DisconnectGoogle => OwnerResult::DisconnectGoogle(read(result)?),
             OwnerMethod::SelectCalendars => OwnerResult::SelectCalendars(read(result)?),
             OwnerMethod::ResolveOutcome => OwnerResult::ResolveOutcome(read(result)?),
-            OwnerMethod::DecideEnrollment => OwnerResult::DecideEnrollment(read(result)?),
+            OwnerMethod::AddAgent => OwnerResult::AddAgent(read(result)?),
+            OwnerMethod::ApproveAgent => OwnerResult::ApproveAgent(read(result)?),
             OwnerMethod::RemoveAgent => OwnerResult::RemoveAgent(read(result)?),
+            OwnerMethod::GetAgentConfiguration => OwnerResult::GetAgentConfiguration(read(result)?),
             OwnerMethod::ListEndedRequests => OwnerResult::ListEndedRequests(read(result)?),
         })
     }

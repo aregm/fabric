@@ -1,0 +1,17 @@
+{
+  "description": "A prove answer of removed, which is not an answer: a removed agent gets not_permitted.",
+  "schema": "agent-channel.schema.json#/$defs/agent_response",
+  "value": {
+    "protocol": "fabric-desktop/1",
+    "id": "prove-0a1b2c3d4e5f60718293a4b5c6d7e8f9",
+    "method": "agent_prove",
+    "result": {
+      "enrollment": "removed"
+    }
+  },
+  "expect": {
+    "verdict": "reject",
+    "layer": "schema",
+    "error": "invalid_params"
+  }
+}

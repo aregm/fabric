@@ -16,6 +16,12 @@
             "kind": "cloud",
             "processor": "Anthropic"
           },
+          "enrollment": "approved",
+          "pairing_code": "100D-25BE-C78D",
+          "added_at": "2026-11-18T09:00:00.000Z",
+          "key_proven_at": "2026-11-18T09:02:13.000Z",
+          "approved_at": "2026-11-18T09:04:40.000Z",
+          "removed_at": null,
           "paused": true,
           "session": null,
           "last_tool_call_at": "2026-11-20T09:41:00.000Z"
@@ -28,6 +34,12 @@
             "kind": "cloud",
             "processor": "Anthropic"
           },
+          "enrollment": "approved",
+          "pairing_code": "991B-797A-B0EB",
+          "added_at": "2026-11-18T09:00:00.000Z",
+          "key_proven_at": "2026-11-18T09:02:13.000Z",
+          "approved_at": "2026-11-18T09:04:40.000Z",
+          "removed_at": null,
           "paused": true,
           "session": {
             "session_id": "session-claude-code-7",
@@ -44,6 +56,12 @@
             "kind": "cloud",
             "processor": "OpenAI"
           },
+          "enrollment": "approved",
+          "pairing_code": "D559-F078-3B34",
+          "added_at": "2026-11-18T09:00:00.000Z",
+          "key_proven_at": "2026-11-18T09:02:13.000Z",
+          "approved_at": "2026-11-18T09:04:40.000Z",
+          "removed_at": null,
           "paused": true,
           "session": null,
           "last_tool_call_at": null
@@ -56,6 +74,12 @@
             "kind": "local",
             "endpoint": "Embedded Ollama runtime on this Mac"
           },
+          "enrollment": "approved",
+          "pairing_code": "1C2E-22D3-7429",
+          "added_at": "2026-11-18T09:00:00.000Z",
+          "key_proven_at": "2026-11-18T09:02:13.000Z",
+          "approved_at": "2026-11-18T09:04:40.000Z",
+          "removed_at": null,
           "paused": true,
           "session": null,
           "last_tool_call_at": null
@@ -65,7 +89,7 @@
   },
   "expect": {
     "verdict": "accept",
-    "canonical": "{\"id\":\"command-48\",\"method\":\"pause_agent\",\"protocol\":\"fabric-desktop/1\",\"result\":{\"agents\":[{\"agent_id\":\"agent-claude-desktop\",\"destination\":{\"kind\":\"cloud\",\"processor\":\"Anthropic\"},\"last_tool_call_at\":\"2026-11-20T09:41:00.000Z\",\"paused\":true,\"registered_name\":\"Claude Desktop\",\"revision\":4,\"session\":null},{\"agent_id\":\"agent-claude-code\",\"destination\":{\"kind\":\"cloud\",\"processor\":\"Anthropic\"},\"last_tool_call_at\":\"2026-11-20T15:12:41.503Z\",\"paused\":true,\"registered_name\":\"Claude Code\",\"revision\":6,\"session\":{\"last_active_at\":\"2026-11-20T15:12:41.503Z\",\"session_id\":\"session-claude-code-7\",\"started_at\":\"2026-11-20T14:00:00.000Z\"}},{\"agent_id\":\"agent-codex-desktop\",\"destination\":{\"kind\":\"cloud\",\"processor\":\"OpenAI\"},\"last_tool_call_at\":null,\"paused\":true,\"registered_name\":\"Codex Desktop\",\"revision\":2,\"session\":null},{\"agent_id\":\"agent-ollama\",\"destination\":{\"endpoint\":\"Embedded Ollama runtime on this Mac\",\"kind\":\"local\"},\"last_tool_call_at\":null,\"paused\":true,\"registered_name\":\"Fabric local assistant\",\"revision\":2,\"session\":null}],\"commit_sequence\":1296}}",
+    "canonical": "{\"id\":\"command-48\",\"method\":\"pause_agent\",\"protocol\":\"fabric-desktop/1\",\"result\":{\"agents\":[{\"added_at\":\"2026-11-18T09:00:00.000Z\",\"agent_id\":\"agent-claude-desktop\",\"approved_at\":\"2026-11-18T09:04:40.000Z\",\"destination\":{\"kind\":\"cloud\",\"processor\":\"Anthropic\"},\"enrollment\":\"approved\",\"key_proven_at\":\"2026-11-18T09:02:13.000Z\",\"last_tool_call_at\":\"2026-11-20T09:41:00.000Z\",\"pairing_code\":\"100D-25BE-C78D\",\"paused\":true,\"registered_name\":\"Claude Desktop\",\"removed_at\":null,\"revision\":4,\"session\":null},{\"added_at\":\"2026-11-18T09:00:00.000Z\",\"agent_id\":\"agent-claude-code\",\"approved_at\":\"2026-11-18T09:04:40.000Z\",\"destination\":{\"kind\":\"cloud\",\"processor\":\"Anthropic\"},\"enrollment\":\"approved\",\"key_proven_at\":\"2026-11-18T09:02:13.000Z\",\"last_tool_call_at\":\"2026-11-20T15:12:41.503Z\",\"pairing_code\":\"991B-797A-B0EB\",\"paused\":true,\"registered_name\":\"Claude Code\",\"removed_at\":null,\"revision\":6,\"session\":{\"last_active_at\":\"2026-11-20T15:12:41.503Z\",\"session_id\":\"session-claude-code-7\",\"started_at\":\"2026-11-20T14:00:00.000Z\"}},{\"added_at\":\"2026-11-18T09:00:00.000Z\",\"agent_id\":\"agent-codex-desktop\",\"approved_at\":\"2026-11-18T09:04:40.000Z\",\"destination\":{\"kind\":\"cloud\",\"processor\":\"OpenAI\"},\"enrollment\":\"approved\",\"key_proven_at\":\"2026-11-18T09:02:13.000Z\",\"last_tool_call_at\":null,\"pairing_code\":\"D559-F078-3B34\",\"paused\":true,\"registered_name\":\"Codex Desktop\",\"removed_at\":null,\"revision\":2,\"session\":null},{\"added_at\":\"2026-11-18T09:00:00.000Z\",\"agent_id\":\"agent-ollama\",\"approved_at\":\"2026-11-18T09:04:40.000Z\",\"destination\":{\"endpoint\":\"Embedded Ollama runtime on this Mac\",\"kind\":\"local\"},\"enrollment\":\"approved\",\"key_proven_at\":\"2026-11-18T09:02:13.000Z\",\"last_tool_call_at\":null,\"pairing_code\":\"1C2E-22D3-7429\",\"paused\":true,\"registered_name\":\"Fabric local assistant\",\"removed_at\":null,\"revision\":2,\"session\":null}],\"commit_sequence\":1296}}",
     "command_digest": null,
     "action_digest": null
   }

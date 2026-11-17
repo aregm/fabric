@@ -21,7 +21,7 @@ A frame is one JSON object written as UTF-8 on one line and ended by a line feed
 
 There are three kinds of frame.
 
-- **Request:** `protocol`, `id`, `method`, `params`. The owner channel's methods are in `data/owner-methods.json`; the agent channel's methods are the tools of `data/tool-catalog.json`.
+- **Request:** `protocol`, `id`, `method`, `params`. The owner channel's methods are in `data/owner-methods.json`; the agent channel's methods are the tools of `data/tool-catalog.json` and the two handshake methods (section 8).
 - **Response:** `protocol`, the request's `id` and `method`, and either `result` or `error`, never both. When the broker could not read a frame far enough to know its id or method, the error response carries `null` for them.
 - **Notice:** `protocol`, `sequence`, `change`. Only the broker sends notices, and only on the owner channel, after `subscribe`.
 
@@ -71,6 +71,8 @@ digest(domain, value) = "sha256:" + lowercase hex of
 
 `theory_hash` and `context_digest` in a proof report have the same text form. Their subjects belong to the rule theory (CD-W03).
 
+Two more texts begin with the same first line and have domains of their own, `agent_handshake` and `agent_key`. They are not digests of this form; section 8 defines them.
+
 A command is an owner method marked `command` in `data/owner-methods.json`. Its frame `id` is the command id. A command id sent again with the same command digest gets the first answer again and changes nothing; sent with a different digest it gets the error `command_reused`.
 
 ## 5. Layers of refusal
@@ -99,17 +101,17 @@ The schemas are JSON Schema 2020-12 restricted to these keywords: `$schema`, `$d
 
 ## 7. The owner channel
 
-`data/owner-methods.json` lists the methods with their parameter and result schemas: the thirteen of plan section 9.1, and five that the plan's text needs and its table does not list (`select_calendars`, `resolve_outcome`, `decide_enrollment`, `remove_agent`, `list_ended_requests`).
+`data/owner-methods.json` lists the methods with their parameter and result schemas: the thirteen of plan section 9.1, and seven that the plan's text needs and its table does not list (`select_calendars`, `resolve_outcome`, `add_agent`, `approve_agent`, `remove_agent`, `get_agent_configuration`, `list_ended_requests`).
 
 - **hello** reports the broker's build, `schema_version`, capabilities and limits. Under `fabric-desktop/1` the two sides must have the same `schema_version`; otherwise the broker answers `unsupported_schema_version`. No capability name is defined yet.
-- **get_snapshot** returns the state at a cursor: health, profiles, accounts, agents, the enrollments that wait for the owner, recipient sets, preferences, the open requests and the grants that have not ended.
+- **get_snapshot** returns the state at a cursor: health, profiles, accounts, agents, recipient sets, preferences, the open requests and the grants that have not ended.
 - **subscribe** asks for every change after a cursor. Notices then arrive with sequences rising by one. If the cursor is older than the history the broker kept, the answer is `snapshot_required`; if a subscriber falls more than `subscriber_queue_notices` behind, it receives the change `snapshot_required` and must take a snapshot and subscribe again.
 - **Commands** name the revision they were written against (`expected_revision`). A revision that is no longer current gets `conflict` and nothing is overwritten. A successful command returns `commit_sequence`, the sequence of the notice that carries its effect; the broker commits before it answers.
 - **decide_request** names the request, its revision and the `request_digest` the owner saw. If the request has changed, the answer is `stale_request`. `selected` is null to approve the scope as asked, or a scope that narrows it. `duration` is the card's `proposed_duration` or a shorter one (section 10); a longer one gets `invalid_params`. A recipient rule may name recipient sets in place of exact addresses.
 - **save_profile** either puts a profile in force (`activate`) or saves a custom profile (`save_custom`). When a save makes a row more permissive, the broker answers `expansion_not_acknowledged` with the expansion and its digest; the interface shows it, and the owner's confirmation is a new command that carries that digest. `delete_custom` deletes a custom profile; the broker refuses to delete the profile in force with `invalid_params`. A grant made under a deleted profile keeps naming its id and version.
 - **pause_agent** pauses or resumes one agent or all of them.
 - **select_calendars** sets, for one account, which calendars the owner has selected and which of them is Agent Drafts (CD-Q05f). `selected` is the whole selection: a calendar of the account that it does not name is no longer selected. `agent_drafts` names the Agent Drafts calendar, or is null for none; an account has at most one. The broker answers `invalid_params` when that calendar is not in `selected` or the account cannot write to it, and `not_found` when it does not know the account or a calendar. Nothing changes at Google: the owner creates the calendar there.
-- **decide_enrollment** approves or rejects an agent that asked to be enrolled, and **remove_agent** removes an enrolled agent. Both are described below.
+- **add_agent**, **approve_agent** and **remove_agent** enroll and remove an agent, and **get_agent_configuration** returns the texts that start its bridge. They are described below.
 - **resolve_outcome** is the owner's own statement about a request in `needs_owner_resolution`: the change is at Google (`applied`) or it is not (`absent`). The request ends in `resolved_as_applied` or `resolved_as_absent` (section 9). The broker sends nothing to Google and starts no new attempt. If the request has changed or is in another state, the answer is `stale_request`.
 - **list_ended_requests** returns requests that have ended, newest first and at most `limit` at a time, without private event details. `before` is null for the first page and otherwise the id of the last request of the page before; `more` says whether older ones remain.
 - **get_request_details** returns the request, its approval card, the approval, the proofs, the authorization and the attempts. With `redaction` `redacted`, `private` is null and no event content leaves the broker's store. For a request that no proof decided, the details say why in `undecided_reason`: `prover_unavailable` when the rule prover was starting or not running, `out_of_time` when the proof did not finish within its time limit, and `failed` when the check ran and did not decide the request, or its report could not be used. It is null when the broker did not record why, and null for a request in any other state. The schema cannot state the tie to the state; the broker must uphold it.
@@ -124,19 +126,55 @@ The schemas are JSON Schema 2020-12 restricted to these keywords: `$schema`, `$d
 | `failed` | The prover could not start, or stopped, and the broker will not try again in this run. | Quit Fabric Calendar and open it again. |
 | `wrong_rules` | The rule theory on this machine is not the one this broker was built with. | Install Fabric Calendar again. |
 
-An agent that asked to be enrolled is in the snapshot's `enrollments` and is announced by the change `enrollment`. It is not an agent yet: it has no session, makes no request and holds no grant. `registered_name` and `destination` are what its record will carry if the owner approves. How an enrollment comes to wait, and how the agent proves its key, belong to the agent channel's handshake (section 15).
+An agent is enrolled in the application. Its record carries `enrollment`:
 
-- When the owner approves (`decide_enrollment`), the broker creates the agent and, in the same commit, a grant until revoked for the calendar list (section 10).
-- When the owner rejects, nothing is created.
-- Either way the change `enrollment_closed` follows. After an approval it names the new agent.
+| `enrollment` | Meaning |
+|---|---|
+| `pending` | The owner added the agent and has not approved it. It has no session, makes no request and holds no grant. |
+| `approved` | The owner approved one key of the agent. Only an approved agent gets a session. |
+| `removed` | The owner removed the agent. Its id and its key are never accepted again. The record stays, so that the history can name the agent. |
 
-`remove_agent` ends the agent's session and ends its grants with the reason `agent_removed`. Its requests that were not yet handed to Google are cancelled. A request that was handed over runs to its end, because cancelling after dispatch would be a false rollback (plan section 9.2). The change `agent_removed` follows, and the agent is no longer in the snapshot. A request of a removed agent still names its id.
+- **add_agent** takes a name and the kind of client: Claude Desktop, Claude Code or Codex desktop. The broker creates a pending agent with a new id and sets `destination` from the kind of client. The id is what the handshake calls the enrollment id: an agent has one id.
+- While an agent is pending, the key it proved last in a handshake (section 8) is its key. `pairing_code` is the code of that key and `key_proven_at` the time it was proved; both are null until a key is proved. Every proved key raises the agent's revision.
+- **approve_agent** names the agent, its revision and the pairing code the owner saw, so the broker approves exactly the key with that code. If the revision is no longer current the answer is `conflict`. If the code is not the current key's, or no key was proved, the answer is `invalid_params`. In the same commit the agent gets a grant until revoked for the calendar list (section 10). After the approval the key is fixed.
+- **remove_agent** removes a pending or an approved agent. It ends the agent's session and ends its grants with the reason `agent_removed`. Its requests that were not yet handed to Google are cancelled. A request that was handed over runs to its end, because cancelling after dispatch would be a false rollback (plan section 9.2).
+- Each of these steps is announced by the change `agent`, which carries the whole record.
+- **get_agent_configuration** returns three texts, one for each kind of client, that start this agent's bridge with its id. They hold the bridge's path and the id, and nothing secret. `configuration` is null when the broker cannot name an installed bridge.
+
+The schema cannot state how the members of an agent go together; the broker must uphold it. `approved_at` is set exactly when the agent is or was approved, and `removed_at` exactly when it is removed. Only an approved agent has a session.
 
 Errors have a code, a message for the person, `retryable`, a recovery action, a correlation id and a typed detail. For each code the schema fixes `retryable`, the recovery action and the shape of the detail.
 
 ## 8. The agent channel
 
-The methods are the ten tools of `data/tool-catalog.json`. An action is a tool and its exact arguments; `fabric_request_status` is not an action.
+The methods are the ten tools of `data/tool-catalog.json` and the two handshake methods, `agent_hello` and `agent_prove`. An action is a tool and its exact arguments; `fabric_request_status` and the handshake methods are not actions.
+
+### The handshake
+
+A connection begins with two round trips, before any tool frame.
+
+1. `agent_hello` carries the adapter's `schema_version`, the agent's id (`enrollment_id`) and its public key. The broker answers with its own `schema_version` and with `broker_nonce`: 256 random bits that it makes for this connection and uses once. If the versions differ, the answer is `unsupported_schema_version`.
+2. `agent_prove` carries the signature of the handshake text. The broker answers `approved` when the session has started, or `pending` when the proved key is now the pending agent's key and the owner has not approved yet (section 7). Every other outcome is the error `not_permitted`.
+
+```
+handshake text = "fabric-desktop/1\nagent_handshake\n"
+                 + canonical({"broker_nonce": …, "enrollment_id": …, "public_key": …, "schema_version": …})
+signature      = Ed25519 (RFC 8032) over the UTF-8 bytes of the handshake text,
+                 its 64 bytes written as 128 lowercase hexadecimal digits
+pairing code   = the first 12 hexadecimal digits, in capitals, of
+                 SHA-256( UTF-8("fabric-desktop/1\nagent_key\n" + public key) ),
+                 written in three groups of four: AB12-CD34-EF56
+```
+
+The four members of the handshake text are those of the hello and its answer; `schema_version` is the adapter's. The public key is written as in the hello: `ed25519:` and its 32 bytes as 64 lowercase hexadecimal digits.
+
+- The broker answers every well-formed hello of its own schema version with a nonce, whatever the id. It decides only at `agent_prove`, after the signature verifies: an unknown id, a removed agent, a key that is not the approved one and a bad signature all get `not_permitted`. So a hello tells nobody which ids exist, and a key that was not proved is never recorded.
+- A public key belongs to at most one agent.
+- The key is proved once per connection. No later frame is signed (plan section 15.2, NOV17-SIGN).
+- A tool frame on a connection whose handshake did not end with `approved` gets `not_permitted`.
+- The pairing code lets the owner see that the key the broker holds for a pending agent is the key the agent's bridge holds: the bridge shows the same code.
+
+### Tool calls
 
 Every tool answers a `tool_outcome`: the request's status and, only when a fresh proof released it, a result.
 
@@ -146,6 +184,15 @@ Every tool answers a `tool_outcome`: the request's status and, only when a fresh
 - When no proof decided the request, the state is `undecided` and the status carries nothing more. Why it is undecided is for the owner only (section 7).
 - Past a request limit the broker answers the error `busy`, which is retryable and names the limit, its maximum and a wait in milliseconds. No request is created.
 - While the rule prover is not ready the broker may refuse a tool call with the error `prover_unavailable`, which is retryable and carries no detail. No request is created. A request the broker accepted all the same ends `undecided`.
+
+When the answer comes:
+
+- The broker answers an action when its request waits for the owner, was applied, has ended or has a released result. If none of these happens within a wait that the broker bounds, it answers with the status of that moment. This is how an agent gets the plan's first answer (its section 9.2): an Ask returns `pending_approval`, and an Allow returns the result. No answer is held while a person decides.
+- `fabric_request_status` is answered at once.
+- Answers on one connection may come in any order. An adapter matches them by `id`.
+- The broker closes a connection when its session ends, when its agent is removed and when the broker quits. An adapter then connects and proves its key again.
+
+Two things an adapter does are outside this contract. The error `broker_not_running` is made by an adapter that cannot reach the broker; the broker never sends it. And an adapter may show its own client a member that can be null as optional, and write the `null` itself: on the channel every member is present.
 
 No tool carries a warning: warnings are for the owner only in version 1 of Fabric Calendar. No tool approves, grants, edits a profile, deletes a calendar, changes sharing or reaches an arbitrary Google URL.
 
@@ -176,7 +223,7 @@ A recipient rule names exact addresses or recipient sets. No rule covers everyon
 
 An approval has one of three durations: `one_request`, `session`, `until_revoked`. A grant's `term` binds it: to one action digest, to one agent session, or to nothing but revocation, in which case it carries `"expires_at": null`. A session ends on disconnect, on app quit, on broker restart, or after `session_idle_timeout_seconds` without activity.
 
-A grant's `origin` names what created it: the owner's approval of a request (`request_id` and `approval_digest`), or the owner's approval of the agent's enrollment (`enrollment_id`).
+A grant's `origin` names what created it: the owner's approval of a request (`request_id` and `approval_digest`), or the owner's approval of the agent (`enrollment_id`, which is the agent's id).
 
 The calendar list (`fabric_calendar_list`) names no calendar. Its permission comes with the enrollment: when the owner approves an agent, the broker creates a grant until revoked whose only tool is `fabric_calendar_list` and whose scope names no calendar (plan section 15.2, NOV17-LIST). To the rules it is a grant like any other. Under a row whose mode is `allow` it permits the list; revoking it, or removing the agent, ends it. A scope that names no calendar covers no calendar, so such a grant serves no tool that names one. A calendar list request that needs the owner's approval, for example after the owner revoked that grant, gets a card whose scope names no calendar.
 
@@ -196,7 +243,7 @@ It is the internal authorization type that plan section 8 allows. The CBOR token
 
 Version 2 added why the rule prover is unavailable (`prover_problem` in `health`), why a request is undecided (`undecided_reason` in the request's details) and the agent error `prover_unavailable`. The protocol name stays `fabric-desktop/1`: `hello`, the frame format and the error envelope did not change, so a version 1 peer can still read the refusal `unsupported_schema_version`.
 
-Version 3 added the commands that the plan's text needs and its method table does not list: selecting calendars and naming Agent Drafts, deciding an enrollment, removing an agent, and resolving an unknown outcome by hand. With them came the waiting enrollments in the snapshot, three changes, two request states, a second origin of a grant, and a scope that names no calendar. It also added the list of ended requests, the deletion of a custom profile, and the prover problem `not_installed`. Every request, card, grant and account that was valid under version 2 is valid under version 3, so what a broker stored stays readable.
+Version 3 added the commands that the plan's text needs and its method table does not list: selecting calendars and naming Agent Drafts, adding, approving and removing an agent, and resolving an unknown outcome by hand. With them came the agent's enrollment state and pairing code, the configuration texts, the agent channel's handshake, two request states, a second origin of a grant, and a scope that names no calendar. It also added the list of ended requests, the deletion of a custom profile, and the prover problem `not_installed`. Every request, card, grant and account that was valid under version 2 is valid under version 3, so what a broker stored stays readable.
 
 ## 13. Fixtures and the contract suite
 
@@ -209,6 +256,7 @@ Both languages read the same files in `fixtures/`, compute every result themselv
 | `digests.json` | `[{"name", "domain", "subject", "canonical", "digest"}]` | Section 4. |
 | `lifecycle.json` | `[{"name", "states", "valid", "first_invalid"}]` | A sequence is valid when it starts at `received` and every step is a listed transition. `first_invalid` is the index of the first state that breaks this. |
 | `messages/*.json` | `{"description", "schema", source, "expect"}` | Section 5 against the named schema. |
+| `handshake.json` | `[{"name", "seed", "schema_version", "enrollment_id", "broker_nonce", "public_key", "pairing_code", "text", "signature"}]` | Section 8: the pairing code of the public key, the handshake text of the four values, and that the signature verifies under the public key. The Python reference also derives the public key and the signature from the seed. |
 
 A source is exactly one of four members. `text` is the text itself. `hex` gives its bytes in hexadecimal, for bytes that are not UTF-8. `generate` is `{"prefix", "fill", "count", "suffix"}` and stands for the prefix, then `fill` repeated `count` times, then the suffix. `value`, in a message fixture only, is a JSON value and stands for its canonical text. The fixture files themselves are ordinary JSON.
 
@@ -223,10 +271,11 @@ digest     <name>         <digest>
 lifecycle  <name>         valid|invalid  <first_invalid or ->
 message    <file name>    accept <sha256 of canonical> <command_digest or -> <action_digest or ->
 message    <file name>    reject <layer> <error>
+handshake  <name>         <pairing code> <sha256 of the handshake text>
 mutant     <id>           accept | reject <layer> <error>
 ```
 
-To add a fixture, write it with `"canonical"` and the digests null, or with the layer and error it must be refused with, and run `python3 contracts/desktop/v1/reference/reference.py bless`. It fills in what an accepted fixture expects and reports any fixture that is not judged as written.
+To add a fixture, write it with `"canonical"` and the digests null, or with the layer and error it must be refused with, and run `python3 contracts/desktop/v1/reference/reference.py bless`. It fills in what an accepted fixture expects and reports any fixture that is not judged as written. For a handshake fixture, write the seed, the version, the id and the nonce; `bless` fills in the rest.
 
 `scripts/verify-contracts.sh` runs both sides, compares the two reports byte for byte, then does the same for the mutants that the Rust side derives from the accepted messages: at every node of every accepted message, a member removed, an unknown member added, the value replaced by values of other types and by its neighbours, an object written as an array. The Rust verdict comes from the serde types and the TypeScript verdict from the schemas, so any place where the two describe different languages fails the suite. When Python 3 is installed the suite also runs the reference, whose report and verdicts must equal the Rust ones.
 
@@ -304,11 +353,11 @@ Version 3:
 
 46. `select_calendars` sets the whole selection of one account. The Agent Drafts calendar is named per account, and an account has at most one.
 47. Whether a change of selection ends a grant is left to the broker. A grant that ends is announced by its own notice.
-48. A waiting enrollment is a record of its own beside the agents, not an agent in a waiting state. The owner approves or rejects the name and the destination as shown and cannot edit them.
-49. Approving an enrollment gives the calendar list as a grant until revoked. The plan binds an "allowed tool scope" to the agent at enrollment (its section 4.3), and the owner's answer NOV17-LIST says what that scope holds. As a grant it is shown with the others and can be revoked alone, and the rule theory needs no change.
+48. An agent's enrollment is a state of its record (`pending`, `approved`, `removed`), and it starts in the application: the owner adds the agent, so its id exists before its bridge first runs. This is the bridge design's reading (`docs/plans/calendar-desktop-w06-design.md`, decision A18) of the plan's sentence that the configuration holds only the public enrollment id and the executable's location. The plan also says that enrollment starts with the bridge generating its key; under this reading the key comes second.
+49. Approving an agent gives the calendar list as a grant until revoked. The plan binds an "allowed tool scope" to the agent at enrollment (its section 4.3), and the owner's answer NOV17-LIST says what that scope holds. As a grant it is shown with the others and can be revoked alone, and the rule theory needs no change.
 50. That grant's scope names no calendar, so a scope's list of calendars may be empty. Such a scope covers no calendar. A calendar list request that needs approval gets a card with such a scope.
 51. A grant's origin has two forms that are told apart by their members, with no `kind` member, so that a grant stored under version 2 keeps its form.
-52. Removing an agent cancels its requests that were not handed to Google and lets the others run to their end. The removed agent leaves the snapshot, and the contract keeps no record of its name.
+52. Removing an agent cancels its requests that were not handed to Google and lets the others run to their end. The record of a removed agent stays in the snapshot.
 53. The owner can resolve an outcome by hand only in `needs_owner_resolution`, after the broker's own reconciliation gave up. The request ends in one of two new states, which say that the owner settled the outcome and the broker did not observe it.
 54. `needs_owner_resolution` is no longer terminal, so that the request stays in the snapshot until it is resolved. It then counts against the open-request limits.
 55. `resolve_outcome` answers `stale_request`, as `decide_request` does, when the request changed or is in another state.
@@ -316,15 +365,22 @@ Version 3:
 57. `delete_custom` in `save_profile`, and that the profile in force cannot be deleted. The owner's go for version 3 does not cover it.
 58. `not_installed` is a prover problem of its own, because the owner can act on it and cannot act on `not_configured`. It follows from the plan's answer that Isabelle is installed by a script (CD-Q09).
 59. The interface selects `one_request` first (NOV17-DURATION).
+60. The owner cannot change an agent's name or destination after adding it. The record does not keep the kind of client; the destination follows from it.
+61. `approve_agent` carries the pairing code, and a code that is not the current key's gets `invalid_params`.
+62. A pairing code is written as the owner reads it, with its two hyphens.
+63. `get_agent_configuration` returns all three texts, or null in their place when the broker cannot name an installed bridge. It does not say why.
+64. The handshake is two methods of the agent channel that are not tools. The signed text and the pairing code begin with the first line of the digest formula and have domains of their own. Keys, nonces and signatures are lowercase hexadecimal. These are the bridge design's shapes (its section 4.4).
+65. A tool frame before an approved handshake gets `not_permitted`.
+66. When the answer to an action comes (section 8). How long the broker waits at most is the broker's to set.
 
 ## 15. Not covered
 
 - Commands that the plan's text needs and its method table does not list: starting a People import, the task composer for the embedded runtime, and the message that cancels a request.
-- The agent channel's connection handshake, which proves possession of the enrolled key (CD-W06), and with it how an enrollment comes to wait for the owner and how many may wait. The plan fixes one point (section 15.2, NOV17-SIGN): the bridge proves its key once per connection and signs no single request.
+- The limits of the handshake: how long it may take, how many may run at once, how many agents may wait for approval, and what the broker records of one that fails.
 - What an account must carry for a partial grant (CD-W05).
 - How long the broker keeps ended requests.
 - Actions the broker starts itself, such as refresh and reconciliation reads, and the formal context with its digest (CD-W03, CD-W04).
 - A marker for practice accounts, attempts and reports.
 - Which of the durations that would serve a request the broker proposes on its card.
 - The names of the rules. The contract fixes their form; the rule theory names them. The rule names in the fixtures are examples.
-- Facts that tie several members together, which a schema cannot state and the broker must uphold: that a snapshot's requests are open and its grants have not ended, that an expansion names each row once, that the active profile exists, that an approval card expires 24 hours after it opens, that a card proposes no duration whose grant would not serve its request, that a scope for a tool that names calendars names at least one, that the Agent Drafts calendar of an account is selected and writable, that a grant made by an enrollment covers the calendar list alone, and that an authorization expires 60 seconds after it is issued (the Rust crate offers a check for the last).
+- Facts that tie several members together, which a schema cannot state and the broker must uphold: that a snapshot's requests are open and its grants have not ended, that an expansion names each row once, that the active profile exists, that an approval card expires 24 hours after it opens, that a card proposes no duration whose grant would not serve its request, that a scope for a tool that names calendars names at least one, that the Agent Drafts calendar of an account is selected and writable, that a grant made by an agent's approval covers the calendar list alone, how the members of an agent go together (section 7), and that an authorization expires 60 seconds after it is issued (the Rust crate offers a check for the last).

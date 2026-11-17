@@ -17,12 +17,12 @@ use crate::frame::{Entry, Frame, Layer, decode, decode_record};
 use crate::json::{MAX_SAFE_INTEGER, canonical, parse_strict, write_string};
 use crate::lifecycle::{RequestState, first_invalid};
 use crate::owner::{
-    Authorization, Enrollment, Grant, Preferences, Profile, ProofReport, RecipientSet, Request,
-    Scope,
+    Agent, Authorization, Grant, Preferences, Profile, ProofReport, RecipientSet, Request, Scope,
 };
 use crate::scalar::{
-    CustomProfileId, Date, Digest, DomainName, Email, EventTitle, Explanation, IanaZone, Id, Label,
-    LocalTime, NameToken, OffsetDateTime, PositiveCount, ProviderRef, Task, Timestamp,
+    ConfigurationText, CustomProfileId, Date, Digest, DomainName, Email, EventTitle, Explanation,
+    IanaZone, Id, Label, LocalTime, NameToken, Nonce, OffsetDateTime, PairingCode, PositiveCount,
+    ProviderRef, PublicKey, Signature, Task, Timestamp,
 };
 
 /// What the Rust types decided about one text.
@@ -48,7 +48,7 @@ pub const RECORD_REFERENCES: [&str; 12] = [
     "owner-channel.schema.json#/$defs/profile",
     "owner-channel.schema.json#/$defs/grant",
     "owner-channel.schema.json#/$defs/scope",
-    "owner-channel.schema.json#/$defs/enrollment",
+    "owner-channel.schema.json#/$defs/agent",
     "owner-channel.schema.json#/$defs/authorization",
     "owner-channel.schema.json#/$defs/recipient_set",
     "owner-channel.schema.json#/$defs/request",
@@ -109,7 +109,7 @@ pub fn judge(reference: &str, bytes: &[u8]) -> Result<Judgment, String> {
         r if r == o("profile") => record::<Profile>(bytes),
         r if r == o("grant") => record::<Grant>(bytes),
         r if r == o("scope") => record::<Scope>(bytes),
-        r if r == o("enrollment") => record::<Enrollment>(bytes),
+        r if r == o("agent") => record::<Agent>(bytes),
         r if r == o("authorization") => record::<Authorization>(bytes),
         r if r == o("recipient_set") => record::<RecipientSet>(bytes),
         r if r == o("request") => record::<Request>(bytes),
@@ -133,6 +133,11 @@ pub fn scalar_valid(reference: &str, value: &Value) -> Option<bool> {
         "common.schema.json#/$defs/id" => ok::<Id>(value),
         "common.schema.json#/$defs/timestamp" => ok::<Timestamp>(value),
         "common.schema.json#/$defs/digest" => ok::<Digest>(value),
+        "common.schema.json#/$defs/public_key" => ok::<PublicKey>(value),
+        "common.schema.json#/$defs/nonce" => ok::<Nonce>(value),
+        "common.schema.json#/$defs/signature" => ok::<Signature>(value),
+        "common.schema.json#/$defs/pairing_code" => ok::<PairingCode>(value),
+        "common.schema.json#/$defs/configuration_text" => ok::<ConfigurationText>(value),
         "common.schema.json#/$defs/count" => ok::<crate::scalar::Count>(value),
         "common.schema.json#/$defs/positive_count" => ok::<PositiveCount>(value),
         "common.schema.json#/$defs/label" => ok::<Label>(value),
@@ -332,6 +337,23 @@ pub fn report(contract: &Path) -> Result<(Vec<String>, Vec<String>), String> {
         }
     }
 
+    let handshakes = read_json(&fx.join("handshake.json"))?;
+    for e in handshakes.as_array().ok_or("handshake list")? {
+        let name = str_of(e, "name");
+        let computed = handshake_entry(e).map_err(|err| format!("handshake {name}: {err}"))?;
+        lines.push(format!(
+            "handshake\t{name}\t{}\t{}",
+            computed.pairing_code,
+            sha256_hex(&computed.text)
+        ));
+        if computed.pairing_code.as_str() != str_of(e, "pairing_code") {
+            problems.push(format!("handshake {name}: pairing code differs"));
+        }
+        if computed.text != str_of(e, "text") {
+            problems.push(format!("handshake {name}: text differs"));
+        }
+    }
+
     for file in message_files(contract)? {
         let e = read_json(&fx.join("messages").join(&file))?;
         let fixture = obj(&e)?;
@@ -388,6 +410,36 @@ pub fn report(contract: &Path) -> Result<(Vec<String>, Vec<String>), String> {
 
     lines.sort();
     Ok((lines, problems))
+}
+
+/// What this side computes for one entry of `handshake.json`: the pairing code of its public
+/// key and the handshake text of its four values. The signature is checked by the tests.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Handshake {
+    pub public_key: PublicKey,
+    pub pairing_code: PairingCode,
+    pub text: String,
+}
+
+/// Computes a `handshake.json` entry's pairing code and text from its members.
+pub fn handshake_entry(e: &Value) -> Result<Handshake, String> {
+    let read = |k: &str| str_of(e, k).to_owned();
+    let public_key = PublicKey::new(read("public_key")).map_err(|err| err.to_string())?;
+    let enrollment_id = Id::new(read("enrollment_id")).map_err(|err| err.to_string())?;
+    let broker_nonce = Nonce::new(read("broker_nonce")).map_err(|err| err.to_string())?;
+    let schema_version = e["schema_version"]
+        .as_u64()
+        .ok_or("schema_version is not a count")?;
+    Ok(Handshake {
+        pairing_code: crate::handshake::pairing_code(&public_key),
+        text: crate::handshake::handshake_text(
+            schema_version,
+            &enrollment_id,
+            &public_key,
+            &broker_nonce,
+        ),
+        public_key,
+    })
 }
 
 /// One mutant: an id `<file>#<n>`, the fixture's schema, and the canonical text.

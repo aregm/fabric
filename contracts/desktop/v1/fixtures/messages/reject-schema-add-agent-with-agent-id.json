@@ -1,0 +1,19 @@
+{
+  "description": "add_agent that names the id: the broker gives the id.",
+  "schema": "owner-channel.schema.json#/$defs/owner_request",
+  "value": {
+    "protocol": "fabric-desktop/1",
+    "id": "command-80",
+    "method": "add_agent",
+    "params": {
+      "registered_name": "Claude Desktop",
+      "client": "claude_desktop",
+      "agent_id": "agent-mine"
+    }
+  },
+  "expect": {
+    "verdict": "reject",
+    "layer": "schema",
+    "error": "invalid_params"
+  }
+}

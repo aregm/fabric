@@ -1,0 +1,20 @@
+{
+  "description": "approve_agent approves a waiting agent, naming the pairing code the owner saw.",
+  "schema": "owner-channel.schema.json#/$defs/owner_request",
+  "value": {
+    "protocol": "fabric-desktop/1",
+    "id": "command-82",
+    "method": "approve_agent",
+    "params": {
+      "agent_id": "agent-0123456789abcdef0123456789abcdef",
+      "expected_revision": 2,
+      "pairing_code": "4E7A-9852-EC06"
+    }
+  },
+  "expect": {
+    "verdict": "accept",
+    "canonical": "{\"id\":\"command-82\",\"method\":\"approve_agent\",\"params\":{\"agent_id\":\"agent-0123456789abcdef0123456789abcdef\",\"expected_revision\":2,\"pairing_code\":\"4E7A-9852-EC06\"},\"protocol\":\"fabric-desktop/1\"}",
+    "command_digest": "sha256:c839b325625dd6f5f2acef689cc30ec7f3d22b1ba422af3b07e7d995dc70a07b",
+    "action_digest": null
+  }
+}

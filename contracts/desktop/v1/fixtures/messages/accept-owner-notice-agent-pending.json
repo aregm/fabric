@@ -1,0 +1,35 @@
+{
+  "description": "An agent change: an agent the owner added, which has proved no key yet.",
+  "schema": "owner-channel.schema.json#/$defs/owner_notice",
+  "value": {
+    "protocol": "fabric-desktop/1",
+    "sequence": 1310,
+    "change": {
+      "kind": "agent",
+      "agent": {
+        "agent_id": "agent-0123456789abcdef0123456789abcdef",
+        "revision": 1,
+        "registered_name": "Claude Code (calendar folder)",
+        "destination": {
+          "kind": "cloud",
+          "processor": "Anthropic"
+        },
+        "enrollment": "pending",
+        "pairing_code": null,
+        "added_at": "2026-11-20T16:00:00.000Z",
+        "key_proven_at": null,
+        "approved_at": null,
+        "removed_at": null,
+        "paused": false,
+        "session": null,
+        "last_tool_call_at": null
+      }
+    }
+  },
+  "expect": {
+    "verdict": "accept",
+    "canonical": "{\"change\":{\"agent\":{\"added_at\":\"2026-11-20T16:00:00.000Z\",\"agent_id\":\"agent-0123456789abcdef0123456789abcdef\",\"approved_at\":null,\"destination\":{\"kind\":\"cloud\",\"processor\":\"Anthropic\"},\"enrollment\":\"pending\",\"key_proven_at\":null,\"last_tool_call_at\":null,\"pairing_code\":null,\"paused\":false,\"registered_name\":\"Claude Code (calendar folder)\",\"removed_at\":null,\"revision\":1,\"session\":null},\"kind\":\"agent\"},\"protocol\":\"fabric-desktop/1\",\"sequence\":1310}",
+    "command_digest": null,
+    "action_digest": null
+  }
+}

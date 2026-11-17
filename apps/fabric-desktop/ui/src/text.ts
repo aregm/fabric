@@ -509,11 +509,6 @@ export function changeText(change: Change, names: Names): string {
   switch (change.kind) {
     case "account": return `Account ${change.account.email ?? change.account.account_id}: ${ACCOUNT_TEXT[change.account.state]}`;
     case "agent": return `Agent ${change.agent.registered_name}${change.agent.paused ? " (paused)" : ""}`;
-    case "agent_removed": return `Agent ${agentName(names, change.agent_id)} was removed`;
-    case "enrollment": return `${change.enrollment.registered_name} asks to be added as an agent`;
-    case "enrollment_closed": return change.agent_id === null
-      ? "A request to be added as an agent was closed"
-      : `Agent ${agentName(names, change.agent_id)} was added`;
     case "profiles": return "Your permission profiles changed";
     case "recipient_set": return `Group ${change.recipient_set.definition.name} changed`;
     case "recipient_set_deleted": return "A group was deleted";

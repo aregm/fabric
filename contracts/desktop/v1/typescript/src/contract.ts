@@ -53,6 +53,11 @@ export type CalendarDate = string;
 export type LocalTime = string;
 export type OffsetDateTime = string;
 export type ProviderRef = string;
+export type PublicKey = `ed25519:${string}`; // ed25519: and 64 lowercase hexadecimal digits
+export type Nonce = string; // 64 lowercase hexadecimal digits
+export type Signature = string; // 128 lowercase hexadecimal digits
+export type PairingCode = string; // XXXX-XXXX-XXXX, hexadecimal digits in capitals
+export type ConfigurationText = string; // 1..=8192 code points
 
 // ---- Closed vocabularies ----
 
@@ -125,14 +130,16 @@ export type ErrorCode = (typeof ERROR_CODES)[number];
 export const OWNER_METHODS = [
   "hello", "get_snapshot", "connect_google", "save_profile", "save_preferences", "save_group", "decide_request",
   "pause_agent", "revoke_grant", "get_request_details", "get_proof", "subscribe", "disconnect_google",
-  "select_calendars", "resolve_outcome", "decide_enrollment", "remove_agent", "list_ended_requests",
+  "select_calendars", "resolve_outcome", "add_agent", "approve_agent", "remove_agent", "get_agent_configuration",
+  "list_ended_requests",
 ] as const;
 export type OwnerMethod = (typeof OWNER_METHODS)[number];
 
 // Owner methods that change broker state. Their frame id is the command id.
 export const OWNER_COMMANDS = [
   "connect_google", "save_profile", "save_preferences", "save_group", "decide_request", "pause_agent",
-  "revoke_grant", "disconnect_google", "select_calendars", "resolve_outcome", "decide_enrollment", "remove_agent",
+  "revoke_grant", "disconnect_google", "select_calendars", "resolve_outcome", "add_agent", "approve_agent",
+  "remove_agent",
 ] as const;
 export type OwnerCommand = (typeof OWNER_COMMANDS)[number];
 
@@ -365,7 +372,8 @@ export interface GrantEnd {
   readonly at: Timestamp;
   readonly reason: GrantEndReason;
 }
-// What created a grant: the approval of a request, or the approval of the agent's enrollment.
+// What created a grant: the approval of a request, or the approval of the agent's enrollment,
+// whose `enrollment_id` is the agent's id.
 export type GrantOrigin =
   | { readonly request_id: Id; readonly approval_digest: Digest }
   | { readonly enrollment_id: Id };
@@ -394,22 +402,24 @@ export interface Session {
   readonly started_at: Timestamp;
   readonly last_active_at: Timestamp;
 }
+export const AGENT_ENROLLMENTS = ["pending", "approved", "removed"] as const;
+export type AgentEnrollment = (typeof AGENT_ENROLLMENTS)[number];
+// An agent the owner added. `pairing_code` is the code of the key the agent proved, and
+// null until it has proved one.
 export interface Agent {
   readonly agent_id: Id;
   readonly revision: PositiveCount;
   readonly registered_name: Label;
   readonly destination: Destination;
+  readonly enrollment: AgentEnrollment;
+  readonly pairing_code: PairingCode | null;
+  readonly added_at: Timestamp;
+  readonly key_proven_at: Timestamp | null;
+  readonly approved_at: Timestamp | null;
+  readonly removed_at: Timestamp | null;
   readonly paused: boolean;
   readonly session: Session | null;
   readonly last_tool_call_at: Timestamp | null;
-}
-// An agent that asked to be enrolled and waits for the owner's decision.
-export interface Enrollment {
-  readonly enrollment_id: Id;
-  readonly revision: PositiveCount;
-  readonly registered_name: Label;
-  readonly destination: Destination;
-  readonly requested_at: Timestamp;
 }
 export interface Calendar {
   readonly calendar_id: Id;
@@ -581,7 +591,6 @@ export interface Snapshot {
   readonly profiles: Profiles;
   readonly accounts: readonly Account[];
   readonly agents: readonly Agent[];
-  readonly enrollments: readonly Enrollment[];
   readonly recipient_sets: readonly RecipientSet[];
   readonly preferences: Preferences;
   readonly requests: readonly Request[];
@@ -590,9 +599,6 @@ export interface Snapshot {
 export type Change =
   | { readonly kind: "account"; readonly account: Account }
   | { readonly kind: "agent"; readonly agent: Agent }
-  | { readonly kind: "agent_removed"; readonly agent_id: Id }
-  | { readonly kind: "enrollment"; readonly enrollment: Enrollment }
-  | { readonly kind: "enrollment_closed"; readonly enrollment_id: Id; readonly agent_id: Id | null }
   | { readonly kind: "profiles"; readonly profiles: Profiles }
   | { readonly kind: "recipient_set"; readonly recipient_set: RecipientSet }
   | { readonly kind: "recipient_set_deleted"; readonly recipient_set_id: Id }
@@ -741,25 +747,43 @@ export interface ResultResolveOutcome {
   readonly commit_sequence: PositiveCount;
   readonly request: Request;
 }
-export type EnrollmentDecision = "approve" | "reject";
-export interface ParamsDecideEnrollment {
-  readonly enrollment_id: Id;
-  readonly expected_revision: Count;
-  readonly decision: EnrollmentDecision;
+export const AGENT_CLIENTS = ["claude_desktop", "claude_code", "codex_desktop"] as const;
+export type AgentClient = (typeof AGENT_CLIENTS)[number];
+// The broker gives the agent an id and, from the kind of client, where its data goes.
+export interface ParamsAddAgent {
+  readonly registered_name: Label;
+  readonly client: AgentClient;
 }
-// `agent` is the agent an approval created, and null for a rejection.
-export interface ResultDecideEnrollment {
+export interface ResultAddAgent {
   readonly commit_sequence: PositiveCount;
-  readonly agent: Agent | null;
+  readonly agent: Agent;
+}
+// `pairing_code` must be the code of the key the agent proved last.
+export interface ParamsApproveAgent {
+  readonly agent_id: Id;
+  readonly expected_revision: Count;
+  readonly pairing_code: PairingCode;
+}
+export interface ResultApproveAgent {
+  readonly commit_sequence: PositiveCount;
+  readonly agent: Agent;
 }
 export interface ParamsRemoveAgent {
   readonly agent_id: Id;
   readonly expected_revision: Count;
 }
+// `agent` is the removed agent, whose record stays.
 export interface ResultRemoveAgent {
   readonly commit_sequence: PositiveCount;
-  readonly agent_id: Id;
+  readonly agent: Agent;
   readonly ended_grant_ids: readonly Id[];
+}
+export interface ParamsGetAgentConfiguration {
+  readonly agent_id: Id;
+}
+// `configuration` is null when the broker cannot name an installed bridge.
+export interface ResultGetAgentConfiguration {
+  readonly configuration: { readonly [C in AgentClient]: ConfigurationText } | null;
 }
 // `before` is null for the first page, or the id of the last request of the page before.
 export interface ParamsListEndedRequests {
@@ -789,8 +813,13 @@ export interface OwnerMethods {
   readonly disconnect_google: { readonly params: ParamsDisconnectGoogle; readonly result: ResultDisconnectGoogle };
   readonly select_calendars: { readonly params: ParamsSelectCalendars; readonly result: ResultSelectCalendars };
   readonly resolve_outcome: { readonly params: ParamsResolveOutcome; readonly result: ResultResolveOutcome };
-  readonly decide_enrollment: { readonly params: ParamsDecideEnrollment; readonly result: ResultDecideEnrollment };
+  readonly add_agent: { readonly params: ParamsAddAgent; readonly result: ResultAddAgent };
+  readonly approve_agent: { readonly params: ParamsApproveAgent; readonly result: ResultApproveAgent };
   readonly remove_agent: { readonly params: ParamsRemoveAgent; readonly result: ResultRemoveAgent };
+  readonly get_agent_configuration: {
+    readonly params: ParamsGetAgentConfiguration;
+    readonly result: ResultGetAgentConfiguration;
+  };
   readonly list_ended_requests: { readonly params: ParamsListEndedRequests; readonly result: ResultListEndedRequests };
 }
 
@@ -1002,15 +1031,42 @@ export interface ToolOutcome {
 
 // ---- Agent frames ----
 
-export type AgentRequest = {
-  readonly [T in ToolName]: {
-    readonly protocol: Protocol;
-    readonly id: Id;
-    readonly method: T;
-    readonly params: ToolArguments[T];
-  };
-}[ToolName];
+// The two handshake methods, which come before any tool frame on a connection and are not
+// tools (README section 8).
+export const HANDSHAKE_METHODS = ["agent_hello", "agent_prove"] as const;
+export type HandshakeMethod = (typeof HANDSHAKE_METHODS)[number];
+export interface ParamsAgentHello {
+  readonly schema_version: Count;
+  readonly enrollment_id: Id;
+  readonly public_key: PublicKey;
+}
+export interface ResultAgentHello {
+  readonly schema_version: PositiveCount;
+  readonly broker_nonce: Nonce;
+}
+// The Ed25519 signature over the handshake text, made with the key of the hello.
+export interface ParamsAgentProve {
+  readonly signature: Signature;
+}
+// approved: the session has started. pending: the owner has not approved yet.
+export interface ResultAgentProve {
+  readonly enrollment: "approved" | "pending";
+}
+
+export type AgentRequest =
+  | { readonly protocol: Protocol; readonly id: Id; readonly method: "agent_hello"; readonly params: ParamsAgentHello }
+  | { readonly protocol: Protocol; readonly id: Id; readonly method: "agent_prove"; readonly params: ParamsAgentProve }
+  | {
+      readonly [T in ToolName]: {
+        readonly protocol: Protocol;
+        readonly id: Id;
+        readonly method: T;
+        readonly params: ToolArguments[T];
+      };
+    }[ToolName];
 
 export type AgentResponse =
+  | { readonly protocol: Protocol; readonly id: Id; readonly method: "agent_hello"; readonly result: ResultAgentHello }
+  | { readonly protocol: Protocol; readonly id: Id; readonly method: "agent_prove"; readonly result: ResultAgentProve }
   | { readonly protocol: Protocol; readonly id: Id; readonly method: ToolName; readonly result: ToolOutcome }
   | { readonly protocol: Protocol; readonly id: Id | null; readonly method: string | null; readonly error: AgentError };

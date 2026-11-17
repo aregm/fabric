@@ -1,0 +1,15 @@
+{
+  "description": "A configuration text of 8193 characters, one more than the bound.",
+  "schema": "owner-channel.schema.json#/$defs/owner_response",
+  "generate": {
+    "prefix": "{\"id\":\"config-1\",\"method\":\"get_agent_configuration\",\"protocol\":\"fabric-desktop/1\",\"result\":{\"configuration\":{\"claude_code\":\"x\",\"claude_desktop\":\"",
+    "fill": "a",
+    "count": 8193,
+    "suffix": "\",\"codex_desktop\":\"x\"}}}"
+  },
+  "expect": {
+    "verdict": "reject",
+    "layer": "schema",
+    "error": "invalid_params"
+  }
+}

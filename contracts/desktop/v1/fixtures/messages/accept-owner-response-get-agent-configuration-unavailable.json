@@ -1,0 +1,18 @@
+{
+  "description": "get_agent_configuration when the broker cannot name an installed bridge.",
+  "schema": "owner-channel.schema.json#/$defs/owner_response",
+  "value": {
+    "protocol": "fabric-desktop/1",
+    "id": "config-1",
+    "method": "get_agent_configuration",
+    "result": {
+      "configuration": null
+    }
+  },
+  "expect": {
+    "verdict": "accept",
+    "canonical": "{\"id\":\"config-1\",\"method\":\"get_agent_configuration\",\"protocol\":\"fabric-desktop/1\",\"result\":{\"configuration\":null}}",
+    "command_digest": null,
+    "action_digest": null
+  }
+}

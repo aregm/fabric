@@ -1,5 +1,5 @@
 {
-  "description": "The methods of the owner channel: the thirteen of plan section 9.1, and five that the plan's text needs (README section 7). A method with `command` true changes broker state: its frame id is the command id, and the broker deduplicates it by command id and command digest. `params` and `result` name the schemas.",
+  "description": "The methods of the owner channel: the thirteen of plan section 9.1, and seven that the plan's text needs (README section 7). A method with `command` true changes broker state: its frame id is the command id, and the broker deduplicates it by command id and command digest. `params` and `result` name the schemas.",
   "methods": [
     { "method": "hello", "command": false, "params": "owner-channel.schema.json#/$defs/params_hello", "result": "owner-channel.schema.json#/$defs/result_hello" },
     { "method": "get_snapshot", "command": false, "params": "owner-channel.schema.json#/$defs/params_get_snapshot", "result": "owner-channel.schema.json#/$defs/snapshot" },
@@ -16,8 +16,10 @@
     { "method": "disconnect_google", "command": true, "params": "owner-channel.schema.json#/$defs/params_disconnect_google", "result": "owner-channel.schema.json#/$defs/result_disconnect_google" },
     { "method": "select_calendars", "command": true, "params": "owner-channel.schema.json#/$defs/params_select_calendars", "result": "owner-channel.schema.json#/$defs/result_select_calendars" },
     { "method": "resolve_outcome", "command": true, "params": "owner-channel.schema.json#/$defs/params_resolve_outcome", "result": "owner-channel.schema.json#/$defs/result_resolve_outcome" },
-    { "method": "decide_enrollment", "command": true, "params": "owner-channel.schema.json#/$defs/params_decide_enrollment", "result": "owner-channel.schema.json#/$defs/result_decide_enrollment" },
+    { "method": "add_agent", "command": true, "params": "owner-channel.schema.json#/$defs/params_add_agent", "result": "owner-channel.schema.json#/$defs/result_add_agent" },
+    { "method": "approve_agent", "command": true, "params": "owner-channel.schema.json#/$defs/params_approve_agent", "result": "owner-channel.schema.json#/$defs/result_approve_agent" },
     { "method": "remove_agent", "command": true, "params": "owner-channel.schema.json#/$defs/params_remove_agent", "result": "owner-channel.schema.json#/$defs/result_remove_agent" },
+    { "method": "get_agent_configuration", "command": false, "params": "owner-channel.schema.json#/$defs/params_get_agent_configuration", "result": "owner-channel.schema.json#/$defs/result_get_agent_configuration" },
     { "method": "list_ended_requests", "command": false, "params": "owner-channel.schema.json#/$defs/params_list_ended_requests", "result": "owner-channel.schema.json#/$defs/result_list_ended_requests" }
   ]
 }

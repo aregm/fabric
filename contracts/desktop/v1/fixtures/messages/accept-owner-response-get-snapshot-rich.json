@@ -1,5 +1,5 @@
 {
-  "description": "A full snapshot: both built-in profiles and a custom one, two accounts, four agents, two recipient sets, open requests and one grant of each term kind.",
+  "description": "A full snapshot: both built-in profiles and a custom one, two accounts, six agents (four approved, one waiting with a proven key, one removed), two recipient sets, open requests and one grant of each term kind.",
   "schema": "owner-channel.schema.json#/$defs/owner_response",
   "value": {
     "protocol": "fabric-desktop/1",
@@ -141,6 +141,12 @@
             "kind": "cloud",
             "processor": "Anthropic"
           },
+          "enrollment": "approved",
+          "pairing_code": "100D-25BE-C78D",
+          "added_at": "2026-11-18T09:00:00.000Z",
+          "key_proven_at": "2026-11-18T09:02:13.000Z",
+          "approved_at": "2026-11-18T09:04:40.000Z",
+          "removed_at": null,
           "paused": false,
           "session": null,
           "last_tool_call_at": "2026-11-20T09:41:00.000Z"
@@ -153,6 +159,12 @@
             "kind": "cloud",
             "processor": "Anthropic"
           },
+          "enrollment": "approved",
+          "pairing_code": "991B-797A-B0EB",
+          "added_at": "2026-11-18T09:00:00.000Z",
+          "key_proven_at": "2026-11-18T09:02:13.000Z",
+          "approved_at": "2026-11-18T09:04:40.000Z",
+          "removed_at": null,
           "paused": false,
           "session": {
             "session_id": "session-claude-code-7",
@@ -169,6 +181,12 @@
             "kind": "cloud",
             "processor": "OpenAI"
           },
+          "enrollment": "approved",
+          "pairing_code": "D559-F078-3B34",
+          "added_at": "2026-11-18T09:00:00.000Z",
+          "key_proven_at": "2026-11-18T09:02:13.000Z",
+          "approved_at": "2026-11-18T09:04:40.000Z",
+          "removed_at": null,
           "paused": true,
           "session": null,
           "last_tool_call_at": null
@@ -181,21 +199,51 @@
             "kind": "local",
             "endpoint": "Embedded Ollama runtime on this Mac"
           },
+          "enrollment": "approved",
+          "pairing_code": "1C2E-22D3-7429",
+          "added_at": "2026-11-18T09:00:00.000Z",
+          "key_proven_at": "2026-11-18T09:02:13.000Z",
+          "approved_at": "2026-11-18T09:04:40.000Z",
+          "removed_at": null,
           "paused": false,
           "session": null,
           "last_tool_call_at": null
-        }
-      ],
-      "enrollments": [
+        },
         {
-          "enrollment_id": "enrollment-3",
-          "revision": 1,
-          "registered_name": "Cursor",
+          "agent_id": "agent-0123456789abcdef0123456789abcdef",
+          "revision": 2,
+          "registered_name": "Claude Code (calendar folder)",
           "destination": {
             "kind": "cloud",
-            "processor": "Anysphere"
+            "processor": "Anthropic"
           },
-          "requested_at": "2026-11-20T15:10:00.000Z"
+          "enrollment": "pending",
+          "pairing_code": "4E7A-9852-EC06",
+          "added_at": "2026-11-20T16:00:00.000Z",
+          "key_proven_at": "2026-11-20T16:03:12.000Z",
+          "approved_at": null,
+          "removed_at": null,
+          "paused": false,
+          "session": null,
+          "last_tool_call_at": null
+        },
+        {
+          "agent_id": "agent-codex-old",
+          "revision": 3,
+          "registered_name": "Codex Desktop (old key)",
+          "destination": {
+            "kind": "cloud",
+            "processor": "OpenAI"
+          },
+          "enrollment": "removed",
+          "pairing_code": "3C51-90AA-7E02",
+          "added_at": "2026-11-18T09:00:00.000Z",
+          "key_proven_at": "2026-11-18T09:02:13.000Z",
+          "approved_at": "2026-11-18T09:04:40.000Z",
+          "removed_at": "2026-11-20T15:58:02.000Z",
+          "paused": true,
+          "session": null,
+          "last_tool_call_at": null
         }
       ],
       "recipient_sets": [
@@ -402,7 +450,7 @@
   },
   "expect": {
     "verdict": "accept",
-    "canonical": "{\"id\":\"snapshot-1\",\"method\":\"get_snapshot\",\"protocol\":\"fabric-desktop/1\",\"result\":{\"accounts\":[{\"account_id\":\"acct-1\",\"calendars\":[{\"access\":\"owner\",\"agent_drafts\":false,\"calendar_id\":\"cal-primary\",\"name\":\"Owner\",\"selected\":true},{\"access\":\"owner\",\"agent_drafts\":true,\"calendar_id\":\"cal-drafts\",\"name\":\"Agent Drafts\",\"selected\":true},{\"access\":\"writer\",\"agent_drafts\":false,\"calendar_id\":\"cal-team-shared\",\"name\":\"Team schedule\",\"selected\":true}],\"email\":\"owner@example.com\",\"revision\":4,\"state\":\"connected\"},{\"account_id\":\"acct-2\",\"calendars\":[{\"access\":\"owner\",\"agent_drafts\":false,\"calendar_id\":\"cal-work-primary\",\"name\":\"Work\",\"selected\":true},{\"access\":\"writer\",\"agent_drafts\":false,\"calendar_id\":\"cal-family-shared\",\"name\":\"Family\",\"selected\":false},{\"access\":\"reader\",\"agent_drafts\":false,\"calendar_id\":\"cal-holidays\",\"name\":\"Holidays\",\"selected\":false}],\"email\":\"owner.work@example.org\",\"revision\":9,\"state\":\"reauthentication_required\"}],\"agents\":[{\"agent_id\":\"agent-claude-desktop\",\"destination\":{\"kind\":\"cloud\",\"processor\":\"Anthropic\"},\"last_tool_call_at\":\"2026-11-20T09:41:00.000Z\",\"paused\":false,\"registered_name\":\"Claude Desktop\",\"revision\":3,\"session\":null},{\"agent_id\":\"agent-claude-code\",\"destination\":{\"kind\":\"cloud\",\"processor\":\"Anthropic\"},\"last_tool_call_at\":\"2026-11-20T15:12:41.503Z\",\"paused\":false,\"registered_name\":\"Claude Code\",\"revision\":5,\"session\":{\"last_active_at\":\"2026-11-20T15:12:41.503Z\",\"session_id\":\"session-claude-code-7\",\"started_at\":\"2026-11-20T14:00:00.000Z\"}},{\"agent_id\":\"agent-codex-desktop\",\"destination\":{\"kind\":\"cloud\",\"processor\":\"OpenAI\"},\"last_tool_call_at\":null,\"paused\":true,\"registered_name\":\"Codex Desktop\",\"revision\":2,\"session\":null},{\"agent_id\":\"agent-ollama\",\"destination\":{\"endpoint\":\"Embedded Ollama runtime on this Mac\",\"kind\":\"local\"},\"last_tool_call_at\":null,\"paused\":false,\"registered_name\":\"Fabric local assistant\",\"revision\":1,\"session\":null}],\"cursor\":1287,\"enrollments\":[{\"destination\":{\"kind\":\"cloud\",\"processor\":\"Anysphere\"},\"enrollment_id\":\"enrollment-3\",\"registered_name\":\"Cursor\",\"requested_at\":\"2026-11-20T15:10:00.000Z\",\"revision\":1}],\"grants\":[{\"agent_id\":\"agent-claude-desktop\",\"created_at\":\"2026-11-20T15:20:00.000Z\",\"ended\":null,\"grant_id\":\"grant-4\",\"origin\":{\"approval_digest\":\"sha256:902819aeacc9eefb1a3ab249f04765d76ca09734f204f7971813eb766cac163e\",\"request_id\":\"request-19\"},\"policy\":{\"profile_id\":\"careful\",\"version\":1},\"purpose\":\"Add a planning block to the drafts calendar.\",\"revision\":1,\"revocation_epoch\":0,\"scope\":{\"calendars\":[{\"account_id\":\"acct-1\",\"calendar_id\":\"cal-drafts\"}],\"fields\":null,\"recipients\":null,\"send_updates\":null,\"window\":null},\"term\":{\"action_digest\":\"sha256:893536beccfafc5e41cb8a289ea49ebe680a4a5d5074a0f4987c5cc6d2547018\",\"kind\":\"one_request\"},\"tools\":[\"fabric_calendar_propose_create\"]},{\"agent_id\":\"agent-claude-code\",\"created_at\":\"2026-11-20T14:05:00.000Z\",\"ended\":null,\"grant_id\":\"grant-5\",\"origin\":{\"approval_digest\":\"sha256:9ffdeaab4d3c5b25375e3861c0880d5f2fa9c737c6cc785c27db75f789c76c07\",\"request_id\":\"request-15\"},\"policy\":{\"profile_id\":\"careful\",\"version\":1},\"purpose\":\"Check this week's meetings while planning the release.\",\"revision\":1,\"revocation_epoch\":0,\"scope\":{\"calendars\":[{\"account_id\":\"acct-1\",\"calendar_id\":\"cal-primary\"}],\"fields\":[\"time\",\"title\"],\"recipients\":null,\"send_updates\":null,\"window\":{\"end\":\"2026-11-21T06:00:00.000Z\",\"start\":\"2026-11-20T06:00:00.000Z\"}},\"term\":{\"kind\":\"session\",\"session_id\":\"session-claude-code-7\"},\"tools\":[\"fabric_calendar_read\",\"fabric_request_result\"]},{\"agent_id\":\"agent-claude-desktop\",\"created_at\":\"2026-11-18T17:00:00.000Z\",\"ended\":null,\"grant_id\":\"grant-6\",\"origin\":{\"approval_digest\":\"sha256:6844fb7a9f058ccb36f804ec122a9fb35a94db83a04f3b66c857e08cb98e7147\",\"request_id\":\"request-9\"},\"policy\":{\"profile_id\":\"custom-assistant\",\"version\":2},\"purpose\":\"Invite the team to planning meetings.\",\"revision\":2,\"revocation_epoch\":1,\"scope\":{\"calendars\":[{\"account_id\":\"acct-1\",\"calendar_id\":\"cal-team-shared\"}],\"fields\":null,\"recipients\":{\"kind\":\"recipient_sets\",\"recipient_set_ids\":[\"rset-team\",\"rset-people-family\"]},\"send_updates\":\"all\",\"window\":null},\"term\":{\"expires_at\":null,\"kind\":\"until_revoked\"},\"tools\":[\"fabric_calendar_propose_invitation\",\"fabric_calendar_propose_update\"]}],\"health\":{\"prover\":\"ready\",\"prover_problem\":null,\"store\":\"ready\"},\"preferences\":{\"revision\":0,\"settings\":{\"buffer\":null,\"protected_times\":[],\"uninterrupted\":null,\"warning_calendars\":[],\"workday\":null,\"zone\":null}},\"profiles\":{\"active_profile_id\":\"careful\",\"items\":[{\"kind\":\"built_in\",\"name\":\"Careful\",\"profile_id\":\"careful\",\"rows\":{\"create_in_agent_drafts\":\"allow\",\"create_in_existing_calendar\":\"ask\",\"delete_calendar_or_change_sharing\":\"block\",\"delete_event\":\"ask\",\"edit_fabric_created_event\":\"ask\",\"edit_preexisting_event\":\"ask\",\"list_and_availability\":\"allow\",\"read_event_details\":\"ask\",\"respond_to_invitation\":\"ask\",\"send_or_change_invitations\":\"ask\"},\"version\":1},{\"kind\":\"built_in\",\"name\":\"Flexible\",\"profile_id\":\"flexible\",\"rows\":{\"create_in_agent_drafts\":\"allow\",\"create_in_existing_calendar\":\"allow\",\"delete_calendar_or_change_sharing\":\"block\",\"delete_event\":\"ask\",\"edit_fabric_created_event\":\"allow\",\"edit_preexisting_event\":\"ask\",\"list_and_availability\":\"allow\",\"read_event_details\":\"allow\",\"respond_to_invitation\":\"ask\",\"send_or_change_invitations\":\"allow\"},\"version\":1},{\"kind\":\"custom\",\"name\":\"Assistant hours\",\"profile_id\":\"custom-assistant\",\"rows\":{\"create_in_agent_drafts\":\"allow\",\"create_in_existing_calendar\":\"allow\",\"delete_calendar_or_change_sharing\":\"block\",\"delete_event\":\"ask\",\"edit_fabric_created_event\":\"allow\",\"edit_preexisting_event\":\"allow\",\"list_and_availability\":\"allow\",\"read_event_details\":\"allow\",\"respond_to_invitation\":\"allow\",\"send_or_change_invitations\":\"allow\"},\"version\":2}],\"revision\":7},\"recipient_sets\":[{\"definition\":{\"domains\":[\"example.com\"],\"members\":[\"ally@example.net\",\"sam.lee@example.org\"],\"name\":\"Team\"},\"recipient_set_id\":\"rset-team\",\"revision\":2,\"source\":{\"kind\":\"local\"}},{\"definition\":{\"domains\":[],\"members\":[\"parent@example.net\",\"sibling@example.net\"],\"name\":\"Family (Google contacts)\"},\"recipient_set_id\":\"rset-people-family\",\"revision\":1,\"source\":{\"account_id\":\"acct-1\",\"imported_at\":\"2026-11-20T08:30:00.000Z\",\"kind\":\"google_people\"}}],\"requests\":[{\"account_id\":\"acct-1\",\"agent_id\":\"agent-claude-desktop\",\"received_at\":\"2026-11-20T15:00:00.000Z\",\"request_digest\":\"sha256:9448c124de44cd137bb4a3c63df81e9a3a0ae40af06db3642c413320c1d76053\",\"request_id\":\"request-17\",\"revision\":3,\"status\":{\"approval_expires_at\":\"2026-11-21T15:00:00.000Z\",\"state\":\"pending_approval\"},\"tool\":\"fabric_calendar_propose_invitation\",\"updated_at\":\"2026-11-20T15:00:01.250Z\"},{\"account_id\":\"acct-1\",\"agent_id\":\"agent-claude-code\",\"received_at\":\"2026-11-20T15:12:41.503Z\",\"request_digest\":\"sha256:7a4b17e48cacba5ae9e25209e7bd593aa0cf0d0e01a657848666a8ea138d4707\",\"request_id\":\"request-18\",\"revision\":2,\"status\":{\"state\":\"proving_classification\"},\"tool\":\"fabric_calendar_read\",\"updated_at\":\"2026-11-20T15:12:41.640Z\"}]}}",
+    "canonical": "{\"id\":\"snapshot-1\",\"method\":\"get_snapshot\",\"protocol\":\"fabric-desktop/1\",\"result\":{\"accounts\":[{\"account_id\":\"acct-1\",\"calendars\":[{\"access\":\"owner\",\"agent_drafts\":false,\"calendar_id\":\"cal-primary\",\"name\":\"Owner\",\"selected\":true},{\"access\":\"owner\",\"agent_drafts\":true,\"calendar_id\":\"cal-drafts\",\"name\":\"Agent Drafts\",\"selected\":true},{\"access\":\"writer\",\"agent_drafts\":false,\"calendar_id\":\"cal-team-shared\",\"name\":\"Team schedule\",\"selected\":true}],\"email\":\"owner@example.com\",\"revision\":4,\"state\":\"connected\"},{\"account_id\":\"acct-2\",\"calendars\":[{\"access\":\"owner\",\"agent_drafts\":false,\"calendar_id\":\"cal-work-primary\",\"name\":\"Work\",\"selected\":true},{\"access\":\"writer\",\"agent_drafts\":false,\"calendar_id\":\"cal-family-shared\",\"name\":\"Family\",\"selected\":false},{\"access\":\"reader\",\"agent_drafts\":false,\"calendar_id\":\"cal-holidays\",\"name\":\"Holidays\",\"selected\":false}],\"email\":\"owner.work@example.org\",\"revision\":9,\"state\":\"reauthentication_required\"}],\"agents\":[{\"added_at\":\"2026-11-18T09:00:00.000Z\",\"agent_id\":\"agent-claude-desktop\",\"approved_at\":\"2026-11-18T09:04:40.000Z\",\"destination\":{\"kind\":\"cloud\",\"processor\":\"Anthropic\"},\"enrollment\":\"approved\",\"key_proven_at\":\"2026-11-18T09:02:13.000Z\",\"last_tool_call_at\":\"2026-11-20T09:41:00.000Z\",\"pairing_code\":\"100D-25BE-C78D\",\"paused\":false,\"registered_name\":\"Claude Desktop\",\"removed_at\":null,\"revision\":3,\"session\":null},{\"added_at\":\"2026-11-18T09:00:00.000Z\",\"agent_id\":\"agent-claude-code\",\"approved_at\":\"2026-11-18T09:04:40.000Z\",\"destination\":{\"kind\":\"cloud\",\"processor\":\"Anthropic\"},\"enrollment\":\"approved\",\"key_proven_at\":\"2026-11-18T09:02:13.000Z\",\"last_tool_call_at\":\"2026-11-20T15:12:41.503Z\",\"pairing_code\":\"991B-797A-B0EB\",\"paused\":false,\"registered_name\":\"Claude Code\",\"removed_at\":null,\"revision\":5,\"session\":{\"last_active_at\":\"2026-11-20T15:12:41.503Z\",\"session_id\":\"session-claude-code-7\",\"started_at\":\"2026-11-20T14:00:00.000Z\"}},{\"added_at\":\"2026-11-18T09:00:00.000Z\",\"agent_id\":\"agent-codex-desktop\",\"approved_at\":\"2026-11-18T09:04:40.000Z\",\"destination\":{\"kind\":\"cloud\",\"processor\":\"OpenAI\"},\"enrollment\":\"approved\",\"key_proven_at\":\"2026-11-18T09:02:13.000Z\",\"last_tool_call_at\":null,\"pairing_code\":\"D559-F078-3B34\",\"paused\":true,\"registered_name\":\"Codex Desktop\",\"removed_at\":null,\"revision\":2,\"session\":null},{\"added_at\":\"2026-11-18T09:00:00.000Z\",\"agent_id\":\"agent-ollama\",\"approved_at\":\"2026-11-18T09:04:40.000Z\",\"destination\":{\"endpoint\":\"Embedded Ollama runtime on this Mac\",\"kind\":\"local\"},\"enrollment\":\"approved\",\"key_proven_at\":\"2026-11-18T09:02:13.000Z\",\"last_tool_call_at\":null,\"pairing_code\":\"1C2E-22D3-7429\",\"paused\":false,\"registered_name\":\"Fabric local assistant\",\"removed_at\":null,\"revision\":1,\"session\":null},{\"added_at\":\"2026-11-20T16:00:00.000Z\",\"agent_id\":\"agent-0123456789abcdef0123456789abcdef\",\"approved_at\":null,\"destination\":{\"kind\":\"cloud\",\"processor\":\"Anthropic\"},\"enrollment\":\"pending\",\"key_proven_at\":\"2026-11-20T16:03:12.000Z\",\"last_tool_call_at\":null,\"pairing_code\":\"4E7A-9852-EC06\",\"paused\":false,\"registered_name\":\"Claude Code (calendar folder)\",\"removed_at\":null,\"revision\":2,\"session\":null},{\"added_at\":\"2026-11-18T09:00:00.000Z\",\"agent_id\":\"agent-codex-old\",\"approved_at\":\"2026-11-18T09:04:40.000Z\",\"destination\":{\"kind\":\"cloud\",\"processor\":\"OpenAI\"},\"enrollment\":\"removed\",\"key_proven_at\":\"2026-11-18T09:02:13.000Z\",\"last_tool_call_at\":null,\"pairing_code\":\"3C51-90AA-7E02\",\"paused\":true,\"registered_name\":\"Codex Desktop (old key)\",\"removed_at\":\"2026-11-20T15:58:02.000Z\",\"revision\":3,\"session\":null}],\"cursor\":1287,\"grants\":[{\"agent_id\":\"agent-claude-desktop\",\"created_at\":\"2026-11-20T15:20:00.000Z\",\"ended\":null,\"grant_id\":\"grant-4\",\"origin\":{\"approval_digest\":\"sha256:902819aeacc9eefb1a3ab249f04765d76ca09734f204f7971813eb766cac163e\",\"request_id\":\"request-19\"},\"policy\":{\"profile_id\":\"careful\",\"version\":1},\"purpose\":\"Add a planning block to the drafts calendar.\",\"revision\":1,\"revocation_epoch\":0,\"scope\":{\"calendars\":[{\"account_id\":\"acct-1\",\"calendar_id\":\"cal-drafts\"}],\"fields\":null,\"recipients\":null,\"send_updates\":null,\"window\":null},\"term\":{\"action_digest\":\"sha256:893536beccfafc5e41cb8a289ea49ebe680a4a5d5074a0f4987c5cc6d2547018\",\"kind\":\"one_request\"},\"tools\":[\"fabric_calendar_propose_create\"]},{\"agent_id\":\"agent-claude-code\",\"created_at\":\"2026-11-20T14:05:00.000Z\",\"ended\":null,\"grant_id\":\"grant-5\",\"origin\":{\"approval_digest\":\"sha256:9ffdeaab4d3c5b25375e3861c0880d5f2fa9c737c6cc785c27db75f789c76c07\",\"request_id\":\"request-15\"},\"policy\":{\"profile_id\":\"careful\",\"version\":1},\"purpose\":\"Check this week's meetings while planning the release.\",\"revision\":1,\"revocation_epoch\":0,\"scope\":{\"calendars\":[{\"account_id\":\"acct-1\",\"calendar_id\":\"cal-primary\"}],\"fields\":[\"time\",\"title\"],\"recipients\":null,\"send_updates\":null,\"window\":{\"end\":\"2026-11-21T06:00:00.000Z\",\"start\":\"2026-11-20T06:00:00.000Z\"}},\"term\":{\"kind\":\"session\",\"session_id\":\"session-claude-code-7\"},\"tools\":[\"fabric_calendar_read\",\"fabric_request_result\"]},{\"agent_id\":\"agent-claude-desktop\",\"created_at\":\"2026-11-18T17:00:00.000Z\",\"ended\":null,\"grant_id\":\"grant-6\",\"origin\":{\"approval_digest\":\"sha256:6844fb7a9f058ccb36f804ec122a9fb35a94db83a04f3b66c857e08cb98e7147\",\"request_id\":\"request-9\"},\"policy\":{\"profile_id\":\"custom-assistant\",\"version\":2},\"purpose\":\"Invite the team to planning meetings.\",\"revision\":2,\"revocation_epoch\":1,\"scope\":{\"calendars\":[{\"account_id\":\"acct-1\",\"calendar_id\":\"cal-team-shared\"}],\"fields\":null,\"recipients\":{\"kind\":\"recipient_sets\",\"recipient_set_ids\":[\"rset-team\",\"rset-people-family\"]},\"send_updates\":\"all\",\"window\":null},\"term\":{\"expires_at\":null,\"kind\":\"until_revoked\"},\"tools\":[\"fabric_calendar_propose_invitation\",\"fabric_calendar_propose_update\"]}],\"health\":{\"prover\":\"ready\",\"prover_problem\":null,\"store\":\"ready\"},\"preferences\":{\"revision\":0,\"settings\":{\"buffer\":null,\"protected_times\":[],\"uninterrupted\":null,\"warning_calendars\":[],\"workday\":null,\"zone\":null}},\"profiles\":{\"active_profile_id\":\"careful\",\"items\":[{\"kind\":\"built_in\",\"name\":\"Careful\",\"profile_id\":\"careful\",\"rows\":{\"create_in_agent_drafts\":\"allow\",\"create_in_existing_calendar\":\"ask\",\"delete_calendar_or_change_sharing\":\"block\",\"delete_event\":\"ask\",\"edit_fabric_created_event\":\"ask\",\"edit_preexisting_event\":\"ask\",\"list_and_availability\":\"allow\",\"read_event_details\":\"ask\",\"respond_to_invitation\":\"ask\",\"send_or_change_invitations\":\"ask\"},\"version\":1},{\"kind\":\"built_in\",\"name\":\"Flexible\",\"profile_id\":\"flexible\",\"rows\":{\"create_in_agent_drafts\":\"allow\",\"create_in_existing_calendar\":\"allow\",\"delete_calendar_or_change_sharing\":\"block\",\"delete_event\":\"ask\",\"edit_fabric_created_event\":\"allow\",\"edit_preexisting_event\":\"ask\",\"list_and_availability\":\"allow\",\"read_event_details\":\"allow\",\"respond_to_invitation\":\"ask\",\"send_or_change_invitations\":\"allow\"},\"version\":1},{\"kind\":\"custom\",\"name\":\"Assistant hours\",\"profile_id\":\"custom-assistant\",\"rows\":{\"create_in_agent_drafts\":\"allow\",\"create_in_existing_calendar\":\"allow\",\"delete_calendar_or_change_sharing\":\"block\",\"delete_event\":\"ask\",\"edit_fabric_created_event\":\"allow\",\"edit_preexisting_event\":\"allow\",\"list_and_availability\":\"allow\",\"read_event_details\":\"allow\",\"respond_to_invitation\":\"allow\",\"send_or_change_invitations\":\"allow\"},\"version\":2}],\"revision\":7},\"recipient_sets\":[{\"definition\":{\"domains\":[\"example.com\"],\"members\":[\"ally@example.net\",\"sam.lee@example.org\"],\"name\":\"Team\"},\"recipient_set_id\":\"rset-team\",\"revision\":2,\"source\":{\"kind\":\"local\"}},{\"definition\":{\"domains\":[],\"members\":[\"parent@example.net\",\"sibling@example.net\"],\"name\":\"Family (Google contacts)\"},\"recipient_set_id\":\"rset-people-family\",\"revision\":1,\"source\":{\"account_id\":\"acct-1\",\"imported_at\":\"2026-11-20T08:30:00.000Z\",\"kind\":\"google_people\"}}],\"requests\":[{\"account_id\":\"acct-1\",\"agent_id\":\"agent-claude-desktop\",\"received_at\":\"2026-11-20T15:00:00.000Z\",\"request_digest\":\"sha256:9448c124de44cd137bb4a3c63df81e9a3a0ae40af06db3642c413320c1d76053\",\"request_id\":\"request-17\",\"revision\":3,\"status\":{\"approval_expires_at\":\"2026-11-21T15:00:00.000Z\",\"state\":\"pending_approval\"},\"tool\":\"fabric_calendar_propose_invitation\",\"updated_at\":\"2026-11-20T15:00:01.250Z\"},{\"account_id\":\"acct-1\",\"agent_id\":\"agent-claude-code\",\"received_at\":\"2026-11-20T15:12:41.503Z\",\"request_digest\":\"sha256:7a4b17e48cacba5ae9e25209e7bd593aa0cf0d0e01a657848666a8ea138d4707\",\"request_id\":\"request-18\",\"revision\":2,\"status\":{\"state\":\"proving_classification\"},\"tool\":\"fabric_calendar_read\",\"updated_at\":\"2026-11-20T15:12:41.640Z\"}]}}",
     "command_digest": null,
     "action_digest": null
   }
