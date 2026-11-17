@@ -6,4 +6,6 @@
 *.sql text eol=lf
 *.md text eol=lf
 *.thy text eol=lf
+# The gate compares the session ROOT with the text it was built with, byte for byte.
+/isabelle/Fabric_Broker/** text eol=lf
 /contracts/** text eol=lf

@@ -17,6 +17,7 @@ pub mod report;
 pub mod theory;
 
 pub use check::{GrantResult, Reading, RuleOutcome, RuleResult, Verdict};
+pub use fabric_policy::server::KillHandle;
 pub use fabric_policy::{PolicyError, ServerAddress};
 pub use gate::{BrokerGate, Check, Fault, GateConfig};
 pub use model::{
