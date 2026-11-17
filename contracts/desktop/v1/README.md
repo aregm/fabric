@@ -178,9 +178,9 @@ An approval has one of three durations: `one_request`, `session`, `until_revoked
 
 A grant's `origin` names what created it: the owner's approval of a request (`request_id` and `approval_digest`), or the owner's approval of the agent's enrollment (`enrollment_id`).
 
-The calendar list (`fabric_calendar_list`) names no calendar. Its permission comes with the enrollment: when the owner approves an agent, the broker creates a grant until revoked whose only tool is `fabric_calendar_list` and whose scope names no calendar (the owner's answer of 2026-11-17). To the rules it is a grant like any other. Under a row whose mode is `allow` it permits the list; revoking it, or removing the agent, ends it. A scope that names no calendar covers no calendar, so such a grant serves no tool that names one. A calendar list request that needs the owner's approval, for example after the owner revoked that grant, gets a card whose scope names no calendar.
+The calendar list (`fabric_calendar_list`) names no calendar. Its permission comes with the enrollment: when the owner approves an agent, the broker creates a grant until revoked whose only tool is `fabric_calendar_list` and whose scope names no calendar (plan section 15.2, NOV17-LIST). To the rules it is a grant like any other. Under a row whose mode is `allow` it permits the list; revoking it, or removing the agent, ends it. A scope that names no calendar covers no calendar, so such a grant serves no tool that names one. A calendar list request that needs the owner's approval, for example after the owner revoked that grant, gets a card whose scope names no calendar.
 
-The durations are ordered from shortest to longest: `one_request`, `session`, `until_revoked`. A card's `proposed_duration` is the longest one the owner may choose for that request. The interface offers it and the shorter ones: the owner can narrow a duration, like a scope, and cannot widen it. When a card opens, the interface selects the shortest duration, `one_request`; a longer one is the owner's own choice (the owner's answer of 2026-11-17).
+The durations are ordered from shortest to longest: `one_request`, `session`, `until_revoked`. A card's `proposed_duration` is the longest one the owner may choose for that request. The interface offers it and the shorter ones: the owner can narrow a duration, like a scope, and cannot widen it. When a card opens, the interface selects the shortest duration, `one_request`; a longer one is the owner's own choice (plan section 15.2, NOV17-DURATION).
 
 The broker does not propose a duration whose grant would not serve the request. Under a row whose mode is `ask`, every request needs the owner's own approval, so a grant for a session or until revoked does not serve it and the card proposes `one_request`. The matrix states two exceptions, where such a grant does serve: a read of event details (CD-M02), and an edit of an event Fabric created in Agent Drafts (CD-M05). This is the rule theory's reading of the matrix; the owner confirmed it on 2026-11-16.
 
@@ -305,22 +305,22 @@ Version 3:
 46. `select_calendars` sets the whole selection of one account. The Agent Drafts calendar is named per account, and an account has at most one.
 47. Whether a change of selection ends a grant is left to the broker. A grant that ends is announced by its own notice.
 48. A waiting enrollment is a record of its own beside the agents, not an agent in a waiting state. The owner approves or rejects the name and the destination as shown and cannot edit them.
-49. Approving an enrollment gives the calendar list as a grant until revoked. The plan binds an "allowed tool scope" to the agent at enrollment (its section 4.3), and the owner's answer says what that scope holds. As a grant it is shown with the others and can be revoked alone, and the rule theory needs no change.
+49. Approving an enrollment gives the calendar list as a grant until revoked. The plan binds an "allowed tool scope" to the agent at enrollment (its section 4.3), and the owner's answer NOV17-LIST says what that scope holds. As a grant it is shown with the others and can be revoked alone, and the rule theory needs no change.
 50. That grant's scope names no calendar, so a scope's list of calendars may be empty. Such a scope covers no calendar. A calendar list request that needs approval gets a card with such a scope.
 51. A grant's origin has two forms that are told apart by their members, with no `kind` member, so that a grant stored under version 2 keeps its form.
 52. Removing an agent cancels its requests that were not handed to Google and lets the others run to their end. The removed agent leaves the snapshot, and the contract keeps no record of its name.
 53. The owner can resolve an outcome by hand only in `needs_owner_resolution`, after the broker's own reconciliation gave up. The request ends in one of two new states, which say that the owner settled the outcome and the broker did not observe it.
 54. `needs_owner_resolution` is no longer terminal, so that the request stays in the snapshot until it is resolved. It then counts against the open-request limits.
 55. `resolve_outcome` answers `stale_request`, as `decide_request` does, when the request changed or is in another state.
-56. `list_ended_requests`: newest first, at most 100 at a time, the next page named by the id of the last request seen. The request for version 3 did not name it; plan section S05 needs it to show ended requests.
-57. `delete_custom` in `save_profile`, and that the profile in force cannot be deleted. The request for version 3 did not name it.
-58. `not_installed` is a prover problem of its own, because the owner can act on it and cannot act on `not_configured`.
-59. The interface selects `one_request` first (the owner's answer of 2026-11-17).
+56. `list_ended_requests`: newest first, at most 100 at a time, the next page named by the id of the last request seen. The owner's go for version 3 (NOV17-SCHEMA3) does not cover it; plan section S05 needs it to show ended requests.
+57. `delete_custom` in `save_profile`, and that the profile in force cannot be deleted. The owner's go for version 3 does not cover it.
+58. `not_installed` is a prover problem of its own, because the owner can act on it and cannot act on `not_configured`. It follows from the plan's answer that Isabelle is installed by a script (CD-Q09).
+59. The interface selects `one_request` first (NOV17-DURATION).
 
 ## 15. Not covered
 
 - Commands that the plan's text needs and its method table does not list: starting a People import, the task composer for the embedded runtime, and the message that cancels a request.
-- The agent channel's connection handshake, which proves possession of the enrolled key (CD-W06), and with it how an enrollment comes to wait for the owner and how many may wait. The owner's answer of 2026-11-17 fixes one point: the bridge proves its key once per connection and signs no single request.
+- The agent channel's connection handshake, which proves possession of the enrolled key (CD-W06), and with it how an enrollment comes to wait for the owner and how many may wait. The plan fixes one point (section 15.2, NOV17-SIGN): the bridge proves its key once per connection and signs no single request.
 - What an account must carry for a partial grant (CD-W05).
 - How long the broker keeps ended requests.
 - Actions the broker starts itself, such as refresh and reconciliation reads, and the formal context with its digest (CD-W03, CD-W04).

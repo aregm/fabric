@@ -112,6 +112,7 @@ export const PROVER_TEXT: Record<Health["prover"], string> = {
 // (contract README, section 7). The broker sends no cause when it does not know it.
 export const PROVER_PROBLEM: Record<ProverProblem, string> = {
   not_configured: "This run has no rule checker. Nothing can be done about it in this run.",
+  not_installed: "The rule checker is not installed on this computer. Run Fabric Calendar's installer for it, then quit Fabric Calendar and open it again.",
   failed_will_retry: "It could not start, or it stopped. The broker starts it again by itself, so you only need to wait.",
   failed: "It could not start, or it stopped, and the broker will not try again in this run. Quit Fabric Calendar and open it again.",
   wrong_rules: "The rules on this computer are not the ones this broker was built with. Install Fabric Calendar again.",
@@ -121,6 +122,7 @@ export const PROVER_PROBLEM_UNKNOWN = "The broker did not say why.";
 // The same causes in a few words, for the activity line.
 const PROVER_PROBLEM_SHORT: Record<ProverProblem, string> = {
   not_configured: "this run has none",
+  not_installed: "it is not installed on this computer",
   failed_will_retry: "the broker starts it again",
   failed: "the broker will not start it again in this run",
   wrong_rules: "the rules on this computer are not this broker's",
