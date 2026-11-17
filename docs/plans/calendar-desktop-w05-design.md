@@ -27,7 +27,7 @@ Abbreviations (paths relative to the repository root):
 | PLAN | `docs/plans/calendar-desktop-plan.md` |
 | W04 | `docs/plans/calendar-desktop-w04-design.md` (the store and the core, as built) |
 | PW | `docs/plans/calendar-desktop-prover-wiring-design.md` |
-| RUNBOOK | `docs/plans/calendar-desktop-google-runbook.md` (the owner's Google setup; pull request 33) |
+| RUNBOOK | `docs/plans/calendar-desktop-google-runbook.md` (the owner's Google setup; merged with pull request 33, followed up in pull request 37) |
 | CR | `contracts/desktop/v1/README.md` (the contract, schema version 2) |
 | THEORY | `isabelle/Fabric_Broker/Fabric_Broker.thy` |
 | PORTS | `crates/fabric-broker-core/src/ports.rs` |
@@ -83,7 +83,7 @@ Abbreviations (paths relative to the repository root):
 
 ### 1.1 Phase 1 delivers
 
-1. RUNBOOK (pull request 33).
+1. RUNBOOK (pull request 33, merged; pull request 37 adds to it).
 2. This design, ADR-111 and ADR-113 (Proposed).
 3. GC: the OAuth code, the token store trait with its in-memory double, the Calendar calls (calendar list,
    free/busy, events get, list, insert, patch, delete), translation between the contract's types and Google's,
