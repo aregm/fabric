@@ -360,6 +360,20 @@ message are in the second block.
 `undecided` carries no reason: why a request is undecided is for the owner only (CR 8, choice 38). The bridge
 adds none.
 
+The draft of schema version 3 (pull request 36, the contract session's notice of 2026-11-17) adds three states
+and reopens one. The contract crate on `main` does not have them, so the bridge cannot name them yet. When the
+draft is on `main` the table gains these lines:
+
+| The request's state | `isError` | The first block says |
+|---|---|---|
+| `completed`, terminal: a request the broker serves itself, such as a calendar list or the release of a result | false | The request is complete. With a result, the first row of the table applies. |
+| `resolved_as_applied`, terminal | false | The owner states that the change is in the calendar. |
+| `resolved_as_absent`, terminal | true | The owner states that the change is not in the calendar. |
+| `needs_owner_resolution`, no longer terminal | false | As today, and: call `fabric_request_status` later. |
+
+The bridge's table is one match over every state of the contract crate, with no default. A contract with a state
+the table lacks does not compile with the bridge, so no state can pass unnoticed (R13).
+
 | Error | From | The first block says |
 |---|---|---|
 | `broker_not_running` | the bridge: no socket, a refused connection, a failed check of 4.2, a handshake out of time, a connection that closed with the call in flight, no key store in this build | Fabric Calendar is not running, or its connection ended. Ask the owner to open Fabric Calendar, then call again. If a proposal was in flight it may have been recorded: do not repeat it before the owner has looked. |
@@ -980,6 +994,10 @@ None of this is checked by phase 1 or phase 2:
 - R11 Under CD-W05's design a read also ends `reconciled` (the lead's notice of 2026-11-17). The wording of 3.7
   for `applied` and `reconciled` speaks of a change and must then tell a read from a change. Not changed here; it
   follows the lead's design for phase 2.
+- R13 The bridge does not compile against a contract crate that has a request state its table lacks (3.7), and
+  schema version 3 adds three. Whichever of the two pull requests reaches `main` second must add the three lines
+  and their wording to `apps/fabric-mcp-bridge/src/mcp/render.rs` and to test r01. This session does it as soon
+  as it is told.
 - R12 The contract draft for schema version 3 makes a waiting enrollment a record of its own, with no agent until
   the approval, where 5.1 puts `pending` on the agent (the lead's notice of 2026-11-17). The lead settles which
   in the store design. The bridge sees only `pending` or `approved` in the handshake's answer, so either fits it.
