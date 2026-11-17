@@ -22,7 +22,7 @@ use fabric_desktop_contracts::scalar::{CustomProfileId, Digest, Label, PositiveC
 use fabric_storage::{
     Actor, AttemptRow, AuthorizationRecord, AuthorizationState, CommandRow, Counter, EffectRow,
     Fence, IdempotencyScope, Mutation, OpMeta, ProofRecord, ProverKind, RequestRow,
-    SessionEndReason, SessionRow, Store,
+    SessionEndReason, SessionRow, Store, UndecidedCause,
 };
 use serde_json::{Value, json};
 
@@ -135,6 +135,7 @@ struct Model {
     profiles_revision: u64,
     pipelines: Vec<Pipeline>,
     completed_approved: usize,
+    undecided_with_cause: usize,
 }
 
 /// One write: its metadata, its mutations and what it is, for the failure message.
@@ -163,6 +164,7 @@ impl Model {
             profiles_revision: 0,
             pipelines: Vec::new(),
             completed_approved: 0,
+            undecided_with_cause: 0,
         }
     }
 
@@ -612,7 +614,7 @@ impl Model {
         let now = self.tick();
         let mut p = self.pipelines[index].clone();
         let request_id = id(&p.request_id);
-        let moved = |p: &mut Pipeline, state: LifecycleStatus| {
+        let moved_with = |p: &mut Pipeline, state: LifecycleStatus, cause| {
             p.revision += 1;
             Mutation::RequestMoved {
                 request_id: request_id.clone(),
@@ -620,8 +622,10 @@ impl Model {
                 status: state,
                 at_ms: now,
                 due_at_ms: None,
+                undecided_cause: cause,
             }
         };
+        let moved = |p: &mut Pipeline, state: LifecycleStatus| moved_with(p, state, None);
         let mut m = meta("request.advance", Actor::broker(), now);
         m.correlation_id = Some(request_id.clone());
         let (m, mutations, what) = match p.stage.clone() {
@@ -639,7 +643,18 @@ impl Model {
                 let mut m = m;
                 m.operation_type = "request.proof";
                 m.causation_id = Some(proof_id.clone());
-                if self.rng.chance(20) {
+                if self.rng.chance(10) {
+                    // The undecided end: the move states the broker's cause; the write is
+                    // correlated to the request, as every move that states one is.
+                    let cause = UndecidedCause::ALL[usize::try_from(
+                        self.rng.below(UndecidedCause::ALL.len() as u64),
+                    )
+                    .unwrap()];
+                    p.stage = Stage::Done;
+                    self.undecided_with_cause += 1;
+                    let mutation = moved_with(&mut p, status("undecided"), Some(cause));
+                    (m, vec![mutation], "undecided")
+                } else if self.rng.chance(20) {
                     let proof = self.proof(&p, &proof_id, "classification", "block");
                     p.stage = Stage::Done;
                     let blocked = contract(json!({
@@ -947,8 +962,9 @@ fn run_sequence(data_dir: &Path, seed: u64, steps: usize) -> Store {
             commit(&mut store, step);
         }
     }
-    // Every table is touched: at least one request goes the whole approved way.
-    while model.completed_approved == 0 {
+    // Every table is touched: at least one request goes the whole approved way, and at least one
+    // ends undecided with its cause.
+    while model.completed_approved == 0 || model.undecided_with_cause == 0 {
         let step = model.insert_request().unwrap();
         commit(&mut store, step);
         let index = model.pipelines.len() - 1;

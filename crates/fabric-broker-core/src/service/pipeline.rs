@@ -13,16 +13,16 @@ use fabric_desktop_contracts::scalar::{Explanation, Fixed, Id, PositiveCount};
 use fabric_desktop_contracts::{AUTHORIZATION_LIFETIME_SECONDS, RequestState};
 use fabric_storage::{
     Actor, AttemptRow, AuthorizationRecord, AuthorizationState, EffectRow, Mutation, ProofRecord,
-    ProverKind, ReadTx, Reproofs, RequestRecord, StoreFault, VoidReason, WriteTx,
+    ProverKind, ReadTx, Reproofs, RequestRecord, StoreFault, UndecidedCause, VoidReason, WriteTx,
 };
 
 use crate::broker::{Job, MAX_REPROOFS, PROVIDER_CALL_MS, RetryPolicy};
-use crate::ports::{AttemptDone, AttemptReport, DispatchOrder, ProofDone};
+use crate::ports::{AttemptDone, AttemptReport, DispatchOrder, ProofDone, ProverCause};
 use crate::service::core::{Core, InFlight};
 use crate::service::grants::grant_is_valid;
-use crate::service::reducer::{Event, next};
+use crate::service::reducer::{Event, next, states_a_cause};
 use crate::service::relied::set_relied;
-use crate::service::requests::{calendars_of, is_change, move_request, record_of};
+use crate::service::requests::{calendars_of, is_change, move_request_with, record_of};
 use crate::service::{Activity, Cx, epochs, facts, invariant, plain, timestamp};
 
 /// The `undecided_reason` of a result naming a grant outside its job's facts (D17).
@@ -52,8 +52,9 @@ fn status_after(
     }
 }
 
-/// Moves the request by `event` (5.7): the reducer names the state.
-fn advance(
+/// Moves the request by `event` (5.7): the reducer names the state. The move to `undecided` is
+/// refused here: it states its cause, so only [`undecide`] makes it.
+pub(in crate::service) fn advance(
     tx: &mut WriteTx<'_>,
     cx: &mut Cx<'_>,
     request_id: &Id,
@@ -61,9 +62,41 @@ fn advance(
     status: Option<LifecycleStatus>,
     due_at_ms: Option<i64>,
 ) -> Result<(), StoreFault> {
+    if states_a_cause(event) {
+        return Err(invariant("undecided names its cause"));
+    }
     let from = record_of(tx, request_id)?.row.request.status.state();
     let to = status_after(from, event, status)?;
-    move_request(tx, cx, request_id, to, due_at_ms).map(|_| ())
+    move_request_with(tx, cx, request_id, to, due_at_ms, None).map(|_| ())
+}
+
+/// Moves the request to `undecided` with `cause`, stored on the move in the same commit: the
+/// only way into `undecided`. The commit is correlated to the request (`Core::meta`), where the
+/// owner's details read the cause back.
+pub(in crate::service) fn undecide(
+    tx: &mut WriteTx<'_>,
+    cx: &mut Cx<'_>,
+    request_id: &Id,
+    cause: UndecidedCause,
+) -> Result<(), StoreFault> {
+    let from = record_of(tx, request_id)?.row.request.status.state();
+    let to = status_after(from, Event::Undecide, None)?;
+    move_request_with(tx, cx, request_id, to, None, Some(cause)).map(|_| ())
+}
+
+/// The cause the broker stores for what a prover stated. Exhaustive: a new prover cause must be
+/// given its stored cause here.
+#[must_use]
+pub(crate) const fn stored_cause(cause: ProverCause) -> UndecidedCause {
+    match cause {
+        ProverCause::Starting => UndecidedCause::ProverStarting,
+        ProverCause::NotRunning => UndecidedCause::ProverNotRunning,
+        ProverCause::DeadlinePassed => UndecidedCause::DeadlinePassed,
+        ProverCause::CheckLimitReached => UndecidedCause::CheckLimitReached,
+        ProverCause::CheckNotDecided => UndecidedCause::CheckNotDecided,
+        ProverCause::ReportUnusable => UndecidedCause::ReportUnusable,
+        ProverCause::JobRefused => UndecidedCause::JobRefused,
+    }
 }
 
 /// True when every id the result names is among the grants its job's facts offered (5.7,
@@ -127,8 +160,8 @@ pub(crate) enum Accepted {
     Ask(Ruling),
     /// Block with a ruling.
     Block(Ruling),
-    /// Anything else: `undecided`.
-    Undecided,
+    /// Anything else: `undecided`, with its cause.
+    Undecided(UndecidedCause),
 }
 
 /// What the broker knows about an accepted result besides the result itself.
@@ -143,36 +176,60 @@ pub(crate) struct Context {
     pub(crate) scoped: bool,
 }
 
-/// What an accepted result of `purpose` leads to (5.7, D13, D17, L7(d)).
+/// What an accepted result of `purpose` leads to (5.7, D13, D17, L7(d)). `stated` is the cause
+/// the prover stated for an undecided verdict.
+///
+/// Every `undecided` names its cause. For a kind that is not Isabelle it is `no_prover`, whatever
+/// the result states (D13). For an Isabelle fresh Permit the checks run in a fixed order: no
+/// authorizing grant, then a tool that changes no calendar, then a paused agent, then no
+/// provider: the report's own defect first, then the request, the agent and the build.
 #[must_use]
 pub(crate) fn accepted(
     purpose: ProofPurpose,
     outcome: ProofOutcome,
     ruling: Option<Ruling>,
     authorizing: &[Id],
+    stated: Option<UndecidedCause>,
     context: Context,
 ) -> Accepted {
     let isabelle = context.kind == ProverKind::Isabelle;
+    let undecided = |cause| {
+        Accepted::Undecided(if isabelle {
+            cause
+        } else {
+            UndecidedCause::NoProver
+        })
+    };
     match outcome {
         ProofOutcome::Permit => match purpose {
             ProofPurpose::Classification if isabelle => Accepted::Allow,
-            ProofPurpose::FreshPermit
-                if isabelle
-                    && context.provider_present
-                    && !authorizing.is_empty()
-                    && !context.agent_paused
-                    && context.change =>
-            {
-                Accepted::Authorize
+            ProofPurpose::Classification => undecided(UndecidedCause::NoProver),
+            ProofPurpose::FreshPermit => {
+                if authorizing.is_empty() {
+                    undecided(UndecidedCause::NoGrant)
+                } else if !context.change {
+                    undecided(UndecidedCause::ReadTool)
+                } else if context.agent_paused {
+                    undecided(UndecidedCause::AgentPaused)
+                } else if !context.provider_present {
+                    undecided(UndecidedCause::NoProvider)
+                } else if isabelle {
+                    Accepted::Authorize
+                } else {
+                    undecided(UndecidedCause::NoProver)
+                }
             }
-            _ => Accepted::Undecided,
         },
         ProofOutcome::NeedApproval => match ruling {
             Some(ruling) if context.scoped => Accepted::Ask(ruling),
-            _ => Accepted::Undecided,
+            Some(_) => undecided(UndecidedCause::NoScope),
+            None => undecided(UndecidedCause::NoRuling),
         },
-        ProofOutcome::Block => ruling.map_or(Accepted::Undecided, Accepted::Block),
-        ProofOutcome::Undecided => Accepted::Undecided,
+        ProofOutcome::Block => match ruling {
+            Some(ruling) => Accepted::Block(ruling),
+            None => undecided(UndecidedCause::NoRuling),
+        },
+        ProofOutcome::Undecided => undecided(stated.unwrap_or(UndecidedCause::CheckNotDecided)),
     }
 }
 
@@ -181,7 +238,7 @@ pub(crate) fn accepted(
 pub(crate) enum Judgement {
     /// An authorizing grant outside the job's facts: recorded, `undecided`, relied list kept.
     OutsideFacts,
-    /// No report: no check ran; `undecided`, nothing recorded.
+    /// No report: no check ran; `undecided` with the cause the prover stated, nothing recorded.
     NoReport,
     /// A report bound to another job (its request, purpose or action digest differs from the
     /// job's): it proves nothing about this request; `undecided`, nothing recorded, relied list
@@ -258,6 +315,7 @@ fn judge(
         report.outcome,
         done.ruling.clone(),
         &done.authorizing_grants,
+        done.cause.map(stored_cause),
         context,
     ))))
 }
@@ -285,7 +343,8 @@ fn grant_valid_now(
 
 /// Starts a proof of `purpose` for the request in this transaction: with a prover, the facts
 /// are read here, the watchdog is scheduled (`deadline + 1`) with `reproofs`, and the job is
-/// handed out after commit; with none the request goes `undecided` with no report (D14).
+/// handed out after commit; with none the request goes `undecided` with no report, cause
+/// `no_prover` (D14).
 pub(crate) fn start_proof(
     tx: &mut WriteTx<'_>,
     cx: &mut Cx<'_>,
@@ -295,7 +354,7 @@ pub(crate) fn start_proof(
     reproofs: Reproofs,
 ) -> Result<(), StoreFault> {
     if prover.is_none() {
-        return advance(tx, cx, request_id, Event::Undecide, None, None);
+        return undecide(tx, cx, request_id, UndecidedCause::NoProver);
     }
     let record = record_of(tx, request_id)?;
     if record.row.request.status.state() != proving_state(purpose) {
@@ -314,7 +373,8 @@ pub(crate) fn start_proof(
 }
 
 /// A proof of `purpose` was discarded, or a dispatch voided: prove again while the purpose's
-/// counter allows; otherwise `undecided` (classification) or `stale` (fresh permit) (D16).
+/// counter allows; otherwise `undecided` with `reproofs_spent` (classification) or `stale`
+/// (fresh permit) (D16).
 fn prove_again(
     tx: &mut WriteTx<'_>,
     cx: &mut Cx<'_>,
@@ -325,13 +385,12 @@ fn prove_again(
     let reproofs = record_of(tx, request_id)?.reproofs;
     match reproof(reproofs, purpose) {
         Some(reproofs) => start_proof(tx, cx, request_id, purpose, prover, reproofs),
-        None => {
-            let event = match purpose {
-                ProofPurpose::Classification => Event::Undecide,
-                ProofPurpose::FreshPermit => Event::Exhausted,
-            };
-            advance(tx, cx, request_id, event, None, None)
-        }
+        None => match purpose {
+            ProofPurpose::Classification => {
+                undecide(tx, cx, request_id, UndecidedCause::ReproofsSpent)
+            }
+            ProofPurpose::FreshPermit => advance(tx, cx, request_id, Event::Exhausted, None, None),
+        },
     }
 }
 
@@ -514,7 +573,7 @@ impl Core {
                         let meta =
                             self.meta("request.proof", Actor::broker(), Some(&request_id), None);
                         self.commit(meta, |tx, cx| {
-                            advance(tx, cx, &request_id, Event::Undecide, None, None)
+                            undecide(tx, cx, &request_id, UndecidedCause::DeadlinePassed)
                         })
                     }
                     Some((_, deadline)) => {
@@ -759,11 +818,18 @@ fn settle(
     match judgement {
         Judgement::OutsideFacts => {
             record_proof(tx, cx.now_ms, Some(OUTSIDE_THE_FACTS.to_owned()))?;
-            advance(tx, cx, request_id, Event::Undecide, None, None)
+            undecide(tx, cx, request_id, UndecidedCause::ReportUnusable)
         }
-        Judgement::NoReport | Judgement::Unbound => {
-            advance(tx, cx, request_id, Event::Undecide, None, None)
+        Judgement::NoReport => {
+            // The prover states why no check ran; only an Isabelle prover's word counts (D13).
+            let cause = if kind == ProverKind::Isabelle {
+                done.cause.map_or(UndecidedCause::NotStated, stored_cause)
+            } else {
+                UndecidedCause::NoProver
+            };
+            undecide(tx, cx, request_id, cause)
         }
+        Judgement::Unbound => undecide(tx, cx, request_id, UndecidedCause::ReportUnusable),
         Judgement::Discard => {
             record_proof(tx, cx.now_ms, done.undecided_reason.clone())?;
             prove_again(tx, cx, request_id, job.purpose, Some(kind))
@@ -789,7 +855,7 @@ fn settle(
                     Some(LifecycleStatus::Blocked { denial: ruling }),
                     None,
                 ),
-                Accepted::Undecided => advance(tx, cx, request_id, Event::Undecide, None, None),
+                Accepted::Undecided(cause) => undecide(tx, cx, request_id, cause),
             }
         }
     }
@@ -1032,6 +1098,7 @@ mod tests {
                 ProofOutcome::Permit,
                 None,
                 &[],
+                None,
                 context,
             )
         };
@@ -1040,7 +1107,10 @@ mod tests {
             kind: ProverKind::Synthetic,
             ..ISABELLE
         };
-        assert_eq!(permit(synthetic), Accepted::Undecided);
+        assert_eq!(
+            permit(synthetic),
+            Accepted::Undecided(UndecidedCause::NoProver)
+        );
     }
 
     #[test]
@@ -1052,70 +1122,70 @@ mod tests {
                 ProofOutcome::Permit,
                 None,
                 grants,
+                None,
                 context,
             )
         };
         assert_eq!(permit(&grants, ISABELLE), Accepted::Authorize);
         // L7(d): no authorizing grant.
-        assert_eq!(permit(&[], ISABELLE), Accepted::Undecided);
+        assert_eq!(
+            permit(&[], ISABELLE),
+            Accepted::Undecided(UndecidedCause::NoGrant)
+        );
         // D17: no provider; D13: not Isabelle.
         let without_provider = Context {
             provider_present: false,
             ..ISABELLE
         };
-        assert_eq!(permit(&grants, without_provider), Accepted::Undecided);
+        assert_eq!(
+            permit(&grants, without_provider),
+            Accepted::Undecided(UndecidedCause::NoProvider)
+        );
         let synthetic = Context {
             kind: ProverKind::Synthetic,
             ..ISABELLE
         };
-        assert_eq!(permit(&grants, synthetic), Accepted::Undecided);
+        assert_eq!(
+            permit(&grants, synthetic),
+            Accepted::Undecided(UndecidedCause::NoProver)
+        );
         let paused = Context {
             agent_paused: true,
             ..ISABELLE
         };
-        assert_eq!(permit(&grants, paused), Accepted::Undecided);
+        assert_eq!(
+            permit(&grants, paused),
+            Accepted::Undecided(UndecidedCause::AgentPaused)
+        );
         // A read is not dispatched in W04 (D33).
         let read = Context {
             change: false,
             ..ISABELLE
         };
-        assert_eq!(permit(&grants, read), Accepted::Undecided);
+        assert_eq!(
+            permit(&grants, read),
+            Accepted::Undecided(UndecidedCause::ReadTool)
+        );
     }
 
     #[test]
     fn block_and_need_approval_need_a_ruling() {
+        let no_ruling = Accepted::Undecided(UndecidedCause::NoRuling);
         for purpose in [ProofPurpose::Classification, ProofPurpose::FreshPermit] {
+            let verdict = |outcome, ruling| accepted(purpose, outcome, ruling, &[], None, ISABELLE);
             assert_eq!(
-                accepted(purpose, ProofOutcome::Block, Some(ruling()), &[], ISABELLE),
+                verdict(ProofOutcome::Block, Some(ruling())),
                 Accepted::Block(ruling())
             );
+            assert_eq!(verdict(ProofOutcome::Block, None), no_ruling);
             assert_eq!(
-                accepted(purpose, ProofOutcome::Block, None, &[], ISABELLE),
-                Accepted::Undecided
-            );
-            assert_eq!(
-                accepted(
-                    purpose,
-                    ProofOutcome::NeedApproval,
-                    Some(ruling()),
-                    &[],
-                    ISABELLE
-                ),
+                verdict(ProofOutcome::NeedApproval, Some(ruling())),
                 Accepted::Ask(ruling())
             );
+            assert_eq!(verdict(ProofOutcome::NeedApproval, None), no_ruling);
             assert_eq!(
-                accepted(purpose, ProofOutcome::NeedApproval, None, &[], ISABELLE),
-                Accepted::Undecided
-            );
-            assert_eq!(
-                accepted(
-                    purpose,
-                    ProofOutcome::Undecided,
-                    Some(ruling()),
-                    &[],
-                    ISABELLE
-                ),
-                Accepted::Undecided
+                verdict(ProofOutcome::Undecided, Some(ruling())),
+                Accepted::Undecided(UndecidedCause::CheckNotDecided)
             );
         }
         // A request with no scope cannot be put on a card.
@@ -1129,10 +1199,165 @@ mod tests {
                 ProofOutcome::NeedApproval,
                 Some(ruling()),
                 &[],
+                None,
                 unscoped
             ),
-            Accepted::Undecided
+            Accepted::Undecided(UndecidedCause::NoScope)
         );
+    }
+
+    /// c33. 5.7: every undecided verdict of `accepted` names its cause, one row per case, the overlap
+    /// of no grant and no provider included (the report's own defect comes first).
+    #[test]
+    fn accepted_states_each_cause() {
+        use UndecidedCause as C;
+        let grants = [id("grant-1")];
+        let synthetic = Context {
+            kind: ProverKind::Synthetic,
+            ..ISABELLE
+        };
+        let no_provider = Context {
+            provider_present: false,
+            ..ISABELLE
+        };
+        let read = Context {
+            change: false,
+            ..ISABELLE
+        };
+        let paused = Context {
+            agent_paused: true,
+            ..ISABELLE
+        };
+        let unscoped = Context {
+            scoped: false,
+            ..ISABELLE
+        };
+        let classification = ProofPurpose::Classification;
+        let fresh = ProofPurpose::FreshPermit;
+        let deadline = Some(C::DeadlinePassed);
+        let permit = |purpose, authorizing: &[Id], context| {
+            accepted(
+                purpose,
+                ProofOutcome::Permit,
+                None,
+                authorizing,
+                None,
+                context,
+            )
+        };
+        let ask = |purpose, ruling, context| {
+            accepted(
+                purpose,
+                ProofOutcome::NeedApproval,
+                ruling,
+                &[],
+                None,
+                context,
+            )
+        };
+        let undecided = |purpose, stated, context| {
+            accepted(purpose, ProofOutcome::Undecided, None, &[], stated, context)
+        };
+        let block =
+            |purpose, context| accepted(purpose, ProofOutcome::Block, None, &[], None, context);
+        let rows = [
+            (
+                "synthetic classification permit",
+                permit(classification, &[], synthetic),
+                C::NoProver,
+            ),
+            (
+                "synthetic fresh permit",
+                permit(fresh, &grants, synthetic),
+                C::NoProver,
+            ),
+            (
+                "synthetic undecided with a cause",
+                undecided(classification, deadline, synthetic),
+                C::NoProver,
+            ),
+            (
+                "synthetic unscoped ask",
+                ask(
+                    classification,
+                    Some(ruling()),
+                    Context {
+                        scoped: false,
+                        ..synthetic
+                    },
+                ),
+                C::NoProver,
+            ),
+            ("no grant", permit(fresh, &[], ISABELLE), C::NoGrant),
+            ("read tool", permit(fresh, &grants, read), C::ReadTool),
+            ("paused", permit(fresh, &grants, paused), C::AgentPaused),
+            (
+                "no provider",
+                permit(fresh, &grants, no_provider),
+                C::NoProvider,
+            ),
+            (
+                "no grant and no provider",
+                permit(fresh, &[], no_provider),
+                C::NoGrant,
+            ),
+            (
+                "ask without a ruling",
+                ask(classification, None, ISABELLE),
+                C::NoRuling,
+            ),
+            (
+                "ask without a scope",
+                ask(fresh, Some(ruling()), unscoped),
+                C::NoScope,
+            ),
+            (
+                "block without a ruling",
+                block(fresh, ISABELLE),
+                C::NoRuling,
+            ),
+            (
+                "undecided stating the deadline",
+                undecided(classification, deadline, ISABELLE),
+                C::DeadlinePassed,
+            ),
+            (
+                "undecided stating the limit",
+                undecided(fresh, Some(C::CheckLimitReached), ISABELLE),
+                C::CheckLimitReached,
+            ),
+            (
+                "undecided stating nothing",
+                undecided(fresh, None, ISABELLE),
+                C::CheckNotDecided,
+            ),
+        ];
+        for (case, verdict, cause) in rows {
+            assert_eq!(verdict, Accepted::Undecided(cause), "{case}");
+        }
+    }
+
+    /// Every cause a prover states has its own stored cause.
+    #[test]
+    fn each_prover_cause_has_its_stored_cause() {
+        let table = [
+            (ProverCause::Starting, UndecidedCause::ProverStarting),
+            (ProverCause::NotRunning, UndecidedCause::ProverNotRunning),
+            (ProverCause::DeadlinePassed, UndecidedCause::DeadlinePassed),
+            (
+                ProverCause::CheckLimitReached,
+                UndecidedCause::CheckLimitReached,
+            ),
+            (
+                ProverCause::CheckNotDecided,
+                UndecidedCause::CheckNotDecided,
+            ),
+            (ProverCause::ReportUnusable, UndecidedCause::ReportUnusable),
+            (ProverCause::JobRefused, UndecidedCause::JobRefused),
+        ];
+        for (stated, stored) in table {
+            assert_eq!(stored_cause(stated), stored, "{stated:?}");
+        }
     }
 
     #[test]

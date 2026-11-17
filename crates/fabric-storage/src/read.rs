@@ -15,7 +15,7 @@ use crate::mutation::SessionEndReason;
 use crate::rows::{
     AgentRow, AttemptRow, AuthorizationRecord, AuthorizationState, CommandRow, Counters, EffectRow,
     Fence, Meta, OpenEffect, ProofRecord, ProverKind, Reproofs, RequestRecord, RequestRow,
-    SessionRow,
+    SessionRow, UndecidedCause,
 };
 use crate::tx::{StoreFault, invariant, meta_count, meta_value, sql_fault};
 
@@ -393,6 +393,36 @@ impl<'a> ReadTx<'a> {
             [],
             |row| row.get::<_, i64>(0),
         )
+    }
+
+    /// The cause stated on the request's last committed move to `undecided`, read from the ledger
+    /// rows correlated to the request (the index `ledger_correlation`); SQLite parses each row's
+    /// payload and returns one text. A move this transaction has not committed yet is not seen. An
+    /// unknown text, another JSON type, or no member is `None`, never a fault.
+    ///
+    /// # Errors
+    ///
+    /// A fault of the store, such as a payload that is not JSON.
+    pub fn undecided_cause_of(
+        &self,
+        request_id: &Id,
+    ) -> Result<Option<UndecidedCause>, StoreFault> {
+        Ok(self
+            .one(
+                "read ledger",
+                "SELECT CASE WHEN json_type(m.value, '$.undecided_cause') = 'text' \
+                 THEN json_extract(m.value, '$.undecided_cause') END \
+                 FROM ledger AS l, json_each(l.payload, '$.mutations') AS m \
+                 WHERE l.correlation_id = ?1 \
+                 AND json_extract(m.value, '$.op') = 'request_moved' \
+                 AND json_extract(m.value, '$.request_id') = ?1 \
+                 AND json_extract(m.value, '$.status.state') = 'undecided' \
+                 ORDER BY l.seq DESC, m.key DESC LIMIT 1",
+                [request_id.as_str()],
+                |row| row.get::<_, Option<String>>(0),
+            )?
+            .flatten()
+            .and_then(|text| UndecidedCause::of_name(&text)))
     }
 
     /// Built-ins + latest custom versions.
@@ -1138,6 +1168,7 @@ mod tests {
                     status: testing::status(state),
                     at_ms: T0,
                     due_at_ms: None,
+                    undecided_cause: None,
                 });
             }
         }
@@ -1187,5 +1218,98 @@ mod tests {
                 Ok(())
             })
             .unwrap();
+    }
+
+    /// s22. Section 4: the reader gives the cause of the request's own move to undecided in a row
+    /// correlated to it, nothing for a move in a row of another correlation, nothing without a fault
+    /// for an unknown text or a number, and nothing before the move's write commits.
+    #[test]
+    fn the_reader_finds_the_cause_of_the_undecided_move() {
+        let dir = TempDir::new();
+        let mut store = testing::world(&dir);
+        let create = "fabric_calendar_propose_create";
+        let moved = |request: &str, revision, state, cause| Mutation::RequestMoved {
+            request_id: id(request),
+            revision,
+            status: testing::status(state),
+            at_ms: T0,
+            due_at_ms: None,
+            undecided_cause: cause,
+        };
+        let mut setup = vec![moved("request-1", 2, "validating", None)];
+        for request in ["request-3", "request-4", "request-5"] {
+            setup.push(Mutation::RequestInserted {
+                row: testing::request(request, "agent-1", create),
+                due_at_ms: None,
+            });
+        }
+        for request in ["request-2", "request-3", "request-4", "request-5"] {
+            setup.push(moved(request, 2, "validating", None));
+            setup.push(moved(request, 3, "proving_classification", None));
+        }
+        testing::apply_all(&mut store, T0, setup).unwrap();
+        let payload = crate::ledger::payload_text(&[
+            Mutation::ProofRecorded {
+                proof: testing::proof("proof-1", "request-1", "isabelle"),
+                at_ms: T0,
+            },
+            moved("request-1", 3, "proving_classification", None),
+            moved(
+                "request-2",
+                4,
+                "undecided",
+                Some(UndecidedCause::CheckNotDecided),
+            ),
+            moved(
+                "request-1",
+                4,
+                "undecided",
+                Some(UndecidedCause::DeadlinePassed),
+            ),
+        ])
+        .unwrap();
+        testing::forge_row(&store, Some("request-1"), &payload);
+        let odd = |request: &str, value: &str| {
+            crate::ledger::payload_text(&[moved(
+                request,
+                4,
+                "undecided",
+                Some(UndecidedCause::DeadlinePassed),
+            )])
+            .unwrap()
+            .replace(r#""deadline_passed""#, value)
+        };
+        testing::forge_row(
+            &store,
+            Some("request-3"),
+            &odd("request-3", r#""a_cause_of_a_newer_build""#),
+        );
+        testing::forge_row(&store, Some("request-4"), &odd("request-4", "7"));
+        let cause = |store: &crate::Store, request: &str| {
+            store.read(|r| r.undecided_cause_of(&id(request))).unwrap()
+        };
+        assert_eq!(
+            cause(&store, "request-1"),
+            Some(UndecidedCause::DeadlinePassed)
+        );
+        assert_eq!(cause(&store, "request-2"), None);
+        assert_eq!(cause(&store, "request-3"), None);
+        assert_eq!(cause(&store, "request-4"), None);
+        assert_eq!(cause(&store, "request-5"), None);
+        store
+            .write(testing::meta_of("request.advance", T0, "request-5"), |tx| {
+                tx.apply(moved(
+                    "request-5",
+                    4,
+                    "undecided",
+                    Some(UndecidedCause::NoGrant),
+                ))?;
+                assert_eq!(tx.read().undecided_cause_of(&id("request-5"))?, None);
+                Ok::<_, crate::TxError<()>>(())
+            })
+            .unwrap();
+        assert_eq!(cause(&store, "request-5"), Some(UndecidedCause::NoGrant));
+        store.verify_chain().unwrap();
+        store.verify_replay().unwrap();
     }
 }

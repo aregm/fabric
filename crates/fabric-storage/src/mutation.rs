@@ -11,7 +11,7 @@ use fabric_desktop_contracts::scalar::Id;
 use crate::key::KeyKind;
 use crate::rows::{
     AgentRow, AttemptRow, AuthorizationRecord, CommandRow, EffectRow, ProofRecord, Reproofs,
-    RequestRow, SessionRow,
+    RequestRow, SessionRow, UndecidedCause,
 };
 
 /// One projection change. A ledger row's payload is the list of a transaction's mutations.
@@ -139,6 +139,15 @@ pub enum Mutation {
         at_ms: i64,
         /// When the pipeline next looks at it.
         due_at_ms: Option<i64>,
+        /// The broker's cause of a move to `undecided`; absent on every other move and on rows
+        /// written before it existed. Left out when `None`, so those rows keep their bytes, and
+        /// decoded tolerantly, so an unknown text is `None`.
+        #[serde(
+            default,
+            skip_serializing_if = "Option::is_none",
+            deserialize_with = "crate::rows::tolerant_cause"
+        )]
+        undecided_cause: Option<UndecidedCause>,
     },
     /// A request's next look and re-proof counts changed without a move.
     RequestScheduled {

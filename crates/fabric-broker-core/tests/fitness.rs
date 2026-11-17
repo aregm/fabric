@@ -174,3 +174,131 @@ fn the_manifest_scan_reads_every_dependency_form() {
     }
     assert!(!names.iter().any(|n| n == "name" || n == "workspace"));
 }
+
+/// The production text of a source file: comment lines and a trailing test module left out.
+fn production(path: &Path) -> String {
+    let text = std::fs::read_to_string(path)
+        .unwrap_or_else(|e| panic!("cannot read {}: {e}", path.display()));
+    let lines: Vec<&str> = text.lines().collect();
+    let end = lines
+        .windows(2)
+        .position(|w| {
+            w[0].starts_with("#[cfg(")
+                && w[0].contains("test")
+                && (w[1].starts_with("mod ") || w[1].starts_with("pub(crate) mod "))
+        })
+        .unwrap_or(lines.len());
+    lines[..end]
+        .iter()
+        .filter(|line| !line.trim_start().starts_with("//"))
+        .copied()
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+/// The body of the first `fn name(` in `text`, braces included.
+fn body<'a>(text: &'a str, name: &str) -> &'a str {
+    let at = text
+        .find(&format!("fn {name}("))
+        .unwrap_or_else(|| panic!("no fn {name}"));
+    let open = at + text[at..].find('{').expect("a body");
+    let mut depth = 0;
+    for (i, c) in text[open..].char_indices() {
+        match c {
+            '{' => depth += 1,
+            '}' => {
+                depth -= 1;
+                if depth == 0 {
+                    return &text[open..=open + i];
+                }
+            }
+            _ => {}
+        }
+    }
+    panic!("the body of fn {name} does not end")
+}
+
+/// Every production source file of the core, by its path under `src`.
+fn sources(dir: &Path, base: &Path, out: &mut Vec<(String, String)>) {
+    let mut entries: Vec<PathBuf> = std::fs::read_dir(dir)
+        .expect("read the source directory")
+        .map(|e| e.expect("a directory entry").path())
+        .collect();
+    entries.sort();
+    for path in entries {
+        if path.is_dir() {
+            sources(&path, base, out);
+        } else if path.extension().is_some_and(|e| e == "rs")
+            && path.file_name().is_some_and(|n| n != "tests.rs")
+        {
+            let name = path
+                .strip_prefix(base)
+                .expect("under src")
+                .to_string_lossy()
+                .replace('\\', "/");
+            out.push((name, production(&path)));
+        }
+    }
+}
+
+/// c34. 5.7: only `undecide` moves a request to `undecided`, so every such move states its
+/// cause. No production file but the reducer and `undecide` names the event, and only `undecide`
+/// passes a cause to `move_request_with`; `move_request` passes none.
+#[test]
+fn only_undecide_moves_a_request_to_undecided() {
+    let src = root().join("crates/fabric-broker-core/src");
+    let mut files = Vec::new();
+    sources(&src, &src, &mut files);
+    assert!(files.len() > 10, "the scan read {} files", files.len());
+    let event = "Event::Undecide";
+    let call = "move_request_with(";
+    for (name, text) in &files {
+        let mut allowed_events = 0;
+        let mut allowed_calls = 0;
+        match name.as_str() {
+            "service/reducer.rs" => allowed_events = text.matches(event).count(),
+            "service/pipeline.rs" => {
+                let undecide = body(text, "undecide");
+                assert_eq!(
+                    undecide.matches(event).count(),
+                    1,
+                    "undecide names the event"
+                );
+                assert!(
+                    undecide.contains("Some(cause)"),
+                    "undecide passes its cause"
+                );
+                allowed_events = 1;
+                allowed_calls = undecide.matches(call).count();
+                let advance = body(text, "advance");
+                assert_eq!(advance.matches(call).count(), 1);
+                assert!(
+                    advance.contains("due_at_ms, None)"),
+                    "advance passes a cause to move_request_with"
+                );
+                allowed_calls += 1;
+            }
+            "service/requests.rs" => {
+                let wrapper = body(text, "move_request");
+                assert_eq!(wrapper.matches(call).count(), 1);
+                assert!(
+                    wrapper.contains("due_at_ms, None)"),
+                    "move_request passes a cause to move_request_with"
+                );
+                // The wrapper's call and the definition.
+                allowed_calls = 2;
+            }
+            _ => {}
+        }
+        assert_eq!(
+            text.matches(event).count(),
+            allowed_events,
+            "{name} names {event} outside the reducer and undecide"
+        );
+        assert_eq!(
+            text.matches(call).count(),
+            allowed_calls,
+            "{name} calls move_request_with outside undecide, advance and move_request"
+        );
+    }
+}

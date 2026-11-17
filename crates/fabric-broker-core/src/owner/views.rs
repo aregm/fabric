@@ -4,14 +4,15 @@
 //! Each view is one read of the store. A full-detail read is answered only after its audit row
 //! committed (PLAN 11 para 5).
 
+use fabric_desktop_contracts::common::UndecidedReason;
 use fabric_desktop_contracts::error::OwnerFault;
 use fabric_desktop_contracts::owner::{
     GetProofParams, GetRequestDetailsParams, OwnerMethod, OwnerResult, PrivateDetails, Redaction,
     RequestDetails, Snapshot,
 };
 use fabric_desktop_contracts::scalar::{Count, Id, List};
-use fabric_desktop_contracts::{Frame, canonical};
-use fabric_storage::{Actor, AuditEntry, ProverKind, ReadTx, StoreFault};
+use fabric_desktop_contracts::{Frame, RequestState, canonical};
+use fabric_storage::{Actor, AuditEntry, ProverKind, ReadTx, StoreFault, UndecidedCause};
 use serde_json::json;
 
 use super::frames::{refuse, result_frame};
@@ -143,6 +144,13 @@ fn read_details(
             .collect(),
         None => Vec::new(),
     };
+    // Null unless the request is undecided (README.md section 7): a stored cause is read only
+    // then, so a cause on a move the request left is never shown.
+    let undecided_reason = if record.row.request.status.state() == RequestState::Undecided {
+        r.undecided_cause_of(&p.request_id)?.and_then(reason_of)
+    } else {
+        None
+    };
     Ok(Some(RequestDetails {
         request: record.row.request,
         redaction: p.redaction,
@@ -158,9 +166,34 @@ fn read_details(
         authorization,
         attempts: List::new(attempts).map_err(|_| invariant("at most 20 attempts"))?,
         provider_event: None,
-        // The broker does not map its recorded reason to the contract's list yet.
-        undecided_reason: None,
+        undecided_reason,
     }))
+}
+
+/// The contract's `undecided_reason` of a stored cause: `None` (null) for a proof that decided
+/// but was not acted on, which the contract has no value for, and for a cause not stated.
+/// Exhaustive: a new cause must be given its value here.
+#[must_use]
+pub(crate) const fn reason_of(cause: UndecidedCause) -> Option<UndecidedReason> {
+    match cause {
+        UndecidedCause::ProverStarting
+        | UndecidedCause::ProverNotRunning
+        | UndecidedCause::NoProver => Some(UndecidedReason::ProverUnavailable),
+        UndecidedCause::DeadlinePassed | UndecidedCause::CheckLimitReached => {
+            Some(UndecidedReason::OutOfTime)
+        }
+        UndecidedCause::CheckNotDecided
+        | UndecidedCause::ReportUnusable
+        | UndecidedCause::NoRuling
+        | UndecidedCause::NoGrant
+        | UndecidedCause::ReproofsSpent
+        | UndecidedCause::JobRefused => Some(UndecidedReason::Failed),
+        UndecidedCause::NoProvider
+        | UndecidedCause::AgentPaused
+        | UndecidedCause::ReadTool
+        | UndecidedCause::NoScope
+        | UndecidedCause::NotStated => None,
+    }
 }
 
 /// `get_proof`: the newest report with the id; `not_found` for none and for a synthetic report,
@@ -178,4 +211,42 @@ pub(crate) fn proof(core: &Core, frame_id: Id, p: &GetProofParams) -> Result<Fra
             "The broker has no Isabelle proof report with this id.",
         ),
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// c35. 5.7: every stored cause maps to its contract value, one row per cause.
+    #[test]
+    fn each_cause_reads_its_contract_value() {
+        use UndecidedCause as C;
+        use UndecidedReason as R;
+        let table = [
+            (C::ProverStarting, Some(R::ProverUnavailable)),
+            (C::ProverNotRunning, Some(R::ProverUnavailable)),
+            (C::NoProver, Some(R::ProverUnavailable)),
+            (C::DeadlinePassed, Some(R::OutOfTime)),
+            (C::CheckLimitReached, Some(R::OutOfTime)),
+            (C::CheckNotDecided, Some(R::Failed)),
+            (C::ReportUnusable, Some(R::Failed)),
+            (C::NoRuling, Some(R::Failed)),
+            (C::NoGrant, Some(R::Failed)),
+            (C::ReproofsSpent, Some(R::Failed)),
+            (C::JobRefused, Some(R::Failed)),
+            (C::NoProvider, None),
+            (C::AgentPaused, None),
+            (C::ReadTool, None),
+            (C::NoScope, None),
+            (C::NotStated, None),
+        ];
+        assert_eq!(table.len(), C::ALL.len());
+        for cause in C::ALL {
+            assert!(table.iter().any(|(c, _)| *c == cause), "{cause:?}");
+        }
+        for (cause, reason) in table {
+            assert!(C::ALL.contains(&cause), "{cause:?}");
+            assert_eq!(reason_of(cause), reason, "{cause:?}");
+        }
+    }
 }

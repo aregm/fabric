@@ -5,19 +5,23 @@
 use fabric_desktop_contracts::agent::AgentRequest;
 use fabric_desktop_contracts::owner::{
     Account, Approval, Approved, AttemptOutcome, Duration, DurationKind, GrantEndReason,
-    ProofPurpose, ProofReport, Ruling,
+    LifecycleStatus, ProofPurpose, ProofReport, Ruling,
 };
 use fabric_desktop_contracts::scalar::{Id, Label};
 use fabric_desktop_contracts::{Decision, Entry, Frame, RequestState, approval_digest};
-use fabric_storage::{Actor, AuthorizationState, Mutation, ProverKind, TxError, VoidReason};
+use fabric_storage::{
+    Actor, AuthorizationState, Mutation, ProverKind, StoreFault, TxError, UndecidedCause,
+    VoidReason,
+};
 use serde_json::{Value, json};
 
 use super::core::testing::{self, T0, TempDir};
 use super::core::{Core, Outbox};
 use super::grants::{create_grant, end_grant};
-use super::pipeline::{Handoff, handoff};
+use super::pipeline::{Handoff, advance, handoff, undecide};
+use super::reducer::Event;
 use super::relied::set_relied;
-use super::requests::{decided, move_request, record_of};
+use super::requests::{decided, move_request, move_request_with, record_of};
 use super::{OwnerRefusal, timestamp};
 use crate::broker::{Job, MAX_REPROOFS, PROOF_WATCHDOG_MS, Seed, SeedAgent};
 use crate::ports::{
@@ -347,7 +351,12 @@ fn done(job: &ProofJob, outcome: &str, grants: &[&Id]) -> ProofDone {
         authorizing_grants: grants.iter().map(|g| (*g).clone()).collect(),
         undecided_reason: None,
         check_theory_text: None,
+        cause: None,
     }
+}
+
+fn ruling() -> Ruling {
+    record(&json!({"rule": "test_rule", "explanation": "Because.", "proof_id": "proof-1"}))
 }
 
 fn offered(job: &ProofJob) -> Vec<(String, bool)> {
@@ -800,9 +809,92 @@ fn a_discarded_classification_is_proved_again_until_its_counter_is_spent() {
         })
         .unwrap();
     });
-    let out = run.prove(done(&current, "need_approval", &[]));
+    let last = done(&current, "need_approval", &[]);
+    let last_proof = last.report.as_ref().unwrap().proof_id.clone();
+    let out = run.prove(last);
     assert!(out.jobs.is_empty());
     assert_eq!(run.state(&request_id), RequestState::Undecided);
+    // c33: the discarded proof is recorded, and the move states that the re-proofs are spent.
+    let (cause, recorded) = run
+        .core()
+        .read(|r| Ok((r.undecided_cause_of(&request_id)?, r.proof(&last_proof)?)))
+        .unwrap();
+    assert_eq!(cause, Some(UndecidedCause::ReproofsSpent));
+    assert_eq!(
+        cause.and_then(crate::owner::views::reason_of),
+        Some(fabric_desktop_contracts::common::UndecidedReason::Failed)
+    );
+    assert!(recorded.is_some(), "the discarded proof was not recorded");
+    run.verify();
+}
+
+/// c34. 5.7: only `undecide` moves a request to `undecided`, with its cause. `advance`
+/// refuses the event, and `move_request_with` refuses a move to `undecided` without a cause and
+/// a cause on any other move.
+#[test]
+fn advance_refuses_undecide() {
+    let mut run = Run::new();
+    run.setup();
+    let (request_id, _) = run.propose();
+    assert_eq!(run.state(&request_id), RequestState::ProvingClassification);
+    let refused = |run: &mut Run,
+                   f: &dyn Fn(
+        &mut fabric_storage::WriteTx<'_>,
+        &mut super::Cx<'_>,
+    ) -> Result<(), StoreFault>| {
+        let core = run.core();
+        let meta = core.meta("request.advance", Actor::broker(), Some(&request_id), None);
+        match core.commit(meta, f) {
+            Err(StoreFault::Invariant { what }) => what,
+            other => panic!("expected an invariant, got {other:?}"),
+        }
+    };
+    assert_eq!(
+        refused(&mut run, &|tx, cx| advance(
+            tx,
+            cx,
+            &request_id,
+            Event::Undecide,
+            None,
+            None
+        )),
+        "undecided names its cause"
+    );
+    assert_eq!(
+        refused(&mut run, &|tx, cx| {
+            let to = super::plain(RequestState::Undecided)?;
+            move_request(tx, cx, &request_id, to, None).map(|_| ())
+        }),
+        "a move to undecided names its cause"
+    );
+    assert_eq!(
+        refused(&mut run, &|tx, cx| {
+            let to = LifecycleStatus::Blocked { denial: ruling() };
+            move_request_with(
+                tx,
+                cx,
+                &request_id,
+                to,
+                None,
+                Some(UndecidedCause::NoRuling),
+            )
+            .map(|_| ())
+        }),
+        "only a move to undecided names its cause"
+    );
+    assert_eq!(run.state(&request_id), RequestState::ProvingClassification);
+    let core = run.core();
+    let meta = core.meta("request.advance", Actor::broker(), Some(&request_id), None);
+    core.commit(meta, |tx, cx| {
+        undecide(tx, cx, &request_id, UndecidedCause::NoRuling)
+    })
+    .unwrap();
+    assert_eq!(run.state(&request_id), RequestState::Undecided);
+    let cause = run
+        .core()
+        .read(|r| r.undecided_cause_of(&request_id))
+        .unwrap();
+    assert_eq!(cause, Some(UndecidedCause::NoRuling));
     run.verify();
 }
 

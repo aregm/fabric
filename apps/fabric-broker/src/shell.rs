@@ -15,10 +15,11 @@
 //!   own.
 //!
 //! Every worker sends its results on the main loop's bounded channel. The main thread never sends
-//! on that channel itself (it is its only receiver, so a full channel would never drain): health
-//! that the shell itself learns waits in the shell until the next [`Shell::turn`].
+//! on that channel itself (it is its only receiver, so a full channel would never drain): the
+//! status and the results that the shell itself learns wait in the shell until the next
+//! [`Shell::turn`].
 //!
-//! "PW" numbers, such as PW 2.2 or the test ids PW sh01 to PW sh06, refer to
+//! "PW" numbers, such as PW 2.2 or the test ids PW sh01 to PW sh08, refer to
 //! `docs/plans/calendar-desktop-prover-wiring-design.md`; bare numbers, such as (D34),
 //! cite the CD-W04 design (`docs/plans/calendar-desktop-w04-design.md`).
 
@@ -28,11 +29,14 @@ use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender, SyncSender};
 use std::thread;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use fabric_broker_core::ports::{AttemptDone, DispatchOrder, ProofDone, ProofJob, Provider};
+use fabric_broker_core::ports::{
+    AttemptDone, DispatchOrder, ProofDone, ProofJob, ProverStatus, Provider,
+};
 #[cfg(debug_assertions)]
 use fabric_broker_core::ports::{ProofAction, Prover};
 use fabric_broker_core::{Attachments, Broker, Input, Job, Opener, Output};
-use fabric_desktop_contracts::owner::ProverHealth;
+use fabric_desktop_contracts::owner::{ProofPurpose, ProverHealth, ProverProblem};
+use fabric_desktop_contracts::scalar::Id;
 // A release build off macOS has no key source, so `opener` uses none of these.
 #[cfg(any(debug_assertions, target_os = "macos"))]
 use fabric_storage::{OpenOptions, Store};
@@ -40,7 +44,7 @@ use fabric_storage::{OpenOptions, Store};
 #[cfg(any(debug_assertions, target_os = "macos"))]
 use crate::config::KeySource;
 use crate::config::{Config, EXIT_HALT, EXIT_IO};
-use crate::prover::{IsabelleProver, ProverEvent, ProverOptions, QUIT_BOUND};
+use crate::prover::{IsabelleProver, ProverEvent, ProverOptions, QUIT_BOUND, map};
 
 /// How many events may wait for the main loop. The reader and the workers block beyond this, so
 /// a fast host cannot make the broker hold more than a few frames in memory.
@@ -67,8 +71,8 @@ pub enum Event {
     Failed(std::io::Error),
     /// The prover's result for one job, boxed so lines do not carry its size.
     Proof(Box<ProofDone>),
-    /// The prover's health changed.
-    Health(ProverHealth),
+    /// The prover's status changed.
+    Health(ProverStatus),
     /// The provider's result for one attempt.
     Attempt(Box<AttemptDone>),
 }
@@ -238,7 +242,7 @@ pub fn input_of(event: Event) -> Option<Input> {
         Event::Line(bytes) => Some(Input::OwnerLine(bytes)),
         Event::Oversized => Some(Input::OwnerOversized),
         Event::Proof(done) => Some(Input::ProofDone(*done)),
-        Event::Health(health) => Some(Input::ProverHealth(health)),
+        Event::Health(status) => Some(Input::ProverHealth(status)),
         Event::Attempt(done) => Some(Input::Attempt(*done)),
         Event::End | Event::Failed(_) => None,
     }
@@ -275,9 +279,15 @@ pub struct Shell<W: Write> {
     /// The synthetic agent.
     #[cfg(debug_assertions)]
     agent: Option<crate::synthetic::SyntheticAgent>,
-    /// Health the shell itself must feed: a lost worker or an overrun; drained by `turn`.
-    pending_health: Option<ProverHealth>,
-    /// Set when a `prove` send failed, so `Unavailable` is fed once.
+    /// The status the shell itself must feed: a lost worker or an overrun; drained by `turn`.
+    pending_health: Option<ProverStatus>,
+    /// The results the shell itself must feed, in order: the answer to each job it could not
+    /// hand over, and to each job a lost worker held; drained by `turn`.
+    pending_results: Vec<ProofDone>,
+    /// The id, request and purpose of each job handed to the Isabelle worker whose result has
+    /// not passed through `turn` yet; answered at once if the worker is lost (PW 2.2).
+    handed: Vec<(u64, Id, ProofPurpose)>,
+    /// Set at the first sign that the Isabelle worker is lost, so `failed` is fed once.
     prover_lost: bool,
 }
 
@@ -313,6 +323,8 @@ impl<W: Write> Shell<W> {
             #[cfg(debug_assertions)]
             agent: plan.agent,
             pending_health: None,
+            pending_results: Vec::new(),
+            handed: Vec::new(),
             prover_lost: false,
         }
     }
@@ -376,7 +388,10 @@ impl<W: Write> Shell<W> {
         }
     }
 
-    /// Hands one proof job to the prover.
+    /// Hands one proof job to the prover. A job it cannot hand over is answered at once with
+    /// `NOT_RUNNING`, so the request ends `undecided` in the next turn, not by its watchdog: when
+    /// the Isabelle worker is lost, the classifier's channel is closed, or no prover runs
+    /// (PW 2.2). Only the Isabelle worker's loss changes the status.
     #[cfg_attr(
         not(debug_assertions),
         allow(unused_mut, reason = "the observation is debug only")
@@ -389,43 +404,101 @@ impl<W: Write> Shell<W> {
         {
             job.facts.event = calendar.observation(action);
         }
-        match &self.prover {
+        let (job_id, request_id, purpose) = (job.job_id, job.request_id.clone(), job.purpose);
+        let mut lost = false;
+        let handed = match &self.prover {
+            // The worker lives as long as the shell; a send fails only after it panicked.
             #[cfg(debug_assertions)]
-            ProverSlot::Classifier(classifier) => {
-                // The worker lives as long as the shell; a send fails only after it panicked,
-                // and the core's watchdog then ends the proof as undecided.
-                let _ = classifier.send(job);
-            }
+            ProverSlot::Classifier(classifier) => classifier.send(job).is_ok(),
+            ProverSlot::Isabelle(_) if self.prover_lost => false,
             ProverSlot::Isabelle(prover) => {
-                if !prover.prove(job) && !self.prover_lost {
-                    // The worker is gone: the core's watchdog ends the open proofs, and the
-                    // owner sees the prover unavailable.
-                    self.prover_lost = true;
-                    self.pending_health = Some(ProverHealth::Unavailable);
+                if prover.prove(job) {
+                    self.handed.push((job_id, request_id.clone(), purpose));
+                    true
+                } else {
+                    lost = true;
+                    false
                 }
             }
-            ProverSlot::None | ProverSlot::Waiting(_) => eprintln!(
-                "fabric-broker: a proof job came with no prover running; its watchdog ends it"
-            ),
+            ProverSlot::None | ProverSlot::Waiting(_) => {
+                eprintln!(
+                    "fabric-broker: a proof job came with no prover running; it ends undecided"
+                );
+                false
+            }
+        };
+        if lost {
+            self.lose();
+        }
+        if !handed {
+            self.pending_results
+                .push(map::answer(job_id, &request_id, purpose, map::NOT_RUNNING));
         }
     }
 
-    /// One turn: the overrun poll; `pending_health` if any (to the broker and the agent, emit);
-    /// the input (health also to the agent), the agent's replies, emit; the agent's tick, emit.
-    pub fn turn(&mut self, broker: &mut Broker, input: Input, now_ms: u64) -> Result<(), ExitCode> {
-        if let ProverSlot::Isabelle(prover) = &self.prover
-            && let Some(health) = prover.poll(now_ms)
-        {
-            self.pending_health = Some(health);
+    /// Asks the Isabelle worker whether it is lost, then runs the overrun poll. Once the worker is
+    /// lost the poll still runs, so its latch is set and the prover's due time clears, but its
+    /// status is dropped and cannot replace `failed` (PW 2.2).
+    fn watch_prover(&mut self, now_ms: u64) {
+        let (lost, polled) = match &self.prover {
+            ProverSlot::Isabelle(prover) => (prover.lost(), prover.poll(now_ms)),
+            _ => (false, None),
+        };
+        if lost {
+            self.lose();
         }
-        if let Some(health) = self.pending_health.take() {
-            self.agent_health(health);
-            let mut output = broker.handle(Input::ProverHealth(health), now_ms);
+        if let Some(status) = polled
+            && !self.prover_lost
+        {
+            self.pending_health = Some(status);
+        }
+    }
+
+    /// At the first sign that the Isabelle worker is lost (a failed send, or
+    /// [`IsabelleProver::lost`]), once: the status to feed becomes `failed`, and every job handed
+    /// to the worker without a result is answered with `NOT_RUNNING` (PW 2.2).
+    fn lose(&mut self) {
+        if self.prover_lost {
+            return;
+        }
+        self.prover_lost = true;
+        self.pending_health = Some(ProverStatus::Unavailable(Some(ProverProblem::Failed)));
+        for (job_id, request_id, purpose) in self.handed.drain(..) {
+            self.pending_results
+                .push(map::answer(job_id, &request_id, purpose, map::NOT_RUNNING));
+        }
+    }
+
+    /// One turn: `watch_prover`; `pending_health` if any (to the broker
+    /// and the agent, emit); each pending result (emit); the input (health also to the agent),
+    /// the agent's replies, emit; the agent's tick, emit.
+    ///
+    /// Once the worker is lost, a status still queued from it is dropped and fed as a tick, so it
+    /// cannot replace `failed` (PW 2.2).
+    pub fn turn(&mut self, broker: &mut Broker, input: Input, now_ms: u64) -> Result<(), ExitCode> {
+        self.watch_prover(now_ms);
+        if let Some(status) = self.pending_health.take() {
+            self.agent_health(status.health());
+            let mut output = broker.handle(Input::ProverHealth(status), now_ms);
             self.agent_replies(&mut output);
             self.emit(broker, output)?;
         }
-        if let Input::ProverHealth(health) = &input {
-            self.agent_health(*health);
+        for done in std::mem::take(&mut self.pending_results) {
+            let mut output = broker.handle(Input::ProofDone(done), now_ms);
+            self.agent_replies(&mut output);
+            self.emit(broker, output)?;
+        }
+        let input = match input {
+            Input::ProverHealth(_) if self.prover_lost => Input::Tick,
+            input => input,
+        };
+        if let Input::ProofDone(done) = &input {
+            self.handed.retain(|(job_id, request_id, purpose)| {
+                (*job_id, request_id, *purpose) != (done.job_id, &done.request_id, done.purpose)
+            });
+        }
+        if let Input::ProverHealth(status) = &input {
+            self.agent_health(status.health());
         }
         let mut output = broker.handle(input, now_ms);
         self.agent_replies(&mut output);
@@ -441,11 +514,11 @@ impl<W: Write> Shell<W> {
         self.emit(broker, output)
     }
 
-    /// `Some(0)` while `pending_health` is set; else the earliest of the broker's, the agent's
-    /// and the prover's due times.
+    /// `Some(0)` while a status or a result is pending; else the earliest of the broker's, the
+    /// agent's and the prover's due times.
     #[must_use]
     pub fn next_due_ms(&self, broker: &Broker) -> Option<u64> {
-        if self.pending_health.is_some() {
+        if self.pending_health.is_some() || !self.pending_results.is_empty() {
             return Some(0);
         }
         let prover = match &self.prover {
@@ -532,7 +605,7 @@ fn spawn_isabelle(options: ProverOptions, events: SyncSender<Event>) -> Isabelle
         Box::new(move |event| {
             let event = match event {
                 ProverEvent::Done(done) => Event::Proof(done),
-                ProverEvent::Health(health) => Event::Health(health),
+                ProverEvent::Health(status) => Event::Health(status),
             };
             events.send(event).is_ok()
         }),
@@ -681,6 +754,7 @@ mod tests {
         }
         let attachments = plan.attachments();
         assert_eq!(attachments.prover, Some(IsabelleProver::identity()));
+        assert_eq!(IsabelleProver::identity().health, ProverStatus::Starting);
         assert!(!attachments.provider_present);
         assert_eq!(build_label(&proved), format!("{version} CD-W04"));
 
@@ -695,7 +769,10 @@ mod tests {
             let prover = attachments.prover.expect("the classifier");
             assert_eq!(
                 (prover.kind, prover.health),
-                (ProverKind::Synthetic, ProverHealth::Unavailable)
+                (
+                    ProverKind::Synthetic,
+                    ProverStatus::Unavailable(Some(ProverProblem::NotConfigured))
+                )
             );
             assert!(!attachments.provider_present);
             assert_eq!(
@@ -909,6 +986,8 @@ mod tests {
             serde_json::json!({}),
         );
         assert_eq!(snapshot["health"]["prover"], "unavailable", "{snapshot}");
+        // No wait is left, so the worker will not try again.
+        assert_eq!(snapshot["health"]["prover_problem"], "failed", "{snapshot}");
         let details = ask(
             &mut shell,
             &mut broker,
@@ -918,6 +997,11 @@ mod tests {
         assert_eq!(details["proof_ids"], serde_json::json!([]), "{details}");
         assert!(details["authorization"].is_null(), "{details}");
         assert_eq!(details["attempts"], serde_json::json!([]), "{details}");
+        // The worker's `NOT_RUNNING` reaches the store as its cause.
+        assert_eq!(
+            details["undecided_reason"], "prover_unavailable",
+            "{details}"
+        );
         assert!(matches!(shell.prover, ProverSlot::Isabelle(_)));
         assert!(shell.stop(&events));
     }
@@ -949,44 +1033,322 @@ mod tests {
         assert!(!dir.data().exists());
     }
 
-    /// PW sh04: when the Isabelle worker is gone, a proof job sets `unavailable` to be fed once:
-    /// `next_due_ms` is `Some(0)` until a turn feeds it, and later jobs do not set it again.
-    /// The worker here ends because the main loop's channel is gone; its gate never starts,
-    /// because the Isabelle paths hold nothing.
+    /// The Isabelle paths of [`nowhere`], but with the repository's rules, so the pin passes and
+    /// a worker reaches its starter.
+    #[cfg(debug_assertions)]
+    fn pinned(root: &Path) -> IsabelleSettings {
+        IsabelleSettings {
+            rules_dir: Path::new(env!("CARGO_MANIFEST_DIR")).join("../../isabelle"),
+            ..nowhere(root)
+        }
+    }
+
+    /// A gate whose check waits until the clock is past `deadline` and then panics, so the
+    /// worker thread ends with its check still marked running and no result sent. It never
+    /// proves.
+    #[cfg(debug_assertions)]
+    struct PanickingGate {
+        deadline: u64,
+    }
+
+    #[cfg(debug_assertions)]
+    impl crate::prover::Gate for PanickingGate {
+        fn check_within(
+            &mut self,
+            _: &fabric_broker_policy::Context,
+            _: &fabric_broker_policy::Action,
+            _: Duration,
+        ) -> Result<fabric_broker_policy::Check, fabric_broker_policy::PolicyError> {
+            while now_ms() <= self.deadline {
+                thread::sleep(Duration::from_millis(5));
+            }
+            panic!("the test gate's check panics");
+        }
+
+        fn is_broken(&self) -> bool {
+            false
+        }
+
+        fn stop_within(&mut self, _: Duration) -> Result<(), fabric_broker_policy::PolicyError> {
+            Ok(())
+        }
+
+        fn theory_sha256(&self) -> &str {
+            crate::prover::built_theory_sha256()
+        }
+    }
+
+    /// A proof job of the map tests with its own id and deadline; the core knows no such job, so
+    /// it ignores its result.
+    #[cfg(debug_assertions)]
+    fn job_with(job_id: u64, deadline_ms: u64) -> ProofJob {
+        let mut job = crate::prover::map::tests::job_of(crate::prover::map::tests::create());
+        job.job_id = job_id;
+        job.deadline_ms = deadline_ms;
+        job
+    }
+
+    /// PW sh04 (PW 2.2): an Isabelle worker lost inside a check, past that check's deadline. Its
+    /// loss is noticed once: the status to feed becomes `failed`, and the jobs handed to it without
+    /// a result are answered with `NOT_RUNNING`. One turn feeds them, answers the owner line it was
+    /// given, and leaves no due time in the past, because the overrun poll still runs; its status,
+    /// and a `ready` the worker queued before its loss, do not replace `failed`. Later jobs are
+    /// answered at once, and a second loss sets nothing.
     #[cfg(debug_assertions)]
     #[test]
     fn a_failed_prove_send_feeds_unavailable_once() {
+        use fabric_broker_core::ports::ProverCause;
+
         let dir = TempDir::new("lost");
-        let config = config(&dir.data(), false, Some(nowhere(&dir.0)));
-        let plan = Plan::of(&config, now_ms());
+        let config = config(&dir.data(), false, Some(pinned(&dir.0)));
+        // Far enough for the job to reach its check before its deadline.
+        let deadline = now_ms() + 1_000;
+        let mut options = ProverOptions::new(&pinned(&dir.0), &config.data_dir);
+        options.restart_waits = Vec::new();
+        options.starter = std::sync::Arc::new(
+            move |_: &fabric_broker_policy::GateConfig, _: &fabric_broker_policy::KillHandle| {
+                Ok(Box::new(PanickingGate { deadline }) as Box<dyn crate::prover::Gate>)
+            },
+        );
+        let plan = Plan {
+            prover: ProverChoice::Isabelle(Box::new(options)),
+            work_dir: config.data_dir.join("prover"),
+            practice: None,
+            agent: None,
+        };
         let (mut broker, started) = start(&config, &plan);
         assert!(broker.store_ready());
         let (sender, events) = mpsc::sync_channel(QUEUED_EVENTS);
-        // The worker's first health has nowhere to go, so it stops.
-        drop(events);
         let mut shell = Shell::new(Vec::new(), plan, sender);
         shell.emit(&broker, started).unwrap();
-        assert!(matches!(shell.prover, ProverSlot::Isabelle(_)));
-        let job = || {
-            Job::Prove(crate::prover::map::tests::job_of(
-                crate::prover::map::tests::create(),
-            ))
-        };
-        let deadline = Instant::now() + Duration::from_secs(10);
-        while shell.pending_health.is_none() {
-            assert!(Instant::now() < deadline, "the worker did not stop");
-            shell.route(&broker, vec![job()]);
+        // The worker's `ready`, held back until after its loss.
+        let ready = events
+            .recv_timeout(Duration::from_secs(10))
+            .expect("the worker's status");
+        assert!(matches!(ready, Event::Health(ProverStatus::Ready)));
+        shell.route(
+            &broker,
+            vec![
+                Job::Prove(job_with(7, deadline)),
+                Job::Prove(job_with(8, deadline)),
+            ],
+        );
+        assert_eq!(shell.handed.len(), 2);
+        assert!(shell.pending_results.is_empty());
+        let wait = Instant::now() + Duration::from_secs(10);
+        while !matches!(&shell.prover, ProverSlot::Isabelle(prover) if prover.lost()) {
+            assert!(Instant::now() < wait, "the worker was not lost");
             thread::sleep(Duration::from_millis(20));
         }
-        assert_eq!(shell.pending_health, Some(ProverHealth::Unavailable));
+        let ProverSlot::Isabelle(prover) = &shell.prover else {
+            unreachable!("the Isabelle worker runs");
+        };
+        assert_eq!(prover.next_due_ms(), Some(deadline), "still marked running");
+
+        shell.watch_prover(now_ms());
+        assert_eq!(
+            shell.pending_health,
+            Some(ProverStatus::Unavailable(Some(ProverProblem::Failed)))
+        );
+        let answered = shell
+            .pending_results
+            .iter()
+            .map(|done| (done.job_id, done.cause, done.undecided_reason.as_deref()))
+            .collect::<Vec<_>>();
+        let not_running = (Some(ProverCause::NotRunning), Some(map::NOT_RUNNING.text));
+        assert_eq!(
+            answered,
+            [
+                (7, not_running.0, not_running.1),
+                (8, not_running.0, not_running.1)
+            ]
+        );
+        assert!(shell.handed.is_empty());
+        assert_eq!(shell.next_due_ms(&broker), Some(0));
+
+        let snapshot = owner(
+            &mut shell,
+            &mut broker,
+            "sh04-1",
+            "get_snapshot",
+            serde_json::json!({}),
+        );
+        assert_eq!(snapshot["health"]["prover"], "unavailable", "{snapshot}");
+        assert_eq!(snapshot["health"]["prover_problem"], "failed", "{snapshot}");
+        assert!(shell.pending_health.is_none() && shell.pending_results.is_empty());
+        let now = now_ms();
+        assert!(
+            shell.next_due_ms(&broker).is_none_or(|due| due >= now),
+            "a due time in the past"
+        );
+
+        shell
+            .turn(&mut broker, input_of(ready).unwrap(), now_ms())
+            .unwrap();
+        let snapshot = owner(
+            &mut shell,
+            &mut broker,
+            "sh04-2",
+            "get_snapshot",
+            serde_json::json!({}),
+        );
+        assert_eq!(snapshot["health"]["prover_problem"], "failed", "{snapshot}");
+
+        shell.route(&broker, vec![Job::Prove(job_with(9, deadline))]);
+        shell.lose();
+        assert_eq!(shell.pending_health, None);
+        assert_eq!(
+            shell.pending_results,
+            [map::no_report(&job_with(9, deadline), map::NOT_RUNNING)]
+        );
+        assert!(shell.handed.is_empty());
         assert_eq!(shell.next_due_ms(&broker), Some(0));
         shell.turn(&mut broker, Input::Tick, now_ms()).unwrap();
-        assert_eq!(shell.pending_health, None);
-        assert_ne!(shell.next_due_ms(&broker), Some(0));
-        shell.route(&broker, vec![job(), job()]);
-        assert_eq!(shell.pending_health, None);
+        assert!(shell.pending_health.is_none() && shell.pending_results.is_empty());
         assert!(shell.prover_lost);
-        let (_, events) = mpsc::sync_channel(QUEUED_EVENTS);
-        shell.stop(&events);
+        // The worker is gone: nothing acknowledges the stop.
+        assert!(!shell.stop(&events));
+    }
+
+    /// PW sh07 (PW 2.2), end to end: the synthetic agent proposes with an Isabelle plan whose
+    /// worker is lost. Within a few turns the request is `undecided`, its redacted details read
+    /// `prover_unavailable`, and the health reads `unavailable` with `failed`. The worker here has
+    /// a main loop that takes no event, so its first status ends it with no stop sent.
+    #[cfg(debug_assertions)]
+    #[test]
+    fn a_request_while_the_isabelle_worker_is_lost_ends_undecided() {
+        let dir = TempDir::new("lost-run");
+        let config = config(&dir.data(), true, Some(pinned(&dir.0)));
+        let options = || {
+            let mut options = ProverOptions::new(&pinned(&dir.0), &config.data_dir);
+            options.restart_waits = Vec::new();
+            options.starter = std::sync::Arc::new(
+                |_: &fabric_broker_policy::GateConfig, _: &fabric_broker_policy::KillHandle| {
+                    Err(fabric_broker_policy::PolicyError::Isabelle(
+                        "no heap".to_owned(),
+                    ))
+                },
+            );
+            options
+        };
+        let plan = Plan {
+            prover: ProverChoice::Isabelle(Box::new(options())),
+            work_dir: config.data_dir.join("prover"),
+            practice: None,
+            agent: Some(crate::synthetic::SyntheticAgent::new()),
+        };
+        let (mut broker, started) = start(&config, &plan);
+        assert!(broker.store_ready());
+        let (sender, events) = mpsc::sync_channel(QUEUED_EVENTS);
+        let mut shell = Shell::new(Vec::new(), plan, sender);
+        shell.prover = ProverSlot::Isabelle(IsabelleProver::spawn(options(), Box::new(|_| false)));
+        shell.emit(&broker, started).unwrap();
+        let deadline = Instant::now() + Duration::from_secs(10);
+        let mut n = 0;
+        let mut ask = |shell: &mut Shell<Vec<u8>>, broker: &mut Broker, method, params| {
+            n += 1;
+            owner(shell, broker, &format!("lost-{n}"), method, params)
+        };
+        let snapshot = ask(
+            &mut shell,
+            &mut broker,
+            "get_snapshot",
+            serde_json::json!({}),
+        );
+        ask(
+            &mut shell,
+            &mut broker,
+            "subscribe",
+            serde_json::json!({"cursor": snapshot["cursor"].clone()}),
+        );
+        let request = loop {
+            let ended = shell
+                .stdout_mut()
+                .split(|b| *b == b'\n')
+                .filter_map(|l| serde_json::from_slice::<serde_json::Value>(l).ok())
+                .filter(|v| v["change"]["kind"] == "request")
+                .map(|v| v["change"]["request"].clone())
+                .find(|r| r["status"]["state"] == "undecided");
+            if let Some(request) = ended {
+                break request;
+            }
+            assert!(
+                Instant::now() < deadline,
+                "the run did not get there in time"
+            );
+            let cap = now_ms() + 50;
+            let due = shell.next_due_ms(&broker).map_or(cap, |due| due.min(cap));
+            let input = match next_event(&events, Some(due)) {
+                None => Input::Tick,
+                Some(event) => input_of(event).expect("no end of input here"),
+            };
+            shell.turn(&mut broker, input, now_ms()).unwrap();
+        };
+        assert!(shell.prover_lost);
+        let snapshot = ask(
+            &mut shell,
+            &mut broker,
+            "get_snapshot",
+            serde_json::json!({}),
+        );
+        assert_eq!(snapshot["health"]["prover"], "unavailable", "{snapshot}");
+        assert_eq!(snapshot["health"]["prover_problem"], "failed", "{snapshot}");
+        let details = ask(
+            &mut shell,
+            &mut broker,
+            "get_request_details",
+            serde_json::json!({"request_id": request["request_id"], "redaction": "redacted"}),
+        );
+        assert_eq!(
+            details["undecided_reason"], "prover_unavailable",
+            "{details}"
+        );
+        assert_eq!(details["proof_ids"], serde_json::json!([]), "{details}");
+        let _ = shell.stop(&events);
+    }
+
+    /// PW sh08 (PW 2.2): a closed classifier channel, no prover, and an Isabelle prover still
+    /// waiting for the store each answer a job at once with `NOT_RUNNING`, and leave the status as
+    /// it is.
+    #[test]
+    fn a_job_no_prover_can_take_is_answered_not_running() {
+        let dir = TempDir::new("no-taker");
+        #[cfg_attr(
+            not(debug_assertions),
+            allow(unused_mut, reason = "the classifier is debug only")
+        )]
+        let mut slots = vec![
+            ProverSlot::None,
+            ProverSlot::Waiting(Box::new(ProverOptions::new(&nowhere(&dir.0), &dir.data()))),
+        ];
+        #[cfg(debug_assertions)]
+        {
+            let (jobs, received) = mpsc::channel();
+            drop(received);
+            slots.push(ProverSlot::Classifier(jobs));
+        }
+        for slot in slots {
+            let (sender, events) = mpsc::sync_channel(QUEUED_EVENTS);
+            let plan = Plan {
+                prover: ProverChoice::None,
+                work_dir: dir.data().join("prover"),
+                #[cfg(debug_assertions)]
+                practice: None,
+                #[cfg(debug_assertions)]
+                agent: None,
+            };
+            let mut shell = Shell::new(Vec::new(), plan, sender);
+            shell.prover = slot;
+            let job = crate::prover::map::tests::job_of(crate::prover::map::tests::create());
+            shell.prove(job.clone());
+            assert_eq!(
+                shell.pending_results,
+                [map::no_report(&job, map::NOT_RUNNING)]
+            );
+            assert_eq!(shell.pending_health, None);
+            assert!(!shell.prover_lost && shell.handed.is_empty());
+            assert!(shell.stop(&events));
+        }
+        assert!(!dir.data().exists());
     }
 }
