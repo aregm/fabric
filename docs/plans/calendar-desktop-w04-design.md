@@ -1376,13 +1376,15 @@ true }` where needed and feed `ProofDone` / `AttemptDone`. The shared harness is
 | c33 | `src/service/pipeline.rs` (unit) | `each_prover_cause_has_its_stored_cause` | 5.7: `stored_cause` |
 | c33 | `src/service/tests.rs` (unit) | `a_discarded_classification_is_proved_again_until_its_counter_is_spent` | 5.7, D16: a spent classification counter stores `reproofs_spent` |
 | c33 | `proofs.rs` | `each_stated_no_report_cause_reads_its_value` | 5.7: each cause a result with no report states, and `not_stated` |
+| c33 | `proofs.rs` | `a_synthetic_result_with_no_report_stores_no_prover` | 5.7, 5.10: a synthetic result with no report stores `no_prover` whatever cause it states (`prover_not_running`, or none) |
 | c33 | `proofs.rs` | `an_undecided_verdict_reads_its_stated_cause` | 5.7: an Undecided verdict's stated cause, and `check_not_decided` without one |
 | c33 | `proofs.rs` | `an_approval_with_no_scope_stores_its_cause_and_reads_null` | 5.7: a null-mapped cause end to end (`no_scope`) |
 | c34 | `src/service/tests.rs` (unit) | `advance_refuses_undecide` | 5.7: `advance` and `move_request_with` refuse; `undecide` moves |
 | c34 | `fitness.rs` | `only_undecide_moves_a_request_to_undecided` | 5.7: no production file outside the reducer and `undecide` names `Event::Undecide` or passes a cause |
+| c34 | `fitness.rs` | `the_source_scan_reads_past_a_test_module_declaration` | 5.7: the scan above reads past an out-of-line test module declaration (all of `owner/mod.rs` and `service/mod.rs`) and stops at an inline one |
 | c34 | `common/mod.rs` | `Harness::verify` (every test that calls it) | 5.7: every move to `undecided` in the ledger has a known cause and the request's correlation |
 | c35 | `src/owner/views.rs` (unit) | `each_cause_reads_its_contract_value` | 5.7: `reason_of`, one row per cause |
-| c35 | `src/owner/tests.rs` (unit) | `details_carry_a_reason_only_when_undecided` | 5.7, CR 7: null in every other state; redacted details carry the reason |
+| c35 | `src/owner/tests.rs` (unit) | `details_carry_a_reason_only_when_undecided` | 5.7, CR 7: null in every other state; full and redacted details carry the reason |
 | c35 | `proofs.rs` | `the_state_check_in_read_details_matters` | 5.7: a forged cause on a request that is not `undecided` reads null |
 | c35 | `proofs.rs` | `an_old_move_without_a_cause_reads_null` | 5.7: a move as earlier builds wrote it, and an unknown text, read null |
 | c36 | `proofs.rs` | `a_restart_keeps_the_cause_and_restates_starting` | 5.7, 5.8: a stored cause survives a restart; a job proved again while Isabelle starts reads `prover_unavailable`; health reads `starting` |

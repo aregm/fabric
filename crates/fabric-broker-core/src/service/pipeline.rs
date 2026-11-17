@@ -1296,6 +1296,36 @@ mod tests {
                 permit(fresh, &grants, no_provider),
                 C::NoProvider,
             ),
+            // The fresh-permit order of 5.7, one row for each neighbouring pair.
+            (
+                "no grant and a read tool",
+                permit(fresh, &[], read),
+                C::NoGrant,
+            ),
+            (
+                "a read tool and paused",
+                permit(
+                    fresh,
+                    &grants,
+                    Context {
+                        agent_paused: true,
+                        ..read
+                    },
+                ),
+                C::ReadTool,
+            ),
+            (
+                "paused and no provider",
+                permit(
+                    fresh,
+                    &grants,
+                    Context {
+                        provider_present: false,
+                        ..paused
+                    },
+                ),
+                C::AgentPaused,
+            ),
             (
                 "no grant and no provider",
                 permit(fresh, &[], no_provider),

@@ -37,8 +37,9 @@ use crate::shell::now_ms;
 
 pub mod map;
 
-/// The longest limit of one check (plan section 5). Each check gets the time left before its
-/// job's deadline; the gate takes the smaller.
+/// The longest limit of one check (plan section 5). The adapter passes each check the smaller of
+/// the time left before its job's deadline and the gate configuration's `check_timeout` (this
+/// value), so the gate's own cap at the same value changes nothing (PW 2.3).
 pub const CHECK_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
 
 /// The waits after the first and the second consecutive failure; after a third the prover
@@ -2272,8 +2273,8 @@ mod tests {
         // Ended because the main loop takes no more events.
         let data = TempDir::new("w40-gone");
         let starter: Starter = Arc::new(|_: &GateConfig, _: &KillHandle| Err(isabelle()));
-        let (prover, events) = spawn(options(data.path(), &[], starter));
-        drop(events);
+        // An emit that always fails: the main loop is gone before the worker's first event.
+        let prover = IsabelleProver::spawn(options(data.path(), &[], starter), Box::new(|_| false));
         wait_until("the worker's end", || prover.lost());
         drop(prover);
 

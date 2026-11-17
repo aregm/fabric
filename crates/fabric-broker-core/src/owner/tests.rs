@@ -1109,4 +1109,8 @@ fn details_carry_a_reason_only_when_undecided() {
     assert_eq!(details["request"]["status"]["state"], json!("undecided"));
     assert_eq!(details["private"], Value::Null);
     assert_eq!(details["undecided_reason"], json!("failed"));
+    let details = answer(&mut run, &undecided, "full");
+    assert_eq!(details["request"]["status"]["state"], json!("undecided"));
+    assert_ne!(details["private"], Value::Null, "{details}");
+    assert_eq!(details["undecided_reason"], json!("failed"));
 }

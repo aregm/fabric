@@ -175,25 +175,54 @@ fn the_manifest_scan_reads_every_dependency_form() {
     assert!(!names.iter().any(|n| n == "name" || n == "workspace"));
 }
 
-/// The production text of a source file: comment lines and a trailing test module left out.
+/// The production text of a source file: comment lines, out-of-line test module declarations
+/// and a trailing inline test module left out.
 fn production(path: &Path) -> String {
     let text = std::fs::read_to_string(path)
         .unwrap_or_else(|e| panic!("cannot read {}: {e}", path.display()));
+    production_text(&text)
+}
+
+/// `production` on a file's text. A test-gated `mod x;` drops only its two lines; a test-gated
+/// `mod x {` ends the production text.
+fn production_text(text: &str) -> String {
     let lines: Vec<&str> = text.lines().collect();
-    let end = lines
-        .windows(2)
-        .position(|w| {
-            w[0].starts_with("#[cfg(")
-                && w[0].contains("test")
-                && (w[1].starts_with("mod ") || w[1].starts_with("pub(crate) mod "))
-        })
-        .unwrap_or(lines.len());
-    lines[..end]
-        .iter()
-        .filter(|line| !line.trim_start().starts_with("//"))
-        .copied()
-        .collect::<Vec<_>>()
-        .join("\n")
+    let gated = |at: usize| {
+        let (cfg, module) = (lines[at], lines.get(at + 1).copied().unwrap_or(""));
+        cfg.starts_with("#[cfg(")
+            && cfg.contains("test")
+            && (module.starts_with("mod ") || module.starts_with("pub(crate) mod "))
+    };
+    let mut kept = Vec::new();
+    let mut at = 0;
+    while at < lines.len() {
+        if gated(at) {
+            if lines[at + 1].trim_end().ends_with('{') {
+                break;
+            }
+            at += 2;
+            continue;
+        }
+        if !lines[at].trim_start().starts_with("//") {
+            kept.push(lines[at]);
+        }
+        at += 1;
+    }
+    kept.join("\n")
+}
+
+/// The source scan reads past an out-of-line test module declaration and stops at an inline one.
+#[test]
+fn the_source_scan_reads_past_a_test_module_declaration() {
+    let sample = "mod a;\n#[cfg(all(test, debug_assertions))]\nmod tests;\n\
+                  fn f() { Event::Undecide }\n#[cfg(test)]\nmod tests {\n    fn g() {}\n}\n";
+    let text = production_text(sample);
+    assert!(text.contains("Event::Undecide"), "{text}");
+    assert!(!text.contains("mod tests"), "{text}");
+    assert!(!text.contains("fn g"), "{text}");
+    let src = root().join("crates/fabric-broker-core/src");
+    assert!(production(&src.join("service/mod.rs")).contains("struct OwnerRefusal"));
+    assert!(production(&src.join("owner/mod.rs")).contains("fn serve("));
 }
 
 /// The body of the first `fn name(` in `text`, braces included.

@@ -675,6 +675,31 @@ fn each_stated_no_report_cause_reads_its_value() {
     h.verify();
 }
 
+/// c33. PW 2.4 and W04 5.7 (`no_prover`): a result with no report from a prover whose kind is not
+/// Isabelle is stored as `no_prover` whatever cause it states, and reads `prover_unavailable`.
+#[test]
+fn a_synthetic_result_with_no_report_stores_no_prover() {
+    let mut h = Harness::new("c33s", synthetic());
+    h.setup();
+    for (n, cause) in [Some(ProverCause::NotRunning), None]
+        .into_iter()
+        .enumerate()
+    {
+        let (request_id, output) = h.propose(1, &format!("call-{n}"));
+        let job = job_for(&output, &request_id, ProofPurpose::Classification);
+        let output = h.prove_with(no_report_done(&job, cause));
+        assert!(output.halt.is_none());
+        assert!(output.jobs.is_empty());
+        assert_undecided(
+            &mut h,
+            &request_id,
+            "no_prover",
+            json!("prover_unavailable"),
+        );
+    }
+    h.verify();
+}
+
 /// c33. PW 2.4: an Isabelle report whose verdict is undecided goes `undecided` with the cause its
 /// prover stated, and with `check_not_decided` when it states none.
 #[test]

@@ -1221,8 +1221,10 @@ mod tests {
     }
 
     /// s22. Section 4: the reader gives the cause of the request's own move to undecided in a row
-    /// correlated to it, nothing for a move in a row of another correlation, nothing without a fault
+    /// correlated to it, never another request's move in such a row, nothing for a move in a row
+    /// of another correlation, nothing without a fault
     /// for an unknown text or a number, and nothing before the move's write commits.
+    /// A cause on a move to another state is never read.
     #[test]
     fn the_reader_finds_the_cause_of_the_undecided_move() {
         let dir = TempDir::new();
@@ -1237,13 +1239,26 @@ mod tests {
             undecided_cause: cause,
         };
         let mut setup = vec![moved("request-1", 2, "validating", None)];
-        for request in ["request-3", "request-4", "request-5"] {
+        for request in [
+            "request-3",
+            "request-4",
+            "request-5",
+            "request-7",
+            "request-8",
+        ] {
             setup.push(Mutation::RequestInserted {
                 row: testing::request(request, "agent-1", create),
                 due_at_ms: None,
             });
         }
-        for request in ["request-2", "request-3", "request-4", "request-5"] {
+        for request in [
+            "request-2",
+            "request-3",
+            "request-4",
+            "request-5",
+            "request-7",
+            "request-8",
+        ] {
             setup.push(moved(request, 2, "validating", None));
             setup.push(moved(request, 3, "proving_classification", None));
         }
@@ -1269,6 +1284,24 @@ mod tests {
         ])
         .unwrap();
         testing::forge_row(&store, Some("request-1"), &payload);
+        // A move to another state with a cause, for a request never moved to undecided.
+        let elsewhere = crate::ledger::payload_text(&[moved(
+            "request-8",
+            4,
+            "allowed",
+            Some(UndecidedCause::CheckNotDecided),
+        )])
+        .unwrap();
+        testing::forge_row(&store, Some("request-8"), &elsewhere);
+        // A row correlated to a request with no move of its own in it.
+        let other = crate::ledger::payload_text(&[moved(
+            "request-7",
+            4,
+            "undecided",
+            Some(UndecidedCause::CheckNotDecided),
+        )])
+        .unwrap();
+        testing::forge_row(&store, Some("request-6"), &other);
         let odd = |request: &str, value: &str| {
             crate::ledger::payload_text(&[moved(
                 request,
@@ -1296,6 +1329,9 @@ mod tests {
         assert_eq!(cause(&store, "request-3"), None);
         assert_eq!(cause(&store, "request-4"), None);
         assert_eq!(cause(&store, "request-5"), None);
+        assert_eq!(cause(&store, "request-6"), None, "another request's move");
+        assert_eq!(cause(&store, "request-7"), None);
+        assert_eq!(cause(&store, "request-8"), None, "a move to another state");
         store
             .write(testing::meta_of("request.advance", T0, "request-5"), |tx| {
                 tx.apply(moved(

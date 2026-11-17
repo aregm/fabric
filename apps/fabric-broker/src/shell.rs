@@ -19,7 +19,7 @@
 //! status and the results that the shell itself learns wait in the shell until the next
 //! [`Shell::turn`].
 //!
-//! "PW" numbers, such as PW 2.2 or the test ids PW sh01 to PW sh08, refer to
+//! "PW" numbers, such as PW 2.2 or the test ids PW sh01 to PW sh09, refer to
 //! `docs/plans/calendar-desktop-prover-wiring-design.md`; bare numbers, such as (D34),
 //! cite the CD-W04 design (`docs/plans/calendar-desktop-w04-design.md`).
 
@@ -469,14 +469,25 @@ impl<W: Write> Shell<W> {
         }
     }
 
-    /// One turn: `watch_prover`; `pending_health` if any (to the broker
+    /// The start of a turn. A worker's result in hand leaves `handed` first, so a loss noticed in
+    /// this turn never supersedes it with `NOT_RUNNING`; then `watch_prover` (PW 2.2).
+    fn notice(&mut self, input: &Input, now_ms: u64) {
+        if let Input::ProofDone(done) = input {
+            self.handed.retain(|(job_id, request_id, purpose)| {
+                (*job_id, request_id, *purpose) != (done.job_id, &done.request_id, done.purpose)
+            });
+        }
+        self.watch_prover(now_ms);
+    }
+
+    /// One turn: `notice`; `pending_health` if any (to the broker
     /// and the agent, emit); each pending result (emit); the input (health also to the agent),
     /// the agent's replies, emit; the agent's tick, emit.
     ///
     /// Once the worker is lost, a status still queued from it is dropped and fed as a tick, so it
     /// cannot replace `failed` (PW 2.2).
     pub fn turn(&mut self, broker: &mut Broker, input: Input, now_ms: u64) -> Result<(), ExitCode> {
-        self.watch_prover(now_ms);
+        self.notice(&input, now_ms);
         if let Some(status) = self.pending_health.take() {
             self.agent_health(status.health());
             let mut output = broker.handle(Input::ProverHealth(status), now_ms);
@@ -492,11 +503,6 @@ impl<W: Write> Shell<W> {
             Input::ProverHealth(_) if self.prover_lost => Input::Tick,
             input => input,
         };
-        if let Input::ProofDone(done) = &input {
-            self.handed.retain(|(job_id, request_id, purpose)| {
-                (*job_id, request_id, *purpose) != (done.job_id, &done.request_id, done.purpose)
-            });
-        }
         if let Input::ProverHealth(status) = &input {
             self.agent_health(status.health());
         }
@@ -1045,10 +1051,10 @@ mod tests {
 
     /// A gate whose check waits until the clock is past `deadline` and then panics, so the
     /// worker thread ends with its check still marked running and no result sent. It never
-    /// proves.
+    /// proves. The test sets `deadline` once its worker is ready, so no setup time counts.
     #[cfg(debug_assertions)]
     struct PanickingGate {
-        deadline: u64,
+        deadline: std::sync::Arc<std::sync::atomic::AtomicU64>,
     }
 
     #[cfg(debug_assertions)]
@@ -1059,7 +1065,7 @@ mod tests {
             _: &fabric_broker_policy::Action,
             _: Duration,
         ) -> Result<fabric_broker_policy::Check, fabric_broker_policy::PolicyError> {
-            while now_ms() <= self.deadline {
+            while now_ms() <= self.deadline.load(std::sync::atomic::Ordering::SeqCst) {
                 thread::sleep(Duration::from_millis(5));
             }
             panic!("the test gate's check panics");
@@ -1089,25 +1095,29 @@ mod tests {
     }
 
     /// PW sh04 (PW 2.2): an Isabelle worker lost inside a check, past that check's deadline. Its
-    /// loss is noticed once: the status to feed becomes `failed`, and the jobs handed to it without
-    /// a result are answered with `NOT_RUNNING`. One turn feeds them, answers the owner line it was
+    /// loss is noticed once, at the start of a turn: the status to feed becomes `failed`, the job
+    /// whose result is that turn's input leaves the handed jobs first, and the other jobs handed to
+    /// it without a result are answered with `NOT_RUNNING`. One turn feeds them, answers the owner line it was
     /// given, and leaves no due time in the past, because the overrun poll still runs; its status,
     /// and a `ready` the worker queued before its loss, do not replace `failed`. Later jobs are
     /// answered at once, and a second loss sets nothing.
     #[cfg(debug_assertions)]
     #[test]
-    fn a_failed_prove_send_feeds_unavailable_once() {
+    fn a_lost_worker_feeds_unavailable_once() {
         use fabric_broker_core::ports::ProverCause;
+        use std::sync::atomic::{AtomicU64, Ordering};
 
         let dir = TempDir::new("lost");
         let config = config(&dir.data(), false, Some(pinned(&dir.0)));
-        // Far enough for the job to reach its check before its deadline.
-        let deadline = now_ms() + 1_000;
+        let shared_deadline = std::sync::Arc::new(AtomicU64::new(0));
+        let gate_deadline = std::sync::Arc::clone(&shared_deadline);
         let mut options = ProverOptions::new(&pinned(&dir.0), &config.data_dir);
         options.restart_waits = Vec::new();
         options.starter = std::sync::Arc::new(
             move |_: &fabric_broker_policy::GateConfig, _: &fabric_broker_policy::KillHandle| {
-                Ok(Box::new(PanickingGate { deadline }) as Box<dyn crate::prover::Gate>)
+                Ok(Box::new(PanickingGate {
+                    deadline: std::sync::Arc::clone(&gate_deadline),
+                }) as Box<dyn crate::prover::Gate>)
             },
         );
         let plan = Plan {
@@ -1126,14 +1136,18 @@ mod tests {
             .recv_timeout(Duration::from_secs(10))
             .expect("the worker's status");
         assert!(matches!(ready, Event::Health(ProverStatus::Ready)));
+        // Far enough for the first job to reach its check before its deadline.
+        let deadline = now_ms() + 1_000;
+        shared_deadline.store(deadline, Ordering::SeqCst);
         shell.route(
             &broker,
             vec![
+                Job::Prove(job_with(6, deadline)),
                 Job::Prove(job_with(7, deadline)),
                 Job::Prove(job_with(8, deadline)),
             ],
         );
-        assert_eq!(shell.handed.len(), 2);
+        assert_eq!(shell.handed.len(), 3);
         assert!(shell.pending_results.is_empty());
         let wait = Instant::now() + Duration::from_secs(10);
         while !matches!(&shell.prover, ProverSlot::Isabelle(prover) if prover.lost()) {
@@ -1145,7 +1159,9 @@ mod tests {
         };
         assert_eq!(prover.next_due_ms(), Some(deadline), "still marked running");
 
-        shell.watch_prover(now_ms());
+        // The turn's input is job 7's result, as if it had come before the loss.
+        let seven = map::no_report(&job_with(7, deadline), map::FAILED);
+        shell.notice(&Input::ProofDone(seven), now_ms());
         assert_eq!(
             shell.pending_health,
             Some(ProverStatus::Unavailable(Some(ProverProblem::Failed)))
@@ -1159,7 +1175,7 @@ mod tests {
         assert_eq!(
             answered,
             [
-                (7, not_running.0, not_running.1),
+                (6, not_running.0, not_running.1),
                 (8, not_running.0, not_running.1)
             ]
         );
@@ -1305,6 +1321,63 @@ mod tests {
         );
         assert_eq!(details["proof_ids"], serde_json::json!([]), "{details}");
         let _ = shell.stop(&events);
+    }
+
+    /// PW sh09 (PW 2.2): a failed `prove` send is a sign of loss on its own. With the worker
+    /// ended and its loss not yet noticed, a job the shell cannot hand over sets `failed` once and
+    /// answers the jobs handed earlier, then itself, with `NOT_RUNNING`.
+    #[cfg(debug_assertions)]
+    #[test]
+    fn a_failed_prove_send_is_a_sign_of_loss() {
+        use std::sync::atomic::AtomicU64;
+
+        let dir = TempDir::new("send-lost");
+        let mut options = ProverOptions::new(&pinned(&dir.0), &dir.data());
+        options.restart_waits = Vec::new();
+        options.starter = std::sync::Arc::new(
+            |_: &fabric_broker_policy::GateConfig, _: &fabric_broker_policy::KillHandle| {
+                Ok(Box::new(PanickingGate {
+                    deadline: std::sync::Arc::new(AtomicU64::new(0)),
+                }) as Box<dyn crate::prover::Gate>)
+            },
+        );
+        // The main loop is gone before the worker's first event, so the worker ends at it.
+        let prover = IsabelleProver::spawn(options, Box::new(|_| false));
+        let wait = Instant::now() + Duration::from_secs(10);
+        while !prover.lost() {
+            assert!(Instant::now() < wait, "the worker did not end");
+            thread::sleep(Duration::from_millis(20));
+        }
+        let (sender, _events) = mpsc::sync_channel(QUEUED_EVENTS);
+        let plan = Plan {
+            prover: ProverChoice::None,
+            work_dir: dir.data().join("prover"),
+            practice: None,
+            agent: None,
+        };
+        let mut shell = Shell::new(Vec::new(), plan, sender);
+        shell.prover = ProverSlot::Isabelle(prover);
+        let earlier = [job_with(5, u64::MAX), job_with(6, u64::MAX)];
+        for job in &earlier {
+            shell
+                .handed
+                .push((job.job_id, job.request_id.clone(), job.purpose));
+        }
+        let job = job_with(9, u64::MAX);
+        shell.prove(job.clone());
+        assert_eq!(
+            shell.pending_health,
+            Some(ProverStatus::Unavailable(Some(ProverProblem::Failed)))
+        );
+        assert_eq!(
+            shell.pending_results,
+            [
+                map::no_report(&earlier[0], map::NOT_RUNNING),
+                map::no_report(&earlier[1], map::NOT_RUNNING),
+                map::no_report(&job, map::NOT_RUNNING),
+            ]
+        );
+        assert!(shell.prover_lost && shell.handed.is_empty());
     }
 
     /// PW sh08 (PW 2.2): a closed classifier channel, no prover, and an Isabelle prover still
