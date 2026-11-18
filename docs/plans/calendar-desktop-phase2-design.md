@@ -41,7 +41,7 @@ C, DD for D, ED for E, and X1 to X25 are the decisions taken while the sections 
 | VC1 to VC4 | the validation checks of `fabric_request_result` (B.5.1) |
 | A1 to A18 | the authority checks on the path of a read (B.15) |
 | Q1 to Q21 | the cases of question 10 (B.16.1) |
-| P2-1 to P2-29, CQ-D1 to CQ-D4 | the requests and questions to the contract session (section G) |
+| P2-1 to P2-30, CQ-D1 to CQ-D4 | the requests and questions to the contract session (section G) |
 | SR-n, W5-n, W6-n | the requests to the screens, CD-W05 and CD-W06 sessions (section H) |
 | OD1 to OD24 | the owner's decisions (E.3) |
 | OP, AO, BOP, OPC, CQ-D, OQ-D | open points of the shared vocabulary and of sections A, B, C and D, collected in section I with the lead's rulings on them |
@@ -72,6 +72,12 @@ this changes P3's list. E-10 starts step P4 after step P3 merges (E.2.3); this c
 P3". E-9 puts observe, reconcile, the fence fix and the order watchdogs into step P5, as P5a then P5b; this changes
 P12's content of P5. D-10 lets a delete found at another revision count as absent after one read; this is the one
 exception to P10's two reads. The owner's points stay open in E.3 (OD1 to OD24).
+
+**The answers of the CD-W06 session.** On 2026-11-18 the CD-W06 session accepted W6-1 to W6-9 and sent three
+corrections, two points for the lead and one question; the lead ruled on them the same day (I.8). The rulings correct
+the bridge's words for `completed`, `applied` and `reconciled` (B.3.1, H.3) and for a handshake `not_permitted` that
+means "wait" (C.6.4), add request P2-30 (a cancel message, B.8.4) and test h16, settle the merge order of pull
+requests 36 and 38 (E.2.4), and tell the owner the residual of a long user name (OD22).
 
 Date 2026-11-17. Status: Proposed. Code read at main `2d41210`.
 
@@ -1596,7 +1602,7 @@ of A.6.
 | Store | `requests.state` text `completed`, `terminal` 1. The open invariant I1 (`request state`, ST `store.rs:924`) gains it in the same pull request as the reducer row (J-store blocker 1) |
 | Contract | request P2-1: `RequestState::Completed`, `is_terminal`, `can_transition_to`, `PlainRequestState`, the agent and owner status schemas; README section 9: 26 states, 18 added transitions |
 | Page | the screens session words `completed` before the first bundled run (J-store minor, "the page learns `completed` too late") |
-| Bridge | W06 3.7 gains a row: `completed`, `isError` false, "The result follows." when a result is present; never reached without one |
+| Bridge | W06 3.7 gains a row: `completed`, `isError` false. The answer to the list call or to the `fabric_request_result` call that completed carries the result: "The result follows." A later `fabric_request_status` call on that request shows `completed` with no result, because a status never carries one (R5): "The request is complete." (W6-3, ruled 2026-11-18) |
 
 #### B.3.2 A list (`fabric_calendar_list`)
 
@@ -2000,6 +2006,7 @@ step nothing removes an entry before `wake_held` but `end_idle_sessions` in the 
 | disconnect (`agent.rs:144-171`) | `forget_connection` first: dropped, no reply | goes on; a list or release is cancelled (BD4) |
 | session replaced or idle (`after_commit` stale loop, `core.rs:294-309`) | `forget_connection` for each stale connection | as above |
 | agent removed (section C closes it) | `forget_connection`, then close | removal cancels what was not handed over (A.4.8) |
+| a call the client cancelled (MCP `notifications/cancelled`; the bridge drops the call) | with P2-30: the adapter's cancel names the call id, and that one entry is dropped with no reply, as `forget_connection` drops a connection's entries; a cancel for an id that is not held is ignored | goes on as for a disconnect: a list or release is cancelled (BD4), and a release that finds no waiting call releases nothing (BD3). The cancel is not a request and creates none |
 | handshake failure, frame before hello | none can exist (no session) | none |
 | quit (`recovery.rs:103-124`) | before the `broker.quit` commit: `let held = self.held.take_all()` and one `store.read` of their requests, keeping only entries that are valid then (B.8.1). After the commit returns: push `answer_reply(.., None)` with that status for each kept entry, then the closes. A fault of the commit answers nothing. The commit ends every live session, so `after_commit`'s stale loop (CORE `service/core.rs:294-309`) removes every bound connection inside `write`; taken after it, `Held` and `connections` would be empty | stays as it is; at the next start recovery cancels open lists and releases (BD4) |
 | halt | nothing reaches an agent (C.9.6) | recovered at the next start |
@@ -2009,6 +2016,14 @@ Every path that removes a connection from `Core.connections` calls `forget_conne
 nothing, because `take_all` ran before the commit. `Output.agent` is written before `Output.close` (C.9.6), so the
 answers at quit leave before the closes. The entry's
 `session_id` check (B.8.1) is the second line when a path forgets to (J-auth results minor).
+
+A call the client cancelled. An MCP client can cancel a call (`notifications/cancelled`); the bridge then drops it,
+but schema version 3 as drafted has no message that tells the broker. Request P2-30 asks for one on the agent
+channel; when it arrives the core drops the held answer as the row above says (test h16). Until the message exists,
+and for a cancel that arrives after the release was committed, the broker may release a result into an answer the
+bridge throws away; under a permission for one request that permission is then used up. That is a residual of the
+same kind as OD17 (a result whose answer is lost in the instant it is sent); the CD-W06 design calls it R14 (ruled
+2026-11-18).
 
 #### B.8.5 Limits
 
@@ -2282,6 +2297,7 @@ which step P5b builds (E.2.1); Q18 lands in step P6. G2a is put to the owner wit
 | h10 | `the_seventeenth_held_call_on_a_connection_is_answered_at_once` (test limits above 16 per minute) | no cap |
 | h11 | `fabric_request_status_never_carries_a_result_in_any_of_26_states` (frame bytes) | R5 |
 | h15 | `a_released_result_always_finds_its_held_answer` | B.8.3 argument |
+| h16 | `a_cancelled_held_call_is_dropped_and_a_later_release_for_it_releases_nothing_and_spends_no_permission` (P2-30) | a release into an answer the bridge threw away (B.8.4) |
 | r01 | `a_list_under_the_list_grant_completes_with_connected_accounts_and_selected_calendars_only` | content beyond the selection |
 | r03 | `a_list_whose_call_left_ends_cancelled_with_no_release_row_and_operation_type_request_proof` | V10 |
 | r04 | `the_request_release_row_commits_before_the_answer_and_its_digest_is_the_answers_result` | R4 |
@@ -2409,8 +2425,8 @@ edge first (one more request to it), and steps P2 and P5 of P12 grow by that pat
 (replacing `Context.change`); `ProofAction::Disclose` is 0.5.1's; `answer_reply`; `holds_result(tool)`;
 `Core::read_done`; `Core::wake_held` (0.5.1); `release(tx, cx, job, done)` in `service/results.rs`; `OrderInFlight`
 (with `expects` and `still_allowed`) and `Core.orders`; the shell's monotonic stamp and `until` (X23); tests o03, r23,
-m02 and Q21; the test file `crates/fabric-broker-core/tests/q10.rs` and its helper `assert_marker_only_where_allowed`;
-the audit kind `provider_mismatch`.
+m02, Q21 and h16; the test file `crates/fabric-broker-core/tests/q10.rs` and its helper
+`assert_marker_only_where_allowed`; the audit kind `provider_mismatch`.
 
 ---------------------------------------------------------------------------------------------------------------------
 
@@ -2838,6 +2854,9 @@ Notes on the table:
 - Row b: a seeded agent has no key and connects only through the debug `Connect` (V13).
 - Row d: nothing is recorded but the count; the owner sees a key mismatch only in the audit (OPC4).
 - Row e is P7's limit. The answer is `not_permitted` until P2-17 lets it be `busy` with a wait.
+- Rows e and i mean "wait". What the agent is told: the bridge's sentence for that `not_permitted` says to wait a
+  minute and call again, beside saying that the owner can look (W6-1, ruled 2026-11-18). With P2-17 (`busy` with its
+  wait) the bridge needs no change.
 - Row h: the durable time is `key_proven_at_ms`, the first proof of the current key; nothing records later proofs
   (PART-agents 2.3).
 - Row j: while an agent is pending, only a key change raises its enrollment revision; `add_agent` writes revision 1
@@ -3268,8 +3287,10 @@ the Keychain. Keys are fixed test seeds (DRAFT `fixtures/handshake.json` and the
 
 - Treat a connection closed with no answer during the handshake (`too_many`, `timed_out`, `peer_user`) as
   `broker_not_running` for that call and try again at the next call.
-- `pending` is answered for the same key with nothing written; `not_permitted` after a key change within a minute
-  may mean "wait": word it so (or use `busy` after P2-17).
+- `pending` is answered for the same key with nothing written. `not_permitted` from rows e and i of C.6.4 (too many
+  sessions, a key change within a minute) means "wait": the bridge's sentence says to wait a minute and call again,
+  beside saying that the owner can look (ruled 2026-11-18). With P2-17 (`busy` with its wait) the bridge needs no
+  change.
 - Keep `config_text` free of platform code and public in the library, with the signature of C.10; the broker binary
   depends on it.
 - Expect connection ids and frames as C.6; the handshake types are DRAFT's (`handshake.rs`).
@@ -3284,7 +3305,7 @@ the Keychain. Keys are fixed test seeds (DRAFT `fixtures/handshake.json` and the
 | OPC2 | `fabric-mcp-bridge` becomes a dependency of the broker binary for `config_text` | Accept; if its weight matters, the bridge session moves `config_text` into a small crate of its own. Ruled 2026-11-17: accepted; the smaller crate only if the weight matters; OD21 stays open | lead with the CD-W06 session; owner for the dependency (OD21) |
 | OPC3 | No `HOME` in the broker's environment, so a bridge under `$HOME/Applications/` gets no text | Keep: the installer puts the app in `/Applications`; adding `HOME` to the relay's allowlist is the alternative | owner (OD22) |
 | OPC4 | Repeated `wrong_key` or `bad_signature` against an approved agent are visible only in the audit | Accept for version 1; a later health or agent member can show it | owner (OD22), with the screens session |
-| OPC5 | A user short name over 18 bytes makes the installed socket path too long; no agent can connect for that user | Accept with the stderr line and P2-18; bind by a relative name after `chdir` only if a real user needs it. Ruled 2026-11-17: accepted | lead |
+| OPC5 | A user short name over 18 bytes makes the installed socket path too long; no agent can connect for that user | Accept with the stderr line and P2-18; bind by a relative name after `chdir` only if a real user needs it. Ruled 2026-11-17: accepted. Ruled 2026-11-18: still accepted for version 1 and told to the owner in OD22; the broker binding by the relative name is decided at CD-W11 | lead; told to the owner (OD22) |
 | OPC6 | No limit on accepts per second; each failed prove costs a signature check on the main thread | Accept: 8 at once and 5 s bound it. Ruled 2026-11-17: accepted | lead |
 | OPC7 | Owner and agent lines share the queue of 4; a flooding agent can delay an owner line | Accept, with bt12 as the bound; a separate owner channel is the fix if bt12 fails. Ruled 2026-11-17: accepted | lead |
 | OPC8 | The pairing code is 48 bits. A key whose code matches the real bridge's code, proved before the owner looks, would be approved; the real bridge then fails with `wrong_key` | Residual of DRAFT choice 62; the revision check stops a swap after the owner looked | owner (OD22; contract) |
@@ -4482,7 +4503,7 @@ Each step ends in one pull request that the owner merges, unless the row says tw
 |---|---|---|---|---|
 | P0 | In progress: the broker part of schema version 2 (`ProverStatus`, `ProverCause`, `ProofDone.cause`, `undecide()`, the cause in `RequestMoved`), then the duration rule | CORE `ports.rs`, `broker.rs`, `service/{core,pipeline,reducer,requests,tests}.rs`, `owner/{views,tests}.rs`, tests; ST `{apply,ledger,mutation,read,rows,testing,tx}.rs`; BR `prover/{map,mod}.rs`, `shell.rs`, `synthetic.rs`, tests; W04 and PW designs (`git diff --stat origin/main...claude/cd-broker-prover-reasons`) | contract schema version 2 (merged, PR 28) | lead |
 | P1 | This design document; documents only. No existing document is edited | the design document only | nothing; runs beside P0 | architect, writers A to E, editor |
-| P2 | Contract schema version 3: PR 36 finished from P1's shapes (section G, P2-1 to P2-29) and rebased on P0. TH1 and TH2 with a real Isabelle run may follow as a second pull request; it is needed before P7b | `contracts/desktop/v1/**`, `crates/fabric-desktop-contracts/**`, `isabelle/**` and the policy crate's mirror for TH1; PR 36's hunks in CORE and ST (`git diff --stat origin/main...origin/claude/contract-v3-owner-commands`: `broker.rs`, `owner/{dedup,frames,mod,profiles,tests}.rs`, `service/{agent,facts,grants,pipeline,reducer,requests,sessions,tests}.rs`, ST `apply.rs`, `store.rs`); `Cargo.lock` (PR 36 adds `ed25519-dalek` to the contracts crate) | P0 merged; P1 merged; the lead has re-read DRAFT's diff since `29cdfdf` (I.7 X-3); OD1, OD2 and OD24 answered | contract session |
+| P2 | Contract schema version 3: PR 36 finished from P1's shapes (section G, P2-1 to P2-30) and rebased on P0. TH1 and TH2 with a real Isabelle run may follow as a second pull request; it is needed before P7b | `contracts/desktop/v1/**`, `crates/fabric-desktop-contracts/**`, `isabelle/**` and the policy crate's mirror for TH1; PR 36's hunks in CORE and ST (`git diff --stat origin/main...origin/claude/contract-v3-owner-commands`: `broker.rs`, `owner/{dedup,frames,mod,profiles,tests}.rs`, `service/{agent,facts,grants,pipeline,reducer,requests,sessions,tests}.rs`, ST `apply.rs`, `store.rs`); `Cargo.lock` (PR 36 adds `ed25519-dalek` to the contracts crate) | P0 merged; P1 merged; the lead has re-read DRAFT's diff since `29cdfdf` (I.7 X-3); OD1, OD2 and OD24 answered | contract session |
 | P3 | Migration 2 (section A): the tables, mutations, operation types 23 to 34, invariants with `since`, the gated branches G1 to G9, the v2 fixture, the rehearsal on an encrypted v1 fixture; the shared types of X21 (`SystemAction`, `SystemActionKind`, `ObservedEvent`, `Notification`, `ConnectProblem`, `AuthLostCause`) in ST `rows.rs` with serde; the four undecided causes of 0.4.4 in the stored cause type, `SessionEndReason::AgentRemoved` and `VoidReason::AgentRemoved` (A.4.5); the ADR-115 and W04 amendments of A.3 as approved (OD5, OD20) | `crates/fabric-storage/**`; two test files that pin version numbers (`crates/fabric-broker-core/tests/faults.rs`, `apps/fabric-broker/tests/process.rs`, A.8.4); CORE `owner/views.rs` (`reason_of` and its test: the match over the stored cause is exhaustive on the step P0 branch, so the four causes get the values of 0.4.4 in the same pull request); `docs/adr/ADR-115-broker-ledger-envelope.md`; W04 D3, 3.5, 3.6, section 4, 9.2 and R22 (A.3) | P2 merged (`EnrollmentGrantInserted` carries a version 3 `Grant`); OD5, OD7 and OD20 (its A.3 part) answered; P2-26 met (I.7 X-2) | lead |
 | P4 | The provider port and the practice provider: D.2 types and `Job`/`Input` variants, with `until` on every `Provider` method (X23); `system_action_digest` and the re-exports of X21 in CORE `ports.rs`; `Attachments.provider`; the core ignores the new inputs (no order of those kinds exists yet); the practice provider of E.1.4; the shell routes the new jobs to the provider worker and stamps each job (B.13); the dispatch side of DD1 to DD3 in the core: `dispatch()` builds D.2's `DispatchOrder` with `order_id` from `next_order_id`, `proof: OrderProof::Agent(authorization)` and `target` from `resolve_target` (D.3, practice row); `attempt_done` and `finish_attempt` read D.2's `AttemptDone` and treat `Applied { event, confirmed, notification }` as today's `Applied { event }` (V9, BD16 and B.14 land in step P5); `can_carry_out` (0.5.3) replaces `provider_present` | CORE `ports.rs`, `broker.rs`, `service/pipeline.rs` (`:581-634`, `:667`, `:696-720`, `:917-989`), new `service/provider.rs` (`resolve_target`, D.3), `service/core.rs` (the field `next_order_id`; the test attachments at `:464-472`), `service/mod.rs` (`mod provider`); BR `practice.rs`, `shell.rs` | P0, P2 and P3 merged (P0 and P2 write `broker.rs`, `pipeline.rs`, `ports.rs`; D.2 names `Notification`, `ConnectProblem`, `AuthLostCause` and `SystemAction`, which P3 ships, X21) | lead |
 | P5 | Results, held answers and system proofs (section B): CO5, CO9, CO13, the D17, D18, D33 and `used` amendments, held answers (P7), releases, purges, P8's `prover_unavailable`; and, provider-neutral (ED5), the fence fix, the order watchdogs, observe before a proof (CO6) and reconcile (CO8, PD20); the hook goes (ED4). The Q10 tests on `Input::Attempt` and on the practice provider. Two pull requests in this order (the lead's ruling of 2026-11-17, I.6 E-9): P5a (fence, watchdogs, system proofs with `Prover::prove_system`, observe, reconcile, hook, `resolve_outcome` (D.7.5) and `select_calendars` (D.9.3), both of which need only migration 2 and work on the practice account; steps 1 and 3 of D.8.3 (a disconnect moves the account's requests in `outcome_unknown` and `reconciling` to `needs_owner_resolution` and drops its orders and the system proofs that serve a moved request), which need only migration 2 and apply to the practice account; DD10, and the test of D.9.4 with the partition of `OwnerMethod::ALL` and the entries built so far; step P6 adds `remove_agent`; step P7b adds `connect_google` and `NARROWING_COMMITS`) and P5b (results, held answers, release, the purge at `disconnect_google` (D.8.3 step 2, B.9), `ProofAction::Disclose`, Q10; and the list's authority: `grants::create_enrollment_grant` (C.4.1), the debug seed's call of it (E.1.3), X16's handling of `GrantOrigin::Enrollment`, and CD21: `scope_of(CalendarList)` and the `""` purpose in `create_grant`, so that r01, e14 and Q17 can pass in step P5). `list_ended_requests` and `delete_custom` stay `unknown_method` in phase 2 (A.6, AO8) | CORE `service/{pipeline,facts,grants,reducer,requests,agent,core,recovery,epochs}.rs`, new `service/held.rs`, new `service/results.rs` (B.4.1), `service/provider.rs` (the calls of D.3 for system orders), `ports.rs` (`ProofAction::Disclose`, `Prover::prove_system`, `SystemProofJob`, `SystemProofDone`), `owner/{commands,dedup,mod}.rs` (`resolve_outcome`, `select_calendars`), `owner/preferences.rs` (DD10), `broker.rs`, new `tests/q10.rs`; BR `prover/map.rs` (B.5.2), `prover/mod.rs` (the Isabelle handle's path for `Job::ProveSystem`), `synthetic.rs` (`SyntheticClassifier::prove_system`, which answers with no report; `Practice::a_event` accepts `reconciled`, V7), `apps/fabric-broker/tests/live.rs`, `shell.rs` (the hook), `practice.rs` comments; W04 D14, D17, D18, D33, 5.6, 5.7, 5.8; PW X6, 4.2 to 4.4, decision P2, practice rules P3 and P4 | P3 and P4 merged; OD3, OD9 (the hook), OD11, OD15, OD16, OD17, OD18 and OD20 (W04 5.6 to 5.8) answered; the screens' text for `completed` merged | lead |
@@ -4497,7 +4518,7 @@ Outside the lead's chain, each its own pull request:
 | CD-W05 phase 1 (open) | `crates/fabric-google-calendar`, `crates/fabric-google-fake`, root `Cargo.toml`, `Cargo.lock`, ADR-111, ADR-113, W05 design | nothing | CD-W05 session |
 | CD-W06 phase 1 (open) | `apps/fabric-mcp-bridge`, root `Cargo.toml`, `Cargo.lock`, ADR-115 (checkbox 4), W06 design | nothing | CD-W06 session |
 | GC phase 2: the `Provider` and `AccountLink` implementations, the dependency on the core, `KeychainTokenStore`, `SystemBrowser` | `crates/fabric-google-calendar/**` and `Cargo.lock` | P4 merged | CD-W05 session |
-| Bridge phase 2: the contract's handshake types, `practice` (P2-19) in the first text block, the guidance for `completed` and for a read's `reconciled` ("call `fabric_request_result`"), the Keychain key store | `apps/fabric-mcp-bridge/**` and `Cargo.lock` | P2 merged | CD-W06 session |
+| Bridge phase 2: the contract's handshake types, `practice` (P2-19) in the first text block, the words for `completed` with and without a result and the one sentence for `applied` and `reconciled` (W6-3, W6-4), the cancel of P2-30 when a client cancels a call (once P2-30 merges), the Keychain key store | `apps/fabric-mcp-bridge/**` and `Cargo.lock` | P2 merged | CD-W06 session |
 | Screens for version 3: S07 Agents (SR-1 to SR-8) with the approval text (OD8); the text for `completed`; a grant whose scope names no calendar; requests of a removed agent; `select_calendars`, `resolve_outcome`; the conditional practice line; the README practice section and the harness header | `apps/fabric-desktop/ui/**`, `apps/fabric-desktop/README.md`, `apps/fabric-desktop/harness/serve.ts` | P2 merged; the `completed` text before P5, the rest before P6 | screens session |
 | Screens for Google: S01 account states, `provider_accounts` (P2-9), `undecided_reason` `provider_unreachable` (P2-7), `notification` (P2-10), `refresh_calendars` (P2-11) | `apps/fabric-desktop/ui/**` | P2 merged; before the G2b live run | screens session |
 | G2a put to the owner, with Q10 (OD10) | none | P5 merged | lead |
@@ -4510,7 +4531,7 @@ Outside the lead's chain, each its own pull request:
 |---|---|---|---|---|---|
 | P0 | none | the page's duration choice (branch `claude/cd-w08-page-duration-ceiling`) | none | none | merge |
 | P1 | read section G | read E.2 | adopt V1, V2 and V20; drop its own migration number and ST5 columns but `notification`; adopt `releases` and `request.release` | adopt V12, V14, P2-19; the guidance changes | approve the design; show-before-apply edits come with each step |
-| P2 | P2-1 to P2-29 (section G); rebase PR 36 on P0; P2-14 pins every v2 fixture; TH1/TH2 with a real Isabelle run | none | review P2-6 to P2-13 | review P2-15 to P2-19 | OD1, OD2 and OD24 before the merge; the merge is his approval of schema version 3 (NOV17-SCHEMA3) |
+| P2 | P2-1 to P2-30 (section G); rebase PR 36 on P0; P2-14 pins every v2 fixture; TH1/TH2 with a real Isabelle run | none | review P2-6 to P2-13 | review P2-15 to P2-19 and P2-30; if PR 38 merged first, write the patch to `apps/fabric-mcp-bridge/src/mcp/render.rs` and its test r01 for the new states, carried in PR 36 (E.2.4) | OD1, OD2 and OD24 before the merge; the merge is his approval of schema version 3 (NOV17-SCHEMA3) |
 | P3 | none | none | review the store shapes it asked (ST1 to ST5 in V1, V2) | review the enrollment tables | OD5, OD7 and OD20 (A.3) before the merge |
 | P4 | none | none | start GC phase 2 on the merged port | none | merge |
 | P5 | none | the `completed` text merged first (J-store results minor) | none | none | OD3, OD9 (hook), OD11, OD15 to OD18 and OD20 (W04 5.6 to 5.8) before the merge; G2a with OD10 after it |
@@ -4568,6 +4589,7 @@ The longest chain: P0, P2, P3, P4, P5, P6, P7b, G2b, G2c.
 | BR `synthetic.rs` | P0, P5, P6 |
 | `apps/fabric-broker/Cargo.toml` | P6, P7b |
 | root `Cargo.toml`, `Cargo.lock` | CD-W05 phase 1, CD-W06 phase 1, P2 (`Cargo.lock`), bridge phase 2 and GC phase 2 (`Cargo.lock`), P6, P7b |
+| `apps/fabric-mcp-bridge/src/mcp/render.rs` and its test r01 (the bridge's r01, not B.16's) | CD-W06 phase 1 (PR 38) and P2 (PR 36), in either order. The bridge's table of request states is one `match` with no default arm, so it does not compile against a contract crate with the new states `completed`, `resolved_as_applied` and `resolved_as_absent`. The one that merges second carries the lines: if PR 38 merges first, PR 36 carries a small patch to this file and r01, written by the CD-W06 session; if PR 36 merges first, the CD-W06 session adds the lines to PR 38. So the second merge does not break `main` (ruled 2026-11-18) |
 | `apps/fabric-desktop/relay/src/config.rs`, `src-tauri/src/host.rs` | P7b only (practice needs no change) |
 | `docs/plans/calendar-desktop-w04-design.md` | P0, P3 (D3, 3.5, 3.6, section 4, 9.2, R22), P5 (D14, D17, D18, D33, 5.6, 5.7, 5.8), P6 (D11, D13, D25, D26, D28, L2, 5.5, 5.10, 6.1), P7b (D27, D38, R24) |
 | `docs/plans/calendar-desktop-prover-wiring-design.md` | P0, P5, P6, P7b |
@@ -4600,12 +4622,12 @@ his answer.
 | OD14 | Google's client switch "Use this client for an AI-powered agent" cannot be changed after a client is created. For the development client you answered on 2026-11-17: off (W05 18.2). Off for the release client too? | Off | Google requires it only for clients that call its hosted Workspace MCP servers; Fabric calls the Calendar API directly (RUNBOOK 6.3) | On: the release client is created with the switch on | before the release client is created (CD-W11) |
 | OD15 | After you revoke every permission of an agent it can still fetch the id and revision of each change it made, no title and no time, until you pause or remove it, disconnect the account or deselect the calendar. Accept? | Yes (BD11, lift c; pinned by Q20) | The agent needs the id to update or delete what it made (W06 LR-C4 (2)); it is metadata of its own action | The contract session changes `rows (Disclose change)` in the theory so that a grant is needed; until then the outcome is not released | before P5 merges |
 | OD16 | A read result that waits for its release stays in the store when you revoke the permission it was read under, and can still be released if another permission of yours covers the same read. Keep it? | Keep (B.9) | PLAN 9.2 allows a later release under a still-valid broader grant and a fresh proof (PLAN `:333`); the release is refused unless such a grant exists (B.5.4) | Purge it when every grant the read relied on has ended, so a revoked read is never released later (REV-results retention-OQ5) | before P5 merges |
-| OD17 | A result whose answer is lost in the instant it is sent (a full writer queue, a broken connection) is gone: it was purged at its release, and the agent reads again. Accept? | Accept (OP13; B.2) | A second copy would outlive its disclosure (V4) | Keep the result until the agent's next call confirms receipt: a second release path and a longer life of content | before P5 merges |
+| OD17 | A result whose answer is lost in the instant it is sent (a full writer queue, a broken connection) is gone: it was purged at its release, and the agent reads again. The same holds for a call the client cancelled while its result is released, until P2-30's cancel message exists and for a cancel that arrives after the release commit; under a permission for one request that permission is then used up (B.8.4). Accept? | Accept (OP13; B.2) | A second copy would outlive its disclosure (V4) | Keep the result until the agent's next call confirms receipt: a second release path and a longer life of content | before P5 merges |
 | OD18 | Accept the amendment of W04 D14 (E.1.9): with no prover attached, or while it is not ready (the synthetic classifier of a debug build counts as ready), a call that would create a request is refused `prover_unavailable` and nothing is recorded; a request already open still ends `undecided` | Accept (P8; B.10; I.3 B-7). The synthetic exemption is the lead's, ruled 2026-11-17 (I.3 B-8), and is not part of the question | A refusal tells the agent to retry later and records nothing | W04 D14 stays: such calls are recorded and end `undecided` at once | before P5 merges |
 | OD19 | Accept the amendments of C.12: W04 D25 (agent entry), D11 (developer seams), D28 (locations), L2 (the peer's user id), 5.5 (sessions), 6.1 (the owner methods) | Accept | They follow P9 and the contract draft | The agent channel cannot be built as P9 asks | before P6 merges |
 | OD20 | Accept the amendments of D.15 other than D27 (W04 5.6 twice, 5.7, 5.8, D38 and R24) and A.3's W04 D3, 3.5, section 4, 9.2 and R22 | Accept | They state the fence, the epoch raises, reconciliation, recovery, the account budget and the store's writers as built | The steps that build them wait | before P3 (A.3), P5 (5.6, 5.7, 5.8) and P7b (D38, R24) merge |
 | OD21 | Accept two new dependencies of the broker binary: `nix` (unix only, features `user` and `socket`, with `cfg_aliases`) for the peer's user id, and the bridge's library `fabric-mcp-bridge` for `config_text` | Accept (OPC1, OPC2) | `std` has no stable call for the peer's user id and `unsafe` is forbidden (C.1 CD16); one function makes the configuration text (W06 A24) | Without `nix` the peer check of P9 cannot be built; without the bridge library the configuration text is written twice | before P6 merges |
-| OD22 | Accept these residuals, one line each: a 48-bit pairing code can collide before you look (OPC8); same-user software that runs the bundled bridge has the agent's key (OPC9); a process that knows a pending id can force you to remove and add the agent again after 20 key changes (OPC10); a purged result stays in older write-ahead-log frames until the next checkpoint (AO4). And these defaults: no `HOME` in the broker's environment, so a bridge under `$HOME/Applications` gets no text (OPC3); repeated wrong keys show only in the audit (OPC4); no warning at a disconnect while a change of that account is unknown (D-4, W05 OQ16) | Accept each | Each is bounded as section C, A or D says | OPC8, OPC9, OPC10 and AO4 have no alternative in version 1 and are told to you, not asked; OPC3 (add `HOME` to the relay's allowlist), OPC4 (show wrong keys on the Agents screen) and D-4 (warn before a disconnect) are choices | before P6 merges (the OPC rows); before the G2b live run (D-4) |
+| OD22 | Accept these residuals, one line each: a 48-bit pairing code can collide before you look (OPC8); same-user software that runs the bundled bridge has the agent's key (OPC9); a process that knows a pending id can force you to remove and add the agent again after 20 key changes (OPC10); a purged result stays in older write-ahead-log frames until the next checkpoint (AO4); a user whose short name is longer than 18 bytes cannot use the agent channel of the installed application, because the socket path is too long (OPC5; the alternative, the broker binding by the relative name from inside its `run` directory, changes how the binary starts its listener and is decided at CD-W11). And these defaults: no `HOME` in the broker's environment, so a bridge under `$HOME/Applications` gets no text (OPC3); repeated wrong keys show only in the audit (OPC4); no warning at a disconnect while a change of that account is unknown (D-4, W05 OQ16) | Accept each | Each is bounded as section C, A or D says | OPC5, OPC8, OPC9, OPC10 and AO4 have no alternative in version 1 and are told to you, not asked; OPC3 (add `HOME` to the relay's allowlist), OPC4 (show wrong keys on the Agents screen) and D-4 (warn before a disconnect) are choices | before P6 merges (the OPC rows); before the G2b live run (D-4) |
 | OD23 | The G2b live run uses a debug build with a Keychain store in its own `FABRIC_DESKTOP_DATA_DIR`, which keeps real tokens in the Keychain (ER5, W5-9). Accept? | Accept | ED2 refuses the test key with Isabelle and Google, so the run cannot use the test key | Another form of the live run, named by section D | before the G2b live run |
 | OD24 | A calendar list approved through a card for one request delivers nothing: the list is cancelled and the permission ends used. Under `list_and_availability` in mode `ask` no calendar list ever completes in version 1. Accept? | Accept for version 1; the card says so (SR-7) | No result is released without a waiting call (P6), and the list's call has left by the time he approves (BD5) | BOP1's carry-over: an unused one-request list permission stays live after the list was cancelled and serves the agent's next list (the same action digest), built in step P5b | before P2 merges (P2-2, P2-3, P2-29 write the default into the contract README) |
 
@@ -4769,6 +4791,7 @@ draft has done since.
 | P2-27 | `request_details` gains `releases: [{release_id, request_id, kind, proof_id, grant_ids, released_at}]`, the release records of B.4.3 that name the request as releasing request or subject, so the owner sees what left the broker (SR-10) | B.4.3 | Open |
 | P2-28 | README section 7 states seven answers: `conflict` for approving an agent that is not pending and for removing one that is removed; `conflict` for pausing a pending or removed agent; `invalid_params` at `/params` for the owner budget at approval; `not_found` for a removed agent's configuration; `invalid_params` at `/params/registered_name` when `add_agent` would pass the owner budget; `invalid_params` at `/params/account_id` when `connect_google` would; and "A proved key that differs from the agent's current key raises the agent's revision; proving the current key again changes nothing" in place of "Every proved key raises the agent's revision" (C.3.1 to C.3.5, C.6.4 row h, D.11) | C.15.1 | Open |
 | P2-29 | README section 10 states that a one-request approval of a calendar list delivers nothing in version 1 (the list is cancelled because its call has left), so under a row in mode `ask` no list completes; the section's rule "the broker does not propose a duration whose grant would not serve the request" does not hold for a list (BD5, OD24) | B.1, C.4.2 | Open |
+| P2-30 | Agent channel, schema version 3: a cancel message from the adapter, so that a call the MCP client cancelled (`notifications/cancelled`) stops waiting in the broker (the CD-W06 design's R14). The adapter names the id of a call it no longer waits for (for example method `agent_cancel` with params `{call_id}`; the name is the contract session's). The broker drops that held answer without a reply, exactly as for a connection that ended, so a release that finds no waiting call releases nothing and the request ends as B says for that case (BD3, BD4). A cancel for an id that is not held is ignored. It is not a request of its own and creates none. README section 8 states it. Asked by the lead's ruling of 2026-11-18 | B.8.4 | Open |
 
 Questions to the contract session (theory owner), from D.14:
 
@@ -4820,17 +4843,23 @@ card for a list, and Google's credentials. Added by the other sections:
 
 ### H.3 To the CD-W06 session
 
-| # | Request | Section |
-|---|---|---|
-| W6-1 | The four handshake requests of C.15.3: a close with no answer during the handshake is `broker_not_running` for that call; the wording of `pending` and of a key change too soon; `config_text` public with C.10's signature; connection ids and frames as C.6 | C.15.3 |
-| W6-2 | When `practice` (P2-19) is true, the bridge's fixed first text block of every tool result begins "Practice run: changes go to a practice calendar in memory; nothing real changes." | E.1.6 |
-| W6-3 | W06 3.7 gains a row: `completed`, `isError` false, "The result follows." when a result is present | B.3.1 |
-| W6-4 | Guidance for a read answered `reconciled` with no result: "call `fabric_request_result`" | B.3.3, E.2.1 |
-| W6-5 | Relay `prover_unavailable` and do not retry (W06 3.7) | B.10 |
-| W6-6 | Review the bundling of the bridge in the debug app, which the lead builds in step P6 (`scripts/build-desktop.sh`, W06 7.5; E.2.1); without it `get_agent_configuration` answers null and the practice run cannot start | E.1.8, C.10 |
-| W6-7 | Adopt V12 and V14, and DRAFT's handshake types (`handshake.rs`) | E.2.2, C.6 |
-| W6-8 | Accept the debug key directory `<data_dir>/bridge-keys` (0700, made by the broker) and `--socket <data_dir>/run/agent.sock` in the debug configuration text | C.9.1, C.10, E.0 ED10 |
-| W6-9 | Review P2-15 to P2-19, the listener and the configuration text; if the weight of the bridge library matters, move `config_text` into a small crate (OPC2) | E.2.2, C.16 |
+| # | Request | Section | CD-W06 session, 2026-11-18 |
+|---|---|---|---|
+| W6-1 | The four handshake requests of C.15.3: a close with no answer during the handshake is `broker_not_running` for that call; the wording of `pending` and of a key change too soon; `config_text` public with C.10's signature; connection ids and frames as C.6. For rows e and i of C.6.4 the bridge's `not_permitted` sentence says to wait a minute and call again, beside saying that the owner can look; with P2-17 (`busy` with its wait) no change | C.15.3, C.6.4 | Accepted, with the wording for rows e and i (ruled 2026-11-18) |
+| W6-2 | When `practice` (P2-19) is true, the bridge's fixed first text block of every tool result begins "Practice run: changes go to a practice calendar in memory; nothing real changes." | E.1.6 | Accepted |
+| W6-3 | W06 3.7 gains a row: `completed`, `isError` false. The answer to the list call or to the `fabric_request_result` call that completed carries the result ("The result follows."); a later `fabric_request_status` call shows `completed` with no result, because a status never carries one: "The request is complete." | B.3.1 | Accepted, with the corrected wording (ruled 2026-11-18) |
+| W6-4 | On a status the bridge does not know which tool made the request, so `applied` and `reconciled` get one sentence that fits a change and a read: "Fabric Calendar has carried out the request; call `fabric_request_result` with this request id for its result." | B.3.3, E.2.1 | Accepted, with this sentence (ruled 2026-11-18) |
+| W6-5 | Relay `prover_unavailable` and do not retry (W06 3.7) | B.10 | Accepted |
+| W6-6 | Review the bundling of the bridge in the debug app, which the lead builds in step P6 (`scripts/build-desktop.sh`, W06 7.5; E.2.1); without it `get_agent_configuration` answers null and the practice run cannot start | E.1.8, C.10 | Accepted |
+| W6-7 | Adopt V12 and V14, and DRAFT's handshake types (`handshake.rs`) | E.2.2, C.6 | Accepted |
+| W6-8 | Accept the debug key directory `<data_dir>/bridge-keys` (0700, made by the broker) and `--socket <data_dir>/run/agent.sock` in the debug configuration text | C.9.1, C.10, E.0 ED10 | Accepted |
+| W6-9 | Review P2-15 to P2-19, the listener and the configuration text; if the weight of the bridge library matters, move `config_text` into a small crate (OPC2) | E.2.2, C.16 | Accepted |
+
+The CD-W06 session's answers are in section 13 of its own design (pull request 38). One residual it records, its R14,
+belongs here: a call the MCP client cancelled (`notifications/cancelled`) is dropped by the bridge, but the broker
+still holds its answer and may release a result into it. Request P2-30 asks the contract session for a cancel
+message; until it exists the case is a residual of the kind of OD17 (B.8.4, test h16). The bridge sends the cancel
+once P2-30 merges (E.2.1, bridge phase 2).
 
 ---------------------------------------------------------------------------------------------------------------------
 
@@ -4907,7 +4936,7 @@ recommendation. Rows the lead did not rule on are unchanged. The owner's points 
 | OPC2 | The broker binary depends on the `fabric-mcp-bridge` library for `config_text` | lead with the CD-W06 session; owner for the dependency (OD21) | Accept; a small crate if its weight matters (W6-9). **Ruled 2026-11-17:** accepted; the smaller crate only if the weight matters; the dependency stays open as OD21 |
 | OPC3 | The broker's environment has no `HOME` (relay allowlist, `apps/fabric-desktop/relay/src/config.rs:40-79`), so a bridge under `$HOME/Applications` gets a null configuration | owner (OD22) | Keep; the alternative is `HOME` in the allowlist |
 | OPC4 | Repeated `wrong_key` and `bad_signature` against an approved agent show only in the audit | owner (OD22) with the screens session | Accept for version 1 |
-| OPC5 | A user short name over 18 bytes makes the installed socket path too long; only a stderr line (and P2-18) shows it | lead | Accept. **Ruled 2026-11-17:** accepted |
+| OPC5 | A user short name over 18 bytes makes the installed socket path too long; only a stderr line (and P2-18) shows it | lead; told to the owner (OD22) | Accept. **Ruled 2026-11-17:** accepted. **Ruled 2026-11-18:** still accepted for version 1 and told to the owner in OD22. The bridge is not bound by it (it connects by the relative name from inside `run`); the broker binding by the relative name from inside its `run` directory, a change to how the binary starts its listener, is decided at CD-W11 (the CD-W06 design's R7) |
 | OPC6 | No limit on accepts per second | lead | Accept; 8 at once and 5 s bound it (bt07, bt08). **Ruled 2026-11-17:** accepted |
 | OPC7 | Owner and agent lines share the queue of 4 | lead | Accept with bt12 as the bound. **Ruled 2026-11-17:** accepted |
 | OPC8 | The pairing code is 48 bits; a colliding key proved before the owner looks would be approved (DRAFT choice 62) | owner (OD22; contract) | Accept the residual |
@@ -4960,3 +4989,18 @@ recommendation. Rows the lead did not rule on are unchanged. The owner's points 
 | X-3 | DRAFT moved to `b94b58f` while this design was written; the rest of it was read at `29cdfdf` | lead | Re-read DRAFT's diff before step P2 starts. **Ruled 2026-11-17:** the lead re-reads the diff before step P2 |
 | X-4 | The worker's bound is a monotonic stamp the shell takes (X23, B.13). The smaller change, the core writing `deadline_ms - clock.offset_ms()` into the order, keeps one number but moves with a wall clock that goes back after the order was sent | lead | Keep the monotonic stamp. **Ruled 2026-11-17:** the monotonic stamp |
 | X-5 | A removed agent's request that would retry ends `cancelled` (X22); the other form, `terminal_failure` with `retry_budget_exhausted`, was proposed by a checker | lead | Keep `cancelled`. **Ruled 2026-11-17:** `cancelled` |
+
+### I.8 Answers of the CD-W06 session (2026-11-18)
+
+The CD-W06 session read its rows of this design and accepted W6-1 to W6-9 (H.3); its answers are in section 13 of its
+own design (pull request 38). It sent three corrections, two points for the lead to decide and one question. The lead
+ruled on them on 2026-11-18:
+
+| # | Point | Ruling | Where |
+|---|---|---|---|
+| 1 | `completed` and a result (W6-3): the design said `completed` is never reached without a result | The answer to the list call or to the `fabric_request_result` call that completed carries the result; a later `fabric_request_status` shows `completed` with no result, and the bridge says "The request is complete." | B.3.1, H.3 |
+| 2 | `applied` and `reconciled` in the bridge (W6-4): on a status the bridge does not know which tool made the request | One sentence for both states: "Fabric Calendar has carried out the request; call `fabric_request_result` with this request id for its result." | H.3, E.2.1 |
+| 3 | `not_permitted` at the handshake (W6-1) can mean "wait" | For rows e and i of C.6.4 the bridge says to wait a minute and call again, beside that the owner can look; with P2-17 no change | C.6.4, C.15.3, H.3 |
+| 4 | A call the MCP client cancelled (`notifications/cancelled`; the CD-W06 design's R14) | Ask the contract session for a cancel message on the agent channel in schema version 3 (P2-30); until it exists, and for a cancel after the release commit, a residual of the kind of OD17; test h16 | B.8.4, B.16.2, E.3 OD17, G, H.3 |
+| 5 | Merge order of PR 38 (bridge phase 1) and PR 36 (schema version 3): the bridge's state table has no default arm | Whichever merges second carries the lines for the new states in `apps/fabric-mcp-bridge/src/mcp/render.rs` and its test r01 | E.2.2, E.2.4 |
+| 6 | A user short name over 18 bytes (OPC5; the CD-W06 design's R7) | Accepted for version 1 and told to the owner in OD22; the broker binding by the relative name is decided at CD-W11 | C.16, E.3 OD22, I.4 |
