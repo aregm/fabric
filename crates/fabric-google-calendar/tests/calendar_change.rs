@@ -1418,7 +1418,9 @@ fn a_delete_is_confirmed_by_one_read_for_each_answer_to_a_deleted_event() {
 /// 18.7 point 1: a fault on the read after the delete (a 500, a 403, a 401, a body that is
 /// not JSON, a closed connection, a 200 with another event's id even if cancelled) leaves
 /// the order Applied, with `confirmed: false`; the read is never repeated and the outcome is
-/// never Transient, Rejected or NoAnswer because of it.
+/// never Transient, Rejected or NoAnswer because of it. Each order asks for exactly one token,
+/// the DELETE's: the read refreshes nothing and asks for no other. A 401 on the read drops no
+/// cached token, and the adapter reaches no tokens but through that one call.
 #[test]
 fn a_fault_on_the_read_after_a_delete_leaves_it_applied_and_not_confirmed() {
     let (mut world, alice) = World::with_alice();
@@ -1442,14 +1444,19 @@ fn a_fault_on_the_read_after_a_delete_leaves_it_applied_and_not_confirmed() {
         world
             .fake
             .arm(Fault::on("GET", "/calendar/v3/calendars/", fault.clone()));
+        let calls = world.tokens.calls();
         let (report, requests) = delete_once(&mut world, &alice, &p, &id, &etag);
         assert_eq!(report.outcome, applied_delete(false), "{fault:?}");
         assert_eq!(report.side, None, "{fault:?}");
         assert_one_delete_then_at_most_one_get(&requests, 1);
         assert_eq!(stored(&world, &p, &id)["status"], json!("cancelled"));
+        assert_eq!(
+            world.tokens.calls(),
+            calls + 1,
+            "{fault:?}: one token per order"
+        );
+        assert!(world.tokens.dropped().is_empty(), "{fault:?}");
     }
-    // A 401 on the read drops the cached token, and nothing else touches tokens.
-    assert_eq!(world.tokens.dropped(), std::slice::from_ref(&alice.id));
     world.check_log();
 }
 
@@ -1501,6 +1508,96 @@ fn a_delete_with_no_time_left_sends_no_read_and_is_not_confirmed() {
     assert_eq!(report.outcome, applied_delete(false));
     assert_one_delete_then_at_most_one_get(&requests, 0);
     assert_eq!(stored(&world, &p, &id)["status"], json!("cancelled"));
+    world.check_log();
+}
+
+/// 18.7 point 1, the bound of the read: the DELETE is answered with 300 ms of the order's
+/// deadline left, and the read's answer comes only 3 s later. The read is sent once, its answer
+/// does not come inside the deadline, and the order is Applied with `confirmed: false`.
+#[test]
+fn a_read_after_a_delete_whose_answer_comes_after_the_deadline_is_not_confirmed() {
+    let (mut world, alice) = World::with_alice();
+    let p = alice.primary.clone();
+    world
+        .fake
+        .with_state(|s| s.set_deleted_event_get(DeletedEventGet::Cancelled));
+    let (id, etag) = put(&world, &p, timed("slow", "Slow", 9, 10));
+    let clock = world.clock.clone();
+    world.fake.arm(Fault::on(
+        "DELETE",
+        "/calendar/v3/calendars/",
+        FaultAction::before(move |_| clock.advance(30_000 - 300)),
+    ));
+    world.fake.arm(Fault::on(
+        "GET",
+        "/calendar/v3/calendars/",
+        FaultAction::Delay(std::time::Duration::from_secs(3)),
+    ));
+    let (report, requests) = delete_once(&mut world, &alice, &p, &id, &etag);
+    assert_eq!(report.outcome, applied_delete(false));
+    assert_one_delete_then_at_most_one_get(&requests, 1);
+    world.check_log();
+}
+
+/// 18.7 point 1, the boundary: with the clock exactly at the order's deadline when the DELETE
+/// has been answered, no read is sent. (One millisecond before, the read is due:
+/// `read_back_due` in the adapter's unit tests; a 1 ms request cannot be seen reliably at the
+/// fake.)
+#[test]
+fn a_delete_answered_exactly_at_the_deadline_sends_no_read() {
+    let (mut world, alice) = World::with_alice();
+    let p = alice.primary.clone();
+    let (id, etag) = put(&world, &p, timed("edge", "Edge", 9, 10));
+    let clock = world.clock.clone();
+    world.fake.arm(Fault::on(
+        "DELETE",
+        "/calendar/v3/calendars/",
+        FaultAction::before(move |_| clock.advance(30_000)),
+    ));
+    let (report, requests) = delete_once(&mut world, &alice, &p, &id, &etag);
+    assert_eq!(report.outcome, applied_delete(false));
+    assert_one_delete_then_at_most_one_get(&requests, 0);
+    assert_eq!(stored(&world, &p, &id)["status"], json!("cancelled"));
+    world.check_log();
+}
+
+/// 18.7 point 1: a read after a delete that answers 200 with the right id and no `status`
+/// member (a live event), or 200 with a body over the 4 MiB bound, is `confirmed: false`.
+#[test]
+fn a_read_after_a_delete_with_no_status_or_an_oversized_body_is_not_confirmed() {
+    let (mut world, alice) = World::with_alice();
+    let p = alice.primary.clone();
+    world
+        .fake
+        .with_state(|s| s.set_deleted_event_get(DeletedEventGet::Cancelled));
+    let (id, etag) = put(&world, &p, timed("nostatus", "No status", 9, 10));
+    world.fake.arm(Fault::on(
+        "GET",
+        "/calendar/v3/calendars/",
+        FaultAction::Json(
+            200,
+            json!({"id": id, "etag": "\"9\"", "summary": "No status"}),
+        ),
+    ));
+    let (report, requests) = delete_once(&mut world, &alice, &p, &id, &etag);
+    assert_eq!(report.outcome, applied_delete(false));
+    assert_one_delete_then_at_most_one_get(&requests, 1);
+
+    // The real answer (200, cancelled), padded past the bound of the read.
+    let (id, etag) = put(&world, &p, timed("huge", "Huge", 9, 10));
+    world.fake.arm(Fault::on(
+        "GET",
+        "/calendar/v3/calendars/",
+        FaultAction::TooLong(4 * 1024 * 1024 + 1),
+    ));
+    let (report, requests) = delete_once(&mut world, &alice, &p, &id, &etag);
+    assert_eq!(report.outcome, applied_delete(false));
+    assert_one_delete_then_at_most_one_get(&requests, 1);
+    assert_eq!(requests[1].answered, Some(200));
+    // Without the padding the same answer confirms the delete.
+    let (id, etag) = put(&world, &p, timed("plain", "Plain", 9, 10));
+    let (report, _) = delete_once(&mut world, &alice, &p, &id, &etag);
+    assert_eq!(report.outcome, applied_delete(true));
     world.check_log();
 }
 
@@ -1723,5 +1820,176 @@ fn a_yes_with_the_right_id_and_another_content_is_applied_for_every_tool() {
     let report = run(&mut world, &alice, &p, answer, None);
     assert_eq!(applied_with(&report), (false, Some(Differs::OtherAttendee)));
     assert_eq!(changes(&world).len(), 5, "one changing request per order");
+
+    // A 200 with the right id is Applied whatever else the body holds: a cancelled event
+    // names the status; a body or a revision that cannot be read names the event, which is
+    // given only when its revision fits the contract.
+    let odd = |id: &str| -> Vec<(Value, Option<&'static str>, Differs)> {
+        vec![
+            (
+                json!({"id": id, "etag": "\"90\"", "status": "cancelled"}),
+                Some("\"90\""),
+                Differs::Status,
+            ),
+            (
+                json!({"id": id, "etag": "\"91\"", "summary": 5}),
+                Some("\"91\""),
+                Differs::Event,
+            ),
+            (
+                json!({"id": id, "etag": "\"92\"", "recurrence": "x"}),
+                Some("\"92\""),
+                Differs::Event,
+            ),
+            (
+                json!({"id": id, "etag": "\"93\"", "attendees": [5]}),
+                Some("\"93\""),
+                Differs::Event,
+            ),
+            (json!({"id": id, "summary": "Weekly"}), None, Differs::Event),
+            (
+                json!({"id": id, "etag": "two words", "summary": "Weekly"}),
+                None,
+                Differs::Event,
+            ),
+            (json!({"id": id, "etag": 7}), None, Differs::Event),
+        ]
+    };
+    let (id, etag) = meeting(&world, &p);
+    let mut sent = changes(&world).len();
+    for (n, (body, revision, member)) in (50..).zip(odd("")) {
+        // Create: the reserved id.
+        let reserved_id = reserved(n);
+        let mut body = body;
+        body["id"] = json!(reserved_id);
+        world.fake.arm(Fault::on(
+            "POST",
+            "/calendar/v3/calendars/",
+            FaultAction::Json(200, body.clone()),
+        ));
+        let report = run(
+            &mut world,
+            &alice,
+            &p,
+            create(&p),
+            Some(reserved_id.clone()),
+        );
+        assert_eq!(
+            applied_parts(&report),
+            (
+                revision.map(|r| (reserved_id.clone(), r.to_owned())),
+                false,
+                Some(member)
+            ),
+            "create {body}"
+        );
+        // PATCH: the target's id.
+        body["id"] = json!(id);
+        answer_patch(&world, body.clone());
+        let mut c = no_changes();
+        c.title = Some(EventTitle::new("Weekly").expect("valid"));
+        let report = run(
+            &mut world,
+            &alice,
+            &p,
+            update(&p, event_ref(&id, &etag), c, SendUpdates::None),
+            None,
+        );
+        assert_eq!(
+            applied_parts(&report),
+            (
+                revision.map(|r| (id.clone(), r.to_owned())),
+                false,
+                Some(member)
+            ),
+            "update {body}"
+        );
+        sent += 2;
+        assert_eq!(changes(&world).len(), sent, "never sent again: {body}");
+    }
+
+    // Controls: another id, no string id, a body that is not an object: NoAnswer.
+    for body in [
+        json!({"id": "someotherid", "etag": "\"94\"", "status": "cancelled"}),
+        json!({"etag": "\"95\""}),
+        json!({"id": 7, "etag": "\"96\""}),
+        json!([{"id": id}]),
+        json!(id),
+    ] {
+        world.fake.arm(Fault::on(
+            "POST",
+            "/calendar/v3/calendars/",
+            FaultAction::Json(200, body.clone()),
+        ));
+        let report = run(&mut world, &alice, &p, create(&p), Some(reserved(70)));
+        assert_eq!(report.outcome, ChangeOutcome::NoAnswer, "create {body}");
+        answer_patch(&world, body.clone());
+        let mut c = no_changes();
+        c.title = Some(EventTitle::new("Weekly").expect("valid"));
+        let report = run(
+            &mut world,
+            &alice,
+            &p,
+            update(&p, event_ref(&id, &etag), c, SendUpdates::None),
+            None,
+        );
+        assert_eq!(report.outcome, ChangeOutcome::NoAnswer, "update {body}");
+    }
+    world.check_log();
+}
+
+/// The parts of an Applied outcome: the event's id and revision when given, `confirmed` and
+/// `differs`.
+fn applied_parts(report: &ChangeReport) -> (Option<(String, String)>, bool, Option<Differs>) {
+    let ChangeOutcome::Applied {
+        event,
+        confirmed,
+        differs,
+        ..
+    } = &report.outcome
+    else {
+        panic!("applied, not {report:?}");
+    };
+    (
+        event.as_ref().map(|e| {
+            (
+                e.event_id.as_str().to_owned(),
+                e.revision.as_str().to_owned(),
+            )
+        }),
+        *confirmed,
+        *differs,
+    )
+}
+
+/// 18.7 point 2, end to end: Google answers a PATCH with the approved instants written with
+/// another offset (`10:00:00+01:00` for an approved `09:00:00+00:00`). The instants are the
+/// same, so the change is confirmed.
+#[test]
+fn an_update_answered_with_the_approved_instant_in_another_offset_is_confirmed() {
+    let (mut world, alice) = World::with_alice();
+    let p = alice.primary.clone();
+    let (id, etag) = meeting(&world, &p);
+    let mut c = no_changes();
+    c.start = Some(at("2026-11-20T09:00:00+00:00", ZONE));
+    c.end = Some(at("2026-11-20T10:00:00+00:00", ZONE));
+    let mut body = stored(&world, &p, &id);
+    body["etag"] = json!("\"98\"");
+    body["start"] = json!({"dateTime": "2026-11-20T10:00:00+01:00", "timeZone": ZONE});
+    body["end"] = json!({"dateTime": "2026-11-20T11:00:00+01:00", "timeZone": ZONE});
+    world.fake.arm(Fault::on(
+        "PATCH",
+        "/calendar/v3/calendars/",
+        FaultAction::Json(200, body),
+    ));
+    let report = run(
+        &mut world,
+        &alice,
+        &p,
+        update(&p, event_ref(&id, &etag), c, SendUpdates::None),
+        None,
+    );
+    assert_eq!(applied_with(&report), (true, None));
+    assert_eq!(changes(&world).len(), 1);
     world.check_log();
 }

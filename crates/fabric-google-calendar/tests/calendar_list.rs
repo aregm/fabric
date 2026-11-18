@@ -145,7 +145,10 @@ fn a_calendar_list_past_250_calendars_fails_and_250_is_listed() {
         panic!("rejected");
     };
     assert_eq!(code, FailureCode::ProviderRejected);
-    assert!(explanation.as_str().contains("250"));
+    assert_eq!(
+        explanation.as_str(),
+        "This account has more calendars than Fabric can list."
+    );
     world.check_log();
 }
 
@@ -187,6 +190,11 @@ fn a_calendar_list_of_20_pages_is_listed_and_one_of_21_pages_fails() {
             FailureCode::ProviderRejected,
             fabric_google_calendar::outcome::Sentence::TooManyCalendars
         )
+    );
+    // One sentence, true for both bounds: it names no count.
+    assert_eq!(
+        fabric_google_calendar::outcome::Sentence::TooManyCalendars.text(),
+        "This account has more calendars than Fabric can list."
     );
     assert_eq!(
         world.fake.log().len() - before,

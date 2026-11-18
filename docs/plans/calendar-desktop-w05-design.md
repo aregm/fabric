@@ -153,8 +153,9 @@ Linux GC can reach only the loopback double, which is all a test needs (the brok
 ### 2.2 Public surface of GC (phase 1)
 
 - `ClientConfig`, `Endpoints`, `Clock` (`SystemClock`), `Secret`.
-- `oauth::Flow::new(transport, client, clock)`, `Flow::start(ConnectJob, &mut dyn BrowserOpener) -> PendingFlow`
-  and `PendingFlow::wait(store, cache) -> ConnectOutcome` (3.2); `oauth::GoogleAccess`, which gives a call its
+- `oauth::Flow::new(transport, client, clock)`, `Flow::start(ConnectJob) -> PendingFlow` and
+  `PendingFlow::wait(browser, store, cache) -> ConnectOutcome` (3.2), with `Flow::supersede_latest`,
+  `Flow::supersede(generation)` and `PendingFlow::generation` (3.3); `oauth::GoogleAccess`, which gives a call its
   access token (3.8); `oauth::revoke`; `BrowserOpener` (a recording double in debug builds; `SystemBrowser` comes
   in phase 2).
 - `tokens::{TokenStore, MemoryTokenStore, TokenStoreError, AccessCache, AccessTokens}` and `forget`.
@@ -249,6 +250,13 @@ and wiped are held by nobody and age out at Google.
 - Lives at most 300 s from `Flow::start`, on the adapter's clock and on a clock that cannot be set back,
   whichever ends first, or until the flow is superseded (a flag it reads at least every 250 ms). Starting a flow
   supersedes the one before it (PD5), and a superseded flow never deletes what a later flow stored.
+- A flow is superseded by a new start, by `Flow::supersede_latest()` (a new connect, a quit) or by
+  `Flow::supersede(generation)`, which names one flow by `PendingFlow::generation()` and never another. Each takes
+  the lock under which a flow makes its last check and writes the token store. So once a supersede has answered
+  `true`, that flow ends `Cancelled(Superseded)` and writes neither the token store nor the access cache; when the
+  flow had already ended, written or not, the answer is `false`. `start` only prepares a flow; `wait` opens the
+  browser, after its first check for a supersede. So a flow superseded before `wait` ends at once: no browser
+  opens, no listener runs and no token request is made (18.7 point 5).
   Nothing else ends it without a result: no number of wrong requests does, so that neither another local program
   nor a web page can end a sign-in by sending requests.
 - Serves up to 8 connections at once; a ninth waits. Each has 2 s to send its request head of at most 8 KiB. No
@@ -348,8 +356,10 @@ so `AccountMismatch` never writes a token and never touches the token of another
 Only `connected` counts as connected for a proof (THEORY `Account_connected`). Every other state blocks every agent
 action on that account.
 
-A reconnect of an account that was `connected` and that ends in anything but `Connected` leaves it not connected,
-and its old token is deleted with its cached access token (`Forget`): the owner asked to change the connection and
+A superseded flow forgets nothing, whatever else it met: what happens to the account's token then is the core's
+decision, not the flow's (for a reconnect the core forgets it, unless the same account is being connected again).
+Every other reconnect of an account that was `connected` and that ends in anything but `Connected` leaves it not
+connected, and its old token is deleted with its cached access token (`Forget`): the owner asked to change the connection and
 it did not succeed, so the broker stops and holds no credential for an account it does not use (fail closed;
 OQ12). The next successful `connect_google` restores it. Grants of the account that have not ended stay; they are
 usable again only when the account is `connected` again, which is always the owner's own act.
@@ -533,8 +543,8 @@ calendar there is no own entry: no invitation to answer, no own response to show
 ### 6.2 Calendar list
 
 `GET /users/me/calendarList?maxResults=250&minAccessRole=freeBusyReader&showHidden=true[&pageToken=..]`, page
-after page (Google may fill a page with fewer than it was asked for). More than 250 calendars in all fails the
-listing (PD23, ST2); a cut list would look like lost calendars (CO7). Deleted entries are not asked for. Hidden ones are: hiding a calendar in Google's page is a display choice and takes no access away.
+after page (Google may fill a page with fewer than it was asked for). More than 250 calendars in all, or more than
+20 pages, fails the listing (PD23, ST2); a cut list would look like lost calendars (CO7). Deleted entries are not asked for. Hidden ones are: hiding a calendar in Google's page is a display choice and takes no access away.
 
 Result per entry: Google's `id` (5.3); the name (`summaryOverride`, else `summary`, cut to 200 characters, "(no
 name)" when empty); `primary`; `timeZone`; the access role:
@@ -593,8 +603,8 @@ this is "every event that overlaps the half-open window"), `timeZone=<the calend
   without its details. It appears in the result with its time and empty content; the adapter cannot tell it from
   an event that has no title.
 
-`fields=` asks for `nextPageToken` and, per item, always `id,etag,status,recurringEventId`, and then by granted
-field:
+`fields=` asks for `nextPageToken` and, per item, always `id,etag,status,recurringEventId` and the event's own
+start and end (`start(date,dateTime),end(date,dateTime)` when `time` is not granted), and then by granted field:
 
 | Granted field | Members asked | In `EventView` |
 |---|---|---|
@@ -614,6 +624,13 @@ the contract's `occurrence` cannot hold it, so it is `null` and such an occurren
 The read order names each calendar by both ids (the broker's and Google's), its zone and whether it is the
 account's primary, and carries the ids of the events Fabric created in those calendars; the adapter puts the
 broker's calendar id and `fabric_created` into each view from them (PD19, PO3).
+
+**Spans (18.7 point 4).** Beside the result the read returns one span for each event, in the result's order:
+`Timed` with the start and end in milliseconds from Google's `dateTime`, or `AllDay` with Google's two dates
+exactly (the end exclusive). A span is built from the event's own start and end, never from `originalStartTime`,
+with no widening and no zone arithmetic. It is for the core's check that every event lies in the window; it is
+never part of a view, so a read without `time` shows no time. An item whose start and end cannot be read as
+either kind fails the read.
 
 ### 6.5 Observing one event
 
@@ -705,15 +722,22 @@ revision>` (PD14, PD15). `sendUpdates` is always written: `all`, `externalOnly` 
 
 | Answer | Outcome |
 |---|---|
-| 204 or 200 | Applied, no event, `notification` as in 6.7 |
+| 204 or 200 | Applied, no event, `notification` as in 6.7, and `confirmed` from the read below |
 | 412 | Rejected `revision_conflict` |
 | 404, 410 | Rejected `revision_conflict` ("the event is already gone"). Fabric did not delete it and sent no notice; the agent reads again |
 | 409 | Transient, as for a PATCH |
 | others | 6.10 |
 
+**The read after a delete (18.7 point 1; PLAN 10.3 CD-Q05a).** A DELETE answers with no body, so nothing in its
+answer says what Google now holds. Only after a 204 or 200, the adapter makes one GET of the same event in the same
+order: with the access token the DELETE used (no refresh, nothing read from the token store), only while the
+order's deadline has not passed and bounded by it, with no retry. `confirmed` is true only when that GET answers
+404, 410, or 200 with the event of that id and the status `cancelled`. For a live event, a read that failed, a body
+that cannot be read, any other status, or no time left, it is false. The GET never changes the outcome's class and
+returns nothing of the event. It is a read, so the order still makes one changing request (PD13).
+
 That only an event Fabric created may be deleted is the theory's rule (`Fabric_created`) on the store's record
-(PD19); the adapter does not decide it. Whether the deletion is in effect is confirmed by a read afterwards
-(section 7; PLAN 10.3 CD-Q05a).
+(PD19); the adapter does not decide it.
 
 ### 6.9 Translation (the time model; ADR-111)
 
@@ -793,18 +817,29 @@ so a second send could not be applied. Test g41 holds every such request to it.
 
 ### 6.12 Comparing what Google returned with what was approved
 
-`matches(action, event) -> bool`, used in 6.6, 6.7 and section 7:
+`differs(action, event) -> Option<Differs>` names the first member in which the event Google holds is not what
+was approved, as a fixed label with no content: `title`, `start`, `end`, `zone`, `description`, `location`,
+`attendees`, `own_response`, `other_attendee`, `original_start`, and for an answer `status` (the event came back
+cancelled) and `event` (the event or its revision could not be read). `matches` is "no member differs". Used in 6.6,
+6.7 and section 7:
 
-- Create: `summary` equals the title; `start` and `end` are the approved instants; `description` and `location`
-  equal the approved ones (absent and empty are equal); no attendees. The zone is compared when Google returns the
-  event's own `timeZone`.
+- Create: `summary` equals the title; `start` and `end` are the approved instants; the zone, when Google returns
+  the event's own `timeZone`, is the approved one; `description` and `location` equal the approved ones (absent
+  and empty are equal); no attendees.
 - Update: each member the action sets, compared as above. Members it does not set are not compared.
 - Invitation: the set of attendee addresses, without the own entry and without the account's own address if the
   approved list names it, equals the approved set (local part exact, domain without regard to case).
-- Response: the own entry has the approved status.
+- Response: the own entry has the approved status; for one occurrence, its original start is the approved one.
 
-`confirmed`, for the answer to the adapter's own PATCH, also requires for a response that every other attendee
-entry is as it was read.
+For the answer to the adapter's own request (18.7 point 2): a 200 whose body is an object with the right id is
+`Applied` whatever else it holds, a cancelled event and one that cannot be read among them. `confirmed` is true
+when no member differs, and for a response when every other attendee entry is also as it was read; otherwise the
+outcome carries the member that differed. When the revision cannot be read the outcome names no event. A 200
+whose body is not an object, has no id, or has another id stays NoAnswer.
+
+Google may store a member in another form than it was sent. The comparison has one place where a normalisation
+is applied to both sides, and a closed, named list of them, `NORMALISATIONS`, which is **empty**: an entry is
+added only with a result from a live run (LV18) and a test against FAKE.
 
 ---------------------------------------------------------------------------------------------------------------------
 
@@ -1064,7 +1099,8 @@ from G-DOC. It is never evidence that Google behaves so (14.3).
 
 Answer with a given status and Google's error shape (`reason`), with or without `Retry-After`; apply the change
 and then close the connection without an answer, or answer 503; close without applying; delay past the deadline;
-finish a change only after a delay (a late PATCH); a body that is not JSON, too long, compressed, or of another
+finish a change only after a delay (a late PATCH); answer an insert or a PATCH with a fitting 200 in which the
+description lost its trailing white space, or the zone is written as an alias (18.7 point 2); a body that is not JSON, too long, compressed, or of another
 content type; a redirect; an expired access token (401); a refresh that answers `invalid_grant`,
 `admin_policy_enforced` or `invalid_client`, a new refresh token, or other scopes; an identity token with a wrong
 issuer, audience, `azp`, nonce, no nonce, expiry, signature, algorithm, key id, no key id, a `crit` or `jwk`
@@ -1127,12 +1163,12 @@ of its own account.
 | g15 | Revocation: 200 and `invalid_token` are `Revoked`; anything else is `NotConfirmed` |
 | g16 | No secret in any `Debug`, `Display` or error text: the verifier, state, code, tokens, client secret, a calendar id and an event title of a full run with injected faults are searched for in every formatted value the tests can reach |
 | g17 | Token-store failures (a scripted store): `Locked` is Transient, `Refused` and `Failed` are Rejected, and in each case FAKE saw no request |
-| g18 | The calendar list: pages, the roles of 6.2, names, hidden entries listed, an unknown role and an unusable id left out, more than 250 calendars fails |
+| g18 | The calendar list: pages, the roles of 6.2, names, hidden entries listed, an unknown role and an unusable id left out, more than 250 calendars fails; 20 pages are listed and 21 fail |
 | g19 | Two accounts: each call carries its own account's token; account A's token on a calendar only B has is Rejected by FAKE as Google would. (That the broker never resolves B's calendar under A is the core's, section 8) |
 | g20 | Free/busy: periods per calendar under the broker's ids, in UTC, cut to the window; an error for one calendar fails the read |
 | g21 | Reading events: the window bounds, occurrences of a recurring event with their identity, an all-day event as dates, an occurrence of an all-day series without `occurrence`, a cancelled item skipped, several pages and calendars in one order |
 | g22 | `still_allowed` turned false between two pages: `Stopped`, nothing returned, no further request (PLAN 5 R08, the adapter's half) |
-| g23 | Fields: for each granted field, `fields=` asks only its members, and a view shows a field only when it is granted even if FAKE sends everything |
+| g23 | Fields: for each granted field, `fields=` asks only its members and always the event's own start and end, and a view shows a field only when it is granted even if FAKE sends everything |
 | g24 | Bounds: a read past 2 500 events or 768 KiB, with a cut attendee list, or with more than 2 000 attendees fails with the fixed sentence; nothing partial is returned |
 | g25 | Times: `Z`, an offset, a fraction of a second; every events read names the calendar's zone and the view pairs Google's offset with it; a day-light-saving gap and fold as Google writes them; an all-day date is never an instant |
 | g26 | The own entry: on the primary calendar `own_response` and `invitation` follow the entry marked `self`; on a shared calendar `own_response` is `null`, `invitation` is false and the marked entry is among the attendees |
@@ -1145,19 +1181,23 @@ of its own account.
 | g33 | Update, 503 after FAKE applied it: NoAnswer; reconciliation says Applied with `notification: Unknown`; one change at FAKE |
 | g34 | Invitation: the attendee list after the change is exactly the approved one; kept attendees keep their answers; the own entry stays; a changed revision or a cut list at the read makes no PATCH |
 | g35 | Response: the whole list is sent and only the own entry differs; an occurrence is addressed by instance id and its original start is checked; without an own entry, and on a shared calendar, Rejected and no PATCH |
-| g36 | Delete: `If-Match` and `sendUpdates` as approved; 412, 404 and 410 are `revision_conflict` |
+| g36 | Delete: `If-Match` and `sendUpdates` as approved, then the one read of 6.8; 412, 404 and 410 are `revision_conflict` |
 | g37 | Classification, one case per row of 6.10, for a change and for a read; `Retry-After` is passed on and capped |
 | g38 | Nothing sent (FAKE closed, deadline already past) is Transient; sent and unanswered is NoAnswer for a change and Transient for a read; every request came on its own connection |
 | g39 | A redirect is not followed; a body over its bound, a compressed body and a wrong content type are no usable answer |
-| g40 | One changing request per order: for every tool and every fault, FAKE's log holds at most one POST, PATCH or DELETE per order |
+| g40 | One changing request per order: for every tool and every fault, FAKE's log holds at most one POST, PATCH or DELETE per order, and only a delete reads after it, at most once |
 | g41 | Every PATCH and DELETE carries `If-Match` with one strong tag, and every changing request an explicit `sendUpdates` |
 | g42 | Ids: an event id of `.`, `..`, `%2e%2e`, or with `/`, `?`, `#` or a space makes no request; a calendar id with `#` and `@` reaches FAKE as one path part; a revision of `*`, `W/"x"` or a list makes no request |
 | g43 | Reconciliation: every row of section 7's table through `decide`, with FAKE as the source of the read-back; the two reads for a create with a late-visible insert and for an update with a late PATCH |
 | g44 | The retry rule: waits of 2, 4 and 8 s, a hint longer than the wait, the fourth failure, the 120 s budget; the numbers are W04 D16's (unit) |
-| g45 | `matches`: each tool, each member, absent against empty, instants written with different offsets, the own address in an approved list (unit) |
+| g45 | The comparison: each tool, each member and its label, absent against empty, instants written with different offsets, the own address in an approved list; the list of normalisations is empty (unit) |
 | g46 | Forbidden dependencies and FAKE only as a dev-dependency (the scan of 2.1) |
 | g47 | `Endpoints::google()` is the five constants; the loopback set accepts only `127.0.0.1` (unit) |
 | g48 | The client file: the `installed` shape is read, other members ignored; a missing secret and another shape are errors that name the path and no content (unit, with a made-up file) |
+| g49 | The read after a delete (6.8): `confirmed` for each of FAKE's three answers to a deleted event; not confirmed, and still Applied, for a fault on the read, a live event, another event's id, and no time left (then no read is sent) |
+| g50 | A yes with another content (6.12): for every tool a 200 with the right id is Applied and names the member that differed; FAKE's trimmed description and zone alias give `description` and `zone`, and a reconcile read of the rewritten event says it does not match |
+| g51 | Spans (6.4): a read without `time` shows no time and gives one span per event from the event's own start and end; an all-day event gives its two dates; an occurrence's span is not its original start; an item without a usable start and end fails the read |
+| g52 | Superseding a sign-in (3.3): a flow superseded by its generation while it waits for Google writes nothing and forgets nothing; another generation changes nothing; a supersede that meets the write waits for it and answers false with the token stored; a flow superseded before `wait` makes no token request |
 | f01 | FAKE's own rules: a code is single use and bound to its challenge and redirect; `If-Match`; a duplicate id; revisions rise; the log is complete |
 
 The tests are in `crates/fabric-google-calendar/tests/`: `oauth_signin`, `oauth_listener`, `oauth_identity`,
@@ -1237,6 +1277,23 @@ pull request: a superseded sign-in could delete the token of the sign-in that re
 could store a token for an account that had just been forgotten; a token could be put on a request to the wrong
 host by one wrong call; a reconcile read did not check that its effect belonged to its calendar; an update that
 changed nothing was sent; several tests proved less than their names said.
+
+### 15.5 Results after the rulings of 18.7 were built
+
+macOS, Apple silicon, 2026-11-18, debug profile, on `main` at `595f1c8`:
+
+- `sh scripts/verify.sh`: passed. 1058 tests passed, 0 failed, 43 ignored in the workspace; none of the ignored
+  tests is in the two crates.
+- `sh scripts/run.sh cargo test --locked -p fabric-google-calendar -p fabric-google-fake`: 316 passed, 0 failed,
+  0 ignored (the adapter 251, FAKE 65). Three more runs in a row gave the same.
+- `sh scripts/run.sh cargo check --release --locked -p fabric-google-calendar --lib --tests`: finished.
+- Not run: Linux and Windows (CI runs them on the pull request); anything against the real Google.
+
+An Opus agent built the changes; an independent reader then reviewed them. It found one place where a ruling was
+not met: a 200 from Google with the right id was still treated as an unknown outcome when the returned event was
+cancelled, could not be read, or had a revision that could not be held. That is fixed (6.12). It also found that
+the browser was opened before a supersede could stop the flow (3.3), and tests that proved less than they said;
+all fixed before the pull request.
 
 ---------------------------------------------------------------------------------------------------------------------
 
@@ -1319,6 +1376,11 @@ decision. Merging the pull request that carries them is the owner's acceptance.
   redirect; closing that needs a socket option the workspace's no-`unsafe` rule keeps out of reach. The broker is a
   macOS product and Windows only runs its tests. On every platform a local program can also hold the listener's
   eight places and delay a sign-in until its 300 s end (3.3).
+- RK23 Every supersede waits while a flow writes the token store. With the Keychain store of phase 2 a write
+  may wait for the person, and a quit that supersedes then waits too.
+- RK22 The read after a delete counts a 404 as "gone" (18.7 point 1). A 404 can also mean that the calendar
+  became unreadable between the DELETE and the read; the delete itself was answered with a plain yes, so the
+  confirmation is then right about the delete and for the wrong reason.
 - RK21 An event whose evidence passes 1 MiB, or whose before-image passes 512 KiB, cannot be observed and so
   cannot be changed through Fabric (18.7 point 3). An event with some thousands of attendees is such an event.
 - RK20 The local part of an address is compared exactly. If an agent proposes `bob@x.com` where Google holds
@@ -1431,8 +1493,10 @@ day: 18.7.
 
 ### 18.7 The lead's rulings on five points (2026-11-17), for phase 2 of this crate
 
-Each point was analysed by a reader of its own against this crate's code and the phase 2 design. None of it is
-built in phase 1; sections 6 and 7 above describe the code as it is.
+Each point was analysed by a reader of its own against this crate's code and the phase 2 design. Points 1, 2, 4
+and 5(a), and the 20-page bound of a calendar list, need no type of the broker's port and are built (15.5);
+sections 3.3, 6.2, 6.4, 6.8 and 6.12 describe them. Point 3 (returning the raw event as evidence), point 5(b)
+(`unlink`), the port mapping, the Keychain token store and the browser wait for the lead's port step.
 
 1. **A delete is confirmed by a read in the same order.** Only after a 200 or 204 to its DELETE, the adapter
    makes one GET of the same event, with the access token the DELETE used, inside what is left of the order's

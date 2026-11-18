@@ -45,17 +45,18 @@ fn g07_wrong_requests_get_error_pages_and_never_end_the_flow_and_the_right_state
     let rig = Rig::new();
     let (pending, address) = rig.start(ConnectJob::new_account(account(1), []));
     let port = pending.port().expect("listening");
-    let authorization = rig
-        .fake
-        .browser()
-        .authorize(address.expose(), &Decision::allow())
-        .expect("authorized");
-    assert_eq!(authorization.status, 302);
-    let location = authorization.location.expect("a redirect");
     let mut store = rig.store.clone();
     let cache = &rig.cache;
     std::thread::scope(|scope| {
+        // `wait` opens the browser, so the authorization runs once it has.
         let waiter = scope.spawn(move || pending.wait(&mut store, cache));
+        let authorization = rig
+            .fake
+            .browser()
+            .authorize(address.expose(), &Decision::allow())
+            .expect("authorized");
+        assert_eq!(authorization.status, 302);
+        let location = authorization.location.expect("a redirect");
         let browser = rig.fake.browser();
         let wrong: Vec<(Tamper, u16)> = vec![
             (Tamper::State("wrong-state".to_owned()), 400),
@@ -187,6 +188,8 @@ fn g08_a_superseded_flow_ends_at_once_with_superseded() {
     let cache = &rig.cache;
     std::thread::scope(|scope| {
         let waiter = scope.spawn(move || pending.wait(&mut store, cache));
+        // Superseded once `wait` has opened the browser, so the listener runs.
+        let _ = address.expose();
         let started = Instant::now();
         handle.supersede();
         assert_eq!(
@@ -216,18 +219,23 @@ fn g08_a_superseded_flow_ends_at_once_with_superseded() {
     rig.check_log();
 }
 
+/// 3.2.1: `wait` opens the browser; one that cannot be started ends the flow
+/// `BrowserNotOpened`, its listener closed and no request made.
 #[test]
 fn g08_a_browser_that_cannot_be_started_ends_the_flow_browser_not_opened() {
     let rig = Rig::new();
     let mut browser = fabric_google_calendar::oauth::RecordingBrowser::refusing();
-    let pending = rig
-        .flow
-        .start(ConnectJob::new_account(account(1), []), &mut browser);
-    assert!(pending.port().is_none(), "the listener is closed at once");
+    let pending = rig.flow.start(ConnectJob::new_account(account(1), []));
+    let port = pending.port().expect("listening until `wait` runs");
     let mut store = rig.store.clone();
     assert_eq!(
-        pending.wait(&mut store, &rig.cache),
+        pending.wait(&mut browser, &mut store, &rig.cache),
         ConnectOutcome::Cancelled(CancelReason::BrowserNotOpened)
+    );
+    assert_no_listener(
+        RawRequest::get(&format!("http://127.0.0.1:{port}/?state=x"))
+            .expect("a request")
+            .send(),
     );
     assert!(rig.fake.log().is_empty());
 }
@@ -262,17 +270,17 @@ fn g09_the_page_is_the_fixed_text_with_the_three_headers_and_echoes_no_parameter
     // An error page echoes nothing either.
     let (pending, address) = rig.start(ConnectJob::new_account(account(2), []));
     let handle = pending.supersede_handle();
-    let location = rig
-        .fake
-        .browser()
-        .authorize(address.expose(), &Decision::allow())
-        .expect("authorized")
-        .location
-        .expect("a redirect");
     let mut store = rig.store.clone();
     let cache = &rig.cache;
     std::thread::scope(|scope| {
         let waiter = scope.spawn(move || pending.wait(&mut store, cache));
+        let location = rig
+            .fake
+            .browser()
+            .authorize(address.expose(), &Decision::allow())
+            .expect("authorized")
+            .location
+            .expect("a redirect");
         let answer = rig
             .fake
             .browser()

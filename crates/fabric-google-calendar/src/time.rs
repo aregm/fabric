@@ -205,7 +205,15 @@ pub fn format_timestamp(unix_ms: i64) -> Result<Timestamp, TimeError> {
 /// (6.9): `Z` becomes `+00:00` and a fraction of a second is dropped. The date and time are
 /// kept as written; no zone arithmetic is done.
 pub fn to_offset_date_time(google: &str) -> Result<OffsetDateTime, TimeError> {
+    read_date_time(google).map(|(date_time, _)| date_time)
+}
+
+/// Reads a Google `dateTime` once and gives both of its forms: the contract's
+/// `OffsetDateTime` (as [`to_offset_date_time`]) and its instant in Unix milliseconds (as
+/// [`parse_rfc3339_ms`]). A value is accepted for both or refused for both.
+pub fn read_date_time(google: &str) -> Result<(OffsetDateTime, i64), TimeError> {
     let parsed = parse(google).ok_or(TimeError::NotRfc3339)?;
+    let instant_ms = (parsed.local_seconds - parsed.offset_seconds) * 1000 + parsed.millis;
     let local = &google[..parsed.zone_at];
     let zone = &google[google.len() - 1..];
     let offset = if zone == "Z" {
@@ -213,7 +221,9 @@ pub fn to_offset_date_time(google: &str) -> Result<OffsetDateTime, TimeError> {
     } else {
         &google[google.len() - 6..]
     };
-    OffsetDateTime::new(format!("{local}{offset}")).map_err(|_| TimeError::NotRfc3339)
+    let date_time =
+        OffsetDateTime::new(format!("{local}{offset}")).map_err(|_| TimeError::NotRfc3339)?;
+    Ok((date_time, instant_ms))
 }
 
 #[cfg(test)]

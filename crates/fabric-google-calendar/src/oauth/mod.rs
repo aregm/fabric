@@ -16,10 +16,11 @@
 //! What a caller does:
 //!
 //! - Sign-in: build one [`Flow`] with [`Flow::new`] (endpoints, client, clock), then for each
-//!   `connect_google` job call [`Flow::start`] with a [`ConnectJob`] and a [`BrowserOpener`];
-//!   it gives a [`PendingFlow`]. Take a [`Supersede`] handle from it when another thread may
-//!   end it (PD5), then call [`PendingFlow::wait`] with the token store and the access cache.
-//!   It gives the [`ConnectOutcome`].
+//!   `connect_google` job call [`Flow::start`] with a [`ConnectJob`]; it prepares and gives a
+//!   [`PendingFlow`], and opens no browser. Take a [`Supersede`] handle from it when another
+//!   thread may end it (PD5), then call [`PendingFlow::wait`] with a [`BrowserOpener`], the
+//!   token store and the access cache; it opens the browser unless the flow was superseded
+//!   before. It gives the [`ConnectOutcome`].
 //! - Access tokens: build one [`GoogleAccess`] over the same transport, client, token store,
 //!   cache and clock; it implements [`crate::tokens::AccessTokens`].
 //! - Revocation: [`revoke()`] with the transport, the token store and the account. The caller

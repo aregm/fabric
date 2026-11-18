@@ -9,10 +9,11 @@
 use std::io::{Read, Write};
 use std::net::{Shutdown, TcpListener, TcpStream};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Condvar, Mutex};
+use std::sync::{Arc, Condvar, Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
 use fabric_desktop_contracts::scalar::Id;
+use fabric_google_calendar::oauth::Supersede;
 use fabric_google_calendar::oauth::{
     ConnectJob, ConnectOutcome, Flow, GoogleAccess, PendingFlow, RecordingBrowser,
 };
@@ -97,6 +98,106 @@ impl std::fmt::Debug for CountingStore {
     }
 }
 
+/// A started flow with the browser its `wait` opens the address in.
+pub struct Pending {
+    flow: PendingFlow,
+    browser: RecordingBrowser,
+}
+
+impl Pending {
+    /// [`PendingFlow::wait`] with this flow's recording browser.
+    pub fn wait(self, store: &mut dyn TokenStore, cache: &AccessCache) -> ConnectOutcome {
+        let Pending { flow, mut browser } = self;
+        flow.wait(&mut browser, store, cache)
+    }
+
+    /// [`PendingFlow::generation`].
+    pub fn generation(&self) -> u64 {
+        self.flow.generation()
+    }
+
+    /// [`PendingFlow::supersede_handle`].
+    pub fn supersede_handle(&self) -> Supersede {
+        self.flow.supersede_handle()
+    }
+
+    /// [`PendingFlow::port`].
+    pub fn port(&self) -> Option<u16> {
+        self.flow.port()
+    }
+}
+
+/// Prints the flow's own `Debug`.
+impl std::fmt::Debug for Pending {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.flow.fmt(f)
+    }
+}
+
+/// The address a flow's browser is given. The flow opens it in `wait` (3.2.1), so
+/// [`Address::expose`] waits, with a generous bound, until `wait` has opened it.
+pub struct Address {
+    browser: RecordingBrowser,
+    /// The fake's port, when the flow sends its requests through a proxy.
+    at_fake: Option<u16>,
+    taken: OnceLock<Secret>,
+}
+
+impl Address {
+    fn new(browser: RecordingBrowser, at_fake: Option<u16>) -> Address {
+        Address {
+            browser,
+            at_fake,
+            taken: OnceLock::new(),
+        }
+    }
+
+    fn rewrite(&self, address: Secret) -> Secret {
+        let Some(port) = self.at_fake else {
+            return address;
+        };
+        let (_, rest) = address
+            .expose()
+            .split_once("/o/oauth2/v2/auth")
+            .expect("the authorization path");
+        Secret::new(format!("http://127.0.0.1:{port}/o/oauth2/v2/auth{rest}"))
+    }
+
+    /// The address, once the flow's `wait` has opened it; panics when it is not opened in time.
+    pub fn expose(&self) -> &str {
+        self.taken
+            .get_or_init(|| {
+                let address = self
+                    .browser
+                    .wait_for_address(GUARD_WAIT)
+                    .expect("the browser was given an address");
+                self.rewrite(address)
+            })
+            .expose()
+    }
+
+    /// Whether the browser was given the address by now; it does not wait.
+    pub fn opened(&self) -> bool {
+        if self.taken.get().is_some() {
+            return true;
+        }
+        match self.browser.take_address() {
+            Some(address) => {
+                let _ = self.taken.set(self.rewrite(address));
+                true
+            }
+            None => false,
+        }
+    }
+}
+
+/// Prints nothing of the address.
+impl std::fmt::Debug for Address {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("Address")
+    }
+}
+
 /// The fake, the adapter's sign-in part and its state.
 pub struct Rig {
     pub fake: FakeGoogle,
@@ -146,18 +247,16 @@ impl Rig {
         );
     }
 
-    /// Starts a flow and gives it with the address the browser was given.
-    pub fn start(&self, job: ConnectJob) -> (PendingFlow, Secret) {
+    /// Starts a flow and gives it with the address its `wait` will give the browser.
+    pub fn start(&self, job: ConnectJob) -> (Pending, Address) {
         let browser = RecordingBrowser::new();
-        let pending = self.flow.start(job, &mut browser.clone());
-        let address = browser
-            .take_address()
-            .expect("the browser was given an address");
-        (pending, address)
+        let flow = self.flow.start(job);
+        let address = Address::new(browser.clone(), None);
+        (Pending { flow, browser }, address)
     }
 
     /// A whole sign-in: the flow waits while the browser plays `decision`.
-    pub fn sign_in(&self, job: ConnectJob, decision: Decision) -> (ConnectOutcome, Visit, Secret) {
+    pub fn sign_in(&self, job: ConnectJob, decision: Decision) -> (ConnectOutcome, Visit, Address) {
         let (pending, address) = self.start(job);
         let (outcome, visit) = self.finish(pending, &address, decision);
         (outcome, visit, address)
@@ -166,8 +265,8 @@ impl Rig {
     /// Waits for `pending` while the browser plays `decision` on `address`.
     pub fn finish(
         &self,
-        pending: PendingFlow,
-        address: &Secret,
+        pending: Pending,
+        address: &Address,
         decision: Decision,
     ) -> (ConnectOutcome, Visit) {
         let mut store = self.store.clone();
@@ -212,23 +311,19 @@ impl Rig {
         Flow::new(transport, Arc::clone(&self.client), shared)
     }
 
-    /// Starts a flow on `flow` and gives it with the address the browser was given, the
-    /// address pointed at the fake when `flow` sends its requests through a proxy.
-    pub fn start_on(&self, flow: &Flow, job: ConnectJob) -> (PendingFlow, Secret) {
+    /// Starts a flow on `flow` and gives it with the address its `wait` will give the
+    /// browser, pointed at the fake when `flow` sends its requests through a proxy.
+    pub fn start_on(&self, flow: &Flow, job: ConnectJob) -> (Pending, Address) {
         let browser = RecordingBrowser::new();
-        let pending = flow.start(job, &mut browser.clone());
-        let address = browser
-            .take_address()
-            .expect("the browser was given an address");
-        let text = address.expose();
-        let (_, rest) = text
-            .split_once("/o/oauth2/v2/auth")
-            .expect("the authorization path");
-        let at_fake = format!(
-            "http://127.0.0.1:{}/o/oauth2/v2/auth{rest}",
-            self.fake.port()
-        );
-        (pending, Secret::new(at_fake))
+        let started = flow.start(job);
+        let address = Address::new(browser.clone(), Some(self.fake.port()));
+        (
+            Pending {
+                flow: started,
+                browser,
+            },
+            address,
+        )
     }
 
     /// A deadline 30 s ahead on the test clock.

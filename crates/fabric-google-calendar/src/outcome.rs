@@ -73,11 +73,15 @@ pub enum Differs {
     OtherAttendee,
     /// The original start of an occurrence (CD-Q05b).
     OriginalStart,
+    /// The event Google returned is cancelled (18.7 point 2).
+    Status,
+    /// The event Google returned, or its revision, cannot be read (18.7 point 2).
+    Event,
 }
 
 impl Differs {
     /// Every member, for the tests.
-    pub const ALL: [Differs; 10] = [
+    pub const ALL: [Differs; 12] = [
         Differs::Title,
         Differs::Start,
         Differs::End,
@@ -88,6 +92,8 @@ impl Differs {
         Differs::OwnResponse,
         Differs::OtherAttendee,
         Differs::OriginalStart,
+        Differs::Status,
+        Differs::Event,
     ];
 
     /// The fixed label, in snake case.
@@ -104,6 +110,8 @@ impl Differs {
             Differs::OwnResponse => "own_response",
             Differs::OtherAttendee => "other_attendee",
             Differs::OriginalStart => "original_start",
+            Differs::Status => "status",
+            Differs::Event => "event",
         }
     }
 }
@@ -133,8 +141,9 @@ pub enum ChangeOutcome {
         /// Whether Google's answer equals what was approved (6.12). For a deletion, whether
         /// the read after it found the event gone (18.7 point 1).
         confirmed: bool,
-        /// The first member that is not what was approved; `None` exactly when `confirmed`
-        /// is true, and always `None` for a deletion (18.7 point 2).
+        /// The first member that is not what was approved. For a create, an update, an
+        /// invitation or a response, `None` exactly when `confirmed` is true; always `None`
+        /// for a deletion (18.7 point 2).
         differs: Option<Differs>,
         /// Whether the people of the event were told.
         notification: Notification,
@@ -324,7 +333,8 @@ pub enum Sentence {
     FreeBusyIncomplete,
     /// A read past its bounds, or with a cut attendee list (6.4, PD23).
     WindowTooLarge,
-    /// A calendar list past 250 calendars (6.2, PD23).
+    /// A calendar list past 250 calendars or past 20 pages (6.2, PD23; 18.6). One sentence, true
+    /// for both.
     TooManyCalendars,
     /// An answer without an own entry (6.1, 6.7).
     NotInvited,
@@ -433,9 +443,7 @@ impl Sentence {
             Sentence::WindowTooLarge => {
                 "The window holds more events than one answer can carry. Ask for a shorter window."
             }
-            Sentence::TooManyCalendars => {
-                "The account has more than 250 calendars, more than Fabric can list."
-            }
+            Sentence::TooManyCalendars => "This account has more calendars than Fabric can list.",
             Sentence::NotInvited => "This account is not invited to this event on this calendar.",
             Sentence::AttendeesCut => "Google sent only part of the attendee list.",
             Sentence::TooManyAttendees => "The event has more attendees than Fabric can hold.",

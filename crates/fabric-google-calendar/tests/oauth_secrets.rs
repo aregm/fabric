@@ -98,12 +98,13 @@ fn g16_no_secret_of_a_sign_in_appears_in_any_debug_display_or_error_text() {
 
     // A reconnect that times out, and one superseded.
     let (pending, address) = rig.start(ConnectJob::reconnect(account(1), SUB_A));
-    secrets.push(address.expose().to_owned());
     let handle = pending.supersede_handle();
     let mut store = rig.store.clone();
     let cache = &rig.cache;
     let outcome = std::thread::scope(|scope| {
         let waiter = scope.spawn(move || pending.wait(&mut store, cache));
+        // `wait` opens the browser; superseded after that.
+        secrets.push(address.expose().to_owned());
         handle.supersede();
         wait_until(Duration::from_secs(20), || waiter.is_finished());
         waiter.join().expect("ends")

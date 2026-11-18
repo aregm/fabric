@@ -1,9 +1,10 @@
 //! One sign-in from start to the token store (3.2, 3.2.2, 3.7, PD5, PD8 to PD10, PD34).
 //!
-//! [`Flow::start`] makes the verifier, the state and the nonce, binds the loopback listener,
-//! builds the authorization address and hands it to the [`BrowserOpener`]. It gives a
-//! [`PendingFlow`]. [`PendingFlow::wait`] serves the listener until it ends (3.3), then makes
-//! the token request (3.4), reads the granted scopes (3.6), checks the identity token (3.5)
+//! [`Flow::start`] makes the verifier, the state and the nonce, binds the loopback listener and
+//! builds the authorization address; it opens nothing. It gives a [`PendingFlow`].
+//! [`PendingFlow::wait`] hands the address to the [`BrowserOpener`], unless the flow was
+//! superseded before, serves the listener until it ends (3.3), then makes the token request
+//! (3.4), reads the granted scopes (3.6), checks the identity token (3.5)
 //! and compares the subject with what the [`ConnectJob`] names (3.7), and only then writes the
 //! refresh token to the token store. It gives the [`ConnectOutcome`] of 3.2.2.
 //!
@@ -15,7 +16,8 @@
 //! - [`Supersede`], [`Flow::supersede_latest`] and [`Flow::supersede`] end a flow from another
 //!   thread (PD5; 18.7 point 5(a)). A flow superseded after the listener ended, but before the
 //!   token store is written, ends `Cancelled(Superseded)` too, and so does one superseded
-//!   before [`PendingFlow::wait`] runs: it then runs no listener and makes no request.
+//!   before [`PendingFlow::wait`] runs: it then opens no browser, runs no listener and makes
+//!   no request.
 //! - The adapter keeps PD5 itself: [`Flow::start`] supersedes the flow that the same [`Flow`]
 //!   (or a clone) started before, and gives the new one the next generation. A superseded
 //!   flow never writes the token store or the access cache and never forgets the account, so
@@ -30,8 +32,12 @@
 
 use std::collections::BTreeSet;
 use std::fmt;
+#[cfg(debug_assertions)]
+use std::sync::Condvar;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
+#[cfg(debug_assertions)]
+use std::time::Duration;
 use std::time::Instant;
 
 use fabric_desktop_contracts::scalar::{Email, Id};
@@ -198,7 +204,8 @@ pub trait BrowserOpener {
 #[cfg(debug_assertions)]
 #[derive(Clone, Default)]
 pub struct RecordingBrowser {
-    addresses: Arc<Mutex<Vec<Secret>>>,
+    /// The addresses not taken yet, and the signal of a new one.
+    addresses: Arc<(Mutex<Vec<Secret>>, Condvar)>,
     refuse: bool,
 }
 
@@ -222,9 +229,17 @@ impl RecordingBrowser {
     /// Takes the oldest address not taken yet.
     #[must_use]
     pub fn take_address(&self) -> Option<Secret> {
-        let mut addresses = self
-            .addresses
-            .lock()
+        let mut addresses = lock(&self.addresses.0);
+        (!addresses.is_empty()).then(|| addresses.remove(0))
+    }
+
+    /// Takes the oldest address not taken yet, waiting at most `bound` for one to be opened.
+    #[must_use]
+    pub fn wait_for_address(&self, bound: Duration) -> Option<Secret> {
+        let (addresses, opened) = &*self.addresses;
+        let guard = lock(addresses);
+        let (mut addresses, _) = opened
+            .wait_timeout_while(guard, bound, |a| a.is_empty())
             .unwrap_or_else(PoisonError::into_inner);
         (!addresses.is_empty()).then(|| addresses.remove(0))
     }
@@ -236,10 +251,9 @@ impl BrowserOpener for RecordingBrowser {
         if self.refuse {
             return Err(BrowserNotOpened);
         }
-        self.addresses
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner)
-            .push(Secret::from(address.expose()));
+        let (addresses, opened) = &*self.addresses;
+        lock(addresses).push(Secret::from(address.expose()));
+        opened.notify_all();
         Ok(())
     }
 }
@@ -248,11 +262,7 @@ impl BrowserOpener for RecordingBrowser {
 #[cfg(debug_assertions)]
 impl fmt::Debug for RecordingBrowser {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let waiting = self
-            .addresses
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner)
-            .len();
+        let waiting = lock(&self.addresses.0).len();
         write!(
             f,
             "RecordingBrowser({waiting} waiting, refuse {})",
@@ -414,16 +424,15 @@ impl Flow {
     }
 
     /// Starts a sign-in for `job` (3.2): fresh verifier, state and nonce, the listener on
-    /// `127.0.0.1:0`, and the address handed to `browser`. The listener's 300 s count from
-    /// here. A browser that cannot be started ends the flow `Cancelled(BrowserNotOpened)`.
+    /// `127.0.0.1:0`, and the authorization address. It only prepares: no browser is opened
+    /// until [`PendingFlow::wait`] runs, so a flow superseded in between shows nothing. The
+    /// listener's 300 s count from here.
     ///
     /// It supersedes the flow this `Flow` (or a clone) started before, if that one is still
     /// under way, and makes the new one the latest (PD5).
     ///
-    /// Call [`PendingFlow::wait`] on the result at once: the listener accepts no connection
-    /// before `wait` runs it, so a browser that reaches it earlier waits in the system's
-    /// backlog, and the 300 s run from here whether or not `wait` was called.
-    pub fn start(&self, job: ConnectJob, browser: &mut dyn BrowserOpener) -> PendingFlow {
+    /// The 300 s run from here whether or not `wait` was called, so call it soon.
+    pub fn start(&self, job: ConnectJob) -> PendingFlow {
         let flag = Arc::new(AtomicBool::new(false));
         let generation = {
             let mut turn = lock(&self.turn);
@@ -441,7 +450,7 @@ impl Flow {
         };
         let started_ms = self.clock.now_ms();
         let started_at = Instant::now();
-        let stage = match self.listen(&job, browser) {
+        let stage = match self.prepare(&job) {
             Ok(listening) => Stage::Listening(Box::new(listening)),
             Err(reason) => Stage::Ended(reason),
         };
@@ -456,11 +465,7 @@ impl Flow {
         }
     }
 
-    fn listen(
-        &self,
-        job: &ConnectJob,
-        browser: &mut dyn BrowserOpener,
-    ) -> Result<Listening, CancelReason> {
+    fn prepare(&self, job: &ConnectJob) -> Result<Listening, CancelReason> {
         let secrets = FlowSecrets::new().map_err(|_| CancelReason::Network)?;
         let listener = Listener::bind().map_err(|_| CancelReason::Network)?;
         let redirect_uri = url::redirect_uri(listener.port());
@@ -477,13 +482,11 @@ impl Flow {
             &secrets.nonce,
             purpose,
         );
-        browser
-            .open(&address)
-            .map_err(|_| CancelReason::BrowserNotOpened)?;
         Ok(Listening {
             listener,
             secrets,
             redirect_uri,
+            address,
         })
     }
 
@@ -526,6 +529,8 @@ struct Listening {
     listener: Listener,
     secrets: FlowSecrets,
     redirect_uri: String,
+    /// The authorization address, handed to the browser by `wait` (3.2.1).
+    address: Secret,
 }
 
 enum Stage {
@@ -533,10 +538,10 @@ enum Stage {
     Ended(CancelReason),
 }
 
-/// A started sign-in, waiting for the browser (3.2). Dropping it closes the listener.
+/// A prepared sign-in (3.2). Dropping it closes the listener. No browser is opened until
+/// [`PendingFlow::wait`] runs.
 ///
-/// Call [`PendingFlow::wait`] at once after [`Flow::start`]: the listener accepts nothing
-/// before `wait` runs it, and its 300 s count from `start`.
+/// The listener's 300 s count from [`Flow::start`], whether or not `wait` was called.
 pub struct PendingFlow {
     flow: Flow,
     job: ConnectJob,
@@ -571,15 +576,22 @@ impl PendingFlow {
         }
     }
 
-    /// Waits for the callback and finishes the sign-in (3.2 to 3.7). Writes the refresh token
-    /// to `store` only for `Connected`, and then keeps the new access token in `cache`. A
-    /// reconnect that does not end `Connected` forgets the account in `store` and `cache`.
+    /// Opens the authorization address with `browser` (3.2.1), waits for the callback and
+    /// finishes the sign-in (3.2 to 3.7). Writes the refresh token to `store` only for
+    /// `Connected`, and then keeps the new access token in `cache`. A reconnect that does not
+    /// end `Connected` forgets the account in `store` and `cache`. A browser that cannot be
+    /// started ends the flow `Cancelled(BrowserNotOpened)`.
     ///
     /// A flow that is superseded, by a newer start or by a supersede (PD5; 18.7 point 5(a)),
     /// ends `Cancelled(Superseded)` without writing, and never forgets the account: the later
-    /// flow owns it now. One superseded before `wait` is called ends so at once: its listener
-    /// is closed without being run, and no request is made.
-    pub fn wait(self, store: &mut dyn TokenStore, cache: &AccessCache) -> ConnectOutcome {
+    /// flow owns it now. One superseded before `wait` is called ends so at once: no browser
+    /// is opened, its listener is closed without being run, and no request is made.
+    pub fn wait(
+        self,
+        browser: &mut dyn BrowserOpener,
+        store: &mut dyn TokenStore,
+        cache: &AccessCache,
+    ) -> ConnectOutcome {
         let PendingFlow {
             flow,
             job,
@@ -597,17 +609,19 @@ impl PendingFlow {
             supersede: &supersede,
             generation,
         };
-        // Superseded before it ran (18.7 point 5(a)): the listener is dropped, and so closed,
-        // without being run, and nothing is asked or written.
+        // Superseded before it ran (18.7 point 5(a)): no browser is opened, the listener is
+        // dropped, and so closed, without being run, and nothing is asked or written.
         if ours.superseded(&lock(&flow.turn)) {
             drop(stage);
             return ConnectOutcome::Cancelled(CancelReason::Superseded);
         }
         let outcome = match stage {
             Stage::Ended(reason) => ConnectOutcome::Cancelled(reason),
-            Stage::Listening(listening) => {
-                finish(&flow, &job, *listening, started, &ours, store, cache)
-            }
+            // 3.2.1: the browser is opened only now, after the check above.
+            Stage::Listening(listening) => match browser.open(&listening.address) {
+                Ok(()) => finish(&flow, &job, *listening, started, &ours, store, cache),
+                Err(BrowserNotOpened) => ConnectOutcome::Cancelled(CancelReason::BrowserNotOpened),
+            },
         };
         if outcome.is_connected() {
             // Ended under the turn's lock when the token was written (`finish`).
@@ -689,7 +703,9 @@ fn finish(
         listener,
         secrets,
         redirect_uri,
+        address,
     } = listening;
+    drop(address);
     // The listener is consumed: closed, its threads joined, before the token request (3.3).
     let code = match listener.run(
         &secrets.state,

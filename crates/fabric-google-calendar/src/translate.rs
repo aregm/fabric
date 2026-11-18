@@ -35,14 +35,15 @@ use fabric_desktop_contracts::agent::{
 use fabric_desktop_contracts::canonical;
 use fabric_desktop_contracts::common::{CalendarAccess, EventField, EventTime};
 use fabric_desktop_contracts::scalar::{
-    Date, Email, EventDescription, EventLocation, IanaZone, Label, ProviderRef, ReadTitle,
+    Date, Email, EventDescription, EventLocation, IanaZone, Label, OffsetDateTime, ProviderRef,
+    ReadTitle,
 };
 use serde_json::{Map, Value, json};
 
 use crate::calendar::{CalendarTarget, ObservedEvent, Span};
 use crate::http::ids::{CalendarId, EventId};
 use crate::outcome::Differs;
-use crate::time::{parse_rfc3339_ms, to_offset_date_time};
+use crate::time::{parse_rfc3339_ms, read_date_time, to_offset_date_time};
 
 /// The longest calendar name (6.2; the contract's `label`).
 pub const MAX_NAME_CHARS: usize = 200;
@@ -391,17 +392,44 @@ fn event_time(date_time: &str, zone: &IanaZone) -> Result<EventTime, ShapeError>
     })
 }
 
-fn span(event: &GoogleEvent, zone: &IanaZone) -> Result<EventSpan, ShapeError> {
+/// One end of a timed event, read once: the contract's form and the instant.
+struct TimedEnd {
+    date_time: OffsetDateTime,
+    instant_ms: i64,
+}
+
+/// An event's own `start` and `end`, read once (6.4; 18.7 point 4). The one owner of their
+/// shape rules and of their parsing: the view's time ([`span`]) and the [`Span`]
+/// ([`event_span`]) are both derived from it, so one is never present without the other.
+enum StartEnd {
+    Timed { start: TimedEnd, end: TimedEnd },
+    AllDay { start_date: Date, end_date: Date },
+}
+
+/// Reads an event's own `start` and `end`, never `originalStartTime`: two `dateTime`s are
+/// timed, two `date`s are all day. Anything else (missing, one a date and the other a time, a
+/// value that does not parse) is a [`ShapeError`].
+fn start_end(event: &GoogleEvent) -> Result<StartEnd, ShapeError> {
     const L: &str = "an event's start and end are not both times or both dates";
     let (Some(start), Some(end)) = (&event.start, &event.end) else {
         return Err(ShapeError("an event has no start or no end"));
     };
     match (&start.date_time, &end.date_time, &start.date, &end.date) {
-        (Some(s), Some(e), _, _) => Ok(EventSpan::Timed {
-            start: event_time(s, zone)?,
-            end: event_time(e, zone)?,
-        }),
-        (None, None, Some(s), Some(e)) => Ok(EventSpan::AllDay {
+        (Some(s), Some(e), _, _) => {
+            let timed = |t: &str| {
+                read_date_time(t)
+                    .map(|(date_time, instant_ms)| TimedEnd {
+                        date_time,
+                        instant_ms,
+                    })
+                    .map_err(|_| ShapeError("an event time is not an RFC 3339 date-time"))
+            };
+            Ok(StartEnd::Timed {
+                start: timed(s)?,
+                end: timed(e)?,
+            })
+        }
+        (None, None, Some(s), Some(e)) => Ok(StartEnd::AllDay {
             start_date: Date::new(s.as_str()).map_err(|_| ShapeError(L))?,
             end_date: Date::new(e.as_str()).map_err(|_| ShapeError(L))?,
         }),
@@ -409,33 +437,49 @@ fn span(event: &GoogleEvent, zone: &IanaZone) -> Result<EventSpan, ShapeError> {
     }
 }
 
+/// The view's time (6.4): [`start_end`] with the calendar's zone.
+fn span(event: &GoogleEvent, zone: &IanaZone) -> Result<EventSpan, ShapeError> {
+    Ok(match start_end(event)? {
+        StartEnd::Timed { start, end } => EventSpan::Timed {
+            start: EventTime {
+                date_time: start.date_time,
+                zone: zone.clone(),
+            },
+            end: EventTime {
+                date_time: end.date_time,
+                zone: zone.clone(),
+            },
+        },
+        StartEnd::AllDay {
+            start_date,
+            end_date,
+        } => EventSpan::AllDay {
+            start_date,
+            end_date,
+        },
+    })
+}
+
 /// The [`Span`] of an event of a read (6.4; 18.7 point 4): from the occurrence's own `start`
 /// and `end`, never from `originalStartTime`. Two `dateTime`s give `Timed` in UTC
 /// milliseconds; two `date`s give `AllDay` with Google's dates exactly, the end exclusive.
 /// No widening and no zone arithmetic. Anything else (missing, or one a date and the other a
-/// time) is a [`ShapeError`]: the read fails, it never lacks a span.
+/// time) is a [`ShapeError`]: the read fails, it never lacks a span. Read by [`start_end`], as
+/// the view's time is.
 pub(crate) fn event_span(event: &GoogleEvent) -> Result<Span, ShapeError> {
-    const L: &str = "an event's start and end are not both times or both dates";
-    let (Some(start), Some(end)) = (&event.start, &event.end) else {
-        return Err(ShapeError("an event has no start or no end"));
-    };
-    match (&start.date_time, &end.date_time, &start.date, &end.date) {
-        (Some(s), Some(e), _, _) => {
-            let instant = |t: &str| {
-                parse_rfc3339_ms(t)
-                    .map_err(|_| ShapeError("an event time is not an RFC 3339 date-time"))
-            };
-            Ok(Span::Timed {
-                start_ms: instant(s)?,
-                end_ms: instant(e)?,
-            })
-        }
-        (None, None, Some(s), Some(e)) => Ok(Span::AllDay {
-            start_date: Date::new(s.as_str()).map_err(|_| ShapeError(L))?,
-            end_date: Date::new(e.as_str()).map_err(|_| ShapeError(L))?,
-        }),
-        _ => Err(ShapeError(L)),
-    }
+    Ok(match start_end(event)? {
+        StartEnd::Timed { start, end } => Span::Timed {
+            start_ms: start.instant_ms,
+            end_ms: end.instant_ms,
+        },
+        StartEnd::AllDay {
+            start_date,
+            end_date,
+        } => Span::AllDay {
+            start_date,
+            end_date,
+        },
+    })
 }
 
 /// The occurrence identity of an occurrence of a timed series (6.4). `None` for a single event
@@ -861,6 +905,11 @@ const fn response_text(response: ProposedResponse) -> &'static str {
 /// Google may store a member in another form than it was sent; an entry is added here only
 /// with a result from a live run (design LV18) and a test against the fake. The list is empty
 /// today: every member is compared as 6.12 says, with no equivalence invented (PLAN S04).
+///
+/// It reaches only the members compared as text: the title, the zone, the description and the
+/// place. Instants, attendee addresses, answers and other attendees' entries are not compared
+/// through it, so an entry for one of those needs its own place in the comparison and its own
+/// test.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Normalisation {}
 
@@ -881,7 +930,9 @@ impl Normalisation {
 pub const NORMALISATIONS: &[Normalisation] = &[];
 
 /// The one place where a normalisation is applied: to Google's value and to the approved value
-/// alike, before they are compared.
+/// alike, before they are compared. Only the members compared as text pass through it (the
+/// title, the zone, the description and the place); instants, attendee addresses, answers and
+/// other attendees' entries do not, so a normalisation of one of those needs its own place.
 fn normalised(member: Differs, value: &str) -> Cow<'_, str> {
     NORMALISATIONS
         .iter()
@@ -1103,7 +1154,7 @@ mod tests {
         ProposeUpdateArguments, ResponseTarget,
     };
     use fabric_desktop_contracts::common::{CalendarRef, EventRef, SendUpdates};
-    use fabric_desktop_contracts::scalar::{EventTitle, Id, OffsetDateTime, Task};
+    use fabric_desktop_contracts::scalar::{EventTitle, Id, Task};
 
     fn target(primary: bool) -> CalendarTarget {
         CalendarTarget {
@@ -1414,6 +1465,66 @@ mod tests {
 
     /// 18.7 point 4: a span is the occurrence's own start and end, `Timed` in UTC milliseconds
     /// or `AllDay` with Google's dates; never the original start; anything else is an error.
+    /// Finding of review: the view's time and the span come from one read of `start` and
+    /// `end`. Each `dateTime` the view shows is the instant the span holds, for timed events;
+    /// all-day dates are the same in both; a value refused for one is refused for both.
+    #[test]
+    fn the_views_time_and_the_span_come_from_one_read_of_start_and_end() {
+        let zone = IanaZone::new("Europe/Paris").expect("valid");
+        for (start, end) in [
+            ("2026-11-20T10:00:00.250+01:00", "2026-11-20T09:30:00Z"),
+            ("2026-11-20T23:59:59.999-23:59", "2026-11-21T00:00:00+23:59"),
+            ("0000-01-01T00:00:00Z", "9999-12-31T23:59:59.999Z"),
+        ] {
+            let e = event(json!({"id": "t", "etag": "\"1\"",
+                "start": {"dateTime": start}, "end": {"dateTime": end}}));
+            let (Ok(EventSpan::Timed { start: vs, end: ve }), Ok(Span::Timed { start_ms, end_ms })) =
+                (span(&e, &zone), event_span(&e))
+            else {
+                panic!("both timed");
+            };
+            assert_eq!(
+                parse_rfc3339_ms(vs.date_time.as_str()),
+                Ok(start_ms - start_ms.rem_euclid(1000))
+            );
+            assert_eq!(
+                parse_rfc3339_ms(ve.date_time.as_str()),
+                Ok(end_ms - end_ms.rem_euclid(1000))
+            );
+            assert_eq!(start_ms, parse_rfc3339_ms(start).expect("valid"));
+            assert_eq!(end_ms, parse_rfc3339_ms(end).expect("valid"));
+        }
+        let all_day = event(
+            json!({"id": "a", "etag": "\"1\"", "start": {"date": "2026-11-20"}, "end": {"date": "2026-11-22"}}),
+        );
+        let (
+            Ok(EventSpan::AllDay {
+                start_date: vs,
+                end_date: ve,
+            }),
+            Ok(Span::AllDay {
+                start_date,
+                end_date,
+            }),
+        ) = (span(&all_day, &zone), event_span(&all_day))
+        else {
+            panic!("both all day");
+        };
+        assert_eq!((vs, ve), (start_date, end_date));
+        for bad in [
+            "2026-02-30T10:00:00Z",
+            "2026-11-20T24:00:00Z",
+            "2026-11-20T10:00:00+24:00",
+            "2026-11-20T10:00:60Z",
+            "2026-11-20t10:00:00Z",
+            "2026-11-20T10:00:00.Z",
+        ] {
+            let e = event(json!({"id": "b", "etag": "\"1\"",
+                "start": {"dateTime": bad}, "end": {"dateTime": "2026-11-20T11:00:00Z"}}));
+            assert!(span(&e, &zone).is_err() && event_span(&e).is_err(), "{bad}");
+        }
+    }
+
     #[test]
     fn a_span_is_the_events_own_start_and_end_as_instants_or_dates() {
         let occurrence = event(json!({

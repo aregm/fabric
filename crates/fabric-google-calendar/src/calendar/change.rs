@@ -16,7 +16,7 @@
 //! was approved, `differs` names the first member that is not (18.7 point 2; 6.12).
 
 use fabric_desktop_contracts::agent::Action;
-use fabric_desktop_contracts::common::{FailureCode, SendUpdates};
+use fabric_desktop_contracts::common::{EventRef, FailureCode, SendUpdates};
 use fabric_desktop_contracts::scalar::{Id, ProviderRef};
 use serde_json::Value;
 
@@ -25,7 +25,7 @@ use super::{CalendarTarget, ChangeOrder, Google, check_effect};
 use crate::http::ids::{EventId, Revision};
 use crate::http::{Answer, BodyBound, Exchange, Method, Request, Target};
 use crate::outcome::{
-    ChangeKind, ChangeOutcome, ChangeReport, Notification, ReadFailure, Refusal, Sentence,
+    ChangeKind, ChangeOutcome, ChangeReport, Differs, Notification, ReadFailure, Refusal, Sentence,
     change_access_failure, change_refusal,
 };
 use crate::secret::Secret;
@@ -217,7 +217,7 @@ impl Google {
             if !matches!(answer.status(), 200 | 204) {
                 return Ok(ChangeOutcome::NoAnswer.into());
             }
-            let confirmed = self.delete_read_back(account, &token, target, id, deadline_ms);
+            let confirmed = self.delete_read_back(&token, target, id, deadline_ms);
             return Ok(ChangeOutcome::Applied {
                 event: None,
                 confirmed,
@@ -226,34 +226,55 @@ impl Google {
             }
             .into());
         }
-        // 6.6, 6.7: 2xx with the event; another id, or a body that is not an event, is
-        // NoAnswer.
-        let Some(after) = answer
+        // 6.6, 6.7; 18.7 point 2: a 200 whose body is an object with the right id is Applied
+        // whatever else it holds; never NoAnswer, never reconciled by reading. Another id, no
+        // string id, or a body that is not an object is NoAnswer.
+        let Some(body) = answer
             .json()
             .ok()
-            .and_then(|body: Value| GoogleEvent::read(&body).ok())
-            .filter(|event| event.id == expected_id && !event.cancelled)
+            .filter(|body: &Value| body.get("id").and_then(Value::as_str) == Some(expected_id))
         else {
             return Ok(ChangeOutcome::NoAnswer.into());
         };
-        let (Ok(event_id), Ok(revision)) = (
-            ProviderRef::new(after.id.as_str()),
-            ProviderRef::new(after.etag.as_str()),
-        ) else {
-            return Ok(ChangeOutcome::NoAnswer.into());
+        let read_event = GoogleEvent::read(&body).ok();
+        let fitting = read_event
+            .as_ref()
+            .filter(|event| !event.cancelled)
+            .and_then(|event| {
+                let event_ref = event_ref(&event.id, &event.etag)?;
+                Some((event, event_ref))
+            });
+        let Some((after, event)) = fitting else {
+            // A cancelled event, or a body or revision that cannot be read: Applied, not what
+            // was approved. The event is named only when its revision fits the contract.
+            let differs = if read_event.is_some_and(|event| event.cancelled) {
+                Differs::Status
+            } else {
+                Differs::Event
+            };
+            let event = body
+                .get("etag")
+                .and_then(Value::as_str)
+                .and_then(|etag| event_ref(expected_id, etag));
+            return Ok(ChangeOutcome::Applied {
+                event,
+                confirmed: false,
+                differs: Some(differs),
+                notification,
+            }
+            .into());
         };
-        // 6.12; 18.7 point 2: a yes with the right id is Applied whatever the event holds;
-        // the comparison says whether it is what was approved and, if not, names the first
-        // member that is not.
+        // 6.12; 18.7 point 2: the comparison says whether the event is what was approved and,
+        // if not, names the first member that is not.
         let differs = match (action, &read) {
             (Action::ProposeResponse(_), Some(read)) => {
-                response_differs(action, read, &after, target)
+                response_differs(action, read, after, target)
             }
-            _ => differs(action, &after, target),
+            _ => differs(action, after, target),
         }
-        .or_else(|| occurrence_differs(&after, ids.original_start_ms));
+        .or_else(|| occurrence_differs(after, ids.original_start_ms));
         Ok(ChangeOutcome::Applied {
-            event: Some(fabric_desktop_contracts::common::EventRef { event_id, revision }),
+            event: Some(event),
             confirmed: differs.is_none(),
             differs,
             notification,
@@ -266,15 +287,18 @@ impl Google {
     /// order's deadline, with no refresh and no retry. It is a read, so the order still makes
     /// one changing request (PD13). Nothing is sent when no time is left. It gives only whether
     /// the deletion is in effect ([`delete_confirmed`]); nothing of the event is kept.
+    ///
+    /// Its only side effect is the GET itself. It reads no token store and asks for no token,
+    /// and a 401 to it leaves the cached access token as it is: the change is already applied,
+    /// and this read only says whether it is confirmed.
     fn delete_read_back(
         &mut self,
-        account: &Id,
         token: &Secret,
         target: &CalendarTarget,
         id: &EventId,
         deadline_ms: u64,
     ) -> bool {
-        if self.now_ms() >= deadline_ms {
+        if !read_back_due(self.now_ms(), deadline_ms) {
             return false;
         }
         let request = Request::new(
@@ -290,9 +314,6 @@ impl Google {
         let Exchange::Answer(answer) = self.transport.send(request, deadline_ms) else {
             return false;
         };
-        if answer.status() == 401 {
-            self.tokens.drop_cached(account);
-        }
         delete_confirmed(&answer, id)
     }
 
@@ -344,6 +365,12 @@ impl Google {
     }
 }
 
+/// Whether the read after a delete is still due (18.7 point 1): some of the order's deadline
+/// is left. At the deadline itself nothing is sent; one millisecond before, the read is sent.
+const fn read_back_due(now_ms: u64, deadline_ms: u64) -> bool {
+    now_ms < deadline_ms
+}
+
 /// Whether the answer to the read after a delete shows the deletion in effect (6.8; 18.7
 /// point 1): 404, 410, or 200 with a readable event whose `id` is the one asked for and whose
 /// `status` is `cancelled`, at any revision. Everything else is `false`: a live event, an
@@ -362,6 +389,15 @@ fn delete_confirmed(answer: &Answer, id: &EventId) -> bool {
     }
 }
 
+/// The event's id and revision as the contract holds them; `None` when either does not fit
+/// [`ProviderRef`].
+fn event_ref(id: &str, etag: &str) -> Option<EventRef> {
+    Some(EventRef {
+        event_id: ProviderRef::new(id).ok()?,
+        revision: ProviderRef::new(etag).ok()?,
+    })
+}
+
 /// `PATCH /calendars/<id>/events/<event id>?sendUpdates=<approved>` with `If-Match` (6.7).
 fn patch(
     calendar: &crate::http::ids::CalendarId,
@@ -376,4 +412,18 @@ fn patch(
     )
     .query("sendUpdates", send_updates(updates))
     .if_match(revision)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// 18.7 point 1: the read after a delete is sent while any of the deadline is left, and
+    /// not at the deadline or after it.
+    #[test]
+    fn the_read_after_a_delete_is_due_one_millisecond_before_the_deadline_and_not_at_it() {
+        assert!(read_back_due(29_999, 30_000));
+        assert!(!read_back_due(30_000, 30_000));
+        assert!(!read_back_due(30_001, 30_000));
+    }
 }
