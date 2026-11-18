@@ -9,7 +9,7 @@ use std::collections::HashMap;
 use std::convert::Infallible;
 
 use fabric_desktop_contracts::owner::{
-    Change, Health, OwnerNotice, ProofPurpose, ProverHealth, StoreHealth,
+    Change, Health, OwnerNotice, ProofPurpose, ProverProblem, StoreHealth,
 };
 use fabric_desktop_contracts::scalar::{Digest, Id};
 use fabric_storage::{
@@ -18,7 +18,7 @@ use fabric_storage::{
 };
 
 use crate::broker::{Attachments, Job, Opener, Settings};
-use crate::ports::{AgentReply, ConnectionId};
+use crate::ports::{AgentReply, ConnectionId, ProverStatus};
 use crate::service::clock::Clock;
 use crate::service::limits::BusyWindows;
 use crate::service::{Activity, AfterCommit, Cx};
@@ -80,7 +80,7 @@ pub(crate) struct Core {
     pub(in crate::service) activity: Activity,
     /// The step's `now` (D34), set by [`Core::now_ms`].
     pub(in crate::service) now: i64,
-    pub(in crate::service) prover_health: ProverHealth,
+    pub(in crate::service) prover_health: ProverStatus,
     pub(in crate::service) in_flight: HashMap<u64, InFlight>,
     pub(in crate::service) next_job_id: u64,
     pub(in crate::service) connections: HashMap<ConnectionId, Connection>,
@@ -108,10 +108,11 @@ impl Core {
         // is at most the head, so run ids rise (the `RunStarted` guard).
         let run_id = i64::try_from(meta.ledger_head_seq + 1)
             .map_err(|_| CoreOpenError::Halt(super::invariant("a run id fits in 63 bits")))?;
-        let prover_health = attachments
-            .prover
-            .as_ref()
-            .map_or(ProverHealth::Unavailable, |p| p.health);
+        // A run with no prover attached has none to wait for: unavailable, not configured.
+        let prover_health = attachments.prover.as_ref().map_or(
+            ProverStatus::Unavailable(Some(ProverProblem::NotConfigured)),
+            |p| p.health,
+        );
         let mut core = Core {
             store,
             settings,
@@ -188,12 +189,12 @@ impl Core {
         self.store.write_audit(self.now, entries)
     }
 
-    /// The broker's health for the owner.
+    /// The broker's health for the owner, from the prover's status: the only place a `Health`
+    /// is built, so `prover_problem` is null unless the prover is unavailable.
     pub(crate) fn health(&self) -> Health {
         Health {
-            prover: self.prover_health,
-            // The broker does not record why the prover is unavailable yet.
-            prover_problem: None,
+            prover: self.prover_health.health(),
+            prover_problem: self.prover_health.problem(),
             store: StoreHealth::Ready,
         }
     }
@@ -390,13 +391,14 @@ impl Core {
         self.write_audit(entries)
     }
 
-    /// The prover's health changed: a health notice (no ledger row; the write applies no
-    /// mutation).
-    pub(crate) fn set_prover_health(&mut self, health: ProverHealth) -> Result<(), StoreFault> {
-        if health == self.prover_health {
+    /// The prover's status changed: a health notice (no ledger row; the write applies no
+    /// mutation). Only a repeat of the whole status is dropped, so a change of the problem
+    /// alone is one notice.
+    pub(crate) fn set_prover_health(&mut self, status: ProverStatus) -> Result<(), StoreFault> {
+        if status == self.prover_health {
             return Ok(());
         }
-        self.prover_health = health;
+        self.prover_health = status;
         let change = Change::Health(self.health());
         let meta = self.meta("request.advance", Actor::broker(), None, None);
         self.commit(meta, |tx, _| tx.notify(change).map(|_| ()))
@@ -414,8 +416,7 @@ pub(crate) mod testing {
 
     use super::{Core, CoreOpenError};
     use crate::broker::{Attachments, Opener, Settings};
-    use crate::ports::ProverIdentity;
-    use fabric_desktop_contracts::owner::ProverHealth;
+    use crate::ports::{ProverIdentity, ProverStatus};
     use fabric_storage::ProverKind;
 
     /// The test epoch of design 9.
@@ -466,7 +467,7 @@ pub(crate) mod testing {
         Attachments {
             prover: Some(ProverIdentity {
                 kind: ProverKind::Isabelle,
-                health: ProverHealth::Ready,
+                health: ProverStatus::Ready,
             }),
             provider_present: true,
         }
@@ -484,5 +485,99 @@ pub(crate) mod testing {
             Err(CoreOpenError::Open(e)) => panic!("the store does not open: {e}"),
             Err(CoreOpenError::Halt(f)) => panic!("the core halted at open: {f}"),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use fabric_desktop_contracts::owner::{
+        Change, Health, OwnerNotice, ProverHealth, ProverProblem, StoreHealth,
+    };
+    use fabric_storage::ProverKind;
+
+    use super::testing::{self, T0, TempDir};
+    use crate::broker::Attachments;
+    use crate::ports::{ProverIdentity, ProverStatus};
+
+    /// The health of each notice a commit sent.
+    fn healths(notices: &[OwnerNotice]) -> Vec<Health> {
+        notices
+            .iter()
+            .filter_map(|n| match &n.change {
+                Change::Health(health) => Some(*health),
+                _ => None,
+            })
+            .collect()
+    }
+
+    /// c32. 10.3: `health()` fills `prover` and `prover_problem` from the status, the problem only while
+    /// unavailable with a known cause, and a run with no prover is unavailable, not configured.
+    #[test]
+    fn health_follows_the_status() {
+        let statuses = [
+            ProverStatus::Starting,
+            ProverStatus::Ready,
+            ProverStatus::Unavailable(None),
+            ProverStatus::Unavailable(Some(ProverProblem::FailedWillRetry)),
+            ProverStatus::Unavailable(Some(ProverProblem::Failed)),
+            ProverStatus::Unavailable(Some(ProverProblem::WrongRules)),
+        ];
+        for status in statuses {
+            let dir = TempDir::new();
+            let attachments = Attachments {
+                prover: Some(ProverIdentity {
+                    kind: ProverKind::Isabelle,
+                    health: status,
+                }),
+                provider_present: true,
+            };
+            let health = testing::open(&dir, attachments, T0).health();
+            assert_eq!(health.prover, status.health(), "{status:?}");
+            assert_eq!(health.prover_problem, status.problem(), "{status:?}");
+            assert_eq!(health.store, StoreHealth::Ready);
+            let text = serde_json::to_vec(&health).unwrap();
+            let back: Health = fabric_desktop_contracts::decode_record(&text).unwrap();
+            assert_eq!(back, health, "{status:?}");
+        }
+        let dir = TempDir::new();
+        let none = Attachments {
+            prover: None,
+            provider_present: false,
+        };
+        let health = testing::open(&dir, none, T0).health();
+        assert_eq!(health.prover, ProverHealth::Unavailable);
+        assert_eq!(health.prover_problem, Some(ProverProblem::NotConfigured));
+    }
+
+    /// c32. 10.3: the filter drops only a repeat of the whole status, so a change of the problem alone
+    /// is one notice.
+    #[test]
+    fn a_change_of_cause_alone_sends_one_notice() {
+        let dir = TempDir::new();
+        let mut core = testing::open(&dir, testing::isabelle(), T0);
+        let _ = core.take_outbox();
+        let mut sent = Vec::new();
+        for status in [
+            ProverStatus::Unavailable(Some(ProverProblem::FailedWillRetry)),
+            ProverStatus::Unavailable(Some(ProverProblem::Failed)),
+            ProverStatus::Unavailable(Some(ProverProblem::Failed)),
+            ProverStatus::Starting,
+        ] {
+            core.set_prover_health(status).unwrap();
+            sent.extend(healths(&core.take_outbox().notices));
+        }
+        let problems: Vec<(ProverHealth, Option<ProverProblem>)> =
+            sent.iter().map(|h| (h.prover, h.prover_problem)).collect();
+        assert_eq!(
+            problems,
+            vec![
+                (
+                    ProverHealth::Unavailable,
+                    Some(ProverProblem::FailedWillRetry)
+                ),
+                (ProverHealth::Unavailable, Some(ProverProblem::Failed)),
+                (ProverHealth::Starting, None),
+            ]
+        );
     }
 }

@@ -17,7 +17,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 use fabric_broker_core::ports::{
     AgentInput, AttemptDone, AttemptReport, ConnectionId, DispatchOrder, ProofDone, ProofJob,
-    ProverIdentity, ProverKind,
+    ProverCause, ProverIdentity, ProverKind, ProverStatus,
 };
 use fabric_broker_core::{
     Attachments, Broker, Input, Job, Opener, Output, Seed, SeedAgent, Settings, format_timestamp,
@@ -25,13 +25,13 @@ use fabric_broker_core::{
 use fabric_desktop_contracts::agent::Action;
 use fabric_desktop_contracts::common::{FailureCode, ToolName};
 use fabric_desktop_contracts::owner::{
-    Account, Destination, ProofPurpose, ProofReport, ProverHealth, Ruling,
+    Account, Destination, ProofPurpose, ProofReport, ProverProblem, Ruling,
 };
 use fabric_desktop_contracts::scalar::{Explanation, Id, Label};
 use fabric_desktop_contracts::{Entry, Frame, decode, decode_record};
 use fabric_storage::{
     Actor, DATABASE_FILE, Mutation, OpMeta, OpenOptions, ReadTx, Store, StoreFault, TEST_KEY,
-    TestKey, TxError,
+    TestKey, TxError, UndecidedCause,
 };
 use serde::de::DeserializeOwned;
 use serde_json::{Value, json};
@@ -113,7 +113,19 @@ pub fn isabelle() -> Attachments {
     Attachments {
         prover: Some(ProverIdentity {
             kind: ProverKind::Isabelle,
-            health: ProverHealth::Ready,
+            health: ProverStatus::Ready,
+        }),
+        provider_present: true,
+    }
+}
+
+/// An Isabelle prover that is still starting, as the release shell attaches it, and a provider.
+#[must_use]
+pub fn isabelle_starting() -> Attachments {
+    Attachments {
+        prover: Some(ProverIdentity {
+            kind: ProverKind::Isabelle,
+            health: ProverStatus::Starting,
         }),
         provider_present: true,
     }
@@ -134,7 +146,7 @@ pub fn synthetic() -> Attachments {
     Attachments {
         prover: Some(ProverIdentity {
             kind: ProverKind::Synthetic,
-            health: ProverHealth::Unavailable,
+            health: ProverStatus::Unavailable(Some(ProverProblem::NotConfigured)),
         }),
         provider_present: true,
     }
@@ -427,6 +439,34 @@ pub fn proof_done(job: &ProofJob, outcome: Outcome, grants: &[&str]) -> ProofDon
         authorizing_grants: grants.iter().map(|g| id(g)).collect(),
         undecided_reason: None,
         check_theory_text: None,
+        cause: None,
+    }
+}
+
+/// A prover result for `job` with no report: no check ran, for `cause` (`None`: a prover that
+/// broke the port's rule and stated none).
+#[must_use]
+pub fn no_report_done(job: &ProofJob, cause: Option<ProverCause>) -> ProofDone {
+    ProofDone {
+        job_id: job.job_id,
+        request_id: job.request_id.clone(),
+        purpose: job.purpose,
+        report: None,
+        ruling: None,
+        authorizing_grants: Vec::new(),
+        undecided_reason: Some("the test prover did not check".to_owned()),
+        check_theory_text: None,
+        cause,
+    }
+}
+
+/// A prover result for `job` whose report is undecided, stating `cause`.
+#[must_use]
+pub fn undecided_done(job: &ProofJob, cause: Option<ProverCause>) -> ProofDone {
+    ProofDone {
+        undecided_reason: Some("the test prover did not decide".to_owned()),
+        cause,
+        ..proof_done(job, Outcome::Undecided, &[])
     }
 }
 
@@ -457,6 +497,16 @@ pub struct LedgerRow {
     pub operation_type: String,
     pub committed_at_ms: i64,
     pub correlation_id: Option<String>,
+}
+
+/// One move to `undecided` in the ledger, read with a second connection.
+struct UndecidedMove {
+    seq: i64,
+    correlation_id: Option<String>,
+    request_id: String,
+    /// The JSON type of `undecided_cause`; `None` when the member is absent.
+    kind: Option<String>,
+    cause: Option<String>,
 }
 
 /// One audit row, read with a second connection.
@@ -964,9 +1014,11 @@ impl Harness {
         store.close().expect("the store closes");
     }
 
-    /// Stops the broker and checks the ledger chain and the replay (design section 9).
+    /// Stops the broker and checks the ledger chain, the replay (design section 9) and every move
+    /// to `undecided` (c34).
     pub fn verify(&mut self) {
         self.kill();
+        self.check_undecided_moves();
         let store = self.open_store();
         store
             .verify_chain()
@@ -997,6 +1049,123 @@ impl Harness {
             .busy_timeout(std::time::Duration::from_secs(10))
             .expect("set a busy timeout");
         connection
+    }
+
+    /// c34. 5.7: every move to `undecided` in the ledger states a cause this build knows, as text, in a
+    /// row correlated to the request it moves, where the owner's details read it back.
+    pub fn check_undecided_moves(&self) {
+        let connection = self.raw();
+        let mut statement = connection
+            .prepare(
+                "SELECT l.seq, l.correlation_id, json_extract(m.value, '$.request_id'), \
+                 json_type(m.value, '$.undecided_cause'), json_extract(m.value, '$.undecided_cause') \
+                 FROM ledger AS l, json_each(l.payload, '$.mutations') AS m \
+                 WHERE json_extract(m.value, '$.op') = 'request_moved' \
+                 AND json_extract(m.value, '$.status.state') = 'undecided' ORDER BY l.seq",
+            )
+            .expect("read the moves to undecided");
+        let moves: Vec<UndecidedMove> = statement
+            .query_map([], |row| {
+                Ok(UndecidedMove {
+                    seq: row.get(0)?,
+                    correlation_id: row.get(1)?,
+                    request_id: row.get(2)?,
+                    kind: row.get(3)?,
+                    cause: row.get(4)?,
+                })
+            })
+            .expect("query the moves to undecided")
+            .collect::<Result<_, _>>()
+            .expect("read the moves to undecided");
+        for UndecidedMove {
+            seq,
+            correlation_id,
+            request_id,
+            kind,
+            cause,
+        } in moves
+        {
+            assert_eq!(
+                kind.as_deref(),
+                Some("text"),
+                "row {seq}: the move of {request_id} to undecided states no cause"
+            );
+            let cause = cause.unwrap_or_default();
+            assert!(
+                UndecidedCause::of_name(&cause).is_some(),
+                "row {seq}: {request_id} names an unknown cause {cause}"
+            );
+            assert_eq!(
+                correlation_id.as_deref(),
+                Some(request_id.as_str()),
+                "row {seq}: the move of {request_id} to undecided is correlated elsewhere"
+            );
+        }
+    }
+
+    /// The cause text stored on the newest move of `request_id` to `undecided` in a row
+    /// correlated to it; `None` when there is none or it is not text.
+    #[must_use]
+    pub fn stored_cause(&self, request_id: &str) -> Option<String> {
+        self.raw()
+            .query_row(
+                "SELECT CASE WHEN json_type(m.value, '$.undecided_cause') = 'text' \
+                 THEN json_extract(m.value, '$.undecided_cause') END \
+                 FROM ledger AS l, json_each(l.payload, '$.mutations') AS m \
+                 WHERE l.correlation_id = ?1 \
+                 AND json_extract(m.value, '$.op') = 'request_moved' \
+                 AND json_extract(m.value, '$.request_id') = ?1 \
+                 AND json_extract(m.value, '$.status.state') = 'undecided' \
+                 ORDER BY l.seq DESC, m.key DESC LIMIT 1",
+                [request_id],
+                |row| row.get::<_, Option<String>>(0),
+            )
+            .or_else(|e| match e {
+                rusqlite::Error::QueryReturnedNoRows => Ok(None),
+                e => Err(e),
+            })
+            .expect("read the stored cause")
+    }
+
+    /// Inserts a forged ledger row through a second connection while the broker runs: `payload`
+    /// as its payload text, correlated to `correlation_id`, actor broker, its own operation id and
+    /// envelope hash, a sequence far above the head, and the last row's commit time, so the
+    /// broker's next commit is not refused for time. Nothing checks it: the chain does not verify
+    /// afterwards, so a test that forges ends without `verify`.
+    pub fn forge_ledger_row(&self, payload: &str, correlation_id: &str) {
+        let connection = self.raw();
+        let (head, committed_at_ms): (i64, i64) = connection
+            .query_row(
+                "SELECT max(seq), max(committed_at_ms) FROM ledger",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .expect("read the ledger head");
+        let seq = head + 1_000_000;
+        let operation_id = format!("op-forged-{seq}");
+        let payload_hash = fabric_desktop_contracts::digest::sha256_hex(payload);
+        let envelope_hash =
+            fabric_desktop_contracts::digest::sha256_hex(&format!("forged\n{operation_id}"));
+        connection
+            .execute(
+                "INSERT INTO ledger (seq, operation_id, operation_type, payload_version, \
+                 committed_at_ms, run_id, actor_kind, actor_agent_id, idempotency_scope, \
+                 idempotency_key, causation_id, correlation_id, payload, payload_hash, \
+                 previous_hash, envelope_hash) \
+                 VALUES (?1, ?2, 'request.proof', 1, ?3, NULL, 'broker', NULL, NULL, NULL, NULL, \
+                 ?4, ?5, ?6, ?7, ?8)",
+                rusqlite::params![
+                    seq,
+                    operation_id,
+                    committed_at_ms,
+                    correlation_id,
+                    payload,
+                    payload_hash,
+                    "0".repeat(64),
+                    envelope_hash
+                ],
+            )
+            .expect("insert the forged ledger row");
     }
 
     /// A trigger that fails every ledger insert matching `when` (SQL on `NEW`).

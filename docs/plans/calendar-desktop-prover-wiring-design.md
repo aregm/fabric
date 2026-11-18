@@ -25,7 +25,12 @@ amendment of D13 and D26 in W4D is proposed with this step's pull request and is
 
 Date 2026-11-16. Status: as built (branch `claude/cd-prover-wiring`); updated 2026-11-16 by the adapter follow-up
 (branch `claude/cd-prover-adapter`) for the gate of pull request 26; updated 2026-11-17 by the kill handle follow-up
-(branch `claude/cd-prover-kill-handle`) for the gate's kill handle of pull request 30.
+(branch `claude/cd-prover-kill-handle`) for the gate's kill handle of pull request 30; updated 2026-11-17 by the broker
+part of contract schema version 2 (branch `claude/cd-broker-prover-reasons`): the prover's status says why it is
+unavailable (`health.prover_problem`, 2.2), every move to `undecided` stores its cause, which `get_request_details`
+gives as `undecided_reason` (2.4, X12), the adapter times its own check limit (2.3), and the shell answers at once every
+job it cannot hand over and every job a lost worker held (2.2); the tests u17 to u19, w35 to w40, sh07 to sh11 and
+p46 to p48.
 
 Abbreviations (paths relative to the repository root):
 
@@ -46,11 +51,12 @@ Safety rule of the whole design. The adapter emits a `ProofReport` only when `Br
 `Ok(Check)` for exactly this job, the check ran on the rule theory this broker was built with, the check names this
 job's action and context digests, and every conversion succeeded. A check that returned `Ok` and left the gate broken
 keeps its report, and the gate is replaced before any other check. Every other path is `report: None`, which the core
-turns into `undecided` with nothing recorded. Only the core turns a result into authority, and it already refuses an
-unbound result (W4D D39), a non-Isabelle permit (W4D D13), a fresh permit with no grant, no provider or a paused agent
-(W4D D17), a changed fence, and a late result (the job id is gone after the core's 35 s watchdog). The practice calendar
-acts only on a `DispatchOrder`, which exists only after a consumed authorization resting on an accepted Isabelle permit.
-No test double of the gate ever returns a `Check`: doubles exist only under `#[cfg(test)]` and can only fail or block.
+turns into `undecided` with only the result's cause recorded (X12). Only the core turns a result into authority, and it
+already refuses an unbound result (W4D D39), a non-Isabelle permit (W4D D13), a fresh permit with no grant, no provider
+or a paused agent (W4D D17), a changed fence, and a late result (the job id is gone after the core's 35 s watchdog). The
+practice calendar acts only on a `DispatchOrder`, which exists only after a consumed authorization resting on an
+accepted Isabelle permit. No test double of the gate ever returns a `Check`: doubles exist only under `#[cfg(test)]` and
+can only fail or block.
 
 ---------------------------------------------------------------------------------------------------------------------
 
@@ -68,8 +74,8 @@ No test double of the gate ever returns a `Check`: doubles exist only under `#[c
 | X8 | Restart policy | After the n-th consecutive failure (a failed start or a broken gate) wait `RESTART_WAITS[n-1]` (10 s, 60 s) and start again; after a third failure stay `unavailable` for the run; the count resets on `Ready`; a start begins only after the broken gate's stop returned (it runs on the worker and is bounded); no start begins once a stop was sent | Bounded; a stuck stop is never reused. Owner question O3 |
 | X9 | Stop at quit | Bound 1.5 s (`QUIT_BOUND`); before it sends the stop the handle records in the shared record the instant by which the gate's stop must end, `QUIT_BOUND` less `KILL_ALLOWANCE` (0.3 s) from then, that is 1.2 s; the worker gives its gate what is left of it (zero: an immediate kill); jobs queued at the stop are not checked and no check and no start begins; main drains its event channel while it waits; on Unix two kills through the kill handle: the worker kills a gate start in progress before it acknowledges, and main kills the server of a check still running at the stop's instant, on a short-lived thread (2.5); the work directory is removed in every state, by the worker or, without an acknowledgement in time, by the calling thread | The relay kills the broker 2 s after closing its stdin (`QUIT_DRAIN`); the kill's signals must go out before the process ends. No bound of the gate's ends a start or a running check within the quit's bound, so only the handle reaches them in time |
 | X10 | Work directory cleanup | `remove_dir_all(<data_dir>/prover)` then a non-recursive create (mode 0700 on Unix) before every gate start, and removal at every stop; once the store is open and its lock held, the shell removes it once in every configuration, with or without a prover; the gate also removes stale `Check_*.thy` at its start (T3); the adapter's cleanup is a superset and stays | One call covers a killed broker's `Check_*.thy` and the server logs; `remove_dir_all` does not follow a symbolic link; the non-recursive create can never make `<data_dir>` itself |
-| X11 | Deadline skip | Skip when wall `now_ms() >= job.deadline_ms`, no margin (`PAST_DEADLINE`); otherwise the check's limit is the time left before `job.deadline_ms`, from the same clock read, with nothing subtracted; the gate caps it at `CHECK_TIMEOUT` | The core clock is wall time plus a never-negative offset (W4D D34), so the skip never fires before the core's deadline and the limit is never too short; a late result is ignored anyway. A fresh job has 35 s left, so the gate's cap gives it the plan's 30 s, and the gate's answer or its break comes by 30 s + `CHECK_GRACE` (5 s), the job's deadline. A job that waited behind other checks gets a shorter limit, which ends at its deadline; the gate's answer comes a moment after it (at most `CHECK_GRACE` after), when the core has already ended the job as undecided, so no decided result is lost that would have been used. Subtracting `CHECK_GRACE` from the limit would turn undecided some requests that are decided today (a check takes about 1.2 s). A zero limit would be a `Check` Isabelle never ran (the gate answers it `Ok` undecided without asking) |
-| X12 | Reason texts | `no_report(job, &'static str)` with fixed texts; no `PolicyError` text reaches a reason or stderr | A no-report reason is never stored or shown. An `Undecided` check can carry an Isabelle message into `undecided_reason`; that is stored only in the encrypted store |
+| X11 | Deadline skip | Skip when wall `now_ms() >= job.deadline_ms`, no margin (`PAST_DEADLINE`); otherwise the check's limit is the smaller of the time left before `job.deadline_ms`, from the same clock read, with nothing subtracted, and the adapter's `check_timeout` (`CHECK_TIMEOUT`), passed by the adapter (2.3); the gate's own cap is then a no-op | The core clock is wall time plus a never-negative offset (W4D D34), so the skip never fires before the core's deadline and the limit is never too short; a late result is ignored anyway. A fresh job has 35 s left, so the adapter's cap gives it the plan's 30 s, and the gate's answer or its break comes by 30 s + `CHECK_GRACE` (5 s), the job's deadline. A job that waited behind other checks gets a shorter limit, which ends at its deadline; the gate's answer comes a moment after it (at most `CHECK_GRACE` after), when the core has already ended the job as undecided, so no decided result is lost that would have been used. Subtracting `CHECK_GRACE` from the limit would turn undecided some requests that are decided today (a check takes about 1.2 s). A zero limit would be a `Check` Isabelle never ran (the gate answers it `Ok` undecided without asking) |
+| X12 | Reason texts and causes | `no_report(job, Refusal)`, where each `Refusal` is a fixed text with its cause (`ProverCause`, PORTS); no `PolicyError` text reaches a reason or stderr | The text of a no-report result is never stored or shown. Its cause is: the core stores it on the move to `undecided` (`RequestMoved.undecided_cause`, W4D 4 and 5.7), and `get_request_details` maps it to the contract's `undecided_reason` (2.4). An `Undecided` check can carry an Isabelle message into `undecided_reason` of its `ProofRecord`; that is stored only in the encrypted store |
 | X13 | Agent script | Create, blocked delete of the foreign event, update, delete; lookup by the create's request id | The block appears without two more approvals; the lookup by request id is exact |
 | X14 | Agent API | `SyntheticAgent::practice(..)` and `set_prover_health(..)`; the proposal limit is a field (`PROPOSALS_PER_RUN` = 2 for `new`, `PRACTICE_PROPOSALS` = 4 for `practice`) | W04's callers and its pinned process tests are unchanged |
 | X15 | Live tests | One file, `apps/fabric-broker/tests/live.rs`; the tests of 7.3 | Every live test is in one place and runs by name |
@@ -137,6 +143,14 @@ an undecided report, and health stays `ready`; a job that waited behind other ch
 its deadline, so the core ends the request undecided there without a report (the late result is ignored), and health
 is `unavailable` from the deadline until the gate answers, then `ready` again (2.3).
 
+Since contract schema version 2 the owner channel also says why. An unavailable prover's health names its problem
+(2.2): `not_configured` in a run without Isabelle (3.3), `failed_will_retry` while a restart is scheduled, `failed`
+once none is, and `wrong_rules` for a rule theory or session file that is not the built one; it is null while a check
+runs past its job's deadline, when the cause is not yet known (2.3). The details of an `undecided` request name its
+reason (2.4): `prover_unavailable` when the rule checker was starting or not running, `out_of_time` when the check
+reached its limit or the proof's deadline, `failed` when the check ran and did not decide, or its report could not be
+used, and null when the broker did not record why.
+
 ---------------------------------------------------------------------------------------------------------------------
 
 ## 2. The prover adapter
@@ -193,9 +207,9 @@ reaches nothing.
 
 | State | Health on entry | `Job(job)` | Transition |
 |---|---|---|---|
-| `Starting` | `starting` | `no_report(job, STARTING)` at once | `Started(Ok(g))`: if `g.theory_sha256() != built_theory_sha256()`, `Down` for the run (line T below), then `g` stopped on the worker within `GATE_STOP_BOUND`; else `Ready`, failures = 0. `Started(Err(e))`: failure |
-| `Ready(g)` | `ready` | 2.3 | `GateFate::Restart` or `g.is_broken()` after the check: failure, then `g` stopped on the worker within `GATE_STOP_BOUND` |
-| `Down { retry_at }` | `unavailable` | `no_report(job, NOT_RUNNING)` at once | When `retry_at` is set and past and no stop was sent: `Starting` |
+| `Starting` | `starting`, no problem | `no_report(job, STARTING)` at once | `Started(Ok(g))`: if `g.theory_sha256() != built_theory_sha256()`, `Down` for the run (line T below), then `g` stopped on the worker within `GATE_STOP_BOUND`; else `Ready`, failures = 0. `Started(Err(e))`: failure |
+| `Ready(g)` | `ready`, no problem | 2.3 | `GateFate::Restart` or `g.is_broken()` after the check: failure, then `g` stopped on the worker within `GATE_STOP_BOUND` |
+| `Down { retry_at }` | `unavailable`, with the problem `failed_will_retry` while `retry_at` is set and no stop was sent, else `failed`; `wrong_rules` when down for the run by line T | `no_report(job, NOT_RUNNING)` at once | When `retry_at` is set and past and no stop was sent: `Starting` |
 | any | | | `Stop(ack)`, the channel closed, or the main loop gone (`emit` returns false): 2.5 |
 
 A `Started(Ok(g))` that reaches the worker in another state than `Starting` is stopped on the worker the same way.
@@ -226,7 +240,8 @@ sent during steps 1 and 2 ends it before step 3):
    Unix the worker killed this start's handle before it acknowledged the stop (2.5): a server the start spawned is
    ended and the start returns an error, and a gate it still returns stops at once, which also sends `shutdown` to a
    server found already running. What is left: if the process ends before the start returns, a found server outlives
-   it (K1 case 4).
+   it (K1 case 4). A start that panics is caught on the starter thread and sent as `Started(Err(Io))`, so it is a
+   failed start (`I/O`) and goes through the failure rule; a start that never returns stays `Starting` (K22).
 
 Stopping a gate (every "`g` stopped on the worker" above). `stop_gate` calls `g.stop_within(stop_bound(..))` on the
 worker, result ignored, then drops `g` (a stopped `BrokerGate`'s `Drop` returns at once). `stop_bound` is
@@ -239,20 +254,47 @@ before pull request 26 a gate's stop could block for over a minute, so a dropper
 answered `NOT_RUNNING` when it returns (the state is already `Down`), and a restart begins only after the stop returned
 (X8). No lock is held across a call of the gate.
 
-Health is emitted only on change, through `ProverEvent::Health`, and the overrun poll (2.3) shares the same record of
-the last health sent. `shell::input_of` turns `Event::Health(h)` into `Input::ProverHealth(h)`, and `Shell::turn` also
-tells the synthetic agent (`set_prover_health`).
+Health travels as `ProverStatus { Starting, Ready, Unavailable(Option<ProverProblem>) }` (PORTS): the contract's
+`prover` and, while it is unavailable, its `prover_problem`; a problem beside `Starting` or `Ready` cannot be built. It
+is emitted only on change, through `ProverEvent::Health`, and the overrun poll (2.3) shares the same record of the last
+status sent. Both the worker (`set_health`) and the core (`Core::set_prover_health`) drop a repeat only of the whole
+status, so a change of the problem alone is one health notice (W4D 10.3). `fail()` states `failed_will_retry` while a
+restart is scheduled and no stop was sent, and `failed` after the last wait or once a stop was sent, since no retry
+starts then; a pin that cannot read its files is such a failure too. `other_theory()` and the pin's refusal state
+`wrong_rules`. `shell::input_of` turns `Event::Health(s)` into `Input::ProverHealth(s)`, and `Shell::turn` also tells
+the synthetic agent its health (`set_prover_health(s.health())`).
 
-Pending health (the shell's own inputs). `emit` and `route` get only `&Broker`, so they cannot feed an input, and the
-main thread must never send into its own bounded channel (it is the only receiver: a full channel deadlocks). So
-`Shell` holds `pending_health: Option<ProverHealth>`:
-- a failed `prove` send (the worker is gone) sets it to `Unavailable` once (`prover_lost` stops repeats; the core's
-  watchdog ends the open proofs);
-- the overrun poll (2.3) sets it when `poll` returns `Some`.
+Pending status and results (the shell's own inputs). `emit` and `route` get only `&Broker`, so they cannot feed an
+input, and the main thread must never send into its own bounded channel (it is the only receiver: a full channel
+deadlocks). So `Shell` holds `pending_health: Option<ProverStatus>`, `pending_results: Vec<ProofDone>`, and in `handed`
+the job id, request and purpose of each job handed to the Isabelle worker whose result has not passed through `turn`
+yet:
+- at the first sign that the Isabelle worker is lost, once (`prover_lost`): a failed `prove` send (sh09), or
+  `IsabelleProver::lost()`, which is true when the worker thread could not be spawned or has ended although no stop was
+  sent (a panic, or a main loop that no longer takes its events). The pending status becomes `Unavailable(failed)`, and
+  every job in `handed` is answered with `map::answer(.., NOT_RUNNING)`;
+- every job the shell cannot hand over is answered at once with `NOT_RUNNING`: after the loss, on a closed classifier
+  channel, and in the slots `None` and `Waiting`. The core turns it into `undecided` with the cause `prover_not_running`
+  (2.4), or `no_prover` for the classifier, whose kind is not Isabelle (W4D 5.10). Only the Isabelle worker's loss
+  changes the status;
+- after the loss a status still queued from the worker is fed as `Input::Tick`, and the overrun poll still runs, so that
+  its latch is set and the prover's due time clears, but its status is dropped: neither replaces `failed`;
+- the overrun poll (2.3) sets the pending status when `poll` returns `Some`.
 
-`Shell::next_due_ms` returns `Some(0)` while it is `Some`, so `next_event` returns at once and main feeds
-`Input::Tick`. `Shell::turn` first runs the overrun poll, then takes `pending_health` and, if there was one, calls
-`broker.handle(Input::ProverHealth(h), now_ms)`, tells the agent and emits, and only then handles its own input.
+`Shell::next_due_ms` returns `Some(0)` while a status or a result is pending, so `next_event` returns at once and
+main feeds `Input::Tick`. `Shell::turn` first (`notice`) takes out of `handed` the job whose result is its own input,
+so a loss noticed in this turn never answers a result in hand with `NOT_RUNNING`, then asks the worker whether it is
+lost and runs the overrun poll (`watch_prover`), then takes `pending_health` and, if there was one, calls
+`broker.handle(Input::ProverHealth(s), now_ms)`, tells the agent and emits, then feeds each pending result as
+`Input::ProofDone` and emits, and only then handles its own input. A job leaves `handed` when its result passes
+through `turn` (sh04); a result that names another request or purpose than its job leaves the job there (K21).
+
+A panic of the worker sends no event, so nothing wakes the main loop when the worker ends. `notice` keeps the start
+of the last turn (`last_turn_ms`). While a job is out with the Isabelle worker (`handed` is not empty) and its loss
+is not known, `Shell::next_due_ms` is no later than `last_turn_ms` plus `LOSS_LOOK_MS` (250 ms), so the main loop
+sleeps at most that long. A worker that ended is noticed within that time, and its jobs are answered then (sh10,
+sh11). Every due time is a raw wall clock time, as `next_event` reads it. With no job out, a lost worker is noticed
+at the next event (K27).
 
 ### 2.3 One job in `Ready`
 
@@ -260,34 +302,49 @@ main thread must never send into its own bounded channel (it is the only receive
 if a stop was sent                        -> no_report(job, NOT_RUNNING)    // `Shared.stop_by` is set (2.5)
 left = job.deadline_ms - now_ms()         // one wall clock read, saturating; nothing subtracted
 if left == 0                              -> no_report(job, PAST_DEADLINE)
+limit = min(left, check_timeout)          // the adapter's own cap, `CHECK_TIMEOUT`
 (context, action) = context_of(&job)      // Err(JobRefused(t)) -> no_report(job, t); gate kept
 if a stop was sent                        -> no_report(job, NOT_RUNNING)    // read again where the mark is set
 mark the check running until job.deadline_ms (shared record; the same critical section as the read above)
-result = gate.check_within(&context, &action, left); broken = gate.is_broken()
+began = Instant::now(); result = gate.check_within(&context, &action, limit); took = began.elapsed()
+lateness = PastDeadline if now_ms() >= job.deadline_ms, else AtLimit if took >= limit, else InTime
+broken = gate.is_broken()
 clear the mark
-(done, fate) = done_of(&job, &context, built_theory_sha256(), result); if broken: fate = Restart; emit Done(done)
+(done, fate) = done_of(&job, &context, built_theory_sha256(), result, lateness)
+if broken: fate = Restart; emit Done(done)
 fate == Restart -> failure (2.2), then the gate's stop (2.2)
 else, if the overrun poll had reported `unavailable`, emit Health(Ready)
 ```
 
-The limit. The gate takes the smaller of `left` and its `check_timeout` (`CHECK_TIMEOUT`, 30 s), and Isabelle ends the
-check at that limit (an Undecided check). The gate's answer, a stuck gate's error included, comes by the limit plus
-`CHECK_GRACE` (5 s). A fresh job has 35 s left, so it gets the plan's 30 s and the answer comes by its deadline. A job
-that waited behind other checks (K8) gets a shorter limit, which ends at its deadline; the gate's answer then comes a
-moment after the deadline (at most `CHECK_GRACE` after), when the core has already ended the job as undecided and
-ignores the result by job id, so no decided result is lost that would have been used (X11). A check that returned `Ok`
-and left the gate broken (its `use_theories` answer was read in full, then its purge failed) keeps its report:
-`done_of` still checks its theory hash and both digests; the gate is restarted with the category `connection`.
+The limit. The adapter passes `limit`, the smaller of `left` and its `check_timeout` (`CHECK_TIMEOUT`, 30 s), so the
+gate's own cap at the same value changes nothing, and Isabelle ends the check at that limit (an Undecided check). The
+gate's answer, a stuck gate's error included, comes by the limit plus `CHECK_GRACE` (5 s). A fresh job has 35 s left, so
+it gets the plan's 30 s and the answer comes by its deadline. A job that waited behind other checks (K8) gets a shorter
+limit, which ends at its deadline; the gate's answer then comes a moment after the deadline (at most `CHECK_GRACE`
+after), when the core has already ended the job as undecided and ignores the result by job id, so no decided result is
+lost that would have been used (X11). A check that returned `Ok` and left the gate broken (its `use_theories` answer was
+read in full, then its purge failed) keeps its report: `done_of` still checks its theory hash and both digests; the gate
+is restarted with the category `connection`.
+
+Lateness. The adapter times the call with its own monotonic clock and reads no text of the gate for it. When the check
+returns an error or an undecided verdict, its cause is `DeadlinePassed` when the wall clock is then at or past the job's
+deadline, else `CheckLimitReached` when the call took at least `limit`, else the cause of its row in 2.4; both of the
+first two read `out_of_time` in the details. The gate ends a check at or after its limit (it rounds the limit up to
+Isabelle's 50 ms look), so a check that ran out its limit always reads `CheckLimitReached` or `DeadlinePassed`, and a
+fresh job's check that runs out the 30 s reads `out_of_time` although it answers about 5 s before its deadline. Lateness
+never changes the gate's fate, and another theory, an unbound check and a report that does not fit keep their cause.
 
 Overrun. While a check runs, `IsabelleProver::next_due_ms()` returns the job's `deadline_ms`; the shell includes it in
 the main loop's due time and calls `IsabelleProver::poll(now_ms)` at the start of every `turn`. `poll` returns
-`Some(Unavailable)` once when a check is still running at or past its job's deadline, and records it as the last
-health sent; the shell puts it in `pending_health` (2.2), which the same `turn` feeds to the broker and the agent
-before its own input. No thread is added: the worker is blocked in `check_within`, so the main loop does the timing.
-The synthetic agent proposes nothing while health is not `ready`. `Health(Ready)` after an overrun comes only with fate
-`Keep`, that is after `Ok(..)` or `Err(Render)` with the gate not broken; after `Err(Io | Protocol | Isabelle | Json)`,
-or any result after which `is_broken()` is true (an `Ok` included), the gate restarts and health goes `unavailable`,
-`starting`, `ready` through 2.2.
+`Some(Unavailable(None))` once when a check is still running at or past its job's deadline, and records it as the last
+status sent: the cause is not known while the check still runs, so the problem is null. The shell puts it in
+`pending_health` (2.2), which the same `turn` feeds to the broker and the agent before its own input. No thread is
+added: the worker is blocked in `check_within`, so the main loop does the timing. The synthetic agent proposes nothing
+while health is not `ready`. `Health(Ready)` after an overrun comes only with fate `Keep`, that is after `Ok(..)` or
+`Err(Render)` with the gate not broken; after `Err(Io | Protocol | Isabelle | Json)`, or any result after which
+`is_broken()` is true (an `Ok` included), the gate restarts and health goes `unavailable` with the failure's problem,
+`starting`, `ready` through 2.2. A `Keep` sends `Ready`, and a `Restart` sends the failure's cause; both differ from
+`Unavailable(None)`, so each is sent.
 
 The poll is a backstop, for three reasons: a hung gate is reported at the job's deadline, up to `CHECK_GRACE` before the
 gate's own error for a job that waited; the gate does not bound its write and removal of the check theory; and the limit
@@ -300,7 +357,7 @@ this change it lasted longer (until 30 s after the check's start).
 | Bound | Value | Ends as |
 |---|---|---|
 | core watchdog | 35 s from the facts commit (W4D) | `undecided`; a late `ProofDone` is ignored by job id |
-| gate check limit | the time left before the job's deadline, at most `CHECK_TIMEOUT` (30 s, PLAN 5); Isabelle ends the check at it (T1) | report with outcome Undecided, gate kept |
+| gate check limit | the time left before the job's deadline, at most `CHECK_TIMEOUT` (30 s, PLAN 5), passed by the adapter; Isabelle ends the check at it (T1) | report with outcome Undecided and the cause `CheckLimitReached` (or `DeadlinePassed` at the deadline), gate kept |
 | gate's answer | the limit plus `CHECK_GRACE` (5 s) for the whole check (`use_theories` and `purge_theories`), so by the job's deadline for a fresh job | `Err`, the gate broken: no report, restart |
 | gate start | 120 s for the server, 600 s for the session | health `starting`; jobs are answered at once |
 | gate stop | `GATE_STOP_BOUND` (1.2 s), or what is left of the quit's instant, then the kill (about 0.06 s; at most `KILL_WAIT`, 2 s, more) | 2.2, 2.5 |
@@ -342,33 +399,55 @@ Action: `ProofAction::Agent(a)` to `Action::from_tool_call(a)`, `Err` is NO_ACTI
 `#[non_exhaustive]`) is UNKNOWN_ACTION. Identifiers outside the theory's charset are not pre-checked: `check_within`
 returns `Err(Render)`, so no report, and the gate is kept (`Fault::Request`).
 
-`done_of(job, context, expected_theory, result) -> (ProofDone, GateFate)`; the first matching row decides:
+`done_of(job, context, expected_theory, result, lateness) -> (ProofDone, GateFate)`; the first matching row decides.
+`late(R)` is `R` for `InTime`, `CHECK_LIMIT` for `AtLimit` and `CHECK_LATE` for `PastDeadline` (2.3):
 
 | `result` | `ProofDone` | Fate |
 |---|---|---|
-| `Err(e)`, `Fault::of(&e) == Request` (`Render`) | `no_report(job, RENDER)` | Keep |
-| `Err(e)`, `Fault::of(&e) == Gate` (every other kind: `Io`, `Protocol`, `Isabelle`, `Json`) | `no_report(job, FAILED)` | Restart |
+| `Err(e)`, `Fault::of(&e) == Request` (`Render`) | `no_report(job, late(RENDER))` | Keep |
+| `Err(e)`, `Fault::of(&e) == Gate` (every other kind: `Io`, `Protocol`, `Isabelle`, `Json`) | `no_report(job, late(FAILED))` | Restart |
 | `Ok(c)`, `c.theory_sha256 != expected_theory` | `no_report(job, OTHER_THEORY)` | Restart (the next start meets the pin) |
 | `Ok(c)`, `c.action_digest != context.digest` or `c.context_digest != fabric_broker_policy::context_digest(context)` | `no_report(job, UNBOUND)` | Keep |
 | `Ok(c)`, `proof_report` or `ruling` fails, or an `Id::new` fails | `no_report(job, NOT_FIT)` | Keep |
-| `Ok(c)`, otherwise | `report: Some(proof_report(&c, &job.request_id, job.purpose, &format_timestamp(job.started_at_ms)))`, `ruling: ruling(&c)`, `authorizing_grants`: `Id::new` each, `undecided_reason: Some(r)` exactly when the verdict is `Undecided { reason: r }`, `check_theory_text: Some(c.theory_text)` | Keep |
+| `Ok(c)`, otherwise | `report: Some(proof_report(&c, &job.request_id, job.purpose, &format_timestamp(job.started_at_ms)))`, `ruling: ruling(&c)`, `authorizing_grants`: `Id::new` each, `undecided_reason: Some(r)` exactly when the verdict is `Undecided { reason: r }`, `check_theory_text: Some(c.theory_text)`, `cause`: for an Undecided verdict `CheckNotDecided`, `CheckLimitReached` or `DeadlinePassed` by lateness, else `None` | Keep |
 
 The worker restarts the gate whenever `is_broken()` is true after the check, whatever the row; an `Ok` row keeps its
 result (2.3).
 
-`no_report` is `report: None, ruling: None, authorizing_grants: [], undecided_reason: Some(text), check_theory_text:
-None`, with `job_id`, `request_id` and `purpose` copied. `proof_report` restores `sha256:` on the action digest, so the
-core's binding (W4D D39) compares equal strings; the `UNBOUND` row makes the binding hold for values the adapter did not
-copy itself.
+`no_report(job, refusal)` is `report: None, ruling: None, authorizing_grants: [], undecided_reason: Some(refusal.text),
+check_theory_text: None, cause: Some(refusal.cause)`, with `job_id`, `request_id` and `purpose` copied; `answer(job_id,
+request_id, purpose, refusal)` is the same for a job the shell knows only by those three (2.2). `proof_report` restores
+`sha256:` on the action digest, so the core's binding (W4D D39) compares equal strings; the `UNBOUND` row makes the
+binding hold for values the adapter did not copy itself.
 
-Fixed texts (`pub const` in `map.rs`): STARTING "the rule prover is starting"; NOT_RUNNING "the rule prover is not
-running"; PAST_DEADLINE "the proof's deadline passed before its check started"; OTHER_CALENDAR "the observation names
-another calendar"; BAD_ATTENDEE "an observed attendee is not an address"; BAD_DIGEST "the action digest is not
-sha256"; BAD_WINDOW "a grant window is not a time"; NO_ACTION "no broker action for this tool call"; UNKNOWN_ACTION
-"this adapter does not know the action"; OTHER_THEORY "the check ran on another rule theory"; UNBOUND "the check is
-bound to another action or context"; NOT_FIT "the proof did not fit the contract"; RENDER "a fact could not be written
-for Isabelle"; FAILED "the rule prover failed". They are never stored or shown (X12); the owner's view of an absent
-prover is the health.
+Fixed refusals (`pub const` `Refusal { text, cause }` in `map.rs`), each with the cause it states: STARTING "the rule
+prover is starting", `Starting`; NOT_RUNNING "the rule prover is not running", `NotRunning`; PAST_DEADLINE "the proof's
+deadline passed before its check started" and CHECK_LATE "the check returned after the proof's deadline",
+`DeadlinePassed`; CHECK_LIMIT "the check reached its time limit", `CheckLimitReached`; OTHER_CALENDAR "the observation
+names another calendar", BAD_ATTENDEE "an observed attendee is not an address", BAD_DIGEST "the action digest is not
+sha256", BAD_WINDOW "a grant window is not a time", NO_ACTION "no broker action for this tool call", UNKNOWN_ACTION
+"this adapter does not know the action" and RENDER "a fact could not be written for Isabelle", `JobRefused`;
+OTHER_THEORY "the check ran on another rule theory", UNBOUND "the check is bound to another action or context" and
+NOT_FIT "the proof did not fit the contract", `ReportUnusable`; FAILED "the rule prover failed", `CheckNotDecided`.
+Their texts are never stored or shown; their causes are (X12). A check that returns at or after its job's deadline, with
+an error or an undecided verdict, states `DeadlinePassed`, and one that took its whole limit before the deadline
+`CheckLimitReached`; the adapter decides this from the deadline, the limit and its clocks only (2.3). The owner's view
+of an absent prover is the health and, on each request it left `undecided`, its reason.
+
+What the core stores and the details show (W4D 5.7 lists every stored cause, the core's own included). The core converts
+each `ProverCause` to its stored cause in one function (`stored_cause`), and `reason_of` maps the stored cause to the
+contract's `undecided_reason`. The core ignores the cause of a prover whose kind is not Isabelle: the kind decides
+(`no_prover`, W4D 5.10).
+
+| `ProverCause` | Stated by | Stored cause | `undecided_reason` |
+|---|---|---|---|
+| `Starting` | STARTING | `prover_starting` | `prover_unavailable` |
+| `NotRunning` | NOT_RUNNING: down, a stop sent, or a job the shell could not hand over (2.2) | `prover_not_running` | `prover_unavailable` |
+| `DeadlinePassed` | PAST_DEADLINE, CHECK_LATE; an Undecided verdict at or past the deadline | `deadline_passed` | `out_of_time` |
+| `CheckLimitReached` | CHECK_LIMIT; an Undecided verdict that took its whole limit | `check_limit_reached` | `out_of_time` |
+| `CheckNotDecided` | FAILED; an Undecided verdict in time | `check_not_decided` | `failed` |
+| `ReportUnusable` | OTHER_THEORY, UNBOUND, NOT_FIT | `report_unusable` | `failed` |
+| `JobRefused` | OTHER_CALENDAR, BAD_ATTENDEE, BAD_DIGEST, BAD_WINDOW, NO_ACTION, UNKNOWN_ACTION, RENDER | `job_refused` | `failed` |
 
 ### 2.5 Stop
 
@@ -491,13 +570,15 @@ terminal never turn its run into a practice run.
 
 | Configuration | `Attachments.prover` | `provider_present` | Requests |
 |---|---|---|---|
-| no Isabelle, no synthetic agent | `None` | false | `undecided` at once, no report (W4D D14) |
-| no Isabelle, synthetic agent (debug) | `SyntheticClassifier` (unchanged, O5) | false | card, then `undecided` (W04) |
+| no Isabelle, no synthetic agent | `None`: the core's status is `unavailable` with `not_configured` | false | `undecided` at once, no report (W4D D14), reason `prover_unavailable` |
+| no Isabelle, synthetic agent (debug) | `SyntheticClassifier` (O5), status `unavailable` with `not_configured` | false | card, then `undecided` (W04), reason `prover_unavailable` |
 | Isabelle, no synthetic agent | `{Isabelle, Starting}` | false | proved; a fresh Permit ends `undecided` (no provider) |
 | Isabelle and the synthetic agent (debug): practice | `{Isabelle, Starting}` | true | the whole path |
 
-Agent calls are not refused at entry while the prover is absent (the contract has no error for it, E4); each ends
-`undecided` within one turn of the main loop. The build label in `hello` is `<version> CD-W04`, with ` synthetic` or
+Contract schema version 2 added the agent error `prover_unavailable`, which the broker may send while the prover is not
+ready but need not (CR 8; CR 14 item 40). This step does not send it; whether to refuse tool calls at entry is CD-W06's
+decision. Until then each call ends `undecided` within one turn of the main loop, and its details give the reason
+`prover_unavailable`. The build label in `hello` is `<version> CD-W04`, with ` synthetic` or
 ` synthetic practice` after it.
 
 ### 3.4 Data directory
@@ -627,15 +708,18 @@ scratch directory per run (4.2). What the page still lacks for a practice run is
 ## 7. Tests
 
 No test gives the core a permit it did not get from a live Isabelle check. `Gate` doubles exist only under
-`#[cfg(test)]` in `prover/mod.rs`; their `check_within` returns only `Err`, or blocks and then returns `Err` (one given
-its start's kill handle blocks until the handle is killed, then breaks); they record each limit and each stop bound,
-and report `is_broken` as set by a check that breaks them; their `theory_sha256()` returns `built_theory_sha256()`
-unless the test says otherwise. A double starter may return `Ok` with such a double (w12, w14, w15, w22, w24 to w26,
-w31, w32; w34 builds a worker already `Ready` with one): a gate that cannot prove, not a proof. No double ever returns a
-`Check`. The map tests u09 to u12, u15 and u16 build `Check` values by hand (u10 with a Permit verdict) and pass them
-only to `done_of`, a pure function; they never reach a worker, a `Shell` or a `Broker`. Unix-only assertions (file
-modes, execute bits, a shell script standing in for Isabelle) are `#[cfg(unix)]`; CI compiles and tests the workspace
-on macOS, Linux and Windows without Isabelle.
+`#[cfg(test)]`, in `prover/mod.rs` and one in `shell.rs`. Those of `prover/mod.rs` return from `check_within` only
+`Err`, or block and then return `Err` (one given its start's kill handle blocks until the handle is killed, then
+breaks); they record each limit and each stop bound, and report `is_broken` as set by a check that breaks them; their
+`theory_sha256()` returns `built_theory_sha256()` unless the test says otherwise. A double starter may return `Ok` with
+such a double (w12, w14, w15, w22, w24 to w26, w31, w32, w35, w36, w38, w40; w34 builds a worker already `Ready` with
+one): a gate that cannot prove, not a proof. `shell.rs`'s tests add one double, `PanickingGate`, whose check waits until
+a deadline the test sets has passed and then panics (sh04, sh09 to sh11). No double ever returns a `Check`. The map
+tests u09 to u12, u15,
+u16 and u19 build `Check` values by hand (u10 with a Permit verdict) and pass them only to `done_of`, a pure function;
+they never reach a worker, a `Shell` or a `Broker`. Unix-only assertions (file modes, execute bits, a shell script
+standing in for Isabelle) are `#[cfg(unix)]`; CI compiles and tests the workspace on macOS, Linux and Windows without
+Isabelle.
 
 The scenarios the "Plan" columns name: S1 to S6 are rows of PLAN 14's required scenarios, S7 is the whole path of PLAN
 5's quality targets; R01 to R14 are PLAN 5's requirements.
@@ -671,15 +755,17 @@ The scenarios the "Plan" columns name: S1 to S6 are rows of PLAN 14's required s
 | u14 | `no_policy_error_text_reaches_the_reason` | X12 | R13 |
 | u15 | `a_check_on_another_theory_is_no_report_and_restarts` | P1 a, on each check | R06 |
 | u16 | `a_check_bound_to_another_action_or_context_is_no_report` | UNBOUND | R06 |
-| u17 | `no_report_copies_the_job_and_names_the_reason` | `no_report` | R06 |
+| u17 | `no_report_copies_the_job_and_names_the_reason` | `no_report`, and `answer` for a job known by its id: the job's ids, the refusal's text and its cause | R06 |
+| u18 | `every_refusal_names_its_cause` | the cause of each of the 16 fixed refusals of 2.4; no two share a text | R06 |
+| u19 | `done_of_states_the_cause_and_lateness` | lateness (2.3) in `done_of`: it decides the refusal of an error and the cause of an Undecided verdict, never the fate or the cause of a report that cannot be used; a decided verdict states no cause | S1 |
 
 `apps/fabric-broker/src/prover/mod.rs` (`Gate` doubles; tests whose worker reaches a start read the repository's
 `isabelle/`, read only):
 
 | Id | Test | Shows | Plan |
 |---|---|---|---|
-| w01 | `health_is_starting_until_the_gate_starts` | 2.2 | R06 |
-| w02 | `the_nth_failure_waits_the_nth_wait_and_the_third_leaves_the_prover_unavailable` | X8 | S1 |
+| w01 | `health_is_starting_until_the_gate_starts` | 2.2: `starting`, then `ready`, neither with a problem | R06 |
+| w02 | `the_nth_failure_waits_the_nth_wait_and_the_third_leaves_the_prover_unavailable` | X8; the statuses `failed_will_retry`, `starting`, `failed_will_retry`, `starting`, `failed` | S1 |
 | w03 | `jobs_while_not_ready_are_answered_at_once_with_no_report` | STARTING, NOT_RUNNING | R06 |
 | w04 | `a_job_past_its_deadline_is_not_checked` | X11 | S1 |
 | w05 | `a_broken_gate_is_stopped_on_the_worker_and_restarted` | 2.2, the stop on the worker within `GATE_STOP_BOUND` | S1 |
@@ -687,12 +773,12 @@ The scenarios the "Plan" columns name: S1 to S6 are rows of PLAN 14's required s
 | w07 | `stop_returns_within_its_bound_while_starting_or_blocked` | X9 | - |
 | w08 | `stop_removes_the_work_dir_in_every_state` | P1 d in `Starting`, `Ready`, `Down` | R13 |
 | w09 | `the_server_name_is_stable_per_data_dir_and_valid` | 2.6 | - |
-| w10 | `a_real_gate_with_no_isabelle_is_unavailable` | the real starter on an empty Isabelle home fails at once on every platform | R06 |
-| w11 | `a_rules_dir_with_another_theory_leaves_the_prover_unavailable_and_starts_nothing` | P1 a on the file (`THEORY_TEXT` changed by one byte, `SESSION_ROOT`); a counting starter is never called | R06 |
-| w12 | `a_gate_reporting_another_theory_is_dropped_before_any_check` | P1 a on the gate; the gate is stopped | R06 |
+| w10 | `a_real_gate_with_no_isabelle_is_unavailable` | the real starter on an empty Isabelle home fails at once on every platform; with no wait left the problem is `failed` | R06 |
+| w11 | `a_rules_dir_with_another_theory_leaves_the_prover_unavailable_and_starts_nothing` | P1 a on the file (`THEORY_TEXT` changed by one byte, `SESSION_ROOT`); a counting starter is never called; the problem is `wrong_rules` | R06 |
+| w12 | `a_gate_reporting_another_theory_is_dropped_before_any_check` | P1 a on the gate; the gate is stopped; the problem is `wrong_rules` | R06 |
 | w13 | `an_unacknowledged_stop_removes_the_check_file_from_the_calling_thread` | P1 d without an acknowledgement; the gate that then breaks is stopped with a zero bound (2.5, X9) | R13 |
 | w14 | `a_restart_waits_until_the_broken_gate_is_dropped` | X8, a stop that holds the worker | S1 |
-| w15 | `health_leaves_ready_while_a_check_runs_past_its_deadline` | the overrun poll of 2.3, a backstop | S1 |
+| w15 | `health_leaves_ready_while_a_check_runs_past_its_deadline` | the overrun poll of 2.3, a backstop: `unavailable` with no problem, then `ready` | S1 |
 | w16 | `the_work_dir_is_emptied_and_made_private_before_each_start` | X10, mode 0700 on Unix | R13 |
 | w17 | `the_built_theory_is_the_repository_theory` | the repository's rules meet the pin; `THEORY_TEXT` is the repository's theory | R06 |
 | w18 | `session_files_that_point_elsewhere_leave_the_prover_unavailable_and_start_nothing` | P1 a on `Fabric_Broker/ROOT` and a `Fabric_Broker/ROOTS` beside it | R06 |
@@ -708,10 +794,16 @@ The scenarios the "Plan" columns name: S1 to S6 are rows of PLAN 14's required s
 | w28 | `no_start_begins_once_a_stop_was_sent` | 2.5, X8: a retry due when the stop is sent starts no gate; a sent stop makes a due retry neither waited for nor due | - |
 | w29 | `a_stop_sent_before_the_first_start_starts_nothing` | 2.5, X8: a worker whose stop was sent before it ran acknowledges it, never calls the starter, spawns no starter thread and makes no work directory | - |
 | w30 | `a_stop_while_starting_kills_the_start` | 2.5, K1 case 2: a stop while the starter is inside its start is acknowledged, and by then the kill handle that start was given is killed on Unix and not killed elsewhere | - |
-| w31 | `a_check_still_running_at_the_stop_instant_is_killed` (`cfg(unix)`) | 2.5, K1 case 3: a check still running at the stop's instant has its handle killed; the stop is acknowledged at least `GATE_STOP_BOUND` and less than `GATE_STOP_BOUND` plus 700 ms after it began, and the broken gate's stop runs once | - |
+| w31 | `a_check_still_running_at_the_stop_instant_is_killed` (`cfg(unix)`) | 2.5, K1 case 3: a check still running at the stop's instant has its handle killed; the stop is acknowledged at least `GATE_STOP_BOUND` and less than `GATE_STOP_BOUND` plus 700 ms after it began, and the broken gate's stop runs once; with a restart wait left, the last status is `failed` and no `starting` follows (2.2) | - |
 | w32 | `a_stop_kills_no_server_whose_check_is_not_running` | 2.5: an idle gate whose stop returns 200 ms after its bound: the stop is acknowledged, not before `GATE_STOP_BOUND`, and the handle is not killed | - |
 | w33 | `each_start_gets_its_own_kill_handle` | 2.2 step 3, X7: after a start whose handle was killed, the retry's starter is given a handle that is not killed | - |
 | w34 | `no_check_starts_once_a_stop_was_sent` | 2.3, 2.5: `check_job` with `stop_by` set refuses the job with `NOT_RUNNING`, does not call the gate's check and marks no check running | - |
+| w35 | `a_check_that_returns_after_its_deadline_is_late` | 2.3: a check held until the clock is past its job's deadline, then failing, gives CHECK_LATE (`DeadlinePassed`); the same failure in time gives FAILED (`CheckNotDecided`) | S1 |
+| w36 | `a_check_that_takes_its_whole_limit_reached_it` | 2.3: the gate is given the smaller of the time left and `check_timeout`; a check that fails after its whole limit, before the deadline, gives CHECK_LIMIT (`CheckLimitReached`) | S1 |
+| w37 | `a_pin_that_cannot_read_its_files_will_retry` | 2.2: a rules directory without `Fabric_Broker.thy` is a failed start, `failed_will_retry` with a wait left, not `wrong_rules` | R06 |
+| w38 | `overrun_then_a_broken_gate_says_why` | 2.3: the poll's `unavailable` with no problem, then `failed_will_retry` when the check breaks the gate, although the health is the same | S1 |
+| w39 | `a_start_that_panics_is_a_failed_start` | 2.2 step 3: a starter that panics is a failed start (`failed` with no wait); the worker is not lost and answers jobs `NOT_RUNNING` | S1 |
+| w40 | `a_worker_is_lost_only_when_it_ended_without_a_stop` | 2.2: `lost()` is true for a worker that ended because the main loop took no more events and for one never spawned, false while it runs and after a stop | - |
 
 `apps/fabric-broker/src/config.rs`:
 
@@ -727,12 +819,17 @@ The scenarios the "Plan" columns name: S1 to S6 are rows of PLAN 14's required s
 
 | Id | Test | Shows | Plan |
 |---|---|---|---|
-| sh01 | `the_plan_of_each_configuration_is_the_table_of_plan_of` | the table of 3.3, which is `Plan::of`'s (debug rows under `cfg(debug_assertions)`) | - |
+| sh01 | `the_plan_of_each_configuration_is_the_table_of_plan_of` | the table of 3.3, which is `Plan::of`'s (debug rows under `cfg(debug_assertions)`); the classifier's status is `unavailable` with `not_configured`, Isabelle's identity `starting` | - |
 | sh02 | `the_isabelle_worker_does_not_start_while_the_store_is_in_use` | P1 c: with the store held, the broker runs in the unavailable mode and no `<data_dir>/prover` exists | - |
 | sh03 | `stop_without_an_isabelle_worker_returns_at_once` | 2.5 | - |
-| sh04 | `a_failed_prove_send_feeds_unavailable_once` | pending health of 2.2 | S1 |
+| sh04 | `a_lost_worker_feeds_unavailable_once` | pending status and results of 2.2: a worker lost inside a check past its deadline, noticed through `lost()` at the start of a turn, sets `failed` once; the job whose result is that turn's input leaves `handed` first, and the other handed jobs are answered `NOT_RUNNING`; the deadline is set once the worker is ready; one turn feeds them, answers its owner line and leaves no due time in the past; neither the poll nor a `ready` queued before the loss replaces `failed`; later jobs are answered at once; a second loss sets nothing | S1 |
 | sh05 | `a_left_check_theory_goes_once_the_store_is_open_in_every_configuration` | X10, and kept while another holder has the store | R13 |
-| sh06 | `a_request_while_the_isabelle_prover_is_down_ends_undecided` | a down prover: undecided, no proof, no authorization, no attempt | R06 |
+| sh06 | `a_request_while_the_isabelle_prover_is_down_ends_undecided` | a down prover: undecided, no proof, no authorization, no attempt; the problem `failed` (no wait) and the reason `prover_unavailable` | R06 |
+| sh07 | `a_request_while_the_isabelle_worker_is_lost_ends_undecided` | 2.2 end to end: the synthetic agent's request on a lost worker ends `undecided` within a few turns, its redacted details read `prover_unavailable`, the health `unavailable` with `failed` | S1 |
+| sh08 | `a_job_no_prover_can_take_is_answered_not_running` | 2.2: a closed classifier channel and the slots `None` and `Waiting` answer a job at once with `NOT_RUNNING` and leave the status as it is | R06 |
+| sh09 | `a_failed_prove_send_is_a_sign_of_loss` | 2.2: with the worker ended and its loss not yet noticed, a failed `prove` send sets `failed` once and answers the jobs handed earlier, then its own job, with `NOT_RUNNING` | S1 |
+| sh10 | `a_job_out_bounds_the_next_due_time` | 2.2: with a job out and the loss not known, `next_due_ms` is the minimum of the other due times and the last turn's time plus `LOSS_LOOK_MS`; with no job out, or once the loss is known, it is the minimum of the other due times | S1 |
+| sh11 | `a_worker_lost_with_a_job_out_is_noticed_within_a_look` | 2.2 end to end: a worker that panics inside a check whose deadline is 30 s ahead, with no other event; the loop of `main.rs` (bounded only by the test's 5 s) answers the job `NOT_RUNNING` (cause `NotRunning`) and sets `failed` in less than 5 s | S1 |
 
 `apps/fabric-broker/src/practice.rs`:
 
@@ -782,11 +879,14 @@ Extended in this step: `allowlist_names_the_broker_variables` and `broker_variab
 | Id | Test | Shows | Plan |
 |---|---|---|---|
 | p40 | rows of `configuration_errors_exit_78_before_any_frame` | each refusal of 3.1 before any frame (the execute-bit row under `cfg(unix)`) | DEF-2 |
-| p41 | `an_isabelle_that_cannot_start_leaves_the_prover_unavailable_and_proposes_nothing` (`cfg(unix)`) | with `bin/isabelle` a script exiting 1, the repository's `isabelle/` and a temporary user home, the broker reports `prover: unavailable` (snapshot or notice), the practice agent proposes nothing, and after quit no `<data_dir>/prover` is left | S1 |
+| p41 | `an_isabelle_that_cannot_start_leaves_the_prover_unavailable_and_proposes_nothing` (`cfg(unix)`) | with `bin/isabelle` a script exiting 1, the repository's `isabelle/` and a temporary user home, the broker reports `prover: unavailable` (snapshot or notice), the first such snapshot with `prover_problem: failed_will_retry`, the practice agent proposes nothing, and after quit no `<data_dir>/prover` is left | S1 |
 | p42 | `the_synthetic_agent_waits_for_subscribe_asks_and_an_approval_ends_undecided` (W4D p07, unchanged) | a classifier run without Isabelle is unchanged | - |
 | p43 | `the_relay_passes_the_three_isabelle_names` (`tests/relay_round_trip.rs`) | through the relay, the broker reads all three (its build label says `synthetic practice`) | - |
 | p44 | `a_second_broker_on_a_locked_directory_leaves_the_first_brokers_prover_alone` (`cfg(unix)`) | P1 c across processes: only after the first broker reports `prover: unavailable` does the test put a marker in `<data_dir>/prover`; a second broker answers `store_unavailable`; the marker is still there. It concludes only within the first restart wait less a second and fails with "too slow to conclude" otherwise, because the first broker's next start would remove the marker | - |
 | p45 | `a_start_without_isabelle_removes_a_check_theory_a_killed_broker_left` | X10 across processes | R13 |
+| p46 | `the_first_run_snapshot` (W4D, changed) | 3.3: a run with no prover reads `unavailable` with `not_configured`, the health of the contract's fixture `accept-owner-notice-health-prover-not-configured.json` | - |
+| p47 | `an_approval_of_a_synthetic_request_creates_a_grant_and_ends_undecided` (W4D, extended) | 3.3: the classifier's permit is not acted on; the redacted details of the `undecided` request read `prover_unavailable`, with `private` null and no proof id | R06 |
+| p48 | `decode_line`, on every owner line of every test in the file | CR 7: a health names a problem only while the prover is unavailable, and request details name a reason only while the request is `undecided` | - |
 
 ### 7.3 Live (real Isabelle; never in CI; P6)
 
@@ -798,8 +898,9 @@ test with "run sh scripts/setup-demo.sh by hand". The in-process tests build `Br
 plan.attachments(), ..)` and a `Shell` from a `Plan` holding `ProverChoice::Isabelle(ProverOptions::new(..))`, a
 `PracticeCalendar` they keep a clone of and, where the script runs, `SyntheticAgent::practice`; they drive owner frames
 and worker events through `shell::next_event`, `shell::input_of` and `Shell::turn`, the same code as `main.rs` (P1 b).
-The process tests among them run the built broker. Every test is a top-level function, so its name is its full test
-path and `--exact <name>` matches it.
+The process tests among them run the built broker. Every owner
+line a live test reads is checked against the two rules of p48. Every test is a top-level function, so its name is its
+full test path and `--exact <name>` matches it.
 
 How to run them: all of them, after the first test alone and the rule theory's corpus, with `sh
 scripts/verify-desktop.sh --live-proofs` (7.4); one of them with `sh scripts/run.sh cargo test --locked -p fabric-broker
@@ -811,8 +912,8 @@ whole mode took about seven minutes on one Mac: the corpus about 210 s, the live
 | Id | Test | Shows | Plan |
 |---|---|---|---|
 | L1 | `the_practice_script_is_asked_approved_permitted_applied_and_blocked` | the practice script: three `applied`, one `blocked` on `fabric_created`; `get_proof` reports with Isabelle `Isabelle2025-2`, the theory hash `sha256:` and `built_theory_sha256()`, 18 verdicts; the practice event created, at revision 2, deleted; the foreign event untouched; after quit no file under `<data_dir>/prover`; no calendar text (titles; account, calendar, agent and event ids, plain and as the check theory's byte lists) in a file changed during the test under the work directory, the user home or Isabelle's temporary prefix | S7, DEF-7, R06, R13 |
-| L2 | `killing_isabelle_mid_check_is_undecided_then_ready_again` | the server killed while A's fresh-permit check theory is on disk: A ends `undecided` with no dispatch and no authorization, no check theory is left, health `unavailable` then `ready`, the next request is decided | S1 |
-| L3 | `a_check_over_budget_is_undecided` | a 1 ms check limit: Isabelle ends the check at its first look; outcome Undecided within 500 ms (the test prints the time; a full check takes 1.0 s to 1.8 s), no failing rule, no grant, no authorization, no dispatch, the gate kept | S1 |
+| L2 | `killing_isabelle_mid_check_is_undecided_then_ready_again` | the server killed while A's fresh-permit check theory is on disk: A ends `undecided` with no dispatch and no authorization, no check theory is left, A's reason `failed`, health `unavailable` with `failed_will_retry`, then `starting` and `ready` with no problem, the next request is decided | S1 |
+| L3 | `a_check_over_budget_is_undecided` | a 1 ms check limit: Isabelle ends the check at its first look; outcome Undecided within 500 ms (the test prints the time; a full check takes 1.0 s to 1.8 s), no failing rule, no grant, no authorization, no dispatch, the reason `out_of_time` (the check took its whole limit, 2.3), the gate kept | S1 |
 | L4 | `a_killed_broker_restarts_with_an_empty_work_dir_and_one_server` | the built broker killed with SIGKILL mid-run; the next start on the same directory empties `prover/`, finds the orphan server by its name or starts one, never a second, reports ready, and leaves nothing at quit; it is the test of K1 case 4 (a reused server): it prints the second broker's quit time and a drop guard declared before both brokers kills any server still listed when the test ends, so a failure leaves nothing running | R12, K1 |
 | L5 | `a_lost_answer_is_outcome_unknown_and_never_sent_again` | `Faults { lose_answers: 1 }`: the calendar changes once, the request ends `outcome_unknown` and is never sent again | PLAN 14 "Google accepted insert; response lost" (no reconciliation yet), R12 |
 | L6 | `a_transient_failure_is_proved_again_before_the_retry` | `Faults { transient: 1 }`: two attempts, each on its own Isabelle permit, the second applied | PLAN 5 "a fresh proof per retry" |
@@ -825,12 +926,12 @@ whole mode took about seven minutes on one Mac: the corpus about 210 s, the live
 | L13 | `quit_stops_isabelle_within_the_relay_drain` | once the built broker reports ready, end of input stops it within the relay's 2 s drain, with its server, and `prover/` is gone | X9 |
 | L14 | `checks_are_timed` | prints the prover's start and the mean, median and maximum of the script's checks; a mean over 1.5 s fails, because W03 then reopens the proof timeout | PLAN 5 |
 | L15 | `pause_during_a_live_proof_dispatches_nothing` | pausing every agent while the fresh proof runs: nothing dispatched, blocked on `agent_not_paused` with a fresh denial proof | S3, R08 |
-| L16 | `killing_isabelle_ends_the_open_request_undecided_then_ready_again` | the server killed between checks while a request is open: `undecided`, nothing dispatched, health back to ready, the next request decided | S1 |
+| L16 | `killing_isabelle_ends_the_open_request_undecided_then_ready_again` | the server killed between checks while a request is open: `undecided` with the reason `failed`, nothing dispatched, health `unavailable` with `failed_will_retry`, then `starting` and `ready` with no problem, the next request decided | S1 |
 | L17 | `revoke_before_a_live_retry_blocks_the_retry` | `Faults { transient: 1 }`, revoke while the request waits for its retry: the retry's fresh proof is blocked on `relied_grant_live`; one dispatch, one attempt, one permit | S3, R08 |
-| L18 | `the_theory_pin_refuses_a_changed_rule_file` | P1 a: a theory one byte different is refused before any gate starts; no server, no proposal, nothing proved | R06 |
-| L19 | `the_theory_pin_refuses_session_files_that_load_another_theory` | P1 a: the session's `ROOT` points the session at a copied, changed theory, or a `ROOTS` beside it adds a directory that defines the session with it; each is refused before any gate starts | R06 |
+| L18 | `the_theory_pin_refuses_a_changed_rule_file` | P1 a: a theory one byte different is refused before any gate starts; no server, no proposal, nothing proved; the problem `wrong_rules` | R06 |
+| L19 | `the_theory_pin_refuses_session_files_that_load_another_theory` | P1 a: the session's `ROOT` points the session at a copied, changed theory, or a `ROOTS` beside it adds a directory that defines the session with it; each is refused before any gate starts, with the problem `wrong_rules` | R06 |
 | L20 | `quit_kills_a_server_that_does_not_answer` | the built broker, its server's processes stopped with SIGSTOP once it is ready; end of input: the broker exits within the relay's drain, no server is left 500 ms later, and `prover/` is gone; it prints the quit time; a drop guard made right after the SIGSTOP kills the stopped processes, so a failure leaves nothing stopped | X9, K1 |
-| L21 | `quit_during_a_gate_start_leaves_no_server` | the built broker; once a process names its server and a snapshot still reports the prover `starting`, end of input: the broker exits within the relay's drain, no server is left 500 ms later, and `prover/` is gone; it prints the quit time; a prover already `ready` at the snapshot fails the test, since no quit during a start was tried; a drop guard declared before the broker kills any server still listed when the test ends | X9, K1 |
+| L21 | `quit_during_a_gate_start_leaves_no_server` | the built broker; once a process names its server and a snapshot still reports the prover `starting` with no problem, end of input: the broker exits within the relay's drain, no server is left 500 ms later, and `prover/` is gone; it prints the quit time; a prover already `ready` at the snapshot fails the test, since no quit during a start was tried; a drop guard declared before the broker kills any server still listed when the test ends | X9, K1 |
 | L22 | `quit_during_a_check_kills_its_server` | in process, as L2: once ready and A's classification check has ended, the server's processes are stopped with SIGSTOP and A is approved; a check theory in the work directory, still there just before the stop, shows the fresh permit's check running; the stop is acknowledged within `QUIT_BOUND` and not before 1.2 s (`GATE_STOP_BOUND`), no server is left 500 ms later, and the work directory is gone; it prints the stop time; a drop guard made right after the SIGSTOP kills the stopped processes | X9, K1 |
 
 S5 (audit failure, a locked database) does not depend on the prover and is left to the W04 core tests (which of them
@@ -865,12 +966,13 @@ crate-private gate seam needs `--document-private-items`), and `-p fabric-deskto
   and `Config::practice()`; the exit codes `EXIT_IO` (74), `EXIT_HALT` (75), `EXIT_CONFIG` (78).
 - `prover` (`prover/mod.rs`): `CHECK_TIMEOUT`, `RESTART_WAITS`, `QUIT_BOUND`; `built_theory_sha256()` (the policy
   crate's, re-exported); `gate_config`,
-  `server_name`; `ProverOptions { gate, restart_waits }` and `ProverOptions::new`; `ProverEvent { Done, Health }` and
-  `Emit`; `IsabelleProver` with `identity`, `spawn`, `prove`, `next_due_ms`, `poll` and `stop`. Crate-private: `Gate`
+  `server_name`; `ProverOptions { gate, restart_waits }` and `ProverOptions::new`; `ProverEvent { Done,
+  Health(ProverStatus) }` and `Emit`; `IsabelleProver` with `identity`, `spawn`, `prove`, `lost`, `next_due_ms`, `poll`
+  and `stop`. Crate-private: `Gate`
   (`check_within`, `is_broken`, `stop_within`, `theory_sha256`), `Starter` (given the `GateConfig` and the start's
   `KillHandle`), `remove_work_dir`.
-- `prover::map` (`prover/map.rs`, pure): `JobRefused`, the fixed texts, `context_of`, `GateFate`, `done_of`,
-  `no_report`.
+- `prover::map` (`prover/map.rs`, pure): `Refusal { text, cause }`, `JobRefused(Refusal)`, the fixed refusals (2.4),
+  `Lateness { InTime, AtLimit, PastDeadline }`, `context_of`, `GateFate`, `done_of`, `no_report`, `answer`.
 - `practice` (`practice.rs`, debug builds): `FOREIGN_EVENT_ID`, `FOREIGN_TITLE`, `Faults`, `PracticeEvent`,
   `PracticeCalendar` with `new`, `provider`, `observation`, `event`, `event_of_request`, `dispatches`;
   `PracticeProvider`, which implements the core's `Provider`.
@@ -1033,6 +1135,32 @@ crate-private gate seam needs `--document-private-items`), and `-p fabric-deskto
   gate's stop takes longer than the bound, a gate start is in progress, or a check still runs at the stop's instant
   (K15, 2.5). Whether an idle killed Isabelle leaves calendar text there is not known; the live test L1, which scans
   that directory after its stop, is the check that exists.
+- K19 A forward step of the wall clock, or a sleep of the computer longer than the watchdog, ends every proof in flight
+  as out of time: the core's watchdog and the adapter's lateness both read the wall clock (W4D D34, 2.3).
+- K20 Results the shell still holds at quit (`pending_results`, 2.2) are dropped; their requests stay in their proving
+  state and are proved again at the next start (W4D 5.8).
+- K21 A result that names another request or purpose than its job is ignored by the core, and the job's watchdog ends it
+  `undecided` with `deadline_passed`; the shell keeps the job in `handed`, so a later loss of the worker answers it too,
+  and the core ignores that answer as well.
+- K22 A gate start that never returns leaves the prover `starting` for the run: no bound of the adapter ends it, only
+  the gate's own start bounds (2.3). A start that panics is a failed start (2.2).
+- K23 In a synthetic run the core stores `no_prover` for every result inside `accepted()`, whatever the classifier
+  states; the paths outside it (spent re-proofs, a result outside the facts, an unbound report, the watchdog) keep their
+  own causes, as in an Isabelle run (W4D 5.10).
+- K24 Requests made, or proved again after a restart, while Isabelle starts end `undecided` at once with
+  `prover_starting`, read `prover_unavailable`: the worker answers STARTING (2.2). The page's sentence for a starting
+  prover, "Requests wait until it is ready.", is not true until proofs are held while the prover starts.
+- K25 A proof that decided but was not acted on (no provider, a paused agent, a tool that changes no calendar, no scope)
+  stores its cause but reads `undecided_reason` null, since the contract has no value for it (W4D 5.7); the page then
+  says that the broker did not record why. A paused agent is defensive here: a correct gate already blocks it.
+- K26 A result the worker sent before its loss but that is still queued in the event channel when the shell notices the
+  loss is superseded: the shell answers its job `NOT_RUNNING` first, the request ends `undecided` with
+  `prover_not_running`, and the core ignores the real result by job id. Only the result that is the turn's own input is
+  kept (2.2). The outcome is fail-closed.
+- K27 A worker that ends while no job is out is noticed only at the next event the broker handles (an owner's
+  command, a new request, a due time): only a job out bounds the main loop's sleep (2.2). Until then health keeps the
+  last status it had (`ready`, or `failed` with a retry that will not come), and the first request after it is
+  answered at once with not running.
 
 ### 9.2 Requests to other owners
 
@@ -1079,6 +1207,10 @@ To the owner of the contract:
 - E3 a marker for practice accounts, attempts and reports;
 - E4 an agent error "rule prover unavailable".
 
+Contract schema version 2 (pull request 28) answered E1 with `health.prover_problem`, E2 with
+`get_request_details.undecided_reason` and E4 with the agent error `prover_unavailable`. The broker fills the first two
+since the update of 2026-11-17 (2.2, 2.4); it does not send the third (3.3).
+
 ### 9.3 Questions that are the product owner's
 
 Each with the default the code runs on today:
@@ -1111,10 +1243,11 @@ For the owner of the screens (CD-W08); nothing here is built in this step:
 5. A bad Isabelle path shows only "The broker stopped." with exit code 78; the reason is on stderr in the terminal.
 6. Texts that name Google show for practice requests too: "Who is notified" says "an email from Google" for `all` and
    `external_only`. The practice script notifies nobody, so the scripted run never reaches them.
-7. `undecided` shows no reason (E2). The page could at least say that the rule checker was not ready when that was the
-   health at the time.
-8. The strip says only that the rule checker is not running; it cannot tell "not configured" from "failed to start" or
-   "wrong rule theory" until E1.
+7. `undecided` showed no reason (E2). Answered: the broker fills `undecided_reason` (2.4), and the page of pull
+   request 32 shows it. Open only: a cause the contract maps to null reads "The broker did not record why." (K25).
+8. The strip could not tell "not configured" from "failed to start" or "wrong rule theory" (E1). Answered: the broker
+   fills `prover_problem` (2.2), and the page of pull request 32 shows it. Open only: the sentence "Requests wait until
+   it is ready." for a starting prover (K24).
 9. The approval cards of update and delete: the practice script's C and D are the first cards that are not creates.
    Whether every field the card shows has a text for them was not checked here.
 10. Page tests for the practice run: every prover health has a text; no state text reachable in a practice run names
@@ -1143,6 +1276,12 @@ ms margin and w32's timing assume a scheduler that is not badly delayed, and L22
 `QUIT_BOUND`. A quit during a check on a server that is computing: L22's server is stopped, and pull request 30 tried
 the kill during a computing check at the gate only. What a server killed during a check leaves in Isabelle's temporary
 files (K18): L22 does no scan. That main keeps its bound when the kill's helper hangs (by reading the code only).
+For the update of 2026-11-17 (contract schema version 2): Linux and Windows; a loaded machine (the new tests that
+wait on a real clock, sh04 and sh11 and the deadline and limit tests, and the live bounds of K15 and K17 were not
+tried under load); a store file written by another build, in either direction (the tests forge rows of the old shape
+into a store this build made); the packaged application; a worker that ends while no job is out (K27) with a real
+Isabelle; the statuses `failed` and unavailable with no cause, and a request made while Isabelle starts, with a real
+Isabelle (a stand-in shows them).
 
 Checked in Isabelle2025-2's sources on 2026-11-16: Isabelle reads the `ROOT` and the `ROOTS` of every directory it is
 given, the `dirs` of `session_start` included (`src/Pure/Build/sessions.scala` 1284-1325: `load_dir` is `load_root`
@@ -1168,3 +1307,15 @@ runs were made before the last review fixes, which changed comments and this doc
 `sh scripts/verify-desktop.sh --live-proofs` passed once (the first test alone, the corpus's 3 tests, the live binary's
 18 tests, L21 and L22 among them), and a process listing after it showed no Isabelle server but the practice app's own
 and no stopped process. The Keychain was not touched: every test uses the test key.
+
+Checked on 2026-11-17 on one Mac, with the update for contract schema version 2 and `main` at 2d41210 merged in: `sh
+scripts/verify-desktop.sh --live-proofs` passed three times, once before the merge, once after it and once after the
+look for a lost worker (2.2) was added: L11 alone, the corpus (3 tests) and the 18 live tests each time. In the last
+run the mean check took 1235 ms and 1226 ms, the slowest check 1837 ms, and the slowest stop 1325 ms against its 1500
+ms bound. The new asserts held with the real Isabelle: a check with a 1 ms limit reads `out_of_time` (L3); the
+request whose check was running when Isabelle was killed reads `failed`, and health goes `failed_will_retry`, then
+starting and ready with no problem (L2, L16); a changed rule file and session files that load another theory read
+`wrong_rules` (L18, L19); health carries no problem while starting (L21); and the two rules of p48 held on every
+owner line of the live harness. The practice application and its own Isabelle server ran on the same Mac. In a
+browser through the harness, in a run without Isabelle, the strip's text began with the sentence for
+`not_configured`, and an allowed request's row read the sentence for `prover_unavailable`.

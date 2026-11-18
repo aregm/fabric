@@ -1,6 +1,7 @@
 //! Prover results: what is accepted, what is refused, relied grants and re-proof counters
-//! (design 5.7, D13, D14, D16, D17, D36, L7; section 9.3 c18, c19, c28, c31). Gate G2a rows
-//! "Kill Isabelle / budget (store half)" and DEF-7 (design 7.3).
+//! (design 5.7, D13, D14, D16, D17, D36, L7; section 9.3 c18, c19, c28, c31, c33, c35, c36). Gate G2a rows
+//! "Kill Isabelle / budget (store half)" and DEF-7 (design 7.3). The cause of every move to
+//! `undecided` and the details' `undecided_reason` (5.7; PW 2.4).
 
 #![cfg(debug_assertions)]
 
@@ -8,7 +9,7 @@ mod common;
 
 use common::*;
 use fabric_broker_core::PROOF_WATCHDOG_MS;
-use fabric_broker_core::ports::AttemptReport;
+use fabric_broker_core::ports::{AttemptReport, ProverCause};
 use fabric_desktop_contracts::owner::ProofPurpose;
 use fabric_desktop_contracts::scalar::Digest;
 use fabric_storage::ProverKind;
@@ -32,6 +33,40 @@ fn proof_ids(h: &mut Harness, request_id: &str) -> Vec<Value> {
         .clone()
 }
 
+/// The `undecided_reason` of a request's redacted details.
+fn reason(h: &mut Harness, request_id: &str) -> Value {
+    h.details(request_id)["undecided_reason"].clone()
+}
+
+/// Asserts that a request is `undecided`, with `cause` stored on its move and `expected` in its
+/// details.
+fn assert_undecided(h: &mut Harness, request_id: &str, cause: &str, expected: Value) {
+    let details = h.details(request_id);
+    assert_eq!(details["request"]["status"]["state"], json!("undecided"));
+    assert_eq!(
+        h.stored_cause(request_id).as_deref(),
+        Some(cause),
+        "{request_id}"
+    );
+    assert_eq!(
+        details["undecided_reason"], expected,
+        "{request_id}: {cause}"
+    );
+}
+
+/// The payload of one forged move of `request_id` to `undecided`; `cause` is written as given,
+/// and left out when `None`.
+fn forged_move(request_id: &str, cause: Option<&str>) -> String {
+    let mut moved = json!({
+        "at_ms": T0, "due_at_ms": null, "op": "request_moved", "request_id": request_id,
+        "revision": 99, "status": {"state": "undecided"}
+    });
+    if let Some(cause) = cause {
+        moved["undecided_cause"] = json!(cause);
+    }
+    json!({"mutations": [moved]}).to_string()
+}
+
 /// c18. Design D14 and 5.7: with no prover attached every request ends `undecided` at once,
 /// with no proof job and no report.
 #[test]
@@ -45,8 +80,19 @@ fn no_prover_ends_every_request_undecided_with_no_report() {
         let details = h.details(&request_id);
         assert_eq!(details["request"]["status"]["state"], json!("undecided"));
         assert_eq!(details["proof_ids"], json!([]));
+        assert_undecided(
+            &mut h,
+            &request_id,
+            "no_prover",
+            json!("prover_unavailable"),
+        );
         requests.push(request_id);
     }
+    // A run with no prover says so: unavailable, not configured.
+    assert_eq!(
+        h.snapshot()["health"],
+        json!({"prover": "unavailable", "prover_problem": "not_configured", "store": "ready"})
+    );
     h.kill();
     for request_id in &requests {
         for kind in [ProverKind::Isabelle, ProverKind::Synthetic] {
@@ -76,6 +122,12 @@ fn a_synthetic_permit_is_never_accepted() {
         "a synthetic permit moved on"
     );
     assert_eq!(h.state(&request_id), "undecided");
+    assert_undecided(
+        &mut h,
+        &request_id,
+        "no_prover",
+        json!("prover_unavailable"),
+    );
     assert_eq!(proof_ids(&mut h, &request_id), Vec::<Value>::new());
     let refusal = h.refused("get_proof", json!({"proof_id": proof}));
     assert_eq!(refusal["code"], json!("not_found"));
@@ -98,7 +150,7 @@ fn a_proof_past_35_s_is_undecided_and_a_late_result_is_ignored() {
 
     h.now = job.deadline_ms + 1;
     let _ = h.tick();
-    assert_eq!(h.state(&request_id), "undecided");
+    assert_undecided(&mut h, &request_id, "deadline_passed", json!("out_of_time"));
 
     let head = h.ledger_head();
     let output = h.prove(&job, Outcome::Permit, &[]);
@@ -106,6 +158,7 @@ fn a_proof_past_35_s_is_undecided_and_a_late_result_is_ignored() {
     assert!(output.jobs.is_empty());
     assert_eq!(h.state(&request_id), "undecided");
     assert_eq!(h.ledger_head(), head, "a late result was recorded");
+    assert_undecided(&mut h, &request_id, "deadline_passed", json!("out_of_time"));
     assert_eq!(proof_ids(&mut h, &request_id), Vec::<Value>::new());
     h.verify();
 }
@@ -123,6 +176,8 @@ fn permit_without_a_provider_is_undecided() {
     let details = h.details(&request_id);
     assert_eq!(details["request"]["status"]["state"], json!("undecided"));
     assert_eq!(details["authorization"], Value::Null);
+    // The proof decided; the broker could not act, which the contract has no value for.
+    assert_undecided(&mut h, &request_id, "no_provider", Value::Null);
     h.verify();
 }
 
@@ -144,6 +199,7 @@ fn a_fresh_permit_with_no_authorizing_grant_is_undecided() {
     let details = h.details(&request_id);
     assert_eq!(details["request"]["status"]["state"], json!("undecided"));
     assert_eq!(details["authorization"], Value::Null);
+    assert_undecided(&mut h, &request_id, "no_grant", json!("failed"));
     h.verify();
 }
 
@@ -185,6 +241,9 @@ fn a_result_naming_a_grant_outside_its_facts_is_undecided_and_never_halts() {
     let output = h.prove_with(done);
     assert!(output.halt.is_none());
     assert_eq!(h.state(&blocked), "undecided");
+    for request in [&classified, &permitted, &blocked] {
+        assert_undecided(&mut h, request, "report_unusable", json!("failed"));
+    }
 
     h.kill();
     assert!(relied_in_store(&mut h, &classified).is_empty());
@@ -196,6 +255,10 @@ fn a_result_naming_a_grant_outside_its_facts_is_undecided_and_never_halts() {
     assert_eq!(
         strings(&recorded.authorizing_grants),
         vec!["grant-unknown".to_owned()]
+    );
+    assert_eq!(
+        recorded.undecided_reason.as_deref(),
+        Some("authorizing grant outside the facts")
     );
 
     h.advance(1_000);
@@ -243,6 +306,7 @@ fn a_report_bound_to_another_job_neither_authorizes_nor_halts() {
     assert!(!proof_ids(&mut h, &request_id).contains(&json!(proof)));
     assert!(!proof_ids(&mut h, &other).contains(&json!(proof)));
     assert!(h.ledger_head() > head, "the request did not move");
+    assert_undecided(&mut h, &request_id, "report_unusable", json!("failed"));
 
     // Each field alone unbinds the report.
     for field in ["request_id", "purpose", "action_digest"] {
@@ -259,6 +323,7 @@ fn a_report_bound_to_another_job_neither_authorizes_nor_halts() {
         assert!(output.halt.is_none(), "{field}: a mismatched report halted");
         assert!(dispatches(&output).is_empty(), "{field}: it dispatched");
         assert_eq!(h.state(&request_id), "undecided", "{field}");
+        assert_undecided(&mut h, &request_id, "report_unusable", json!("failed"));
         assert!(
             !proof_ids(&mut h, &request_id).contains(&json!(proof)),
             "{field}: the report was recorded"
@@ -542,6 +607,7 @@ fn the_reproof_counter_is_per_purpose_and_survives_a_retry() {
         "a fourth classification re-proof was started"
     );
     assert_eq!(h.state(&second), "undecided");
+    assert_undecided(&mut h, &second, "reproofs_spent", json!("failed"));
 
     h.kill();
     let reproofs = h
@@ -549,5 +615,221 @@ fn the_reproof_counter_is_per_purpose_and_survives_a_retry() {
         .expect("the request")
         .reproofs;
     assert_eq!(reproofs.classification, 2);
+    h.verify();
+}
+
+/// c33. PW 2.4 and README section 7: a result with no report goes `undecided` with the cause its
+/// prover stated, and its details read that cause's value; a result that states none is stored as
+/// `not_stated` and reads null.
+#[test]
+fn each_stated_no_report_cause_reads_its_value() {
+    let mut h = Harness::new("c6", isabelle());
+    h.setup();
+    let rows = [
+        (
+            Some(ProverCause::Starting),
+            "prover_starting",
+            json!("prover_unavailable"),
+        ),
+        (
+            Some(ProverCause::NotRunning),
+            "prover_not_running",
+            json!("prover_unavailable"),
+        ),
+        (
+            Some(ProverCause::DeadlinePassed),
+            "deadline_passed",
+            json!("out_of_time"),
+        ),
+        (
+            Some(ProverCause::CheckLimitReached),
+            "check_limit_reached",
+            json!("out_of_time"),
+        ),
+        (
+            Some(ProverCause::JobRefused),
+            "job_refused",
+            json!("failed"),
+        ),
+        (
+            Some(ProverCause::CheckNotDecided),
+            "check_not_decided",
+            json!("failed"),
+        ),
+        (
+            Some(ProverCause::ReportUnusable),
+            "report_unusable",
+            json!("failed"),
+        ),
+        (None, "not_stated", Value::Null),
+    ];
+    for (n, (cause, stored, expected)) in rows.into_iter().enumerate() {
+        let (request_id, output) = h.propose(1, &format!("call-{n}"));
+        let job = job_for(&output, &request_id, ProofPurpose::Classification);
+        let output = h.prove_with(no_report_done(&job, cause));
+        assert!(output.halt.is_none());
+        assert!(output.jobs.is_empty());
+        assert_undecided(&mut h, &request_id, stored, expected);
+        assert_eq!(proof_ids(&mut h, &request_id), Vec::<Value>::new());
+    }
+    h.verify();
+}
+
+/// c33. PW 2.4 and W04 5.7 (`no_prover`): a result with no report from a prover whose kind is not
+/// Isabelle is stored as `no_prover` whatever cause it states, and reads `prover_unavailable`.
+#[test]
+fn a_synthetic_result_with_no_report_stores_no_prover() {
+    let mut h = Harness::new("c33s", synthetic());
+    h.setup();
+    for (n, cause) in [Some(ProverCause::NotRunning), None]
+        .into_iter()
+        .enumerate()
+    {
+        let (request_id, output) = h.propose(1, &format!("call-{n}"));
+        let job = job_for(&output, &request_id, ProofPurpose::Classification);
+        let output = h.prove_with(no_report_done(&job, cause));
+        assert!(output.halt.is_none());
+        assert!(output.jobs.is_empty());
+        assert_undecided(
+            &mut h,
+            &request_id,
+            "no_prover",
+            json!("prover_unavailable"),
+        );
+    }
+    h.verify();
+}
+
+/// c33. PW 2.4: an Isabelle report whose verdict is undecided goes `undecided` with the cause its
+/// prover stated, and with `check_not_decided` when it states none.
+#[test]
+fn an_undecided_verdict_reads_its_stated_cause() {
+    let mut h = Harness::new("c7", isabelle());
+    h.setup();
+    let rows = [
+        (
+            Some(ProverCause::DeadlinePassed),
+            "deadline_passed",
+            "out_of_time",
+        ),
+        (
+            Some(ProverCause::CheckLimitReached),
+            "check_limit_reached",
+            "out_of_time",
+        ),
+        (None, "check_not_decided", "failed"),
+    ];
+    for (n, (cause, stored, expected)) in rows.into_iter().enumerate() {
+        let (request_id, output) = h.propose(1, &format!("call-{n}"));
+        let job = job_for(&output, &request_id, ProofPurpose::Classification);
+        let done = undecided_done(&job, cause);
+        let proof = proof_id(&done);
+        let output = h.prove_with(done);
+        assert!(output.halt.is_none());
+        assert_undecided(&mut h, &request_id, stored, json!(expected));
+        assert!(proof_ids(&mut h, &request_id).contains(&json!(proof)));
+    }
+    h.verify();
+}
+
+/// c36. 5.7: a stored cause survives a restart, and a job proved again after it ends
+/// with the cause the starting prover states; the restarted run reads starting with no problem.
+#[test]
+fn a_restart_keeps_the_cause_and_restates_starting() {
+    let mut h = Harness::new("c14", isabelle_starting());
+    h.setup();
+    let (ended, output) = h.propose(1, "call-a");
+    let job = job_for(&output, &ended, ProofPurpose::Classification);
+    h.now = job.deadline_ms + 1;
+    let _ = h.tick();
+    assert_undecided(&mut h, &ended, "deadline_passed", json!("out_of_time"));
+
+    let (proving, output) = h.propose(1, "call-b");
+    let _ = job_for(&output, &proving, ProofPurpose::Classification);
+    h.kill();
+    h.advance(1_000);
+    let output = h.start();
+    assert!(output.halt.is_none());
+    assert_eq!(
+        h.snapshot()["health"],
+        json!({"prover": "starting", "prover_problem": null, "store": "ready"})
+    );
+    assert_undecided(&mut h, &ended, "deadline_passed", json!("out_of_time"));
+    let again = job_for(&output, &proving, ProofPurpose::Classification);
+    let output = h.prove_with(no_report_done(&again, Some(ProverCause::Starting)));
+    assert!(output.halt.is_none());
+    assert_undecided(
+        &mut h,
+        &proving,
+        "prover_starting",
+        json!("prover_unavailable"),
+    );
+    h.verify();
+}
+
+/// c35. README section 7: `undecided_reason` is null unless the request is `undecided`, even when
+/// a row correlated to it names a cause. Only a forged row can show this: the store refuses a
+/// cause on any other move. The forged row breaks the chain, so the test ends without `verify`.
+#[test]
+fn the_state_check_in_read_details_matters() {
+    let mut h = Harness::new("c15", isabelle());
+    h.setup();
+    let (blocked, output) = h.propose(1, "call-1");
+    let job = job_for(&output, &blocked, ProofPurpose::Classification);
+    let _ = h.prove(&job, Outcome::Block, &[]);
+    assert_eq!(h.state(&blocked), "blocked");
+    let (undecided, output) = h.propose(1, "call-2");
+    let job = job_for(&output, &undecided, ProofPurpose::Classification);
+    let _ = h.prove_with(undecided_done(&job, Some(ProverCause::DeadlinePassed)));
+    assert_undecided(&mut h, &undecided, "deadline_passed", json!("out_of_time"));
+
+    h.forge_ledger_row(&forged_move(&blocked, Some("check_not_decided")), &blocked);
+    assert_eq!(
+        h.stored_cause(&blocked).as_deref(),
+        Some("check_not_decided")
+    );
+    let details = h.details(&blocked);
+    assert_eq!(details["request"]["status"]["state"], json!("blocked"));
+    assert_eq!(details["undecided_reason"], Value::Null);
+    assert_eq!(reason(&mut h, &undecided), json!("out_of_time"));
+}
+
+/// c35. README section 7 and PR 28's choice 4: a request whose newest move to `undecided` has no cause,
+/// as builds before the cause wrote it, reads null. The store no longer writes such a move, so
+/// the row is forged; the forged row breaks the chain, so the test ends without `verify`.
+#[test]
+fn an_old_move_without_a_cause_reads_null() {
+    let mut h = Harness::new("old-move", isabelle());
+    h.setup();
+    let (request_id, output) = h.propose(1, "call-1");
+    let job = job_for(&output, &request_id, ProofPurpose::Classification);
+    let _ = h.prove_with(undecided_done(&job, None));
+    assert_undecided(&mut h, &request_id, "check_not_decided", json!("failed"));
+
+    h.forge_ledger_row(&forged_move(&request_id, None), &request_id);
+    assert_eq!(h.stored_cause(&request_id), None);
+    assert_eq!(h.state(&request_id), "undecided");
+    assert_eq!(reason(&mut h, &request_id), Value::Null);
+    // An unknown text, as a newer build might write, reads null as well.
+    h.forge_ledger_row(
+        &forged_move(&request_id, Some("a_cause_of_a_newer_build")),
+        &request_id,
+    );
+    assert_eq!(reason(&mut h, &request_id), Value::Null);
+}
+
+/// c33. README section 7: a proof that decided but could not be acted on stores its cause, and the
+/// details read null, since the contract has no value for it. Here a NeedApproval for the list
+/// tool, which names no calendar and so has no scope a card can show.
+#[test]
+fn an_approval_with_no_scope_stores_its_cause_and_reads_null() {
+    let mut h = Harness::new("no-scope", isabelle());
+    h.setup();
+    let (reply, output) = h.call(1, "call-1", "fabric_calendar_list", json!({}));
+    let request_id = request_id_of(&reply);
+    let job = job_for(&output, &request_id, ProofPurpose::Classification);
+    let output = h.prove(&job, Outcome::NeedApproval, &[]);
+    assert!(output.halt.is_none());
+    assert_undecided(&mut h, &request_id, "no_scope", Value::Null);
     h.verify();
 }

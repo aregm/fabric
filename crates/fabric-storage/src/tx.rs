@@ -1,5 +1,6 @@
 //! Write transactions, their metadata, and the store's failures (design 4, 5.2).
 
+use fabric_desktop_contracts::lifecycle::RequestState;
 use fabric_desktop_contracts::owner::{Change, OwnerNotice};
 use fabric_desktop_contracts::scalar::{Id, PositiveCount};
 
@@ -283,6 +284,22 @@ impl WriteTx<'_> {
                 "creation and migration are the migration runner's",
             ));
         }
+        // Write rules only: replay accepts whatever a verified row holds, rows written before the
+        // cause existed included. A move to undecided names its cause, and only that move does.
+        if let Mutation::RequestMoved {
+            status,
+            undecided_cause,
+            ..
+        } = &mutation
+        {
+            match (status.state() == RequestState::Undecided, undecided_cause) {
+                (true, None) => return Err(invariant("a move to undecided names its cause")),
+                (false, Some(_)) => {
+                    return Err(invariant("only a move to undecided names its cause"));
+                }
+                _ => {}
+            }
+        }
         // A savepoint makes each mutation all or nothing, even when the caller goes on after a
         // refused guard: the projection never holds half of a mutation the ledger lacks.
         let applied = (|| {
@@ -416,6 +433,7 @@ mod tests {
     use fabric_desktop_contracts::owner::Change;
 
     use super::*;
+    use crate::rows::UndecidedCause;
     use crate::testing::{self, T0, TempDir};
 
     fn ledger_rows(store: &crate::Store) -> u64 {
@@ -565,6 +583,65 @@ mod tests {
             testing::refused_with(result),
             "creation and migration are the migration runner's"
         );
+    }
+
+    /// s20. Section 4: a move to undecided names its cause and only that move does; the move is applied
+    /// with it. Replay of an old move to undecided without a cause is
+    /// `ledger::tests::a_store_with_causes_replays`.
+    #[test]
+    fn only_a_move_to_undecided_names_its_cause() {
+        let dir = TempDir::new();
+        let mut store = testing::world(&dir);
+        let moved = |revision, status, cause| Mutation::RequestMoved {
+            request_id: testing::id("request-1"),
+            revision,
+            status,
+            at_ms: T0,
+            due_at_ms: None,
+            undecided_cause: cause,
+        };
+        testing::apply_all(
+            &mut store,
+            T0,
+            vec![
+                moved(2, testing::status("validating"), None),
+                moved(3, testing::status("proving_classification"), None),
+            ],
+        )
+        .unwrap();
+        let mut write = |mutation| {
+            store.write(testing::meta_of("request.advance", T0, "request-1"), |tx| {
+                tx.apply(mutation)?;
+                Ok::<_, TxError<()>>(())
+            })
+        };
+        let blocked = testing::from(serde_json::json!({
+            "state": "blocked",
+            "denial": { "rule": "recurring_mutation_unsupported", "explanation": "No.",
+                        "proof_id": "proof-1" },
+        }));
+        assert_eq!(
+            testing::refused_with(write(moved(
+                4,
+                blocked,
+                Some(UndecidedCause::ReportUnusable)
+            ))),
+            "only a move to undecided names its cause"
+        );
+        let undecided = testing::status("undecided");
+        assert_eq!(
+            testing::refused_with(write(moved(4, undecided.clone(), None))),
+            "a move to undecided names its cause"
+        );
+        write(moved(4, undecided, Some(UndecidedCause::NoRuling))).unwrap();
+        assert_eq!(
+            store
+                .read(|r| r.undecided_cause_of(&testing::id("request-1")))
+                .unwrap(),
+            Some(UndecidedCause::NoRuling)
+        );
+        store.verify_chain().unwrap();
+        store.verify_replay().unwrap();
     }
 
     #[test]

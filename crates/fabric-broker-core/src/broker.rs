@@ -2,7 +2,6 @@
 //! work, quit; the unavailable mode while the store cannot be opened, its reopen, and the halt
 //! after a failed write.
 
-use fabric_desktop_contracts::owner::ProverHealth;
 #[cfg(debug_assertions)]
 use fabric_desktop_contracts::owner::{Account, Destination};
 #[cfg(debug_assertions)]
@@ -122,8 +121,8 @@ pub enum Input {
     ProofDone(ProofDone),
     /// A provider worker's result.
     Attempt(AttemptDone),
-    /// The prover's health changed.
-    ProverHealth(ProverHealth),
+    /// The prover's status changed: its health, or only the problem while unavailable.
+    ProverHealth(ProverStatus),
     /// Due work only.
     Tick,
 }
@@ -246,7 +245,7 @@ fn step_ready(
         Input::Agent(input) => core.agent(input)?,
         Input::ProofDone(done) => core.proof_done(done)?,
         Input::Attempt(done) => core.attempt_done(done)?,
-        Input::ProverHealth(health) => core.set_prover_health(health)?,
+        Input::ProverHealth(status) => core.set_prover_health(status)?,
         Input::Tick => {}
     }
     drain(core, owner, out);
