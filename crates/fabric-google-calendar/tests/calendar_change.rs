@@ -1822,8 +1822,8 @@ fn a_yes_with_the_right_id_and_another_content_is_applied_for_every_tool() {
     assert_eq!(changes(&world).len(), 5, "one changing request per order");
 
     // A 200 with the right id is Applied whatever else the body holds: a cancelled event
-    // names the status; a body or a revision that cannot be read names the event, which is
-    // given only when its revision fits the contract.
+    // names the status only when its revision can be held; a body or a revision that cannot
+    // be read names the event, which is given only when its revision fits the contract.
     let odd = |id: &str| -> Vec<(Value, Option<&'static str>, Differs)> {
         vec![
             (
@@ -1853,6 +1853,16 @@ fn a_yes_with_the_right_id_and_another_content_is_applied_for_every_tool() {
                 Differs::Event,
             ),
             (json!({"id": id, "etag": 7}), None, Differs::Event),
+            (
+                json!({"id": id, "status": "cancelled"}),
+                None,
+                Differs::Event,
+            ),
+            (
+                json!({"id": id, "etag": "two words", "status": "cancelled"}),
+                None,
+                Differs::Event,
+            ),
         ]
     };
     let (id, etag) = meeting(&world, &p);
@@ -1883,6 +1893,7 @@ fn a_yes_with_the_right_id_and_another_content_is_applied_for_every_tool() {
             ),
             "create {body}"
         );
+        no_event_means_event_differs(&report, &body);
         // PATCH: the target's id.
         body["id"] = json!(id);
         answer_patch(&world, body.clone());
@@ -1904,6 +1915,7 @@ fn a_yes_with_the_right_id_and_another_content_is_applied_for_every_tool() {
             ),
             "update {body}"
         );
+        no_event_means_event_differs(&report, &body);
         sent += 2;
         assert_eq!(changes(&world).len(), sent, "never sent again: {body}");
     }
@@ -1936,6 +1948,20 @@ fn a_yes_with_the_right_id_and_another_content_is_applied_for_every_tool() {
         assert_eq!(report.outcome, ChangeOutcome::NoAnswer, "update {body}");
     }
     world.check_log();
+}
+
+/// The invariant the core checks, apart from any table: after a create or a PATCH, an Applied
+/// outcome that names no event is not confirmed and names the event as what differs (18.7
+/// point 2).
+fn no_event_means_event_differs(report: &ChangeReport, body: &Value) {
+    let (event, confirmed, differs) = applied_parts(report);
+    if event.is_none() {
+        assert_eq!(
+            (confirmed, differs),
+            (false, Some(Differs::Event)),
+            "{body}"
+        );
+    }
 }
 
 /// The parts of an Applied outcome: the event's id and revision when given, `confirmed` and

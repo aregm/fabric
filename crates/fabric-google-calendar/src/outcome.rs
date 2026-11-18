@@ -73,9 +73,11 @@ pub enum Differs {
     OtherAttendee,
     /// The original start of an occurrence (CD-Q05b).
     OriginalStart,
-    /// The event Google returned is cancelled (18.7 point 2).
+    /// The event Google returned is cancelled and its revision can be held, so the event is
+    /// named (18.7 point 2).
     Status,
-    /// The event Google returned, or its revision, cannot be read (18.7 point 2).
+    /// The event Google returned, or its revision, cannot be read or held (18.7 point 2). The
+    /// only label when no event is named after a create, an update, an invitation or a response.
     Event,
 }
 
@@ -136,7 +138,9 @@ pub enum ChangeOutcome {
     /// Google answered the change with a plain yes (6.6 to 6.8). A 200 whose event has the
     /// right id is always this, whatever the event holds (18.7 point 2).
     Applied {
-        /// The event as Google now has it: its id and new revision. `None` after a deletion.
+        /// The event as Google now has it: its id and new revision. `None` after a deletion. For
+        /// a create, an update, an invitation or a response, `None` only when no revision could
+        /// be held; then `confirmed` is false and `differs` is `event` (18.7 point 2).
         event: Option<EventRef>,
         /// Whether Google's answer equals what was approved (6.12). For a deletion, whether
         /// the read after it found the event gone (18.7 point 1).

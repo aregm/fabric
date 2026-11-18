@@ -246,16 +246,18 @@ impl Google {
             });
         let Some((after, event)) = fitting else {
             // A cancelled event, or a body or revision that cannot be read: Applied, not what
-            // was approved. The event is named only when its revision fits the contract.
-            let differs = if read_event.is_some_and(|event| event.cancelled) {
-                Differs::Status
-            } else {
-                Differs::Event
-            };
+            // was approved. The event is named only when its revision fits the contract. No
+            // event named always gives `event`; `status` needs a named, cancelled event.
             let event = body
                 .get("etag")
                 .and_then(Value::as_str)
                 .and_then(|etag| event_ref(expected_id, etag));
+            let cancelled = read_event.is_some_and(|event| event.cancelled);
+            let differs = if cancelled && event.is_some() {
+                Differs::Status
+            } else {
+                Differs::Event
+            };
             return Ok(ChangeOutcome::Applied {
                 event,
                 confirmed: false,
