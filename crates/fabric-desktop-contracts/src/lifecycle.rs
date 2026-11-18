@@ -2,7 +2,7 @@
 
 use serde::{Deserialize, Serialize};
 
-/// `common#/$defs/request_state`: the 23 states of one logical request.
+/// `common#/$defs/request_state`: the 26 states of one logical request.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum RequestState {
@@ -29,13 +29,16 @@ pub enum RequestState {
     Reconciling,
     AbsenceConfirmed,
     NeedsOwnerResolution,
+    ResolvedAsApplied,
+    ResolvedAsAbsent,
+    Completed,
 }
 
 use RequestState as S;
 
 impl RequestState {
     /// Every state, in the order of `data/request-lifecycle.json`.
-    pub const ALL: [RequestState; 23] = [
+    pub const ALL: [RequestState; 26] = [
         S::Received,
         S::Validating,
         S::ProvingClassification,
@@ -59,6 +62,9 @@ impl RequestState {
         S::Reconciling,
         S::AbsenceConfirmed,
         S::NeedsOwnerResolution,
+        S::ResolvedAsApplied,
+        S::ResolvedAsAbsent,
+        S::Completed,
     ];
 
     /// A request starts here.
@@ -90,6 +96,9 @@ impl RequestState {
             S::Reconciling => "reconciling",
             S::AbsenceConfirmed => "absence_confirmed",
             S::NeedsOwnerResolution => "needs_owner_resolution",
+            S::ResolvedAsApplied => "resolved_as_applied",
+            S::ResolvedAsAbsent => "resolved_as_absent",
+            S::Completed => "completed",
         }
     }
 
@@ -98,8 +107,9 @@ impl RequestState {
         RequestState::ALL.into_iter().find(|s| s.as_str() == name)
     }
 
-    /// A request is open while its state is not terminal. `undecided`, `absence_confirmed` and
-    /// `needs_owner_resolution` are terminal in version 1 (README section 14).
+    /// A request is open while its state is not terminal. `undecided` and `absence_confirmed`
+    /// are terminal; `needs_owner_resolution` is not since schema version 3: the owner resolves
+    /// it to `resolved_as_applied` or `resolved_as_absent` (README section 14).
     #[must_use]
     pub const fn is_terminal(self) -> bool {
         matches!(
@@ -113,12 +123,14 @@ impl RequestState {
                 | S::Reconciled
                 | S::TerminalFailure
                 | S::AbsenceConfirmed
-                | S::NeedsOwnerResolution
+                | S::ResolvedAsApplied
+                | S::ResolvedAsAbsent
+                | S::Completed
         )
     }
 
-    /// Whether `self → next` is one of the 39 listed transitions: the 24 of plan section 11
-    /// and the 15 this contract adds (README section 9).
+    /// Whether `self → next` is one of the 43 listed transitions: the 24 of plan section 11
+    /// and the 19 this contract adds (README section 9).
     #[must_use]
     pub const fn can_transition_to(self, next: RequestState) -> bool {
         matches!(
@@ -169,10 +181,20 @@ impl RequestState {
                 )
                 // added: proved again before the handoff, and per retry (plan 5, 7 and 8)
                 | (S::Queued | S::RetryWait, S::ProvingFreshPermit)
+                // added: the owner's manual resolution of an unknown outcome (plan S05)
+                | (
+                    S::NeedsOwnerResolution,
+                    S::ResolvedAsApplied | S::ResolvedAsAbsent
+                )
+                // added: a request the broker completes itself, with no call to Google (plan 9.2)
+                | (S::ProvingFreshPermit, S::Completed)
+                // added: Google applied the change and returned content that differs from the
+                // approval
+                | (S::Dispatching, S::NeedsOwnerResolution)
         )
     }
 
-    /// The 20 states whose status carries nothing but the state, or `None` for
+    /// The 23 states whose status carries nothing but the state, or `None` for
     /// `pending_approval`, `blocked` and `terminal_failure`.
     #[must_use]
     pub fn plain(self) -> Option<PlainRequestState> {
@@ -223,10 +245,13 @@ pub enum PlainRequestState {
     Reconciling,
     AbsenceConfirmed,
     NeedsOwnerResolution,
+    ResolvedAsApplied,
+    ResolvedAsAbsent,
+    Completed,
 }
 
 impl PlainRequestState {
-    pub const ALL: [PlainRequestState; 20] = [
+    pub const ALL: [PlainRequestState; 23] = [
         PlainRequestState::Received,
         PlainRequestState::Validating,
         PlainRequestState::ProvingClassification,
@@ -247,6 +272,9 @@ impl PlainRequestState {
         PlainRequestState::Reconciling,
         PlainRequestState::AbsenceConfirmed,
         PlainRequestState::NeedsOwnerResolution,
+        PlainRequestState::ResolvedAsApplied,
+        PlainRequestState::ResolvedAsAbsent,
+        PlainRequestState::Completed,
     ];
 
     #[must_use]
@@ -272,6 +300,9 @@ impl PlainRequestState {
             PlainRequestState::Reconciling => S::Reconciling,
             PlainRequestState::AbsenceConfirmed => S::AbsenceConfirmed,
             PlainRequestState::NeedsOwnerResolution => S::NeedsOwnerResolution,
+            PlainRequestState::ResolvedAsApplied => S::ResolvedAsApplied,
+            PlainRequestState::ResolvedAsAbsent => S::ResolvedAsAbsent,
+            PlainRequestState::Completed => S::Completed,
         }
     }
 }

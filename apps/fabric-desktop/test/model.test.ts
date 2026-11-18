@@ -19,7 +19,7 @@ test("on connected: hello, then get_snapshot, then subscribe with the snapshot's
   const { host, model } = setup();
   host.state({ name: "connected" }, 1);
   assert.deepEqual(host.methods(), ["hello"]);
-  assert.deepEqual(host.last("hello").params, { client: { name: "Fabric Calendar", build: "CD-W08 webview" }, schema_version: 2 });
+  assert.deepEqual(host.last("hello").params, { client: { name: "Fabric Calendar", build: "CD-W08 webview" }, schema_version: 3 });
   host.reply("hello", HELLO_RESULT);
   assert.deepEqual(host.methods(), ["hello", "get_snapshot"]);
   host.reply("get_snapshot", snapshot(7));
@@ -98,8 +98,8 @@ test("'Received, checking' and how long after received_at it was first shown", (
   assert.equal(entry(model).checkingDelayMs, 137, "measured once, when the text was first shown");
 });
 
-test("all 23 states have a text, and TERMINAL equals the lifecycle data", () => {
-  assert.equal(REQUEST_STATES.length, 23);
+test("all 26 states have a text, and TERMINAL equals the lifecycle data", () => {
+  assert.equal(REQUEST_STATES.length, 26);
   for (const s of REQUEST_STATES) assert.ok(STATE_TEXT[s].length > 0, s);
   assert.deepEqual(Object.keys(STATE_TEXT).sort(), [...REQUEST_STATES].sort());
   const lifecycle = JSON.parse(readFileSync(`${CONTRACT_ROOT}data/request-lifecycle.json`, "utf8"));
@@ -321,7 +321,7 @@ function live(snap: Snapshot = snapshot(0)) {
 test("a snapshot replaces accounts, agents, profiles, preferences, groups, health and the live grants", () => {
   const { model } = live(RICH);
   assert.equal(model.phase, "live");
-  assert.deepEqual(model.health, { prover: "ready", prover_problem: null, store: "ready" });
+  assert.deepEqual(model.health, { prover: "ready", prover_problem: null, store: "ready", agent_channel: "listening", agent_channel_problem: null });
   assert.equal(model.profiles?.revision, 7);
   assert.equal(model.preferences?.revision, RICH.preferences.revision);
   assert.deepEqual([...model.accounts.keys()], ["acct-1", "acct-2"]);
@@ -350,7 +350,7 @@ test("each kind of notice updates its state", () => {
   assert.equal(model.accounts.get("acct-3")?.state, "consent_denied");
   assert.equal(model.agents.get("agent-claude-code")?.revision, 5);
   assert.equal(model.requests.get("request-22")?.request.status.state, "blocked");
-  assert.deepEqual(model.health, { prover: "unavailable", prover_problem: null, store: "ready" });
+  assert.deepEqual(model.health, { prover: "unavailable", prover_problem: null, store: "ready", agent_channel: "listening", agent_channel_problem: null });
   assert.deepEqual(announced, [PROVER_STOPPED]);
   assert.match(model.activity.at(-2)?.text ?? "", /Blocked by a rule \(rule [a-z_]+\)$/);
   assert.equal(model.activity.at(-1)?.text, "Rule checker: Not running. Store: Open");
@@ -490,13 +490,13 @@ test("ready and notReadyText in each phase", () => {
 });
 
 test("the rule checker's state is announced when it changes after the first snapshot of a run", () => {
-  const unavailable = { prover: "unavailable", prover_problem: null, store: "ready" } as const;
+  const unavailable = { prover: "unavailable", prover_problem: null, store: "ready", agent_channel: "listening", agent_channel_problem: null } as const;
   const { host, model, announced } = setup();
   connect(host, 1, { ...snapshot(0), health: unavailable });
   assert.deepEqual(announced, [], "the first snapshot of a run says nothing");
-  host.notice(1, { kind: "health", health: { prover: "starting", prover_problem: null, store: "ready" } });
-  host.notice(2, { kind: "health", health: { prover: "starting", prover_problem: null, store: "locked" } });
-  host.notice(3, { kind: "health", health: { prover: "ready", prover_problem: null, store: "ready" } });
+  host.notice(1, { kind: "health", health: { prover: "starting", prover_problem: null, store: "ready", agent_channel: "listening", agent_channel_problem: null } });
+  host.notice(2, { kind: "health", health: { prover: "starting", prover_problem: null, store: "locked", agent_channel: "listening", agent_channel_problem: null } });
+  host.notice(3, { kind: "health", health: { prover: "ready", prover_problem: null, store: "ready", agent_channel: "listening", agent_channel_problem: null } });
   assert.deepEqual(announced, ["The rule checker is starting.", "The rule checker is ready."]);
   model.refresh();
   host.reply("get_snapshot", { ...snapshot(3), health: unavailable });

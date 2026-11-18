@@ -1,0 +1,20 @@
+{
+  "description": "resolve_outcome: the owner states that the change is not at Google.",
+  "schema": "owner-channel.schema.json#/$defs/owner_request",
+  "value": {
+    "protocol": "fabric-desktop/1",
+    "id": "command-74",
+    "method": "resolve_outcome",
+    "params": {
+      "request_id": "request-34",
+      "expected_revision": 11,
+      "resolution": "absent"
+    }
+  },
+  "expect": {
+    "verdict": "accept",
+    "canonical": "{\"id\":\"command-74\",\"method\":\"resolve_outcome\",\"params\":{\"expected_revision\":11,\"request_id\":\"request-34\",\"resolution\":\"absent\"},\"protocol\":\"fabric-desktop/1\"}",
+    "command_digest": "sha256:bf1b56cc48871c84ac776f87685b165d8947bd7fe34029e6c3ba765bbe54c442",
+    "action_digest": null
+  }
+}

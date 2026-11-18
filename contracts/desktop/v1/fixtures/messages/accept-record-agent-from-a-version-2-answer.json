@@ -1,0 +1,29 @@
+{
+  "description": "An agent record from an answer to pause_agent that a broker stored under schema version 2 and gives again: approved, and null for the members version 3 added.",
+  "schema": "owner-channel.schema.json#/$defs/agent",
+  "value": {
+    "agent_id": "agent-claude-code",
+    "revision": 6,
+    "registered_name": "Claude Code",
+    "destination": {
+      "kind": "cloud",
+      "processor": "Anthropic"
+    },
+    "client": null,
+    "enrollment": "approved",
+    "pairing_code": null,
+    "added_at": null,
+    "key_proven_at": null,
+    "approved_at": null,
+    "removed_at": null,
+    "paused": true,
+    "session": null,
+    "last_tool_call_at": "2026-11-20T15:12:41.503Z"
+  },
+  "expect": {
+    "verdict": "accept",
+    "canonical": "{\"added_at\":null,\"agent_id\":\"agent-claude-code\",\"approved_at\":null,\"client\":null,\"destination\":{\"kind\":\"cloud\",\"processor\":\"Anthropic\"},\"enrollment\":\"approved\",\"key_proven_at\":null,\"last_tool_call_at\":\"2026-11-20T15:12:41.503Z\",\"pairing_code\":null,\"paused\":true,\"registered_name\":\"Claude Code\",\"removed_at\":null,\"revision\":6,\"session\":null}",
+    "command_digest": null,
+    "action_digest": null
+  }
+}

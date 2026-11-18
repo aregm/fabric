@@ -1,5 +1,5 @@
 {
-  "description": "A grant scope naming no calendar.",
+  "description": "A grant whose origin names both an approval and an enrollment.",
   "schema": "owner-channel.schema.json#/$defs/grant",
   "value": {
     "grant_id": "grant-4",
@@ -10,7 +10,12 @@
       "fabric_calendar_propose_create"
     ],
     "scope": {
-      "calendars": [],
+      "calendars": [
+        {
+          "account_id": "acct-1",
+          "calendar_id": "cal-drafts"
+        }
+      ],
       "window": null,
       "fields": null,
       "recipients": null,
@@ -22,7 +27,8 @@
     },
     "origin": {
       "request_id": "request-19",
-      "approval_digest": "sha256:902819aeacc9eefb1a3ab249f04765d76ca09734f204f7971813eb766cac163e"
+      "approval_digest": "sha256:902819aeacc9eefb1a3ab249f04765d76ca09734f204f7971813eb766cac163e",
+      "enrollment_id": "agent-claude-desktop"
     },
     "policy": {
       "profile_id": "careful",

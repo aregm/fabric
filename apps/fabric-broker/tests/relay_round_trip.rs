@@ -264,7 +264,7 @@ fn hello() -> Value {
     request(
         "hello-1",
         "hello",
-        json!({"client": {"name": "relay round trip", "build": "0"}, "schema_version": 2}),
+        json!({"client": {"name": "relay round trip", "build": "0"}, "schema_version": 3}),
     )
 }
 

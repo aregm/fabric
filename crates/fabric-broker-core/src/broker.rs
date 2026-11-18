@@ -390,7 +390,7 @@ impl Broker {
             }) => out.agent.push(crate::service::agent::error_reply(
                 connection,
                 request.id,
-                request.call.tool(),
+                request.call.method(),
                 fabric_desktop_contracts::error::AgentFault::Internal,
                 "The broker's store is unavailable; nothing was recorded.",
             )),

@@ -1,0 +1,19 @@
+{
+  "description": "An owner request for agent_hello, which is a method of the agent channel only.",
+  "schema": "owner-channel.schema.json#/$defs/owner_request",
+  "value": {
+    "protocol": "fabric-desktop/1",
+    "id": "x-2",
+    "method": "agent_hello",
+    "params": {
+      "schema_version": 3,
+      "enrollment_id": "agent-0123456789abcdef0123456789abcdef",
+      "public_key": "ed25519:095acc33714f1c29e75bc9445d03e517ee55a0ebeb01b7a420e96e505abf5429"
+    }
+  },
+  "expect": {
+    "verdict": "reject",
+    "layer": "schema",
+    "error": "unknown_method"
+  }
+}

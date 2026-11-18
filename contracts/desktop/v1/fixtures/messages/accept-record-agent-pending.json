@@ -1,0 +1,29 @@
+{
+  "description": "A waiting agent that proved a key.",
+  "schema": "owner-channel.schema.json#/$defs/agent",
+  "value": {
+    "agent_id": "agent-0123456789abcdef0123456789abcdef",
+    "revision": 2,
+    "registered_name": "Claude Code (calendar folder)",
+    "destination": {
+      "kind": "cloud",
+      "processor": "Anthropic"
+    },
+    "client": "claude_code",
+    "enrollment": "pending",
+    "pairing_code": "4E7A-9852-EC06",
+    "added_at": "2026-11-20T16:00:00.000Z",
+    "key_proven_at": "2026-11-20T16:03:12.000Z",
+    "approved_at": null,
+    "removed_at": null,
+    "paused": false,
+    "session": null,
+    "last_tool_call_at": null
+  },
+  "expect": {
+    "verdict": "accept",
+    "canonical": "{\"added_at\":\"2026-11-20T16:00:00.000Z\",\"agent_id\":\"agent-0123456789abcdef0123456789abcdef\",\"approved_at\":null,\"client\":\"claude_code\",\"destination\":{\"kind\":\"cloud\",\"processor\":\"Anthropic\"},\"enrollment\":\"pending\",\"key_proven_at\":\"2026-11-20T16:03:12.000Z\",\"last_tool_call_at\":null,\"pairing_code\":\"4E7A-9852-EC06\",\"paused\":false,\"registered_name\":\"Claude Code (calendar folder)\",\"removed_at\":null,\"revision\":2,\"session\":null}",
+    "command_digest": null,
+    "action_digest": null
+  }
+}

@@ -1,0 +1,24 @@
+{
+  "description": "A last_list_problem of timed_out, which is a problem of connecting, not of listing calendars.",
+  "schema": "owner-channel.schema.json#/$defs/owner_notice",
+  "value": {
+    "protocol": "fabric-desktop/1",
+    "sequence": 1348,
+    "change": {
+      "kind": "provider_account",
+      "provider_account": {
+        "account_id": "acct-1",
+        "last_connect_problem": null,
+        "last_list_problem": "timed_out",
+        "missing_scope": null,
+        "refresh_token_ends_at": "2027-05-20T15:00:00.000Z",
+        "revocation": "not_requested"
+      }
+    }
+  },
+  "expect": {
+    "verdict": "reject",
+    "layer": "schema",
+    "error": "invalid_params"
+  }
+}

@@ -1,0 +1,22 @@
+{
+  "description": "A remove_agent answer in the first draft's shape, with agent_id in place of agent.",
+  "schema": "owner-channel.schema.json#/$defs/owner_response",
+  "value": {
+    "protocol": "fabric-desktop/1",
+    "id": "command-77",
+    "method": "remove_agent",
+    "result": {
+      "commit_sequence": 1303,
+      "agent_id": "agent-codex-desktop",
+      "ended_grant_ids": [
+        "grant-13",
+        "grant-14"
+      ]
+    }
+  },
+  "expect": {
+    "verdict": "reject",
+    "layer": "schema",
+    "error": "invalid_params"
+  }
+}

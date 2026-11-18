@@ -6,7 +6,7 @@
 //! |---|---|---|
 //! | `frame` | at most 1,048,576 bytes, no line feed, strict JSON, an object | `malformed_frame` |
 //! | `protocol` | `protocol` is the string `fabric-desktop/1` | `unsupported_protocol` |
-//! | `schema` | the typed deserialization of the entry succeeds | `unknown_method` for a request whose `method` is not a string naming a method of its channel, `invalid_params` otherwise |
+//! | `schema` | the typed deserialization of the entry succeeds | `unknown_method` for a request whose `method` is not a string naming a method of its channel (for the agent channel a tool or a handshake method), `invalid_params` otherwise |
 
 use std::fmt;
 
@@ -14,8 +14,8 @@ use serde::Serialize;
 use serde::de::DeserializeOwned;
 use serde_json::Value;
 
-use crate::agent::{AgentRequest, AgentResponse};
-use crate::common::{MAX_FRAME_BYTES, PROTOCOL, ToolName};
+use crate::agent::{AgentCall, AgentRequest, AgentResponse};
+use crate::common::{MAX_FRAME_BYTES, PROTOCOL};
 use crate::digest::to_value;
 use crate::error::ErrorCode;
 use crate::json::{canonical, parse_strict};
@@ -199,7 +199,7 @@ pub fn decode(entry: Entry, bytes: &[u8]) -> Result<Frame, Refusal> {
     };
     let unknown_method = match entry {
         Entry::OwnerRequest => !method_known(|m| OwnerMethod::from_name(m).is_some()),
-        Entry::AgentRequest => !method_known(|m| ToolName::from_name(m).is_some()),
+        Entry::AgentRequest => !method_known(AgentCall::is_method),
         _ => false,
     };
     let schema = |e: serde_json::Error| {

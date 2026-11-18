@@ -12,14 +12,14 @@
       "recovery": "update_app",
       "correlation_id": "corr-0001",
       "detail": {
-        "received": 1,
-        "supported": 2
+        "received": 2,
+        "supported": 3
       }
     }
   },
   "expect": {
     "verdict": "accept",
-    "canonical": "{\"error\":{\"code\":\"unsupported_schema_version\",\"correlation_id\":\"corr-0001\",\"detail\":{\"received\":1,\"supported\":2},\"message\":\"The app and the broker have different schema versions.\",\"recovery\":\"update_app\",\"retryable\":false},\"id\":\"hello-1\",\"method\":\"hello\",\"protocol\":\"fabric-desktop/1\"}",
+    "canonical": "{\"error\":{\"code\":\"unsupported_schema_version\",\"correlation_id\":\"corr-0001\",\"detail\":{\"received\":2,\"supported\":3},\"message\":\"The app and the broker have different schema versions.\",\"recovery\":\"update_app\",\"retryable\":false},\"id\":\"hello-1\",\"method\":\"hello\",\"protocol\":\"fabric-desktop/1\"}",
     "command_digest": null,
     "action_digest": null
   }

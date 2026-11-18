@@ -1,0 +1,17 @@
+{
+  "description": "An agent_prove result without practice.",
+  "schema": "agent-channel.schema.json#/$defs/agent_response",
+  "value": {
+    "protocol": "fabric-desktop/1",
+    "id": "prove-0a1b2c3d4e5f60718293a4b5c6d7e8f9",
+    "method": "agent_prove",
+    "result": {
+      "enrollment": "approved"
+    }
+  },
+  "expect": {
+    "verdict": "reject",
+    "layer": "schema",
+    "error": "invalid_params"
+  }
+}

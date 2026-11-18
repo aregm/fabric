@@ -1,0 +1,19 @@
+{
+  "description": "remove_agent removes an agent.",
+  "schema": "owner-channel.schema.json#/$defs/owner_request",
+  "value": {
+    "protocol": "fabric-desktop/1",
+    "id": "command-77",
+    "method": "remove_agent",
+    "params": {
+      "agent_id": "agent-codex-desktop",
+      "expected_revision": 2
+    }
+  },
+  "expect": {
+    "verdict": "accept",
+    "canonical": "{\"id\":\"command-77\",\"method\":\"remove_agent\",\"params\":{\"agent_id\":\"agent-codex-desktop\",\"expected_revision\":2},\"protocol\":\"fabric-desktop/1\"}",
+    "command_digest": "sha256:7b08364ce8dde928d821ed955f32d014ef36ce36b5851df22d09b4a577a794ec",
+    "action_digest": null
+  }
+}

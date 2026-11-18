@@ -100,6 +100,7 @@ fn limit_name(limit: BusyLimit) -> &'static str {
         BusyLimit::OpenRequestsPerAgent => "open_requests_per_agent",
         BusyLimit::RequestsPerMinutePerAgent => "requests_per_minute_per_agent",
         BusyLimit::OpenApprovalCardsPerAgent => "open_approval_cards_per_agent",
+        BusyLimit::SessionsPerMinutePerAgent => "sessions_per_minute_per_agent",
     }
 }
 

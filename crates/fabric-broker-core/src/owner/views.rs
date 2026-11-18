@@ -62,6 +62,8 @@ fn read_snapshot(
         health,
         profiles: r.profiles()?,
         accounts: any_list(r.accounts()?)?,
+        // The broker keeps nothing of an account's connection beyond its state yet.
+        provider_accounts: any_list(Vec::new())?,
         agents: any_list(agents)?,
         recipient_sets: any_list(r.recipient_sets()?)?,
         preferences: r.preferences()?,
@@ -158,6 +160,8 @@ fn read_details(
             action: record.row.action,
             // W04 observes no event (CD-W05) and checks no warning (CD-W09).
             before: None,
+            // This build compares no applied event with the approval.
+            after: None,
             warnings: List::new(Vec::new()).map_err(|_| invariant("no warnings"))?,
         }),
         card: record.card,
@@ -167,6 +171,12 @@ fn read_details(
         attempts: List::new(attempts).map_err(|_| invariant("at most 20 attempts"))?,
         provider_event: None,
         undecided_reason,
+        // This build hands no request to the owner to resolve.
+        owner_resolution_reason: None,
+        // The broker records no notification, no proof of its own actions and no release yet.
+        notification: None,
+        system_proofs: List::new(Vec::new()).map_err(|_| invariant("no system proofs"))?,
+        releases: List::new(Vec::new()).map_err(|_| invariant("no releases"))?,
     }))
 }
 

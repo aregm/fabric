@@ -1,0 +1,19 @@
+{
+  "description": "add_agent adds a waiting agent for Claude Code (calendar folder).",
+  "schema": "owner-channel.schema.json#/$defs/owner_request",
+  "value": {
+    "protocol": "fabric-desktop/1",
+    "id": "command-80",
+    "method": "add_agent",
+    "params": {
+      "registered_name": "Claude Code (calendar folder)",
+      "client": "claude_code"
+    }
+  },
+  "expect": {
+    "verdict": "accept",
+    "canonical": "{\"id\":\"command-80\",\"method\":\"add_agent\",\"params\":{\"client\":\"claude_code\",\"registered_name\":\"Claude Code (calendar folder)\"},\"protocol\":\"fabric-desktop/1\"}",
+    "command_digest": "sha256:4ce7760e2a908a15914e9b9518ac17315f6b3691ffc8660e31ab16e0a5a21549",
+    "action_digest": null
+  }
+}

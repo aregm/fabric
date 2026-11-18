@@ -63,7 +63,7 @@ test("the store and the rule checker by the health the broker of this run report
     ["prover", "notice", "The rule checker is not running.", null],
   ]);
   assert.match(items[1]?.text ?? "", /^The broker did not say why\. Fabric allows nothing it cannot prove/);
-  s.host.notice(1, { kind: "health", health: { prover: "starting", prover_problem: null, store: "keychain_refused" } });
+  s.host.notice(1, { kind: "health", health: { prover: "starting", prover_problem: null, store: "keychain_refused", agent_channel: "listening", agent_channel_problem: null } });
   assert.deepEqual(attention(s.model).map((i) => i.title), [
     "macOS did not let the broker use the store key in the Keychain.", "The rule checker is starting.",
   ]);
@@ -93,7 +93,7 @@ test("the rule checker not running: the strip and the Status screen name the cau
     assert.equal(proverCauseText(s.model), cause, name);
   });
   assert.equal(PROVER_PROBLEM.wrong_rules, "The rules on this computer are not the ones this broker was built with. Install Fabric Calendar again.");
-  s.host.notice(causes.length + 1, { kind: "health", health: { prover: "starting", prover_problem: null, store: "ready" } });
+  s.host.notice(causes.length + 1, { kind: "health", health: { prover: "starting", prover_problem: null, store: "ready", agent_channel: "listening", agent_channel_problem: null } });
   assert.equal(proverCauseText(s.model), null, "starting: no cause");
   s.host.notice(causes.length + 2, fixture("accept-owner-notice-health-prover-failed.json").change);
   assert.equal(proverCauseText(s.model), PROVER_PROBLEM.failed);
@@ -107,7 +107,7 @@ test("the rule checker not running: the strip and the Status screen name the cau
 test("one item per account that needs the owner", () => {
   const s = setup();
   const locked: Snapshot = fixture("accept-owner-response-get-snapshot-store-locked-prover-unavailable.json").result;
-  connect(s.host, 1, { ...locked, health: { prover: "ready", prover_problem: null, store: "ready" } });
+  connect(s.host, 1, { ...locked, health: { prover: "ready", prover_problem: null, store: "ready", agent_channel: "listening", agent_channel_problem: null } });
   // awaiting_consent and disconnected need nothing; the other four do.
   assert.deepEqual(keys(s), ["account-acct-4", "account-acct-5", "account-acct-6", "account-acct-7"]);
   const [denied, partial] = attention(s.model);
@@ -134,7 +134,7 @@ test("requests waiting for a decision: one item, action review", () => {
 test("the items come in the order of the design: broker, sync, store, rule checker, accounts, requests", () => {
   const s = setup();
   const rich: Snapshot = fixture("accept-owner-response-get-snapshot-rich.json").result;
-  connect(s.host, 1, { ...rich, cursor: 0, health: { prover: "unavailable", prover_problem: null, store: "locked" } });
+  connect(s.host, 1, { ...rich, cursor: 0, health: { prover: "unavailable", prover_problem: null, store: "locked", agent_channel: "listening", agent_channel_problem: null } });
   assert.deepEqual(keys(s), ["store", "prover", "account-acct-2", "waiting"]);
   s.model.refresh();
   s.host.error("get_snapshot", "internal");

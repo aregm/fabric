@@ -47,6 +47,7 @@
           }
         },
         "before": null,
+        "after": null,
         "warnings": []
       },
       "card": null,
@@ -57,12 +58,16 @@
       "authorization": null,
       "attempts": [],
       "provider_event": null,
-      "undecided_reason": null
+      "undecided_reason": null,
+      "owner_resolution_reason": null,
+      "notification": null,
+      "system_proofs": [],
+      "releases": []
     }
   },
   "expect": {
     "verdict": "accept",
-    "canonical": "{\"id\":\"details-3\",\"method\":\"get_request_details\",\"protocol\":\"fabric-desktop/1\",\"result\":{\"approval\":null,\"attempts\":[],\"authorization\":null,\"card\":null,\"private\":{\"action\":{\"arguments\":{\"account_id\":\"acct-1\",\"calendar_id\":\"cal-primary\",\"changes\":{\"description\":null,\"end\":null,\"location\":null,\"start\":null,\"title\":\"Shared with everyone\"},\"event\":{\"event_id\":\"evt-7f3a9c\",\"revision\":\"3181161784712000\"},\"send_updates\":\"none\",\"task\":\"Rename the event.\"},\"tool\":\"fabric_calendar_propose_update\"},\"before\":null,\"warnings\":[]},\"proof_ids\":[\"proof-22-classification\"],\"provider_event\":null,\"redaction\":\"full\",\"request\":{\"account_id\":\"acct-1\",\"agent_id\":\"agent-codex-desktop\",\"received_at\":\"2026-11-20T15:30:00.000Z\",\"request_digest\":\"sha256:14efd6150ad30365f023f88300d6b1b3ed85c0a5de31a86388c233dd6cce8456\",\"request_id\":\"request-22\",\"revision\":2,\"status\":{\"denial\":{\"explanation\":\"Version 1 does not change recurring events; only a reply to one occurrence is supported.\",\"proof_id\":\"proof-22-classification\",\"rule\":\"recurring_mutation_unsupported\"},\"state\":\"blocked\"},\"tool\":\"fabric_calendar_propose_update\",\"updated_at\":\"2026-11-20T15:30:00.412Z\"},\"undecided_reason\":null}}",
+    "canonical": "{\"id\":\"details-3\",\"method\":\"get_request_details\",\"protocol\":\"fabric-desktop/1\",\"result\":{\"approval\":null,\"attempts\":[],\"authorization\":null,\"card\":null,\"notification\":null,\"owner_resolution_reason\":null,\"private\":{\"action\":{\"arguments\":{\"account_id\":\"acct-1\",\"calendar_id\":\"cal-primary\",\"changes\":{\"description\":null,\"end\":null,\"location\":null,\"start\":null,\"title\":\"Shared with everyone\"},\"event\":{\"event_id\":\"evt-7f3a9c\",\"revision\":\"3181161784712000\"},\"send_updates\":\"none\",\"task\":\"Rename the event.\"},\"tool\":\"fabric_calendar_propose_update\"},\"after\":null,\"before\":null,\"warnings\":[]},\"proof_ids\":[\"proof-22-classification\"],\"provider_event\":null,\"redaction\":\"full\",\"releases\":[],\"request\":{\"account_id\":\"acct-1\",\"agent_id\":\"agent-codex-desktop\",\"received_at\":\"2026-11-20T15:30:00.000Z\",\"request_digest\":\"sha256:14efd6150ad30365f023f88300d6b1b3ed85c0a5de31a86388c233dd6cce8456\",\"request_id\":\"request-22\",\"revision\":2,\"status\":{\"denial\":{\"explanation\":\"Version 1 does not change recurring events; only a reply to one occurrence is supported.\",\"proof_id\":\"proof-22-classification\",\"rule\":\"recurring_mutation_unsupported\"},\"state\":\"blocked\"},\"tool\":\"fabric_calendar_propose_update\",\"updated_at\":\"2026-11-20T15:30:00.412Z\"},\"system_proofs\":[],\"undecided_reason\":null}}",
     "command_digest": null,
     "action_digest": null
   }

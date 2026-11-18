@@ -163,8 +163,8 @@ fn message_fixtures_match_their_expectations() {
 
 #[test]
 fn an_unknown_reference_fails_loudly() {
-    let err = suite::judge("owner-channel.schema.json#/$defs/scope", b"{}").unwrap_err();
-    assert!(err.contains("scope"), "{err}");
+    let err = suite::judge("owner-channel.schema.json#/$defs/session", b"{}").unwrap_err();
+    assert!(err.contains("session"), "{err}");
 }
 
 #[test]
@@ -224,4 +224,53 @@ fn mutations_follow_the_generation_order() {
     assert!(texts.contains(&r#"{"a":["s"],"b":8}"#.to_owned()));
     assert!(texts.contains(&r#"{"a":["S"],"b":7}"#.to_owned()));
     assert!(texts.contains(&r#"{"a":[""],"b":7}"#.to_owned()));
+}
+
+#[test]
+fn handshake_entries_match_and_their_signatures_verify() {
+    use ed25519_dalek::{Signature, VerifyingKey};
+
+    let file = fixture("handshake.json");
+    let entries = file.as_array().unwrap();
+    assert!(
+        entries.len() >= 3,
+        "only {} handshake entries",
+        entries.len()
+    );
+    let hex = |text: &str| -> Vec<u8> {
+        (0..text.len())
+            .step_by(2)
+            .map(|i| u8::from_str_radix(&text[i..i + 2], 16).unwrap())
+            .collect()
+    };
+    let mut failures = Vec::new();
+    for e in entries {
+        let name = e["name"].as_str().unwrap();
+        let computed = suite::handshake_entry(e).unwrap();
+        if Some(computed.pairing_code.as_str()) != e["pairing_code"].as_str() {
+            failures.push(format!("{name}: pairing code {}", computed.pairing_code));
+        }
+        if Some(computed.text.as_str()) != e["text"].as_str() {
+            failures.push(format!("{name}: text {}", computed.text));
+        }
+        let key: [u8; 32] = hex(&computed.public_key.as_str()["ed25519:".len()..])
+            .try_into()
+            .unwrap();
+        let key = VerifyingKey::from_bytes(&key).unwrap();
+        let signature: [u8; 64] = hex(e["signature"].as_str().unwrap()).try_into().unwrap();
+        let signature = Signature::from_bytes(&signature);
+        if key
+            .verify_strict(computed.text.as_bytes(), &signature)
+            .is_err()
+        {
+            failures.push(format!("{name}: the signature does not verify"));
+        }
+        let other = computed
+            .text
+            .replace(e["broker_nonce"].as_str().unwrap(), &"0".repeat(64));
+        if key.verify_strict(other.as_bytes(), &signature).is_ok() {
+            failures.push(format!("{name}: the signature verifies another nonce"));
+        }
+    }
+    assert!(failures.is_empty(), "{failures:#?}");
 }

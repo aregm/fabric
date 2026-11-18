@@ -1,0 +1,18 @@
+{
+  "description": "approve_agent without the pairing code.",
+  "schema": "owner-channel.schema.json#/$defs/owner_request",
+  "value": {
+    "protocol": "fabric-desktop/1",
+    "id": "command-82",
+    "method": "approve_agent",
+    "params": {
+      "agent_id": "agent-0123456789abcdef0123456789abcdef",
+      "expected_revision": 2
+    }
+  },
+  "expect": {
+    "verdict": "reject",
+    "layer": "schema",
+    "error": "invalid_params"
+  }
+}

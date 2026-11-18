@@ -1,0 +1,18 @@
+{
+  "description": "The adapter no longer waits for the answer to the call call-20.",
+  "schema": "agent-channel.schema.json#/$defs/agent_request",
+  "value": {
+    "protocol": "fabric-desktop/1",
+    "id": "cancel-1",
+    "method": "agent_cancel",
+    "params": {
+      "call_id": "call-20"
+    }
+  },
+  "expect": {
+    "verdict": "accept",
+    "canonical": "{\"id\":\"cancel-1\",\"method\":\"agent_cancel\",\"params\":{\"call_id\":\"call-20\"},\"protocol\":\"fabric-desktop/1\"}",
+    "command_digest": null,
+    "action_digest": null
+  }
+}

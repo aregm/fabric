@@ -484,7 +484,12 @@ pub(crate) fn apply(connection: &Connection, mutation: &Mutation) -> Result<(), 
             if grant.revision.get() != 1 || grant.ended.is_some() {
                 return Err(invariant("a grant starts live at revision 1"));
             }
-            let origin = known_request(&read, &grant.origin.request_id)?;
+            let Some(origin_request_id) = grant.origin.request_id() else {
+                return Err(invariant(
+                    "a grant made by an enrollment approval is not stored by this version of the store",
+                ));
+            };
+            let origin = known_request(&read, origin_request_id)?;
             if origin.row.request.agent_id != grant.agent_id {
                 return Err(invariant("a grant belongs to its origin request's agent"));
             }
@@ -506,7 +511,7 @@ pub(crate) fn apply(connection: &Connection, mutation: &Mutation) -> Result<(), 
                     kind,
                     action_digest,
                     session_id,
-                    grant.origin.request_id.as_str(),
+                    origin_request_id.as_str(),
                     to_text(grant)
                 ],
             )

@@ -546,6 +546,12 @@ impl SyntheticAgent {
         let (call_id, status) = match response {
             AgentResponse::Result { id, result, .. } => (Some(id), Some(&result.request)),
             AgentResponse::Error { id, .. } => (id.as_ref(), None),
+            // the handshake and the cancel message are not implemented in this build (contract
+            // schema version 3); the synthetic agent sends none, so an answer to one is taken as
+            // a refusal
+            AgentResponse::Hello { id, .. }
+            | AgentResponse::Prove { id, .. }
+            | AgentResponse::Cancel { id, .. } => (Some(id), None),
         };
         let practice = self.practice.is_some();
         // In a practice run `applied` and `outcome_unknown` end the wait too: they stay open
@@ -832,7 +838,7 @@ mod tests {
 
     /// The broker's reply to `call`: request `request_id` in `state`.
     fn answer(agent: &mut SyntheticAgent, call: &AgentRequest, request_id: &str, state: Value) {
-        let frame = response(&call.id, call.call.tool().as_str(), request_id, state);
+        let frame = response(&call.id, call.call.method(), request_id, state);
         agent.read_reply(&frame);
     }
 
@@ -846,7 +852,12 @@ mod tests {
     fn action_of(call: &AgentRequest) -> Action {
         match &call.call {
             AgentCall::Action(action) => action.clone(),
-            AgentCall::RequestStatus(_) => panic!("a proposal is an action"),
+            AgentCall::RequestStatus(_)
+            | AgentCall::Hello(_)
+            | AgentCall::Prove(_)
+            | AgentCall::Cancel(_) => {
+                panic!("a proposal is an action")
+            }
         }
     }
 
@@ -884,14 +895,14 @@ mod tests {
 
         // B: the delete of the event Fabric did not make, blocked.
         let b = proposed(&mut agent);
-        assert_eq!(b.call.tool().as_str(), "fabric_calendar_propose_delete");
+        assert_eq!(b.call.method(), "fabric_calendar_propose_delete");
         assert_eq!(params(&b)["event"]["event_id"], FOREIGN_EVENT_ID);
         assert_eq!(params(&b)["event"]["revision"], "1");
         answer(&mut agent, &b, "request-b", blocked());
 
         // C: A's event half an hour later.
         let c = proposed(&mut agent);
-        assert_eq!(c.call.tool().as_str(), "fabric_calendar_propose_update");
+        assert_eq!(c.call.method(), "fabric_calendar_propose_update");
         assert_eq!(params(&c)["event"]["event_id"], RESERVED);
         assert_eq!(params(&c)["event"]["revision"], "1");
         assert_eq!(params(&c)["changes"]["title"], Value::Null);
@@ -909,7 +920,7 @@ mod tests {
 
         // D: A's event deleted at revision 2.
         let d = proposed(&mut agent);
-        assert_eq!(d.call.tool().as_str(), "fabric_calendar_propose_delete");
+        assert_eq!(d.call.method(), "fabric_calendar_propose_delete");
         assert_eq!(params(&d)["event"]["event_id"], RESERVED);
         assert_eq!(params(&d)["event"]["revision"], "2");
         answer(&mut agent, &d, "request-d", pending());
@@ -1019,10 +1030,7 @@ mod tests {
         assert_eq!(agent.next_due_ms(), Some(NOW_MS + PACE_MS));
 
         let second = proposed(&mut agent);
-        assert_eq!(
-            second.call.tool().as_str(),
-            "fabric_calendar_propose_create"
-        );
+        assert_eq!(second.call.method(), "fabric_calendar_propose_create");
         answer(&mut agent, &second, "request-2", state("undecided"));
         assert_eq!(agent.proposals, PROPOSALS_PER_RUN);
         assert_eq!(agent.next_due_ms(), None);

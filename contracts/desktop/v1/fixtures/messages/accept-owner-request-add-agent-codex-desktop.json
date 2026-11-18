@@ -1,0 +1,19 @@
+{
+  "description": "add_agent adds a waiting agent for Codex Desktop.",
+  "schema": "owner-channel.schema.json#/$defs/owner_request",
+  "value": {
+    "protocol": "fabric-desktop/1",
+    "id": "command-80",
+    "method": "add_agent",
+    "params": {
+      "registered_name": "Codex Desktop",
+      "client": "codex_desktop"
+    }
+  },
+  "expect": {
+    "verdict": "accept",
+    "canonical": "{\"id\":\"command-80\",\"method\":\"add_agent\",\"params\":{\"client\":\"codex_desktop\",\"registered_name\":\"Codex Desktop\"},\"protocol\":\"fabric-desktop/1\"}",
+    "command_digest": "sha256:8bb05719df9467f03ea6e2213cbdb03927ced40dc8c7a29da47a83c7f0c14f4f",
+    "action_digest": null
+  }
+}

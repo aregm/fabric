@@ -33,6 +33,10 @@ FRAME_ENTRIES = {
 }
 OWNER_REQUEST = "owner-channel.schema.json#/$defs/owner_request"
 AGENT_REQUEST = "agent-channel.schema.json#/$defs/agent_request"
+# The agent channel's methods that are not tools (README section 8).
+HANDSHAKE_METHODS = {"agent_hello", "agent_prove"}
+# Every method of the agent channel that is not a tool: the handshake and the cancel message.
+NON_TOOL_METHODS = HANDSHAKE_METHODS | {"agent_cancel"}
 
 
 class Refused(Exception):
@@ -152,6 +156,151 @@ def digest(domain, value):
     return "sha256:" + sha256_hex(PROTOCOL + "\n" + domain + "\n" + canonical(value))
 
 
+# ---- Ed25519 (RFC 8032, section 5.1), for the handshake fixtures only ----
+#
+# Plain and slow, and not constant-time: it signs fixtures from known seeds, nothing secret.
+
+_P = 2**255 - 19
+_L = 2**252 + 27742317777372353535851937790883648493
+_D = -121665 * pow(121666, _P - 2, _P) % _P
+_SQRT_M1 = pow(2, (_P - 1) // 4, _P)
+
+
+def _point_add(a, b):
+    # Extended coordinates (X, Y, Z, T), RFC 8032 section 5.1.4.
+    x1, y1, z1, t1 = a
+    x2, y2, z2, t2 = b
+    pa = (y1 - x1) * (y2 - x2) % _P
+    pb = (y1 + x1) * (y2 + x2) % _P
+    pc = 2 * t1 * t2 * _D % _P
+    pd = 2 * z1 * z2 % _P
+    e, f, g, h = pb - pa, pd - pc, pd + pc, pb + pa
+    return (e * f % _P, g * h % _P, f * g % _P, e * h % _P)
+
+
+def _point_mul(scalar, point):
+    result = (0, 1, 1, 0)
+    while scalar > 0:
+        if scalar & 1:
+            result = _point_add(result, point)
+        point = _point_add(point, point)
+        scalar >>= 1
+    return result
+
+
+def _point_equal(a, b):
+    x1, y1, z1, _ = a
+    x2, y2, z2, _ = b
+    return (x1 * z2 - x2 * z1) % _P == 0 and (y1 * z2 - y2 * z1) % _P == 0
+
+
+def _recover_x(y, sign):
+    if y >= _P:
+        return None
+    x2 = (y * y - 1) * pow(_D * y * y + 1, _P - 2, _P) % _P
+    if x2 == 0:
+        return None if sign else 0
+    x = pow(x2, (_P + 3) // 8, _P)
+    if (x * x - x2) % _P != 0:
+        x = x * _SQRT_M1 % _P
+    if (x * x - x2) % _P != 0:
+        return None
+    if (x & 1) != sign:
+        x = _P - x
+    return x
+
+
+_GY = 4 * pow(5, _P - 2, _P) % _P
+_GX = _recover_x(_GY, 0)
+_G = (_GX, _GY, 1, _GX * _GY % _P)
+
+
+def _compress(point):
+    x, y, z, _ = point
+    zinv = pow(z, _P - 2, _P)
+    x, y = x * zinv % _P, y * zinv % _P
+    return int.to_bytes(y | ((x & 1) << 255), 32, "little")
+
+
+def _decompress(data):
+    if len(data) != 32:
+        return None
+    y = int.from_bytes(data, "little")
+    sign = y >> 255
+    y &= (1 << 255) - 1
+    x = _recover_x(y, sign)
+    if x is None:
+        return None
+    return (x, y, 1, x * y % _P)
+
+
+def _sha512_int(data):
+    return int.from_bytes(hashlib.sha512(data).digest(), "little")
+
+
+def _expand_seed(seed):
+    h = hashlib.sha512(seed).digest()
+    a = int.from_bytes(h[:32], "little")
+    a &= (1 << 254) - 8
+    a |= 1 << 254
+    return a, h[32:]
+
+
+def ed25519_public_key(seed):
+    a, _ = _expand_seed(seed)
+    return _compress(_point_mul(a, _G))
+
+
+def ed25519_sign(seed, message):
+    a, prefix = _expand_seed(seed)
+    public = _compress(_point_mul(a, _G))
+    r = _sha512_int(prefix + message) % _L
+    big_r = _compress(_point_mul(r, _G))
+    k = _sha512_int(big_r + public + message) % _L
+    return big_r + int.to_bytes((r + k * a) % _L, 32, "little")
+
+
+def ed25519_verify(public, message, signature):
+    if len(public) != 32 or len(signature) != 64:
+        return False
+    a = _decompress(public)
+    big_r = _decompress(signature[:32])
+    if a is None or big_r is None:
+        return False
+    s = int.from_bytes(signature[32:], "little")
+    if s >= _L:
+        return False
+    k = _sha512_int(signature[:32] + public + message) % _L
+    return _point_equal(_point_mul(s, _G), _point_add(big_r, _point_mul(k, a)))
+
+
+# ---- The agent handshake and the pairing code (README section 8) ----
+
+
+def handshake_text(schema_version, enrollment_id, public_key, broker_nonce):
+    subject = {
+        "broker_nonce": broker_nonce,
+        "enrollment_id": enrollment_id,
+        "public_key": public_key,
+        "schema_version": schema_version,
+    }
+    return PROTOCOL + "\nagent_handshake\n" + canonical(subject)
+
+
+def pairing_code(public_key):
+    code = sha256_hex(PROTOCOL + "\nagent_key\n" + public_key)[:12].upper()
+    return code[0:4] + "-" + code[4:8] + "-" + code[8:12]
+
+
+def handshake_values(entry):
+    """The public key, pairing code, text and signature a handshake fixture's seed gives."""
+    seed = bytes.fromhex(entry["seed"])
+    public_key = "ed25519:" + ed25519_public_key(seed).hex()
+    text = handshake_text(entry["schema_version"], entry["enrollment_id"], public_key, entry["broker_nonce"])
+    signature = ed25519_sign(seed, text.encode("utf-8")).hex()
+    return {"public_key": public_key, "pairing_code": pairing_code(public_key), "text": text, "signature": signature}
+
+
 # ---- The contract: schemas and data files ----
 
 
@@ -182,6 +331,7 @@ class Contract:
         self.owner_methods = {m["method"] for m in methods}
         self.commands = {m["method"] for m in methods if m["command"]}
         self.tools = {t["name"] for t in tools}
+        self.agent_methods = self.tools | NON_TOOL_METHODS
         self.actions = {t["name"] for t in tools if t["creates_request"]}
         self.initial_state = lifecycle["initial"]
         self.transitions = {(t["from"], t["to"]) for t in lifecycle["transitions"]}
@@ -264,7 +414,7 @@ class Contract:
         if is_frame and value.get("protocol") != PROTOCOL:
             return ("reject", "protocol", "unsupported_protocol")
         if not self.valid(entry, value):
-            names = self.owner_methods if entry == OWNER_REQUEST else self.tools if entry == AGENT_REQUEST else None
+            names = self.owner_methods if entry == OWNER_REQUEST else self.agent_methods if entry == AGENT_REQUEST else None
             method = value.get("method")
             known = isinstance(method, str) and names is not None and method in names
             return ("reject", "schema", "unknown_method" if names is not None and not known else "invalid_params")
@@ -350,6 +500,21 @@ def report(contract):
         if (first is None) != entry["valid"] or first != entry["first_invalid"]:
             problems.append("lifecycle %s" % entry["name"])
 
+    for entry in read("handshake.json"):
+        name = entry["name"]
+        code = pairing_code(entry["public_key"])
+        text = handshake_text(entry["schema_version"], entry["enrollment_id"], entry["public_key"], entry["broker_nonce"])
+        lines.append("handshake\t%s\t%s\t%s" % (name, code, sha256_hex(text)))
+        if code != entry["pairing_code"]:
+            problems.append("handshake %s: pairing code differs" % name)
+        if text != entry["text"]:
+            problems.append("handshake %s: text differs" % name)
+        public = bytes.fromhex(entry["public_key"][len("ed25519:"):])
+        if not ed25519_verify(public, text.encode("utf-8"), bytes.fromhex(entry["signature"])):
+            problems.append("handshake %s: the signature does not verify" % name)
+        if handshake_values(entry) != {k: entry[k] for k in ("public_key", "pairing_code", "text", "signature")}:
+            problems.append("handshake %s: the seed does not give the public key and the signature" % name)
+
     for name, path in contract.message_files():
         fixture = read_json(path)
         expect = fixture["expect"]
@@ -405,6 +570,12 @@ def bless(contract):
         entry["canonical"] = canonical(entry["subject"])
         entry["digest"] = digest(entry["domain"], entry["subject"])
     write_json(path, digests)
+
+    path = os.path.join(contract.fixtures, "handshake.json")
+    handshakes = read_json(path)
+    for entry in handshakes:
+        entry.update(handshake_values(entry))
+    write_json(path, handshakes)
 
     for name, path in contract.message_files():
         fixture = read_json(path)

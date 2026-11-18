@@ -1,0 +1,24 @@
+{
+  "description": "The agent channel is not listening, and there is no cause to name.",
+  "schema": "owner-channel.schema.json#/$defs/owner_notice",
+  "value": {
+    "protocol": "fabric-desktop/1",
+    "sequence": 1341,
+    "change": {
+      "kind": "health",
+      "health": {
+        "prover": "ready",
+        "prover_problem": null,
+        "store": "ready",
+        "agent_channel": "not_listening",
+        "agent_channel_problem": null
+      }
+    }
+  },
+  "expect": {
+    "verdict": "accept",
+    "canonical": "{\"change\":{\"health\":{\"agent_channel\":\"not_listening\",\"agent_channel_problem\":null,\"prover\":\"ready\",\"prover_problem\":null,\"store\":\"ready\"},\"kind\":\"health\"},\"protocol\":\"fabric-desktop/1\",\"sequence\":1341}",
+    "command_digest": null,
+    "action_digest": null
+  }
+}

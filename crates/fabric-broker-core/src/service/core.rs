@@ -9,7 +9,7 @@ use std::collections::HashMap;
 use std::convert::Infallible;
 
 use fabric_desktop_contracts::owner::{
-    Change, Health, OwnerNotice, ProofPurpose, ProverProblem, StoreHealth,
+    AgentChannelHealth, Change, Health, OwnerNotice, ProofPurpose, ProverProblem, StoreHealth,
 };
 use fabric_desktop_contracts::scalar::{Digest, Id};
 use fabric_storage::{
@@ -196,6 +196,9 @@ impl Core {
             prover: self.prover_health.health(),
             prover_problem: self.prover_health.problem(),
             store: StoreHealth::Ready,
+            // This build has no agent channel listener.
+            agent_channel: AgentChannelHealth::NotListening,
+            agent_channel_problem: None,
         }
     }
 

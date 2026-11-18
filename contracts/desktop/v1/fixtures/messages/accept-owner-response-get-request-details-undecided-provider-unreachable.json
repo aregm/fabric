@@ -1,0 +1,43 @@
+{
+  "description": "Details of an undecided request: the calendar could not be reached to look at the event.",
+  "schema": "owner-channel.schema.json#/$defs/owner_response",
+  "value": {
+    "protocol": "fabric-desktop/1",
+    "id": "details-30",
+    "method": "get_request_details",
+    "result": {
+      "request": {
+        "request_id": "request-30",
+        "revision": 3,
+        "agent_id": "agent-claude-desktop",
+        "tool": "fabric_calendar_propose_response",
+        "account_id": "acct-1",
+        "received_at": "2026-11-20T17:00:00.000Z",
+        "updated_at": "2026-11-20T17:00:30.000Z",
+        "request_digest": "sha256:9911dcca0cc270f88cbd3b82afc1ffe5c0dc4f41b2c3efc9398967d0c6740a56",
+        "status": {
+          "state": "undecided"
+        }
+      },
+      "redaction": "redacted",
+      "private": null,
+      "card": null,
+      "approval": null,
+      "proof_ids": [],
+      "authorization": null,
+      "attempts": [],
+      "provider_event": null,
+      "undecided_reason": "provider_unreachable",
+      "owner_resolution_reason": null,
+      "notification": null,
+      "system_proofs": [],
+      "releases": []
+    }
+  },
+  "expect": {
+    "verdict": "accept",
+    "canonical": "{\"id\":\"details-30\",\"method\":\"get_request_details\",\"protocol\":\"fabric-desktop/1\",\"result\":{\"approval\":null,\"attempts\":[],\"authorization\":null,\"card\":null,\"notification\":null,\"owner_resolution_reason\":null,\"private\":null,\"proof_ids\":[],\"provider_event\":null,\"redaction\":\"redacted\",\"releases\":[],\"request\":{\"account_id\":\"acct-1\",\"agent_id\":\"agent-claude-desktop\",\"received_at\":\"2026-11-20T17:00:00.000Z\",\"request_digest\":\"sha256:9911dcca0cc270f88cbd3b82afc1ffe5c0dc4f41b2c3efc9398967d0c6740a56\",\"request_id\":\"request-30\",\"revision\":3,\"status\":{\"state\":\"undecided\"},\"tool\":\"fabric_calendar_propose_response\",\"updated_at\":\"2026-11-20T17:00:30.000Z\"},\"system_proofs\":[],\"undecided_reason\":\"provider_unreachable\"}}",
+    "command_digest": null,
+    "action_digest": null
+  }
+}

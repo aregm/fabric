@@ -1,6 +1,6 @@
 {
   "description": "The versions this directory defines. `schema_version` rises by one with every change to a schema, a data file or a rule of the README; peers must report the same value in hello.",
   "protocol": "fabric-desktop/1",
-  "schema_version": 2,
+  "schema_version": 3,
   "authorization_profile": "fabric-broker-authorization/1"
 }

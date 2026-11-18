@@ -1,0 +1,19 @@
+{
+  "description": "add_agent adds a waiting agent for Claude Desktop.",
+  "schema": "owner-channel.schema.json#/$defs/owner_request",
+  "value": {
+    "protocol": "fabric-desktop/1",
+    "id": "command-80",
+    "method": "add_agent",
+    "params": {
+      "registered_name": "Claude Desktop",
+      "client": "claude_desktop"
+    }
+  },
+  "expect": {
+    "verdict": "accept",
+    "canonical": "{\"id\":\"command-80\",\"method\":\"add_agent\",\"params\":{\"client\":\"claude_desktop\",\"registered_name\":\"Claude Desktop\"},\"protocol\":\"fabric-desktop/1\"}",
+    "command_digest": "sha256:7ee6ecefaba417efd0eb94d3441cf81f5425dac06b41a13df7d198a8a9ec521b",
+    "action_digest": null
+  }
+}

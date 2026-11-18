@@ -1,0 +1,42 @@
+{
+  "description": "A grant whose origin is empty.",
+  "schema": "owner-channel.schema.json#/$defs/grant",
+  "value": {
+    "grant_id": "grant-4",
+    "revision": 1,
+    "agent_id": "agent-claude-desktop",
+    "purpose": "Add a planning block to the drafts calendar.",
+    "tools": [
+      "fabric_calendar_propose_create"
+    ],
+    "scope": {
+      "calendars": [
+        {
+          "account_id": "acct-1",
+          "calendar_id": "cal-drafts"
+        }
+      ],
+      "window": null,
+      "fields": null,
+      "recipients": null,
+      "send_updates": null
+    },
+    "term": {
+      "kind": "one_request",
+      "action_digest": "sha256:893536beccfafc5e41cb8a289ea49ebe680a4a5d5074a0f4987c5cc6d2547018"
+    },
+    "origin": {},
+    "policy": {
+      "profile_id": "careful",
+      "version": 1
+    },
+    "revocation_epoch": 0,
+    "created_at": "2026-11-20T15:20:00.000Z",
+    "ended": null
+  },
+  "expect": {
+    "verdict": "reject",
+    "layer": "schema",
+    "error": "invalid_params"
+  }
+}

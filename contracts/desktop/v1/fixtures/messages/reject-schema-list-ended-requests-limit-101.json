@@ -1,0 +1,18 @@
+{
+  "description": "list_ended_requests asking for more than 100 requests.",
+  "schema": "owner-channel.schema.json#/$defs/owner_request",
+  "value": {
+    "protocol": "fabric-desktop/1",
+    "id": "ended-1",
+    "method": "list_ended_requests",
+    "params": {
+      "before": null,
+      "limit": 101
+    }
+  },
+  "expect": {
+    "verdict": "reject",
+    "layer": "schema",
+    "error": "invalid_params"
+  }
+}

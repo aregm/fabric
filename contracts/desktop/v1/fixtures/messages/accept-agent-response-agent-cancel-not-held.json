@@ -1,0 +1,18 @@
+{
+  "description": "agent_cancel: no call with that id was waiting.",
+  "schema": "agent-channel.schema.json#/$defs/agent_response",
+  "value": {
+    "protocol": "fabric-desktop/1",
+    "id": "cancel-2",
+    "method": "agent_cancel",
+    "result": {
+      "held": false
+    }
+  },
+  "expect": {
+    "verdict": "accept",
+    "canonical": "{\"id\":\"cancel-2\",\"method\":\"agent_cancel\",\"protocol\":\"fabric-desktop/1\",\"result\":{\"held\":false}}",
+    "command_digest": null,
+    "action_digest": null
+  }
+}

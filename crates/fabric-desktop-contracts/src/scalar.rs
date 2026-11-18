@@ -139,6 +139,32 @@ string_scalar!(
     is_digest
 );
 string_scalar!(
+    /// `common#/$defs/public_key`: `^ed25519:[0-9a-f]{64}$`, an agent's Ed25519 public key.
+    PublicKey,
+    "common.schema.json#/$defs/public_key",
+    is_public_key
+);
+string_scalar!(
+    /// `common#/$defs/nonce`: `^[0-9a-f]{64}$`, 256 random bits the broker makes for one
+    /// connection.
+    Nonce,
+    "common.schema.json#/$defs/nonce",
+    is_nonce
+);
+string_scalar!(
+    /// `common#/$defs/signature`: `^[0-9a-f]{128}$`, an Ed25519 signature.
+    Signature,
+    "common.schema.json#/$defs/signature",
+    is_signature
+);
+string_scalar!(
+    /// `common#/$defs/pairing_code`: `^[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}$`, the code of a
+    /// public key as the owner reads it (README section 8).
+    PairingCode,
+    "common.schema.json#/$defs/pairing_code",
+    is_pairing_code
+);
+string_scalar!(
     /// `common#/$defs/name_token`: `^[a-z][a-z0-9_]{0,63}$`, a rule or capability name.
     NameToken,
     "common.schema.json#/$defs/name_token",
@@ -305,12 +331,44 @@ pub fn is_timestamp(s: &str) -> bool {
 
 /// `^sha256:[0-9a-f]{64}$`
 pub fn is_digest(s: &str) -> bool {
-    s.strip_prefix("sha256:").is_some_and(|hex| {
-        hex.len() == 64
-            && hex
-                .bytes()
-                .all(|c| c.is_ascii_digit() || (b'a'..=b'f').contains(&c))
-    })
+    s.strip_prefix("sha256:")
+        .is_some_and(|hex| is_lower_hex(hex, 64))
+}
+
+/// Exactly `n` lowercase hexadecimal digits.
+fn is_lower_hex(s: &str, n: usize) -> bool {
+    s.len() == n
+        && s.bytes()
+            .all(|c| c.is_ascii_digit() || (b'a'..=b'f').contains(&c))
+}
+
+/// `^ed25519:[0-9a-f]{64}$`
+pub fn is_public_key(s: &str) -> bool {
+    s.strip_prefix("ed25519:")
+        .is_some_and(|hex| is_lower_hex(hex, 64))
+}
+
+/// `^[0-9a-f]{64}$`
+pub fn is_nonce(s: &str) -> bool {
+    is_lower_hex(s, 64)
+}
+
+/// `^[0-9a-f]{128}$`
+pub fn is_signature(s: &str) -> bool {
+    is_lower_hex(s, 128)
+}
+
+/// `^[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}$`
+pub fn is_pairing_code(s: &str) -> bool {
+    let b = s.as_bytes();
+    b.len() == 14
+        && b.iter().enumerate().all(|(i, &c)| {
+            if i == 4 || i == 9 {
+                c == b'-'
+            } else {
+                c.is_ascii_digit() || (b'A'..=b'F').contains(&c)
+            }
+        })
 }
 
 /// `^[a-z][a-z0-9_]{0,63}$`
@@ -421,6 +479,9 @@ pub type EventLocation = Text<0, 1024>;
 pub type EventDescription = Text<0, 8192>;
 /// A title as a read discloses it: at most 1024 code points, possibly empty (`event_view.title`).
 pub type ReadTitle = Text<0, 1024>;
+/// `common#/$defs/configuration_text`: 1 to 8192 code points that the owner copies into an
+/// agent client's configuration, rendered as plain text.
+pub type ConfigurationText = Text<1, 8192>;
 /// `common#/$defs/nullable_method` when not null: 1 to 100 code points.
 pub type MethodText = Text<1, 100>;
 

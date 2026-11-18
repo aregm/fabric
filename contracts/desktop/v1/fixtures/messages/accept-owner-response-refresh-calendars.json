@@ -1,0 +1,18 @@
+{
+  "description": "refresh_calendars answers with the commit; the list arrives later as changes of the account.",
+  "schema": "owner-channel.schema.json#/$defs/owner_response",
+  "value": {
+    "protocol": "fabric-desktop/1",
+    "id": "command-90",
+    "method": "refresh_calendars",
+    "result": {
+      "commit_sequence": 1349
+    }
+  },
+  "expect": {
+    "verdict": "accept",
+    "canonical": "{\"id\":\"command-90\",\"method\":\"refresh_calendars\",\"protocol\":\"fabric-desktop/1\",\"result\":{\"commit_sequence\":1349}}",
+    "command_digest": null,
+    "action_digest": null
+  }
+}

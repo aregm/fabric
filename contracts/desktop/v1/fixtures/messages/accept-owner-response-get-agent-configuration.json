@@ -1,0 +1,18 @@
+{
+  "description": "get_agent_configuration answers with the text for the client the owner named, here Claude Code.",
+  "schema": "owner-channel.schema.json#/$defs/owner_response",
+  "value": {
+    "protocol": "fabric-desktop/1",
+    "id": "config-1",
+    "method": "get_agent_configuration",
+    "result": {
+      "configuration": "Save this as .mcp.json in a folder of its own that you use only for calendar work. Claude Code asks once before it uses a server from .mcp.json. Do not add the entry for the user (--scope user), and do not put it into the Fabric repository or a folder above it.\n\n{\n  \"mcpServers\": {\n    \"fabric-calendar\": {\n      \"command\": \"/Applications/Fabric Calendar.app/Contents/MacOS/fabric-mcp-bridge\",\n      \"args\": [\"--enrollment\", \"agent-0123456789abcdef0123456789abcdef\"]\n    }\n  }\n}\n\nThe same entry can be added from that folder with:\nclaude mcp add --scope project fabric-calendar -- '/Applications/Fabric Calendar.app/Contents/MacOS/fabric-mcp-bridge' --enrollment agent-0123456789abcdef0123456789abcdef\n"
+    }
+  },
+  "expect": {
+    "verdict": "accept",
+    "canonical": "{\"id\":\"config-1\",\"method\":\"get_agent_configuration\",\"protocol\":\"fabric-desktop/1\",\"result\":{\"configuration\":\"Save this as .mcp.json in a folder of its own that you use only for calendar work. Claude Code asks once before it uses a server from .mcp.json. Do not add the entry for the user (--scope user), and do not put it into the Fabric repository or a folder above it.\\n\\n{\\n  \\\"mcpServers\\\": {\\n    \\\"fabric-calendar\\\": {\\n      \\\"command\\\": \\\"/Applications/Fabric Calendar.app/Contents/MacOS/fabric-mcp-bridge\\\",\\n      \\\"args\\\": [\\\"--enrollment\\\", \\\"agent-0123456789abcdef0123456789abcdef\\\"]\\n    }\\n  }\\n}\\n\\nThe same entry can be added from that folder with:\\nclaude mcp add --scope project fabric-calendar -- '/Applications/Fabric Calendar.app/Contents/MacOS/fabric-mcp-bridge' --enrollment agent-0123456789abcdef0123456789abcdef\\n\"}}",
+    "command_digest": null,
+    "action_digest": null
+  }
+}

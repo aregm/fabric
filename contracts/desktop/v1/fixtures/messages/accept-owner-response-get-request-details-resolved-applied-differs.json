@@ -1,0 +1,215 @@
+{
+  "description": "Full details of a moved event that the owner resolved as applied: Google applied the change but returned an end half an hour later than approved, so the broker handed it to the owner. before is the event when the request was written, after is the event as Google returned it, and owner_resolution_reason stays applied_differs.",
+  "schema": "owner-channel.schema.json#/$defs/owner_response",
+  "value": {
+    "protocol": "fabric-desktop/1",
+    "id": "details-35",
+    "method": "get_request_details",
+    "result": {
+      "request": {
+        "request_id": "request-35",
+        "revision": 12,
+        "agent_id": "agent-claude-desktop",
+        "tool": "fabric_calendar_propose_update",
+        "account_id": "acct-1",
+        "received_at": "2026-11-20T16:04:00.000Z",
+        "updated_at": "2026-11-20T16:20:00.000Z",
+        "request_digest": "sha256:0126e89a9089f4435814cb881464cd3a765e70b60de8b0f42259f4801e0633f1",
+        "status": {
+          "state": "resolved_as_applied"
+        }
+      },
+      "redaction": "full",
+      "private": {
+        "action": {
+          "tool": "fabric_calendar_propose_update",
+          "arguments": {
+            "account_id": "acct-1",
+            "calendar_id": "cal-primary",
+            "event": {
+              "event_id": "evt-7f3a9c",
+              "revision": "3181161784712000"
+            },
+            "changes": {
+              "title": null,
+              "start": {
+                "date_time": "2026-11-20T10:30:00-06:00",
+                "zone": "America/Chicago"
+              },
+              "end": {
+                "date_time": "2026-11-20T11:00:00-06:00",
+                "zone": "America/Chicago"
+              },
+              "description": null,
+              "location": null
+            },
+            "send_updates": "all",
+            "task": "Move the review."
+          }
+        },
+        "before": {
+          "event_id": "evt-7f3a9c",
+          "revision": "3181161784712000",
+          "calendar_id": "cal-primary",
+          "fabric_created": false,
+          "occurrence": null,
+          "time": {
+            "kind": "timed",
+            "start": {
+              "date_time": "2026-11-20T10:00:00-06:00",
+              "zone": "America/Chicago"
+            },
+            "end": {
+              "date_time": "2026-11-20T10:30:00-06:00",
+              "zone": "America/Chicago"
+            }
+          },
+          "title": "Design review",
+          "location": "Room 2",
+          "description": "",
+          "attendees": [
+            {
+              "email": "owner@example.com",
+              "response": "accepted"
+            },
+            {
+              "email": "ally@example.net",
+              "response": "needs_action"
+            }
+          ],
+          "organizer": "owner@example.com",
+          "own_response": "accepted"
+        },
+        "after": {
+          "event_id": "evt-7f3a9c",
+          "revision": "3181162001000000",
+          "calendar_id": "cal-primary",
+          "fabric_created": false,
+          "occurrence": null,
+          "time": {
+            "kind": "timed",
+            "start": {
+              "date_time": "2026-11-20T10:30:00-06:00",
+              "zone": "America/Chicago"
+            },
+            "end": {
+              "date_time": "2026-11-20T11:30:00-06:00",
+              "zone": "America/Chicago"
+            }
+          },
+          "title": "Design review",
+          "location": "Room 2",
+          "description": "",
+          "attendees": [
+            {
+              "email": "owner@example.com",
+              "response": "accepted"
+            },
+            {
+              "email": "ally@example.net",
+              "response": "needs_action"
+            }
+          ],
+          "organizer": "owner@example.com",
+          "own_response": "accepted"
+        },
+        "warnings": []
+      },
+      "card": {
+        "scope": {
+          "calendars": [
+            {
+              "account_id": "acct-1",
+              "calendar_id": "cal-primary"
+            }
+          ],
+          "window": null,
+          "fields": null,
+          "recipients": null,
+          "send_updates": null
+        },
+        "proposed_duration": {
+          "kind": "one_request"
+        },
+        "insufficiency": {
+          "rule": "owner_approval_required",
+          "explanation": "Creating in an existing calendar asks in the Careful profile.",
+          "proof_id": "proof-35-classification"
+        },
+        "expires_at": "2026-11-21T16:04:00.000Z"
+      },
+      "approval": {
+        "decision": "approve",
+        "command_id": "command-60",
+        "decided_at": "2026-11-20T16:04:50.000Z",
+        "approval_digest": "sha256:c68bbb19b1dc47e0d54ace6f051b24b481ed088298d607a7fccf5b257a5a87b5",
+        "scope": {
+          "calendars": [
+            {
+              "account_id": "acct-1",
+              "calendar_id": "cal-primary"
+            }
+          ],
+          "window": null,
+          "fields": null,
+          "recipients": null,
+          "send_updates": null
+        },
+        "duration": {
+          "kind": "one_request"
+        },
+        "effective_request_digest": "sha256:0126e89a9089f4435814cb881464cd3a765e70b60de8b0f42259f4801e0633f1",
+        "grant_id": "grant-8"
+      },
+      "proof_ids": [
+        "proof-35-classification",
+        "proof-35-permit-1",
+        "proof-35-permit-2"
+      ],
+      "authorization": {
+        "profile": "fabric-broker-authorization/1",
+        "authorization_id": "authz-35-2",
+        "request_id": "request-35",
+        "agent_id": "agent-claude-desktop",
+        "action_digest": "sha256:4a1ac4edd8a9d518f2c1406e814ebb82d7acb81ef2c1095458a62a3d0f5bce75",
+        "proof_id": "proof-35-permit-2",
+        "grant_id": "grant-8",
+        "issued_at": "2026-11-20T16:05:02.000Z",
+        "expires_at": "2026-11-20T16:06:02.000Z",
+        "lifetime_seconds": 60,
+        "consumed_at": "2026-11-20T16:05:02.350Z"
+      },
+      "attempts": [
+        {
+          "number": 1,
+          "proof_id": "proof-35-permit-1",
+          "started_at": "2026-11-20T16:04:51.000Z",
+          "finished_at": "2026-11-20T16:04:52.100Z",
+          "outcome": "transient_failure"
+        },
+        {
+          "number": 2,
+          "proof_id": "proof-35-permit-2",
+          "started_at": "2026-11-20T16:05:02.000Z",
+          "finished_at": "2026-11-20T16:05:03.100Z",
+          "outcome": "applied"
+        }
+      ],
+      "provider_event": {
+        "event_id": "evt-7f3a9c",
+        "revision": "3181162001000000"
+      },
+      "undecided_reason": null,
+      "owner_resolution_reason": "applied_differs",
+      "notification": "sent",
+      "system_proofs": [],
+      "releases": []
+    }
+  },
+  "expect": {
+    "verdict": "accept",
+    "canonical": "{\"id\":\"details-35\",\"method\":\"get_request_details\",\"protocol\":\"fabric-desktop/1\",\"result\":{\"approval\":{\"approval_digest\":\"sha256:c68bbb19b1dc47e0d54ace6f051b24b481ed088298d607a7fccf5b257a5a87b5\",\"command_id\":\"command-60\",\"decided_at\":\"2026-11-20T16:04:50.000Z\",\"decision\":\"approve\",\"duration\":{\"kind\":\"one_request\"},\"effective_request_digest\":\"sha256:0126e89a9089f4435814cb881464cd3a765e70b60de8b0f42259f4801e0633f1\",\"grant_id\":\"grant-8\",\"scope\":{\"calendars\":[{\"account_id\":\"acct-1\",\"calendar_id\":\"cal-primary\"}],\"fields\":null,\"recipients\":null,\"send_updates\":null,\"window\":null}},\"attempts\":[{\"finished_at\":\"2026-11-20T16:04:52.100Z\",\"number\":1,\"outcome\":\"transient_failure\",\"proof_id\":\"proof-35-permit-1\",\"started_at\":\"2026-11-20T16:04:51.000Z\"},{\"finished_at\":\"2026-11-20T16:05:03.100Z\",\"number\":2,\"outcome\":\"applied\",\"proof_id\":\"proof-35-permit-2\",\"started_at\":\"2026-11-20T16:05:02.000Z\"}],\"authorization\":{\"action_digest\":\"sha256:4a1ac4edd8a9d518f2c1406e814ebb82d7acb81ef2c1095458a62a3d0f5bce75\",\"agent_id\":\"agent-claude-desktop\",\"authorization_id\":\"authz-35-2\",\"consumed_at\":\"2026-11-20T16:05:02.350Z\",\"expires_at\":\"2026-11-20T16:06:02.000Z\",\"grant_id\":\"grant-8\",\"issued_at\":\"2026-11-20T16:05:02.000Z\",\"lifetime_seconds\":60,\"profile\":\"fabric-broker-authorization/1\",\"proof_id\":\"proof-35-permit-2\",\"request_id\":\"request-35\"},\"card\":{\"expires_at\":\"2026-11-21T16:04:00.000Z\",\"insufficiency\":{\"explanation\":\"Creating in an existing calendar asks in the Careful profile.\",\"proof_id\":\"proof-35-classification\",\"rule\":\"owner_approval_required\"},\"proposed_duration\":{\"kind\":\"one_request\"},\"scope\":{\"calendars\":[{\"account_id\":\"acct-1\",\"calendar_id\":\"cal-primary\"}],\"fields\":null,\"recipients\":null,\"send_updates\":null,\"window\":null}},\"notification\":\"sent\",\"owner_resolution_reason\":\"applied_differs\",\"private\":{\"action\":{\"arguments\":{\"account_id\":\"acct-1\",\"calendar_id\":\"cal-primary\",\"changes\":{\"description\":null,\"end\":{\"date_time\":\"2026-11-20T11:00:00-06:00\",\"zone\":\"America/Chicago\"},\"location\":null,\"start\":{\"date_time\":\"2026-11-20T10:30:00-06:00\",\"zone\":\"America/Chicago\"},\"title\":null},\"event\":{\"event_id\":\"evt-7f3a9c\",\"revision\":\"3181161784712000\"},\"send_updates\":\"all\",\"task\":\"Move the review.\"},\"tool\":\"fabric_calendar_propose_update\"},\"after\":{\"attendees\":[{\"email\":\"owner@example.com\",\"response\":\"accepted\"},{\"email\":\"ally@example.net\",\"response\":\"needs_action\"}],\"calendar_id\":\"cal-primary\",\"description\":\"\",\"event_id\":\"evt-7f3a9c\",\"fabric_created\":false,\"location\":\"Room 2\",\"occurrence\":null,\"organizer\":\"owner@example.com\",\"own_response\":\"accepted\",\"revision\":\"3181162001000000\",\"time\":{\"end\":{\"date_time\":\"2026-11-20T11:30:00-06:00\",\"zone\":\"America/Chicago\"},\"kind\":\"timed\",\"start\":{\"date_time\":\"2026-11-20T10:30:00-06:00\",\"zone\":\"America/Chicago\"}},\"title\":\"Design review\"},\"before\":{\"attendees\":[{\"email\":\"owner@example.com\",\"response\":\"accepted\"},{\"email\":\"ally@example.net\",\"response\":\"needs_action\"}],\"calendar_id\":\"cal-primary\",\"description\":\"\",\"event_id\":\"evt-7f3a9c\",\"fabric_created\":false,\"location\":\"Room 2\",\"occurrence\":null,\"organizer\":\"owner@example.com\",\"own_response\":\"accepted\",\"revision\":\"3181161784712000\",\"time\":{\"end\":{\"date_time\":\"2026-11-20T10:30:00-06:00\",\"zone\":\"America/Chicago\"},\"kind\":\"timed\",\"start\":{\"date_time\":\"2026-11-20T10:00:00-06:00\",\"zone\":\"America/Chicago\"}},\"title\":\"Design review\"},\"warnings\":[]},\"proof_ids\":[\"proof-35-classification\",\"proof-35-permit-1\",\"proof-35-permit-2\"],\"provider_event\":{\"event_id\":\"evt-7f3a9c\",\"revision\":\"3181162001000000\"},\"redaction\":\"full\",\"releases\":[],\"request\":{\"account_id\":\"acct-1\",\"agent_id\":\"agent-claude-desktop\",\"received_at\":\"2026-11-20T16:04:00.000Z\",\"request_digest\":\"sha256:0126e89a9089f4435814cb881464cd3a765e70b60de8b0f42259f4801e0633f1\",\"request_id\":\"request-35\",\"revision\":12,\"status\":{\"state\":\"resolved_as_applied\"},\"tool\":\"fabric_calendar_propose_update\",\"updated_at\":\"2026-11-20T16:20:00.000Z\"},\"system_proofs\":[],\"undecided_reason\":null}}",
+    "command_digest": null,
+    "action_digest": null
+  }
+}

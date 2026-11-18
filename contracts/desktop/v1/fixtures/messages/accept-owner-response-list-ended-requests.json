@@ -1,0 +1,59 @@
+{
+  "description": "list_ended_requests answers with three ended requests, newest first, and more to come.",
+  "schema": "owner-channel.schema.json#/$defs/owner_response",
+  "value": {
+    "protocol": "fabric-desktop/1",
+    "id": "ended-1",
+    "method": "list_ended_requests",
+    "result": {
+      "requests": [
+        {
+          "request_id": "request-34",
+          "revision": 12,
+          "agent_id": "agent-claude-desktop",
+          "tool": "fabric_calendar_propose_delete",
+          "account_id": "acct-1",
+          "received_at": "2026-11-20T17:30:00.000Z",
+          "updated_at": "2026-11-20T18:02:00.000Z",
+          "request_digest": "sha256:8ed222ccddc084575d47a25c48d8d093ea359a9459918246c1682a88be7ed324",
+          "status": {
+            "state": "resolved_as_applied"
+          }
+        },
+        {
+          "request_id": "request-17",
+          "revision": 4,
+          "agent_id": "agent-claude-desktop",
+          "tool": "fabric_calendar_propose_invitation",
+          "account_id": "acct-1",
+          "received_at": "2026-11-20T15:00:00.000Z",
+          "updated_at": "2026-11-21T15:00:00.000Z",
+          "request_digest": "sha256:9448c124de44cd137bb4a3c63df81e9a3a0ae40af06db3642c413320c1d76053",
+          "status": {
+            "state": "expired"
+          }
+        },
+        {
+          "request_id": "request-33",
+          "revision": 9,
+          "agent_id": "agent-claude-code",
+          "tool": "fabric_calendar_propose_create",
+          "account_id": "acct-1",
+          "received_at": "2026-11-20T16:40:00.000Z",
+          "updated_at": "2026-11-20T16:40:03.410Z",
+          "request_digest": "sha256:5b0f3c6e1d2a4b8c9e7f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5",
+          "status": {
+            "state": "reconciled"
+          }
+        }
+      ],
+      "more": true
+    }
+  },
+  "expect": {
+    "verdict": "accept",
+    "canonical": "{\"id\":\"ended-1\",\"method\":\"list_ended_requests\",\"protocol\":\"fabric-desktop/1\",\"result\":{\"more\":true,\"requests\":[{\"account_id\":\"acct-1\",\"agent_id\":\"agent-claude-desktop\",\"received_at\":\"2026-11-20T17:30:00.000Z\",\"request_digest\":\"sha256:8ed222ccddc084575d47a25c48d8d093ea359a9459918246c1682a88be7ed324\",\"request_id\":\"request-34\",\"revision\":12,\"status\":{\"state\":\"resolved_as_applied\"},\"tool\":\"fabric_calendar_propose_delete\",\"updated_at\":\"2026-11-20T18:02:00.000Z\"},{\"account_id\":\"acct-1\",\"agent_id\":\"agent-claude-desktop\",\"received_at\":\"2026-11-20T15:00:00.000Z\",\"request_digest\":\"sha256:9448c124de44cd137bb4a3c63df81e9a3a0ae40af06db3642c413320c1d76053\",\"request_id\":\"request-17\",\"revision\":4,\"status\":{\"state\":\"expired\"},\"tool\":\"fabric_calendar_propose_invitation\",\"updated_at\":\"2026-11-21T15:00:00.000Z\"},{\"account_id\":\"acct-1\",\"agent_id\":\"agent-claude-code\",\"received_at\":\"2026-11-20T16:40:00.000Z\",\"request_digest\":\"sha256:5b0f3c6e1d2a4b8c9e7f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5\",\"request_id\":\"request-33\",\"revision\":9,\"status\":{\"state\":\"reconciled\"},\"tool\":\"fabric_calendar_propose_create\",\"updated_at\":\"2026-11-20T16:40:03.410Z\"}]}}",
+    "command_digest": null,
+    "action_digest": null
+  }
+}

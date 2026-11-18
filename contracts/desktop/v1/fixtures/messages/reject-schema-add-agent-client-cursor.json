@@ -1,0 +1,18 @@
+{
+  "description": "add_agent for a kind of client the contract does not name.",
+  "schema": "owner-channel.schema.json#/$defs/owner_request",
+  "value": {
+    "protocol": "fabric-desktop/1",
+    "id": "command-80",
+    "method": "add_agent",
+    "params": {
+      "registered_name": "Cursor",
+      "client": "cursor"
+    }
+  },
+  "expect": {
+    "verdict": "reject",
+    "layer": "schema",
+    "error": "invalid_params"
+  }
+}

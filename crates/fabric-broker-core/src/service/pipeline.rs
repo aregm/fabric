@@ -330,9 +330,13 @@ fn grant_valid_now(
     let Some(grant) = r.grant(grant_id)? else {
         return Ok(false);
     };
-    let origin_open = r
-        .request(&grant.origin.request_id)?
-        .is_some_and(|o| !o.row.request.status.state().is_terminal());
+    // A grant with no origin request (an enrollment approval's) has no open origin.
+    let origin_open = match grant.origin.request_id() {
+        Some(origin) => r
+            .request(origin)?
+            .is_some_and(|o| !o.row.request.status.state().is_terminal()),
+        None => false,
+    };
     Ok(grant_is_valid(
         &grant,
         activity.sessions.get(&grant.agent_id),

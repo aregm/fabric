@@ -1,0 +1,18 @@
+{
+  "description": "agent_cancel with a member reason, which it does not take.",
+  "schema": "agent-channel.schema.json#/$defs/agent_request",
+  "value": {
+    "protocol": "fabric-desktop/1",
+    "id": "cancel-5",
+    "method": "agent_cancel",
+    "params": {
+      "call_id": "call-20",
+      "reason": "timed out"
+    }
+  },
+  "expect": {
+    "verdict": "reject",
+    "layer": "schema",
+    "error": "invalid_params"
+  }
+}

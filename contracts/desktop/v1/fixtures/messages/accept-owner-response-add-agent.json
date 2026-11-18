@@ -1,0 +1,37 @@
+{
+  "description": "add_agent answers with the waiting agent: it has proved no key yet.",
+  "schema": "owner-channel.schema.json#/$defs/owner_response",
+  "value": {
+    "protocol": "fabric-desktop/1",
+    "id": "command-80",
+    "method": "add_agent",
+    "result": {
+      "commit_sequence": 1310,
+      "agent": {
+        "agent_id": "agent-0123456789abcdef0123456789abcdef",
+        "revision": 1,
+        "registered_name": "Claude Code (calendar folder)",
+        "destination": {
+          "kind": "cloud",
+          "processor": "Anthropic"
+        },
+        "client": "claude_code",
+        "enrollment": "pending",
+        "pairing_code": null,
+        "added_at": "2026-11-20T16:00:00.000Z",
+        "key_proven_at": null,
+        "approved_at": null,
+        "removed_at": null,
+        "paused": false,
+        "session": null,
+        "last_tool_call_at": null
+      }
+    }
+  },
+  "expect": {
+    "verdict": "accept",
+    "canonical": "{\"id\":\"command-80\",\"method\":\"add_agent\",\"protocol\":\"fabric-desktop/1\",\"result\":{\"agent\":{\"added_at\":\"2026-11-20T16:00:00.000Z\",\"agent_id\":\"agent-0123456789abcdef0123456789abcdef\",\"approved_at\":null,\"client\":\"claude_code\",\"destination\":{\"kind\":\"cloud\",\"processor\":\"Anthropic\"},\"enrollment\":\"pending\",\"key_proven_at\":null,\"last_tool_call_at\":null,\"pairing_code\":null,\"paused\":false,\"registered_name\":\"Claude Code (calendar folder)\",\"removed_at\":null,\"revision\":1,\"session\":null},\"commit_sequence\":1310}}",
+    "command_digest": null,
+    "action_digest": null
+  }
+}

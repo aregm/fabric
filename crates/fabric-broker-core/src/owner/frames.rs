@@ -30,6 +30,10 @@ pub(crate) const TOO_LONG_MESSAGE: &str = "The answer would be longer than 1,048
 /// The answer to `connect_google` in this build (design 5.3, CCR-1).
 pub(crate) const CONNECT_GOOGLE_MESSAGE: &str =
     "This build cannot connect a Google account yet; CD-W05 adds it.";
+/// The answer to a method or change that contract schema version 3 added and this build cannot
+/// run yet.
+pub(crate) const NOT_IN_THIS_BUILD_MESSAGE: &str =
+    "This build cannot do this yet; it came with contract schema version 3.";
 /// The answer to a frame whose write failed: the run stops (design 5.2, D7).
 pub(crate) const HALT_MESSAGE: &str = "The broker could not use its store, so nothing was \
      changed by this frame; the broker stops and checks the store when it starts again.";

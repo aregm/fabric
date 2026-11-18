@@ -91,7 +91,8 @@ fn no_prover_ends_every_request_undecided_with_no_report() {
     // A run with no prover says so: unavailable, not configured.
     assert_eq!(
         h.snapshot()["health"],
-        json!({"prover": "unavailable", "prover_problem": "not_configured", "store": "ready"})
+        json!({"prover": "unavailable", "prover_problem": "not_configured", "store": "ready",
+            "agent_channel": "not_listening", "agent_channel_problem": null})
     );
     h.kill();
     for request_id in &requests {
@@ -752,7 +753,8 @@ fn a_restart_keeps_the_cause_and_restates_starting() {
     assert!(output.halt.is_none());
     assert_eq!(
         h.snapshot()["health"],
-        json!({"prover": "starting", "prover_problem": null, "store": "ready"})
+        json!({"prover": "starting", "prover_problem": null, "store": "ready",
+            "agent_channel": "not_listening", "agent_channel_problem": null})
     );
     assert_undecided(&mut h, &ended, "deadline_passed", json!("out_of_time"));
     let again = job_for(&output, &proving, ProofPurpose::Classification);

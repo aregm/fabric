@@ -1,0 +1,17 @@
+{
+  "description": "An owner request with the agent channel's method agent_cancel.",
+  "schema": "owner-channel.schema.json#/$defs/owner_request",
+  "value": {
+    "protocol": "fabric-desktop/1",
+    "id": "command-93",
+    "method": "agent_cancel",
+    "params": {
+      "call_id": "call-20"
+    }
+  },
+  "expect": {
+    "verdict": "reject",
+    "layer": "schema",
+    "error": "unknown_method"
+  }
+}

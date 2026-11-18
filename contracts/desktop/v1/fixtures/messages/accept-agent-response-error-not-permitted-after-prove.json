@@ -1,0 +1,23 @@
+{
+  "description": "not_permitted after a proof: an unknown id, a removed agent, another key, or a bad signature.",
+  "schema": "agent-channel.schema.json#/$defs/agent_response",
+  "value": {
+    "protocol": "fabric-desktop/1",
+    "id": "prove-0a1b2c3d4e5f60718293a4b5c6d7e8f9",
+    "method": "agent_prove",
+    "error": {
+      "code": "not_permitted",
+      "message": "This agent is not enrolled.",
+      "retryable": false,
+      "recovery": "none",
+      "correlation_id": "corr-0042",
+      "detail": null
+    }
+  },
+  "expect": {
+    "verdict": "accept",
+    "canonical": "{\"error\":{\"code\":\"not_permitted\",\"correlation_id\":\"corr-0042\",\"detail\":null,\"message\":\"This agent is not enrolled.\",\"recovery\":\"none\",\"retryable\":false},\"id\":\"prove-0a1b2c3d4e5f60718293a4b5c6d7e8f9\",\"method\":\"agent_prove\",\"protocol\":\"fabric-desktop/1\"}",
+    "command_digest": null,
+    "action_digest": null
+  }
+}
