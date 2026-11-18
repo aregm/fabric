@@ -174,13 +174,19 @@ impl Core {
     /// every other call is activity, then a status read or a proposal.
     fn call(&mut self, connection: ConnectionId, request: AgentRequest) -> Result<(), StoreFault> {
         let Some(tool) = request.call.tool() else {
-            // the handshake is not implemented in this build (contract schema version 3)
+            // the handshake is not implemented in this build (contract schema version 3), and
+            // the cancel message is not implemented in this build (contract schema version 3)
+            let message = if matches!(request.call, AgentCall::Cancel(_)) {
+                "This broker does not take the cancel message."
+            } else {
+                "This broker does not take the agent handshake."
+            };
             self.outbox.agent.push(error_reply(
                 connection,
                 request.id,
                 request.call.method(),
                 AgentFault::NotPermitted,
-                "This broker does not take the agent handshake.",
+                message,
             ));
             return Ok(());
         };
@@ -230,7 +236,7 @@ impl Core {
             }
             AgentCall::Action(action) => self.propose(connection, &bound, request.id, action),
             // Refused above, before the session check.
-            AgentCall::Hello(_) | AgentCall::Prove(_) => Ok(()),
+            AgentCall::Hello(_) | AgentCall::Prove(_) | AgentCall::Cancel(_) => Ok(()),
         }
     }
 

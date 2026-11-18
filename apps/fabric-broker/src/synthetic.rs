@@ -546,9 +546,12 @@ impl SyntheticAgent {
         let (call_id, status) = match response {
             AgentResponse::Result { id, result, .. } => (Some(id), Some(&result.request)),
             AgentResponse::Error { id, .. } => (id.as_ref(), None),
-            // the handshake is not implemented in this build (contract schema version 3); the
-            // synthetic agent sends none, so an answer to one is taken as a refusal
-            AgentResponse::Hello { id, .. } | AgentResponse::Prove { id, .. } => (Some(id), None),
+            // the handshake and the cancel message are not implemented in this build (contract
+            // schema version 3); the synthetic agent sends none, so an answer to one is taken as
+            // a refusal
+            AgentResponse::Hello { id, .. }
+            | AgentResponse::Prove { id, .. }
+            | AgentResponse::Cancel { id, .. } => (Some(id), None),
         };
         let practice = self.practice.is_some();
         // In a practice run `applied` and `outcome_unknown` end the wait too: they stay open
@@ -849,7 +852,10 @@ mod tests {
     fn action_of(call: &AgentRequest) -> Action {
         match &call.call {
             AgentCall::Action(action) => action.clone(),
-            AgentCall::RequestStatus(_) | AgentCall::Hello(_) | AgentCall::Prove(_) => {
+            AgentCall::RequestStatus(_)
+            | AgentCall::Hello(_)
+            | AgentCall::Prove(_)
+            | AgentCall::Cancel(_) => {
                 panic!("a proposal is an action")
             }
         }

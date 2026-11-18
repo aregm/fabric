@@ -82,12 +82,12 @@ test("vocabularies equal the schema enums", () => {
     ["owner_request methods", c.OWNER_METHODS, owner.owner_request.oneOf.map((b: any) => b.properties.method.const)],
     [
       "agent_request methods",
-      [...c.HANDSHAKE_METHODS, ...c.TOOL_NAMES],
+      [...c.NON_TOOL_METHODS, ...c.TOOL_NAMES],
       agent.agent_request.oneOf.map((b: any) => b.properties.method.const),
     ],
     [
-      "agent_response handshake methods",
-      c.HANDSHAKE_METHODS,
+      "agent_response methods that are not tools",
+      c.NON_TOOL_METHODS,
       agent.agent_response.oneOf.map((b: any) => b.properties.method.const).filter((x: unknown) => x !== undefined),
     ],
     ["agent enrollment", c.AGENT_ENROLLMENTS, owner.agent.properties.enrollment.enum],

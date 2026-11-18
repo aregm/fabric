@@ -21,7 +21,7 @@ A frame is one JSON object written as UTF-8 on one line and ended by a line feed
 
 There are three kinds of frame.
 
-- **Request:** `protocol`, `id`, `method`, `params`. The owner channel's methods are in `data/owner-methods.json`; the agent channel's methods are the tools of `data/tool-catalog.json` and the two handshake methods (section 8).
+- **Request:** `protocol`, `id`, `method`, `params`. The owner channel's methods are in `data/owner-methods.json`; the agent channel's methods are the tools of `data/tool-catalog.json` the two handshake methods and `agent_cancel` (section 8).
 - **Response:** `protocol`, the request's `id` and `method`, and either `result` or `error`, never both. When the broker could not read a frame far enough to know its id or method, the error response carries `null` for them.
 - **Notice:** `protocol`, `sequence`, `change`. Only the broker sends notices, and only on the owner channel, after `subscribe`.
 
@@ -185,7 +185,7 @@ Errors have a code, a message for the person, `retryable`, a recovery action, a 
 
 ## 8. The agent channel
 
-The methods are the ten tools of `data/tool-catalog.json` and the two handshake methods, `agent_hello` and `agent_prove`. An action is a tool and its exact arguments; `fabric_request_status` and the handshake methods are not actions.
+The methods are the ten tools of `data/tool-catalog.json`, the two handshake methods, `agent_hello` and `agent_prove`, and `agent_cancel`. An action is a tool and its exact arguments; `fabric_request_status`, the handshake methods and `agent_cancel` are not actions.
 
 ### The handshake
 
@@ -235,10 +235,16 @@ When the answer comes:
 Which answers carry a result:
 
 - Only two answers ever carry a result. The answer to `fabric_calendar_list` carries the list that its own fresh proof released. The answer to `fabric_request_result` carries the result that its own proof of the release permitted.
-- A read's own answer never carries its result. The agent asks for it with `fabric_request_result`, and the rules are proved again at that moment. So a read takes two calls, and every result leaves the broker by one path. This is the owner's decision of 2026-11-18 (OD1 in section E.3 of `docs/plans/calendar-desktop-phase2-design.md`); it departs from the plan's sentence that an allowed read returns its result.
+- A read's own answer never carries its result. The agent asks for it with `fabric_request_result`, and the rules are proved again at that moment. So a read takes two calls, and every result leaves the broker by one path. This is the owner's decision of 2026-11-18 (plan section 15.3, NOV18-READ-CALLS). For version 1 of Fabric Calendar it departs from the plan's sentence in section 9.2 that an Allow returns the proven filtered read result.
 - Only a call that still waits receives a result. If the call has ended, the request ends `cancelled` and nothing is released.
 - `fabric_request_result` for a calendar list, for another request for a result, or for a request that has no result ends `terminal_failure` with the code `invalid_arguments`.
-- A release that needs the owner's approval ends `undecided`, and nothing is released. No card is opened for a release in version 1 of Fabric Calendar (OD2 of the same decisions): the agent reads again, and that read can ask the owner with an ordinary card.
+- A release that needs the owner's approval ends `undecided`, and nothing is released. No card is opened for a release in version 1 of Fabric Calendar (NOV18-RELEASE-CARD): the agent reads again, and that read can ask the owner with an ordinary card.
+
+When an adapter stops waiting:
+
+- `agent_cancel` tells the broker that the adapter no longer waits for the answer to one call on this connection, named by that call's frame id. The broker drops the waiting call and never answers it. This is the one case in which a request frame gets no response.
+- The request itself goes on as it does when a connection ends. A calendar list or a release whose call is gone ends `cancelled` and releases nothing. A proposal stays recorded, and its card stays open.
+- The cancel is not a request of its own and creates none. Its answer says whether a call with that id was waiting (`held`). A cancel for an id that is not waiting changes nothing.
 
 Two things an adapter does are outside this contract. The error `broker_not_running` is made by an adapter that cannot reach the broker; the broker never sends it. And an adapter may show its own client a member that can be null as optional, and write the `null` itself: on the channel every member is present.
 
@@ -277,7 +283,7 @@ A grant's `origin` names what created it: the owner's approval of a request (`re
 
 A one-request grant for a read ends with the reason `result_expired` when the result the broker held for it passed its life without being released.
 
-The calendar list (`fabric_calendar_list`) names no calendar. Its permission comes with the enrollment: when the owner approves an agent, the broker creates a grant until revoked whose only tool is `fabric_calendar_list` and whose scope names no calendar (plan section 15.2, NOV17-LIST). Its `purpose` is the empty text, the other four members of its scope are null, and it ends only when the owner revokes it (`revoked_by_owner`) or removes the agent (`agent_removed`). To the rules it is a grant like any other. Under a row whose mode is `allow` it permits the list; revoking it, or removing the agent, ends it. A scope that names no calendar covers no calendar, so such a grant serves no tool that names one. A calendar list request that needs the owner's approval, for example after the owner revoked that grant, gets a card whose scope names no calendar. An approval of that card for this one request delivers nothing in version 1 of Fabric Calendar: by the time the owner decides, the agent's call has ended, so the list is cancelled and the approval is used up, and the agent's next list asks again (OD24 of the decisions of 2026-11-18). Under a row whose mode is `ask` no list completes, then, and the rule below that the broker proposes no duration whose grant would not serve the request does not hold for a list. The card must say so.
+The calendar list (`fabric_calendar_list`) names no calendar. Its permission comes with the enrollment: when the owner approves an agent, the broker creates a grant until revoked whose only tool is `fabric_calendar_list` and whose scope names no calendar (plan section 15.2, NOV17-LIST). Its `purpose` is the empty text, the other four members of its scope are null, and it ends only when the owner revokes it (`revoked_by_owner`) or removes the agent (`agent_removed`). To the rules it is a grant like any other. Under a row whose mode is `allow` it permits the list; revoking it, or removing the agent, ends it. A scope that names no calendar covers no calendar, so such a grant serves no tool that names one. A calendar list request that needs the owner's approval, for example after the owner revoked that grant, gets a card whose scope names no calendar. An approval of that card for this one request delivers nothing in version 1 of Fabric Calendar: by the time the owner decides, the agent's call has ended, so the list is cancelled and the approval is used up, and the agent's next list asks again (plan section 15.3, NOV18-LIST-CARD). Under a row whose mode is `ask` no list completes, then, and the rule below that the broker proposes no duration whose grant would not serve the request does not hold for a list. The card must say so.
 
 The durations are ordered from shortest to longest: `one_request`, `session`, `until_revoked`. A card's `proposed_duration` is the longest one the owner may choose for that request. The interface offers it and the shorter ones: the owner can narrow a duration, like a scope, and cannot widen it. When a card opens, the interface selects the shortest duration, `one_request`; a longer one is the owner's own choice (plan section 15.2, NOV17-DURATION).
 
@@ -439,11 +445,12 @@ Version 3:
 77. The destination of each kind of client is contract data (`data/agent-clients.json`), and it is a label, not a checked fact.
 78. The grant made by an agent's approval has the empty text as its purpose: no agent wrote one.
 79. `select_calendars` takes at most 250 calendars, the most the Google design lists for one account.
-80. Three rules follow the owner's decisions of 2026-11-18, recorded in section E.3 of the design for phase 2: a read takes two calls (OD1), a release never gets a card (OD2), and an approval of a calendar list for one request delivers nothing (OD24). The first departs from the plan's sentence that an allowed read returns its result.
+80. Three rules follow the owner's decisions of 2026-11-18, recorded in plan section 15.3: a read takes two calls (NOV18-READ-CALLS), a release never gets a card (NOV18-RELEASE-CARD), and an approval of a calendar list for one request delivers nothing (NOV18-LIST-CARD). The first departs, for version 1, from the plan's sentence that an Allow returns the proven filtered read result.
+81. `agent_cancel` ends the wait for one answer and nothing more. It is answered, with `held`; the call it names is not. The broker's design asked for the message and left its name to the contract.
 
 ## 15. Not covered
 
-- Commands that the plan's text needs and its method table does not list: starting a People import, the task composer for the embedded runtime, and the message that cancels a request.
+- Commands that the plan's text needs and its method table does not list: starting a People import, the task composer for the embedded runtime, and a message with which an agent withdraws a proposal (`agent_cancel` only ends the wait for an answer).
 - How long the broker keeps ended requests.
 - Actions the broker starts itself, such as refresh and reconciliation reads, and the formal context with its digest (CD-W03, CD-W04).
 - A marker for practice accounts, attempts and reports.

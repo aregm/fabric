@@ -4,7 +4,7 @@
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 
-use fabric_desktop_contracts::agent::AgentCall;
+use fabric_desktop_contracts::agent::{AgentCall, NON_TOOL_METHODS};
 use fabric_desktop_contracts::common::ToolName;
 use fabric_desktop_contracts::error::ErrorCode;
 use fabric_desktop_contracts::handshake::HANDSHAKE_METHODS;
@@ -100,7 +100,7 @@ fn tool_names_and_actions_match_the_catalog() {
 }
 
 #[test]
-fn agent_request_methods_are_the_handshake_and_the_tools() {
+fn agent_request_methods_are_the_handshake_the_cancel_and_the_tools() {
     let schema = schema_def("agent-channel.schema.json#/$defs/agent_request").unwrap();
     let listed: Vec<String> = schema["oneOf"]
         .as_array()
@@ -113,7 +113,7 @@ fn agent_request_methods_are_the_handshake_and_the_tools() {
                 .to_owned()
         })
         .collect();
-    let rust: Vec<String> = HANDSHAKE_METHODS
+    let rust: Vec<String> = NON_TOOL_METHODS
         .iter()
         .map(|m| (*m).to_owned())
         .chain(ToolName::ALL.iter().map(|t| t.as_str().to_owned()))
@@ -123,13 +123,14 @@ fn agent_request_methods_are_the_handshake_and_the_tools() {
         assert!(AgentCall::is_method(method), "{method}");
     }
     let response = schema_def("agent-channel.schema.json#/$defs/agent_response").unwrap();
-    let handshake: Vec<&str> = response["oneOf"]
+    let not_tools: Vec<&str> = response["oneOf"]
         .as_array()
         .unwrap()
         .iter()
         .filter_map(|b| b["properties"]["method"]["const"].as_str())
         .collect();
-    assert_eq!(handshake, HANDSHAKE_METHODS);
+    assert_eq!(not_tools, NON_TOOL_METHODS);
+    assert_eq!(NON_TOOL_METHODS[..2], HANDSHAKE_METHODS);
 }
 
 #[test]

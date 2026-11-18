@@ -1101,6 +1101,9 @@ export interface ToolOutcome {
 // tools (README section 8).
 export const HANDSHAKE_METHODS = ["agent_hello", "agent_prove"] as const;
 export type HandshakeMethod = (typeof HANDSHAKE_METHODS)[number];
+// Every method of the agent channel that is not a tool: the handshake and the cancel message.
+export const NON_TOOL_METHODS = [...HANDSHAKE_METHODS, "agent_cancel"] as const;
+export type NonToolMethod = (typeof NON_TOOL_METHODS)[number];
 export interface ParamsAgentHello {
   readonly schema_version: Count;
   readonly enrollment_id: Id;
@@ -1120,10 +1123,21 @@ export interface ResultAgentProve {
   readonly enrollment: "approved" | "pending";
   readonly practice: boolean;
 }
+// The adapter no longer waits for the answer to the call whose frame id is `call_id`, on this
+// connection.
+export interface ParamsAgentCancel {
+  readonly call_id: Id;
+}
+// `held` is true when a call with that id was waiting for its answer and was dropped; false
+// when no such call was waiting.
+export interface ResultAgentCancel {
+  readonly held: boolean;
+}
 
 export type AgentRequest =
   | { readonly protocol: Protocol; readonly id: Id; readonly method: "agent_hello"; readonly params: ParamsAgentHello }
   | { readonly protocol: Protocol; readonly id: Id; readonly method: "agent_prove"; readonly params: ParamsAgentProve }
+  | { readonly protocol: Protocol; readonly id: Id; readonly method: "agent_cancel"; readonly params: ParamsAgentCancel }
   | {
       readonly [T in ToolName]: {
         readonly protocol: Protocol;
@@ -1136,5 +1150,6 @@ export type AgentRequest =
 export type AgentResponse =
   | { readonly protocol: Protocol; readonly id: Id; readonly method: "agent_hello"; readonly result: ResultAgentHello }
   | { readonly protocol: Protocol; readonly id: Id; readonly method: "agent_prove"; readonly result: ResultAgentProve }
+  | { readonly protocol: Protocol; readonly id: Id; readonly method: "agent_cancel"; readonly result: ResultAgentCancel }
   | { readonly protocol: Protocol; readonly id: Id; readonly method: ToolName; readonly result: ToolOutcome }
   | { readonly protocol: Protocol; readonly id: Id | null; readonly method: string | null; readonly error: AgentError };

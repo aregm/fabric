@@ -604,7 +604,13 @@ fn the_first_run_snapshot() {
     let fixture = contract_dir()
         .join("fixtures/messages/accept-owner-notice-health-prover-not-configured.json");
     let fixture: Value = serde_json::from_str(&std::fs::read_to_string(fixture).unwrap()).unwrap();
-    assert_eq!(value["health"], fixture["value"]["change"]["health"]);
+    // The fixture's agent channel is listening; this build has none (contract schema version 3).
+    for member in ["prover", "prover_problem", "store"] {
+        assert_eq!(
+            value["health"][member], fixture["value"]["change"]["health"][member],
+            "{member}"
+        );
+    }
     assert_eq!(value["profiles"]["revision"], 0);
     assert_eq!(value["profiles"]["active_profile_id"], "careful");
     let ids: Vec<&Value> = value["profiles"]["items"]

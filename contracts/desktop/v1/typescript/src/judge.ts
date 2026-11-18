@@ -2,7 +2,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { HANDSHAKE_METHODS } from "./contract.ts";
+import { NON_TOOL_METHODS } from "./contract.ts";
 import { createValidator, loadSchemaFiles } from "./schema.ts";
 import type { Validate } from "./schema.ts";
 import { parseStrict } from "./strict-json.ts";
@@ -55,7 +55,7 @@ export function loadContract(root: string = CONTRACT_ROOT): Contract {
     ownerMethods: methods.map((m) => m.method),
     commands: methods.filter((m) => m.command).map((m) => m.method),
     tools: tools.map((t) => t.name),
-    agentMethods: [...HANDSHAKE_METHODS, ...tools.map((t) => t.name)],
+    agentMethods: [...NON_TOOL_METHODS, ...tools.map((t) => t.name)],
     actions: tools.filter((t) => t.creates_request).map((t) => t.name),
     initialState: lifecycle.initial,
     transitions: new Set(lifecycle.transitions.map((t: { from: string; to: string }) => `${t.from} ${t.to}`)),

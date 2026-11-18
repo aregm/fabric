@@ -548,9 +548,27 @@
       "required": ["enrollment", "practice"],
       "additionalProperties": false
     },
+    "params_agent_cancel": {
+      "description": "The adapter no longer waits for the answer to the call whose frame id is `call_id`, on this connection.",
+      "type": "object",
+      "properties": {
+        "call_id": { "$ref": "common.schema.json#/$defs/id" }
+      },
+      "required": ["call_id"],
+      "additionalProperties": false
+    },
+    "result_agent_cancel": {
+      "description": "`held` is true when a call with that id was waiting for its answer and was dropped; false when no such call was waiting.",
+      "type": "object",
+      "properties": {
+        "held": { "type": "boolean" }
+      },
+      "required": ["held"],
+      "additionalProperties": false
+    },
 
     "agent_request": {
-      "description": "A frame from an agent adapter to the broker. The method is a tool, or one of the two handshake methods.",
+      "description": "A frame from an agent adapter to the broker. The method is a tool, one of the two handshake methods, or `agent_cancel`.",
       "oneOf": [
         {
           "type": "object",
@@ -570,6 +588,17 @@
             "id": { "$ref": "common.schema.json#/$defs/id" },
             "method": { "const": "agent_prove" },
             "params": { "$ref": "#/$defs/params_agent_prove" }
+          },
+          "required": ["protocol", "id", "method", "params"],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "protocol": { "$ref": "common.schema.json#/$defs/protocol" },
+            "id": { "$ref": "common.schema.json#/$defs/id" },
+            "method": { "const": "agent_cancel" },
+            "params": { "$ref": "#/$defs/params_agent_cancel" }
           },
           "required": ["protocol", "id", "method", "params"],
           "additionalProperties": false
@@ -707,6 +736,17 @@
             "id": { "$ref": "common.schema.json#/$defs/id" },
             "method": { "const": "agent_prove" },
             "result": { "$ref": "#/$defs/result_agent_prove" }
+          },
+          "required": ["protocol", "id", "method", "result"],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "protocol": { "$ref": "common.schema.json#/$defs/protocol" },
+            "id": { "$ref": "common.schema.json#/$defs/id" },
+            "method": { "const": "agent_cancel" },
+            "result": { "$ref": "#/$defs/result_agent_cancel" }
           },
           "required": ["protocol", "id", "method", "result"],
           "additionalProperties": false

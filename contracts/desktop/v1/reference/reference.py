@@ -35,6 +35,8 @@ OWNER_REQUEST = "owner-channel.schema.json#/$defs/owner_request"
 AGENT_REQUEST = "agent-channel.schema.json#/$defs/agent_request"
 # The agent channel's methods that are not tools (README section 8).
 HANDSHAKE_METHODS = {"agent_hello", "agent_prove"}
+# Every method of the agent channel that is not a tool: the handshake and the cancel message.
+NON_TOOL_METHODS = HANDSHAKE_METHODS | {"agent_cancel"}
 
 
 class Refused(Exception):
@@ -329,7 +331,7 @@ class Contract:
         self.owner_methods = {m["method"] for m in methods}
         self.commands = {m["method"] for m in methods if m["command"]}
         self.tools = {t["name"] for t in tools}
-        self.agent_methods = self.tools | HANDSHAKE_METHODS
+        self.agent_methods = self.tools | NON_TOOL_METHODS
         self.actions = {t["name"] for t in tools if t["creates_request"]}
         self.initial_state = lifecycle["initial"]
         self.transitions = {(t["from"], t["to"]) for t in lifecycle["transitions"]}

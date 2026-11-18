@@ -1,0 +1,18 @@
+{
+  "description": "agent_cancel: the call was waiting for its answer and was dropped.",
+  "schema": "agent-channel.schema.json#/$defs/agent_response",
+  "value": {
+    "protocol": "fabric-desktop/1",
+    "id": "cancel-1",
+    "method": "agent_cancel",
+    "result": {
+      "held": true
+    }
+  },
+  "expect": {
+    "verdict": "accept",
+    "canonical": "{\"id\":\"cancel-1\",\"method\":\"agent_cancel\",\"protocol\":\"fabric-desktop/1\",\"result\":{\"held\":true}}",
+    "command_digest": null,
+    "action_digest": null
+  }
+}

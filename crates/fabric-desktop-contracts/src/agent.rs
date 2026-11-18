@@ -617,8 +617,28 @@ pub struct ToolOutcome {
     pub result: Option<ToolResult>,
 }
 
-/// The method and params of an agent request frame: one of the two handshake methods, an
-/// action, or the status tool.
+/// Every method of the agent channel that is not a tool, in the order of the schema: the two
+/// handshake methods and `agent_cancel`.
+pub const NON_TOOL_METHODS: [&str; 3] = ["agent_hello", "agent_prove", "agent_cancel"];
+
+/// `agent#/$defs/params_agent_cancel`: the adapter no longer waits for the answer to the call
+/// whose frame id is `call_id`, on this connection.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct AgentCancelParams {
+    pub call_id: Id,
+}
+
+/// `agent#/$defs/result_agent_cancel`: `held` is true when a call with that id was waiting for
+/// its answer and was dropped; false when no such call was waiting.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct AgentCancelResult {
+    pub held: bool,
+}
+
+/// The method and params of an agent request frame: one of the two handshake methods,
+/// `agent_cancel`, an action, or the status tool.
 #[allow(
     clippy::large_enum_variant,
     reason = "a transport value is built once per frame; boxing would only complicate its use"
@@ -629,16 +649,18 @@ pub enum AgentCall {
     Hello(AgentHelloParams),
     /// `agent_prove`, the signature over the handshake text.
     Prove(AgentProveParams),
+    /// `agent_cancel`: the adapter no longer waits for the answer to a call.
+    Cancel(AgentCancelParams),
     Action(Action),
     RequestStatus(RequestIdArguments),
 }
 
 impl AgentCall {
-    /// The tool, or `None` for a handshake method, which is not a tool.
+    /// The tool, or `None` for a handshake method or `agent_cancel`, which are not tools.
     #[must_use]
     pub fn tool(&self) -> Option<ToolName> {
         match self {
-            AgentCall::Hello(_) | AgentCall::Prove(_) => None,
+            AgentCall::Hello(_) | AgentCall::Prove(_) | AgentCall::Cancel(_) => None,
             AgentCall::Action(a) => Some(a.tool()),
             AgentCall::RequestStatus(_) => Some(ToolName::RequestStatus),
         }
@@ -650,15 +672,17 @@ impl AgentCall {
         match self {
             AgentCall::Hello(_) => "agent_hello",
             AgentCall::Prove(_) => "agent_prove",
+            AgentCall::Cancel(_) => "agent_cancel",
             AgentCall::Action(a) => a.tool().as_str(),
             AgentCall::RequestStatus(_) => ToolName::RequestStatus.as_str(),
         }
     }
 
-    /// Whether `name` is a method of the agent channel: a tool or a handshake method.
+    /// Whether `name` is a method of the agent channel: a tool, a handshake method or
+    /// `agent_cancel`.
     #[must_use]
     pub fn is_method(name: &str) -> bool {
-        ToolName::from_name(name).is_some() || crate::handshake::HANDSHAKE_METHODS.contains(&name)
+        ToolName::from_name(name).is_some() || NON_TOOL_METHODS.contains(&name)
     }
 
     #[must_use]
@@ -666,14 +690,15 @@ impl AgentCall {
         match self {
             AgentCall::Hello(p) => crate::digest::to_value(p),
             AgentCall::Prove(p) => crate::digest::to_value(p),
+            AgentCall::Cancel(p) => crate::digest::to_value(p),
             AgentCall::Action(a) => a.arguments(),
             AgentCall::RequestStatus(a) => crate::digest::to_value(a),
         }
     }
 }
 
-/// `agent#/$defs/agent_request`: a frame from an agent adapter. The method is a tool, or one
-/// of the two handshake methods.
+/// `agent#/$defs/agent_request`: a frame from an agent adapter. The method is a tool, one of
+/// the two handshake methods, or `agent_cancel`.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct AgentRequest {
     pub id: Id,
@@ -687,7 +712,10 @@ impl AgentRequest {
     pub fn action_digest(&self) -> Option<crate::scalar::Digest> {
         match &self.call {
             AgentCall::Action(a) => Some(a.digest()),
-            AgentCall::Hello(_) | AgentCall::Prove(_) | AgentCall::RequestStatus(_) => None,
+            AgentCall::Hello(_)
+            | AgentCall::Prove(_)
+            | AgentCall::Cancel(_)
+            | AgentCall::RequestStatus(_) => None,
         }
     }
 }
@@ -708,7 +736,7 @@ impl<'de> Deserialize<'de> for AgentRequest {
     fn deserialize<D: Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
         let (method, mut rest) = tagged::split(d, "method")?;
         let tool = match method.as_str() {
-            "agent_hello" | "agent_prove" => None,
+            "agent_hello" | "agent_prove" | "agent_cancel" => None,
             other => {
                 Some(ToolName::from_name(other).ok_or_else(|| tagged::unknown("method", other))?)
             }
@@ -719,6 +747,7 @@ impl<'de> Deserialize<'de> for AgentRequest {
         tagged::nothing(&rest)?;
         let call = match tool {
             None if method == "agent_hello" => AgentCall::Hello(tagged::read(params)?),
+            None if method == "agent_cancel" => AgentCall::Cancel(tagged::read(params)?),
             None => AgentCall::Prove(tagged::read(params)?),
             Some(tool) => match Action::from_parts(tool, params.clone())? {
                 Some(action) => AgentCall::Action(action),
@@ -736,6 +765,8 @@ pub enum AgentResponse {
     Hello { id: Id, result: AgentHelloResult },
     /// The answer to `agent_prove`.
     Prove { id: Id, result: AgentProveResult },
+    /// The answer to `agent_cancel`.
+    Cancel { id: Id, result: AgentCancelResult },
     /// The tool's outcome, under the request's id and method.
     Result {
         id: Id,
@@ -759,6 +790,9 @@ impl Serialize for AgentResponse {
             }
             AgentResponse::Prove { id, result } => {
                 json!({ "protocol": p, "id": id, "method": "agent_prove", "result": result })
+            }
+            AgentResponse::Cancel { id, result } => {
+                json!({ "protocol": p, "id": id, "method": "agent_cancel", "result": result })
             }
             AgentResponse::Result { id, method, result } => {
                 json!({ "protocol": p, "id": id, "method": method, "result": result })
@@ -790,6 +824,10 @@ impl<'de> Deserialize<'de> for AgentResponse {
                     result: tagged::read(result)?,
                 },
                 Some("agent_prove") => AgentResponse::Prove {
+                    id: tagged::read(id)?,
+                    result: tagged::read(result)?,
+                },
+                Some("agent_cancel") => AgentResponse::Cancel {
                     id: tagged::read(id)?,
                     result: tagged::read(result)?,
                 },
