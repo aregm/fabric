@@ -41,10 +41,18 @@ use serde_json::{Value, json};
 const PROMPT: Duration = Duration::from_secs(10);
 /// How long to wait for a step of the synthetic agent, beyond its nominal time.
 const STEP: Duration = Duration::from_secs(6);
-/// The bound on stopping after end of input, for a broker that has already answered.
-const STOP_BOUND: Duration = Duration::from_millis(1000);
 /// How long a broker may take to exit when nothing showed that it had started yet.
 const LAUNCH_AND_EXIT: Duration = Duration::from_secs(10);
+/// The bound on stopping after end of input, for a broker that has already answered: the
+/// design's 1 s on macOS. Shared runners of other systems have taken more than a second for a
+/// stop that takes milliseconds on a Mac (a Windows runner took 1.19 s once, on pull request
+/// 44), so there the bound only catches a hang. The product's bounds with the real rule prover
+/// are measured by hand in the live suite.
+const STOP_BOUND: Duration = if cfg!(target_os = "macos") {
+    Duration::from_millis(1000)
+} else {
+    LAUNCH_AND_EXIT
+};
 
 /// The variables the broker reads.
 const DATA_DIR: &str = "FABRIC_BROKER_DATA_DIR";

@@ -902,7 +902,8 @@ connections and ring start empty.
 Quit (end of stdin): one transaction `broker.quit`: end live sessions and session grants (`app_quit`), write the open
 `busy` windows' audit rows, `RunEnded{clean: true}`. No new job after quit begins; `dispatching` effects are left for
 the next start. One fsync'd commit (about 5 ms, SPIKE 2) fits the 1 s stop bound (`STOP_BOUND`,
-`quit_stops_the_broker_without_a_kill`).
+`quit_stops_the_broker_without_a_kill`). The tests assert that bound on macOS only; on the other systems of CI
+they only catch a hang, because a Windows runner under load once took 1.19 s for this stop.
 
 ### 5.9 Request limits (CR 8; ADR108 D9; `Limits::CD_G0`)
 

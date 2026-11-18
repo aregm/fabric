@@ -37,6 +37,20 @@ const PROMPT: Duration = Duration::from_secs(10);
 /// How long to wait for a step of the synthetic agent, beyond its nominal time.
 const STEP: Duration = Duration::from_secs(6);
 
+/// The drain `stop` is given, and the bound on how long it may take, for a broker that has
+/// already answered: on macOS the product's `QUIT_DRAIN` and half of it. Shared runners of
+/// other systems have taken more than a second for a stop that takes milliseconds on a Mac (a
+/// Windows runner took 1.19 s once, on pull request 44), so there the broker gets the long
+/// patience and the bound only catches a hang. The product's bounds with the real rule prover
+/// are measured by hand in the live suite.
+fn stop_drain_and_bound() -> (Duration, Duration) {
+    if cfg!(target_os = "macos") {
+        (QUIT_DRAIN, QUIT_DRAIN / 2)
+    } else {
+        (PROMPT, PROMPT)
+    }
+}
+
 /// Held across every process start in this file (each `Session::start`, and the `kill` or
 /// `taskkill` command), and released as soon as the start returns. On macOS there is no
 /// `pipe2`, so `std` makes a child's pipes and marks them close-on-exec in two steps; a child
@@ -536,10 +550,11 @@ fn quit_stops_the_broker_without_a_kill() {
     relay.notice(|n| n.change.kind() == "account");
     // Only `stop` is timed: the broker has answered, so its launch is behind it, and `stop`
     // returns when the child is gone.
+    let (drain, bound) = stop_drain_and_bound();
     let started = Instant::now();
-    relay.session.stop(QUIT_DRAIN);
+    relay.session.stop(drain);
     let took = started.elapsed();
-    assert!(took < QUIT_DRAIN / 2, "stopping took {took:?}");
+    assert!(took < bound, "stopping took {took:?}");
     assert_eq!(relay.ending(PROMPT), Ending::Stopped { killed: false });
     assert_eq!(
         relay.session.send(canonical(&hello()).as_bytes()),
@@ -586,7 +601,8 @@ fn a_broker_in_a_directory_with_spaces() {
     assert!(copy.is_absolute() && copy.to_string_lossy().contains(' '));
     let mut relay = Relay::start_at(&copy);
     echo(&mut relay);
-    relay.session.stop(QUIT_DRAIN);
+    let (drain, _) = stop_drain_and_bound();
+    relay.session.stop(drain);
     assert_eq!(relay.ending(PROMPT), Ending::Stopped { killed: false });
 }
 
