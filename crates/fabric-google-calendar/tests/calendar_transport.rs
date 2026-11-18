@@ -24,7 +24,9 @@ use fabric_google_calendar::http::Transport;
 use fabric_google_calendar::outcome::{ChangeOutcome, ChangeReport, ReadFailure, SideResult};
 use fabric_google_calendar::reconcile::Effect;
 use fabric_google_calendar::{AccessFailure, AuthLostCause, Clock, Endpoints, TokenStoreError};
-use fabric_google_fake::{ASKED_SCOPES, CalendarEntry, Fault, FaultAction, LateTrigger, Match};
+use fabric_google_fake::{
+    ASKED_SCOPES, CalendarEntry, Fault, FaultAction, LateTrigger, LoggedRequest, Match,
+};
 use serde_json::json;
 
 const TITLE: &str = "Secret Board Meeting";
@@ -633,8 +635,9 @@ fn changing_method(action: &Action) -> &'static str {
 /// g40 and g41: for every tool and every fault on its changing request, exactly one POST,
 /// PATCH or DELETE per order (the reads before it succeed); with the fault on the read before
 /// an invitation or a response, no changing request unless the read succeeded and the change
-/// was applied. Every PATCH and DELETE carries `If-Match` with one strong tag, and every
-/// changing request an explicit `sendUpdates`. g16's Calendar half: no formatted value reached
+/// was applied. A delete reads its event at most once after its DELETE, and only after a yes,
+/// which stays Applied (18.7 point 1). Every PATCH and DELETE carries `If-Match` with one
+/// strong tag, and every changing request an explicit `sendUpdates`. g16's Calendar half: no formatted value reached
 /// holds a token, a calendar id, an event id or an event title.
 #[test]
 fn every_order_makes_at_most_one_changing_request_whatever_the_fault() {
@@ -678,6 +681,36 @@ fn every_order_makes_at_most_one_changing_request_whatever_the_fault() {
                 .filter(|e| e.is_calendar_change())
                 .count();
             assert_eq!(changing, 1, "{fault:?} tool {tool}");
+            // 18.7 point 1: only a delete reads after its changing request, at most once, and
+            // only after a yes; that read never changes the class.
+            let after: Vec<LoggedRequest> = world
+                .log_since(start)
+                .into_iter()
+                .skip_while(|e| !e.is_calendar_change())
+                .skip(1)
+                .collect();
+            let reads_after = if matches!(order.effect.action, Action::ProposeDelete(_)) {
+                1
+            } else {
+                0
+            };
+            assert!(
+                after.len() <= reads_after && after.iter().all(|e| e.method == "GET"),
+                "{fault:?} tool {tool}: {after:?}"
+            );
+            if !after.is_empty() {
+                assert!(
+                    matches!(
+                        report.outcome,
+                        ChangeOutcome::Applied {
+                            event: None,
+                            differs: None,
+                            ..
+                        }
+                    ),
+                    "{fault:?}: {report:?}"
+                );
+            }
             renew_token(&world, &alice);
             tokens.push(world.tokens.token(&alice.id));
         }

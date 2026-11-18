@@ -11,13 +11,13 @@ use calendar_common::{World, ZONE, put, query, timed, window};
 use fabric_desktop_contracts::agent::{EventSpan, EventView, ResponseStatus, ToolResult};
 use fabric_desktop_contracts::common::{EventField, FailureCode, Window};
 use fabric_desktop_contracts::scalar::{Id, ProviderRef, Timestamp};
-use fabric_google_calendar::calendar::{CalendarTarget, Observed};
+use fabric_google_calendar::calendar::{CalendarTarget, EventsRead, Observed, Span};
 use fabric_google_calendar::outcome::{ReadFailure, Sentence};
 use fabric_google_fake::{CalendarEntry, DeletedEventGet, Fault, FaultAction};
 use serde_json::{Value, json};
 
-fn events_of(result: ToolResult) -> Vec<EventView> {
-    let ToolResult::Events { events, .. } = result else {
+fn events_of(read: EventsRead) -> Vec<EventView> {
+    let ToolResult::Events { events, .. } = read.result else {
         panic!("an events result");
     };
     events.into_vec()
@@ -334,8 +334,9 @@ fn a_read_stops_between_pages_when_it_is_no_longer_allowed_and_returns_nothing()
     world.check_log();
 }
 
-/// g23: for each granted field, `fields=` asks only its members, and a view shows a field only
-/// when it is granted even though the fake sends everything.
+/// g23: for each granted field, `fields=` asks only its members (and, without `time`, the
+/// start and end for the span), and a view shows a field only when it is granted even though
+/// the fake sends everything.
 #[test]
 fn each_granted_field_asks_only_its_members_and_the_view_shows_only_granted_fields() {
     let (mut world, alice) = World::with_alice();
@@ -349,20 +350,22 @@ fn each_granted_field_asks_only_its_members_and_the_view_shows_only_granted_fiel
             "attendees": [{"email": "alice@example.com", "self": true, "responseStatus": "accepted"}, {"email": "x@example.com", "responseStatus": "needsAction"}],
         }),
     );
+    // The start and end are asked whatever the grant, for the span only (18.7 point 4).
     let base = "id,etag,status,recurringEventId";
+    let span = "start(date,dateTime),end(date,dateTime)";
     let cases = [
-        (EventField::Time, "start,end,originalStartTime"),
-        (EventField::Title, "summary"),
-        (EventField::Location, "location"),
-        (EventField::Description, "description"),
+        (EventField::Time, "start,end,originalStartTime".to_owned()),
+        (EventField::Title, format!("{span},summary")),
+        (EventField::Location, format!("{span},location")),
+        (EventField::Description, format!("{span},description")),
         (
             EventField::Attendees,
-            "attendees(email,responseStatus,self),attendeesOmitted",
+            format!("{span},attendees(email,responseStatus,self),attendeesOmitted"),
         ),
-        (EventField::Organizer, "organizer(email)"),
+        (EventField::Organizer, format!("{span},organizer(email)")),
         (
             EventField::OwnResponse,
-            "attendees(email,responseStatus,self),attendeesOmitted",
+            format!("{span},attendees(email,responseStatus,self),attendeesOmitted"),
         ),
     ];
     let deadline = world.deadline();
@@ -524,8 +527,9 @@ fn a_result_of_exactly_768_kib_is_returned_and_one_byte_more_fails() {
     let read = |world: &mut World| {
         world.as_account(&dave, |g| g.read_events(&dave.id, &q, deadline, &|| true))
     };
-    let size = |result: &ToolResult| {
-        fabric_desktop_contracts::canonical(&serde_json::to_value(result).expect("json")).len()
+    let size = |read: &EventsRead| {
+        fabric_desktop_contracts::canonical(&serde_json::to_value(&read.result).expect("json"))
+            .len()
     };
     // Ids of one length and one etag, so that every view's size differs only by its text.
     let event = |n: usize, len: usize| {
@@ -939,5 +943,183 @@ fn an_observation_gives_each_member_of_6_5_and_absent_for_a_gone_event() {
             Sentence::AttendeeAddress.text().to_owned()
         )
     );
+    world.check_log();
+}
+
+fn ms(text: &str) -> i64 {
+    fabric_google_calendar::time::parse_rfc3339_ms(text).expect("a time")
+}
+
+fn date(text: &str) -> fabric_desktop_contracts::scalar::Date {
+    fabric_desktop_contracts::scalar::Date::new(text).expect("a date")
+}
+
+/// A timed event, an all-day event, and an occurrence moved away from its original start.
+fn span_fixtures(world: &World, target: &CalendarTarget) {
+    put(world, target, timed("timed", "Timed", 9, 10));
+    put(
+        world,
+        target,
+        json!({"id": "holiday", "start": {"date": "2026-11-20"}, "end": {"date": "2026-11-22"}}),
+    );
+    put(
+        world,
+        target,
+        json!({"id": "series_20261120T130000Z", "recurringEventId": "series",
+        "originalStartTime": {"dateTime": "2026-11-20T14:00:00+01:00"},
+        "start": {"dateTime": "2026-11-20T16:00:00+01:00"}, "end": {"dateTime": "2026-11-20T16:30:00+01:00"}}),
+    );
+}
+
+/// The spans the fixtures must give, in the result's order (by start).
+fn span_of(id: &str) -> Span {
+    match id {
+        "timed" => Span::Timed {
+            start_ms: ms("2026-11-20T08:00:00Z"),
+            end_ms: ms("2026-11-20T09:00:00Z"),
+        },
+        "holiday" => Span::AllDay {
+            start_date: date("2026-11-20"),
+            end_date: date("2026-11-22"),
+        },
+        // The occurrence's own start and end, not its original start.
+        "series_20261120T130000Z" => Span::Timed {
+            start_ms: ms("2026-11-20T15:00:00Z"),
+            end_ms: ms("2026-11-20T15:30:00Z"),
+        },
+        other => panic!("no fixture {other}"),
+    }
+}
+
+/// 18.7 point 4: a read without `time` shows no time and no occurrence in any view, asks only
+/// `start(date,dateTime),end(date,dateTime)` of the times (no zone, no original start), and
+/// gives one span per event, equal to the fake's stored start and end: the all-day event as
+/// Google's dates, the occurrence by its own start and end.
+#[test]
+fn a_read_without_time_shows_no_time_and_gives_one_span_per_event() {
+    let (mut world, alice) = World::with_alice();
+    span_fixtures(&world, &alice.primary);
+    let deadline = world.deadline();
+    let q = query(
+        std::slice::from_ref(&alice.primary),
+        &[EventField::Title, EventField::Description],
+    );
+    let read = world
+        .as_account(&alice, |g| g.read_events(&alice.id, &q, deadline, &|| true))
+        .expect("events");
+    let spans = read.spans.clone();
+    let events = events_of(read);
+    assert_eq!(events.len(), 3);
+    assert_eq!(spans.len(), events.len(), "one span per event");
+    for (view, span) in events.iter().zip(&spans) {
+        assert_eq!(view.time, None, "no time without the grant");
+        assert_eq!(view.occurrence, None, "no original start without the grant");
+        assert_eq!(*span, span_of(view.event_id.as_str()));
+    }
+    let fields = world
+        .fake
+        .log()
+        .last()
+        .and_then(|r| r.query_value("fields").map(str::to_owned))
+        .expect("fields");
+    assert_eq!(
+        fields,
+        "nextPageToken,items(id,etag,status,recurringEventId,start(date,dateTime),end(date,dateTime),summary,description)"
+    );
+    assert!(!fields.contains("timeZone") && !fields.contains("originalStartTime"));
+    // The pair prints counts only.
+    assert_eq!(
+        format!(
+            "{:?}",
+            world
+                .as_account(&alice, |g| g.read_events(&alice.id, &q, deadline, &|| true))
+                .expect("events")
+        ),
+        "EventsRead { events: 3, spans: 3 }"
+    );
+    world.check_log();
+}
+
+/// 18.7 point 4: with `time` granted the spans are the views' times as instants (or the same
+/// dates), and an occurrence's span is its own start and end, not its original start.
+#[test]
+fn a_read_with_time_gives_spans_equal_to_the_views_times() {
+    let (mut world, alice) = World::with_alice();
+    span_fixtures(&world, &alice.primary);
+    let deadline = world.deadline();
+    let q = query(std::slice::from_ref(&alice.primary), &[EventField::Time]);
+    let read = world
+        .as_account(&alice, |g| g.read_events(&alice.id, &q, deadline, &|| true))
+        .expect("events");
+    let spans = read.spans.clone();
+    let events = events_of(read);
+    assert_eq!(spans.len(), events.len());
+    for (view, span) in events.iter().zip(&spans) {
+        let from_view = match view.time.as_ref().expect("a time with the grant") {
+            EventSpan::Timed { start, end } => Span::Timed {
+                start_ms: ms(start.date_time.as_str()),
+                end_ms: ms(end.date_time.as_str()),
+            },
+            EventSpan::AllDay {
+                start_date,
+                end_date,
+            } => Span::AllDay {
+                start_date: start_date.clone(),
+                end_date: end_date.clone(),
+            },
+        };
+        assert_eq!(*span, from_view, "{}", view.event_id.as_str());
+        assert_eq!(*span, span_of(view.event_id.as_str()));
+    }
+    let occurrence = events
+        .iter()
+        .find(|e| e.event_id.as_str() == "series_20261120T130000Z")
+        .and_then(|e| e.occurrence.clone())
+        .expect("an occurrence");
+    let Span::Timed { start_ms, .. } = span_of("series_20261120T130000Z") else {
+        panic!("timed");
+    };
+    assert_ne!(
+        ms(occurrence.original_start_time.date_time.as_str()),
+        start_ms,
+        "the fixture moves the occurrence"
+    );
+    world.check_log();
+}
+
+/// 18.7 point 4: an item whose start and end cannot be read as two times or two dates fails
+/// the read with the fixed sentence even when `time` was not granted; a read never lacks a
+/// span.
+#[test]
+fn an_item_without_a_usable_span_fails_a_read_without_time() {
+    let (mut world, alice) = World::with_alice();
+    let deadline = world.deadline();
+    let q = query(std::slice::from_ref(&alice.primary), &[EventField::Title]);
+    let good = json!({"id": "fine", "etag": "\"1\"",
+        "start": {"dateTime": "2026-11-20T09:00:00+01:00"}, "end": {"dateTime": "2026-11-20T10:00:00+01:00"}});
+    let mut mixed = good.clone();
+    mixed["start"] = json!({"date": "2026-11-20"});
+    let mut no_end = good.clone();
+    no_end["end"] = Value::Null;
+    let mut no_times = good.clone();
+    no_times.as_object_mut().expect("an object").remove("start");
+    no_times.as_object_mut().expect("an object").remove("end");
+    for bad in [mixed, no_end, no_times] {
+        world.fake.arm(Fault::on(
+            "GET",
+            "/calendar/v3/calendars/",
+            FaultAction::Json(200, json!({"items": [good.clone(), bad]})),
+        ));
+        let failure = world
+            .as_account(&alice, |g| g.read_events(&alice.id, &q, deadline, &|| true))
+            .expect_err("an item without a span");
+        assert_eq!(
+            rejected_with(&failure),
+            (
+                FailureCode::InvalidArguments,
+                Sentence::EventUnreadable.text().to_owned()
+            )
+        );
+    }
     world.check_log();
 }

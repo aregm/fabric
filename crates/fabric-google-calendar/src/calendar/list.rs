@@ -12,16 +12,17 @@ use crate::translate::calendar_list_item;
 /// More calendars than this fail the listing (6.2, PD23, ST2).
 pub const MAX_CALENDARS: usize = 250;
 
-/// The most pages one listing reads. Each page but the last holds at least one entry when
-/// Google fills pages as documented; a run of empty pages past this is refused like a list
-/// past its bound.
-const MAX_PAGES: usize = MAX_CALENDARS + 1;
+/// The most pages one listing reads (6.2, 18.6). A listing that needs more fails as a whole,
+/// as a list past 250 calendars does: Google may fill a page with fewer entries than asked
+/// for, and a cut list would look like lost calendars (CO7).
+pub const MAX_LIST_PAGES: usize = 20;
 
 impl Google {
     /// `GET /users/me/calendarList?maxResults=250&minAccessRole=freeBusyReader&showHidden=true`,
-    /// page after page (6.2). More than 250 calendars in all fails the listing (PD23): a cut
-    /// list would look like lost calendars (CO7). Entries with an unusable id, an unknown role
-    /// or an unusable zone are left out; they count toward the 250.
+    /// page after page (6.2). More than 250 calendars in all, or more than 20 pages, fails the
+    /// listing (PD23, 18.6): a cut list would look like lost calendars (CO7). Entries with an
+    /// unusable id, an unknown role or an unusable zone are left out; they count toward the
+    /// 250.
     pub fn list_calendars(
         &mut self,
         account: &Id,
@@ -31,7 +32,7 @@ impl Google {
         let mut entries = Vec::new();
         let mut seen = 0usize;
         let mut page_token: Option<String> = None;
-        for _ in 0..MAX_PAGES {
+        for _ in 0..MAX_LIST_PAGES {
             let mut request = Request::new(Method::Get, Target::CalendarList, BodyBound::Large)
                 .query("maxResults", "250")
                 .query("minAccessRole", "freeBusyReader")

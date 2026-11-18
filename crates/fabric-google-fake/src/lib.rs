@@ -95,6 +95,12 @@
 //! - **FA17** Google's own event ids match `^[A-Za-z0-9_]+$` (the fake's generated ids are 26
 //!   base32hex digits).
 //!
+//! Two faults answer an insert or a PATCH with a fitting 200 in another form than was sent,
+//! for the comparison of 6.12 (18.7 point 2): [`FaultAction::RewriteDescriptionTrimmed`] (the
+//! description without its trailing white space) and [`FaultAction::RewriteZoneAlias`] (a
+//! zone alias in `start` and `end`). The fake stores the rewritten form too. Whether Google
+//! does either is unknown (LV18).
+//!
 //! Numbers in this crate's comments, such as (14.2) or (6.7), and ids such as PD14, FA3 or
 //! g07, cite `docs/plans/calendar-desktop-w05-design.md`.
 

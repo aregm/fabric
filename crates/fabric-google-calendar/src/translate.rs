@@ -19,8 +19,12 @@
 //!   account's primary calendar and only when its address is that calendar's id.
 //! - The observation of 6.5, which fails on a cut attendee list or an address the contract
 //!   cannot hold (PD25).
-//! - The bodies of 6.6 and 6.7, and `matches` and `confirmed` of 6.12.
+//! - The bodies of 6.6 and 6.7, and `matches` and `confirmed` of 6.12, with the first member
+//!   that differs ([`Differs`]) and the closed list of [`NORMALISATIONS`], empty today (18.7
+//!   point 2).
+//! - The span of each event of a read ([`crate::calendar::Span`]; 18.7 point 4).
 
+use std::borrow::Cow;
 use std::collections::HashSet;
 use std::fmt;
 
@@ -31,13 +35,15 @@ use fabric_desktop_contracts::agent::{
 use fabric_desktop_contracts::canonical;
 use fabric_desktop_contracts::common::{CalendarAccess, EventField, EventTime};
 use fabric_desktop_contracts::scalar::{
-    Date, Email, EventDescription, EventLocation, IanaZone, Label, ProviderRef, ReadTitle,
+    Date, Email, EventDescription, EventLocation, IanaZone, Label, OffsetDateTime, ProviderRef,
+    ReadTitle,
 };
 use serde_json::{Map, Value, json};
 
-use crate::calendar::{CalendarTarget, ObservedEvent};
+use crate::calendar::{CalendarTarget, ObservedEvent, Span};
 use crate::http::ids::{CalendarId, EventId};
-use crate::time::{parse_rfc3339_ms, to_offset_date_time};
+use crate::outcome::Differs;
+use crate::time::{parse_rfc3339_ms, read_date_time, to_offset_date_time};
 
 /// The longest calendar name (6.2; the contract's `label`).
 pub const MAX_NAME_CHARS: usize = 200;
@@ -386,22 +392,94 @@ fn event_time(date_time: &str, zone: &IanaZone) -> Result<EventTime, ShapeError>
     })
 }
 
-fn span(event: &GoogleEvent, zone: &IanaZone) -> Result<EventSpan, ShapeError> {
+/// One end of a timed event, read once: the contract's form and the instant.
+struct TimedEnd {
+    date_time: OffsetDateTime,
+    instant_ms: i64,
+}
+
+/// An event's own `start` and `end`, read once (6.4; 18.7 point 4). The one owner of their
+/// shape rules and of their parsing: the view's time ([`span`]) and the [`Span`]
+/// ([`event_span`]) are both derived from it, so one is never present without the other.
+enum StartEnd {
+    Timed { start: TimedEnd, end: TimedEnd },
+    AllDay { start_date: Date, end_date: Date },
+}
+
+/// Reads an event's own `start` and `end`, never `originalStartTime`: two `dateTime`s are
+/// timed, two `date`s are all day. Anything else (missing, one a date and the other a time, a
+/// value that does not parse) is a [`ShapeError`].
+fn start_end(event: &GoogleEvent) -> Result<StartEnd, ShapeError> {
     const L: &str = "an event's start and end are not both times or both dates";
     let (Some(start), Some(end)) = (&event.start, &event.end) else {
         return Err(ShapeError("an event has no start or no end"));
     };
     match (&start.date_time, &end.date_time, &start.date, &end.date) {
-        (Some(s), Some(e), _, _) => Ok(EventSpan::Timed {
-            start: event_time(s, zone)?,
-            end: event_time(e, zone)?,
-        }),
-        (None, None, Some(s), Some(e)) => Ok(EventSpan::AllDay {
+        (Some(s), Some(e), _, _) => {
+            let timed = |t: &str| {
+                read_date_time(t)
+                    .map(|(date_time, instant_ms)| TimedEnd {
+                        date_time,
+                        instant_ms,
+                    })
+                    .map_err(|_| ShapeError("an event time is not an RFC 3339 date-time"))
+            };
+            Ok(StartEnd::Timed {
+                start: timed(s)?,
+                end: timed(e)?,
+            })
+        }
+        (None, None, Some(s), Some(e)) => Ok(StartEnd::AllDay {
             start_date: Date::new(s.as_str()).map_err(|_| ShapeError(L))?,
             end_date: Date::new(e.as_str()).map_err(|_| ShapeError(L))?,
         }),
         _ => Err(ShapeError(L)),
     }
+}
+
+/// The view's time (6.4): [`start_end`] with the calendar's zone.
+fn span(event: &GoogleEvent, zone: &IanaZone) -> Result<EventSpan, ShapeError> {
+    Ok(match start_end(event)? {
+        StartEnd::Timed { start, end } => EventSpan::Timed {
+            start: EventTime {
+                date_time: start.date_time,
+                zone: zone.clone(),
+            },
+            end: EventTime {
+                date_time: end.date_time,
+                zone: zone.clone(),
+            },
+        },
+        StartEnd::AllDay {
+            start_date,
+            end_date,
+        } => EventSpan::AllDay {
+            start_date,
+            end_date,
+        },
+    })
+}
+
+/// The [`Span`] of an event of a read (6.4; 18.7 point 4): from the occurrence's own `start`
+/// and `end`, never from `originalStartTime`. Two `dateTime`s give `Timed` in UTC
+/// milliseconds; two `date`s give `AllDay` with Google's dates exactly, the end exclusive.
+/// No widening and no zone arithmetic. Anything else (missing, or one a date and the other a
+/// time) is a [`ShapeError`]: the read fails, it never lacks a span. Read by [`start_end`], as
+/// the view's time is.
+pub(crate) fn event_span(event: &GoogleEvent) -> Result<Span, ShapeError> {
+    Ok(match start_end(event)? {
+        StartEnd::Timed { start, end } => Span::Timed {
+            start_ms: start.instant_ms,
+            end_ms: end.instant_ms,
+        },
+        StartEnd::AllDay {
+            start_date,
+            end_date,
+        } => Span::AllDay {
+            start_date,
+            end_date,
+        },
+    })
 }
 
 /// The occurrence identity of an occurrence of a timed series (6.4). `None` for a single event
@@ -478,12 +556,17 @@ impl Granted {
     }
 
     /// The `fields=` value of an events list (6.4): `nextPageToken` and, per item, `id`,
-    /// `etag`, `status`, `recurringEventId` and the members of each granted field.
+    /// `etag`, `status`, `recurringEventId`, the start and end, and the members of each
+    /// granted field. The start and end are asked whatever the grant, as
+    /// `start(date,dateTime),end(date,dateTime)`, for the span only (18.7 point 4); with
+    /// `time` granted they are asked whole, with `originalStartTime`, for the view.
     #[must_use]
     pub fn fields_param(self) -> String {
         let mut members = vec!["id", "etag", "status", "recurringEventId"];
         if self.time {
             members.extend(["start", "end", "originalStartTime"]);
+        } else {
+            members.extend(["start(date,dateTime)", "end(date,dateTime)"]);
         }
         if self.title {
             members.push("summary");
@@ -816,64 +899,165 @@ const fn response_text(response: ProposedResponse) -> &'static str {
 
 // ---- Comparing (6.12) ------------------------------------------------------------------------
 
-/// Whether Google's time is the approved instant; the zone is compared when Google returns the
-/// event's own `timeZone`.
-fn time_matches(google: Option<&GoogleTime>, approved: &EventTime) -> bool {
-    let Some(google) = google else {
-        return false;
-    };
-    let Ok(want) = parse_rfc3339_ms(approved.date_time.as_str()) else {
-        return false;
-    };
-    google.instant_ms() == Some(want)
-        && google
-            .time_zone
-            .as_deref()
-            .is_none_or(|z| z == approved.zone.as_str())
+/// A rewriting of one member that the comparison applies to both sides before it compares them
+/// (6.12; 18.7 point 2). A closed, named list.
+///
+/// Google may store a member in another form than it was sent; an entry is added here only
+/// with a result from a live run (design LV18) and a test against the fake. The list is empty
+/// today: every member is compared as 6.12 says, with no equivalence invented (PLAN S04).
+///
+/// It reaches only the members compared as text: the title, the zone, the description and the
+/// place. Instants, attendee addresses, answers and other attendees' entries are not compared
+/// through it, so an entry for one of those needs its own place in the comparison and its own
+/// test.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Normalisation {}
+
+impl Normalisation {
+    /// The member it applies to.
+    #[must_use]
+    pub const fn member(self) -> Differs {
+        match self {}
+    }
+
+    /// `value` in the form the comparison uses.
+    fn apply(self, _value: &str) -> String {
+        match self {}
+    }
 }
 
-/// Absent and empty are equal (6.12).
-fn text_matches(google: Option<&String>, approved: Option<&str>) -> bool {
-    google.map_or("", String::as_str) == approved.unwrap_or("")
+/// Every normalisation the comparison applies: none today (LV18).
+pub const NORMALISATIONS: &[Normalisation] = &[];
+
+/// The one place where a normalisation is applied: to Google's value and to the approved value
+/// alike, before they are compared. Only the members compared as text pass through it (the
+/// title, the zone, the description and the place); instants, attendee addresses, answers and
+/// other attendees' entries do not, so a normalisation of one of those needs its own place.
+fn normalised(member: Differs, value: &str) -> Cow<'_, str> {
+    NORMALISATIONS
+        .iter()
+        .filter(|n| n.member() == member)
+        .fold(Cow::Borrowed(value), |value, n| Cow::Owned(n.apply(&value)))
 }
 
-/// `matches(action, event)` of 6.12: whether Google's event equals the approved change. Used for
-/// `confirmed` (6.6, 6.7) and for the read-back of section 7. An action that changes nothing
-/// never matches.
-pub(crate) fn matches(action: &Action, event: &GoogleEvent, target: &CalendarTarget) -> bool {
+/// Whether Google's text of `member` and the approved text are the same after the
+/// normalisations.
+fn same(member: Differs, google: &str, approved: &str) -> bool {
+    normalised(member, google) == normalised(member, approved)
+}
+
+/// `member` when Google's time is not the approved instant (or is missing).
+fn instant_differs(
+    google: Option<&GoogleTime>,
+    approved: &EventTime,
+    member: Differs,
+) -> Option<Differs> {
+    let want = parse_rfc3339_ms(approved.date_time.as_str()).ok();
+    let got = google.and_then(GoogleTime::instant_ms);
+    (want.is_none() || got != want).then_some(member)
+}
+
+/// The zone, compared only when Google returns the event's own `timeZone` (6.12).
+fn zone_differs(google: Option<&GoogleTime>, approved: &EventTime) -> Option<Differs> {
+    google
+        .and_then(|g| g.time_zone.as_deref())
+        .is_some_and(|zone| !same(Differs::Zone, zone, approved.zone.as_str()))
+        .then_some(Differs::Zone)
+}
+
+/// `member` when Google's text is not the approved one; absent and empty are equal (6.12).
+fn text_differs(
+    google: Option<&String>,
+    approved: Option<&str>,
+    member: Differs,
+) -> Option<Differs> {
+    (!same(
+        member,
+        google.map_or("", String::as_str),
+        approved.unwrap_or(""),
+    ))
+    .then_some(member)
+}
+
+/// The first member of Google's event that is not the approved change (6.12; 18.7 point 2),
+/// in this order: title, start, end, zone, description, place, attendees, own answer. `None`
+/// when every compared member is as approved. Only a create, an update, an invitation and a
+/// response are compared; for every other action there is nothing to compare and it gives
+/// `None` ([`matches`] answers `false` for them).
+pub(crate) fn differs(
+    action: &Action,
+    event: &GoogleEvent,
+    target: &CalendarTarget,
+) -> Option<Differs> {
     match action {
         Action::ProposeCreate(a) => {
             let e = &a.event;
-            event.summary.as_deref() == Some(e.title.as_str())
-                && time_matches(event.start.as_ref(), &e.start)
-                && time_matches(event.end.as_ref(), &e.end)
-                && text_matches(
-                    event.description.as_ref(),
-                    e.description.as_ref().map(|d| d.as_str()),
-                )
-                && text_matches(
-                    event.location.as_ref(),
-                    e.location.as_ref().map(|l| l.as_str()),
-                )
-                && event.attendees.is_empty()
+            let title = match event.summary.as_deref() {
+                Some(summary) if same(Differs::Title, summary, e.title.as_str()) => None,
+                _ => Some(Differs::Title),
+            };
+            title
+                .or_else(|| instant_differs(event.start.as_ref(), &e.start, Differs::Start))
+                .or_else(|| instant_differs(event.end.as_ref(), &e.end, Differs::End))
+                .or_else(|| zone_differs(event.start.as_ref(), &e.start))
+                .or_else(|| zone_differs(event.end.as_ref(), &e.end))
+                .or_else(|| {
+                    text_differs(
+                        event.description.as_ref(),
+                        e.description.as_ref().map(|d| d.as_str()),
+                        Differs::Description,
+                    )
+                })
+                .or_else(|| {
+                    text_differs(
+                        event.location.as_ref(),
+                        e.location.as_ref().map(|l| l.as_str()),
+                        Differs::Location,
+                    )
+                })
+                .or_else(|| (!event.attendees.is_empty()).then_some(Differs::Attendees))
         }
         Action::ProposeUpdate(a) => {
             let c = &a.changes;
             c.title
                 .as_ref()
-                .is_none_or(|t| text_matches(event.summary.as_ref(), Some(t.as_str())))
-                && c.start
-                    .as_ref()
-                    .is_none_or(|t| time_matches(event.start.as_ref(), t))
-                && c.end
-                    .as_ref()
-                    .is_none_or(|t| time_matches(event.end.as_ref(), t))
-                && c.description
-                    .as_ref()
-                    .is_none_or(|d| text_matches(event.description.as_ref(), Some(d.as_str())))
-                && c.location
-                    .as_ref()
-                    .is_none_or(|l| text_matches(event.location.as_ref(), Some(l.as_str())))
+                .and_then(|t| {
+                    text_differs(event.summary.as_ref(), Some(t.as_str()), Differs::Title)
+                })
+                .or_else(|| {
+                    c.start
+                        .as_ref()
+                        .and_then(|t| instant_differs(event.start.as_ref(), t, Differs::Start))
+                })
+                .or_else(|| {
+                    c.end
+                        .as_ref()
+                        .and_then(|t| instant_differs(event.end.as_ref(), t, Differs::End))
+                })
+                .or_else(|| {
+                    c.start
+                        .as_ref()
+                        .and_then(|t| zone_differs(event.start.as_ref(), t))
+                })
+                .or_else(|| {
+                    c.end
+                        .as_ref()
+                        .and_then(|t| zone_differs(event.end.as_ref(), t))
+                })
+                .or_else(|| {
+                    c.description.as_ref().and_then(|d| {
+                        text_differs(
+                            event.description.as_ref(),
+                            Some(d.as_str()),
+                            Differs::Description,
+                        )
+                    })
+                })
+                .or_else(|| {
+                    c.location.as_ref().and_then(|l| {
+                        text_differs(event.location.as_ref(), Some(l.as_str()), Differs::Location)
+                    })
+                })
         }
         Action::ProposeInvitation(a) => {
             let own = own_entry(event, target);
@@ -887,7 +1071,7 @@ pub(crate) fn matches(action: &Action, event: &GoogleEvent, target: &CalendarTar
                     Some(key) => {
                         google.insert(key);
                     }
-                    None => return false,
+                    None => return Some(Differs::Attendees),
                 }
             }
             let approved: Option<HashSet<String>> = a
@@ -896,41 +1080,70 @@ pub(crate) fn matches(action: &Action, event: &GoogleEvent, target: &CalendarTar
                 .filter(|e| own_address.is_none_or(|own| !same_address(own, e.as_str())))
                 .map(|e| address_key(e.as_str()))
                 .collect();
-            approved.is_some_and(|approved| approved == google)
+            (approved.as_ref() != Some(&google)).then_some(Differs::Attendees)
         }
-        Action::ProposeResponse(a) => own_entry(event, target).is_some_and(|i| {
-            event.attendees[i].response.as_deref() == Some(response_text(a.response))
-        }),
+        Action::ProposeResponse(a) => {
+            let answered = own_entry(event, target).is_some_and(|i| {
+                event.attendees[i].response.as_deref() == Some(response_text(a.response))
+            });
+            (!answered).then_some(Differs::OwnResponse)
+        }
         Action::ProposeDelete(_)
         | Action::CalendarList(_)
         | Action::CalendarAvailability(_)
         | Action::CalendarRead(_)
-        | Action::RequestResult(_) => false,
+        | Action::RequestResult(_) => None,
     }
 }
 
-/// `confirmed` for the answer to the adapter's own PATCH of a response (6.12): `matches`, and
-/// every other attendee entry is as it was read.
-pub(crate) fn response_confirmed(
+/// Whether `action` is one [`differs`] compares: a create, an update, an invitation or a
+/// response.
+const fn is_compared(action: &Action) -> bool {
+    matches!(
+        action,
+        Action::ProposeCreate(_)
+            | Action::ProposeUpdate(_)
+            | Action::ProposeInvitation(_)
+            | Action::ProposeResponse(_)
+    )
+}
+
+/// `matches(action, event)` of 6.12: whether Google's event equals the approved change, as a
+/// bool for the read-back of section 7. A thin wrapper of [`differs`]. An action that changes
+/// no event never matches.
+pub(crate) fn matches(action: &Action, event: &GoogleEvent, target: &CalendarTarget) -> bool {
+    is_compared(action) && differs(action, event, target).is_none()
+}
+
+/// For the answer to the adapter's own PATCH of a response (6.12): [`differs`], and then
+/// [`Differs::OtherAttendee`] when another attendee entry is not as it was read.
+pub(crate) fn response_differs(
     action: &Action,
     read: &GoogleEvent,
     after: &GoogleEvent,
     target: &CalendarTarget,
-) -> bool {
-    if !matches(action, after, target) {
-        return false;
-    }
-    let others = |event: &GoogleEvent| -> Vec<Value> {
-        let own = own_entry(event, target);
-        event
-            .attendees
-            .iter()
-            .enumerate()
-            .filter(|(i, _)| Some(*i) != own)
-            .map(|(_, a)| a.raw.clone())
-            .collect()
-    };
-    others(read) == others(after)
+) -> Option<Differs> {
+    differs(action, after, target).or_else(|| {
+        let others = |event: &GoogleEvent| -> Vec<Value> {
+            let own = own_entry(event, target);
+            event
+                .attendees
+                .iter()
+                .enumerate()
+                .filter(|(i, _)| Some(*i) != own)
+                .map(|(_, a)| a.raw.clone())
+                .collect()
+        };
+        (others(read) != others(after)).then_some(Differs::OtherAttendee)
+    })
+}
+
+/// [`Differs::OriginalStart`] when an answer to one occurrence names an original start and the
+/// event's is not that instant (CD-Q05b). `None` when no original start was approved.
+pub(crate) fn occurrence_differs(event: &GoogleEvent, approved_ms: Option<i64>) -> Option<Differs> {
+    approved_ms
+        .is_some_and(|approved| event.original_start_ms() != Some(approved))
+        .then_some(Differs::OriginalStart)
 }
 
 #[cfg(test)]
@@ -941,7 +1154,7 @@ mod tests {
         ProposeUpdateArguments, ResponseTarget,
     };
     use fabric_desktop_contracts::common::{CalendarRef, EventRef, SendUpdates};
-    use fabric_desktop_contracts::scalar::{EventTitle, Id, OffsetDateTime, Task};
+    use fabric_desktop_contracts::scalar::{EventTitle, Id, Task};
 
     fn target(primary: bool) -> CalendarTarget {
         CalendarTarget {
@@ -1250,6 +1463,104 @@ mod tests {
         ));
     }
 
+    /// 18.7 point 4: a span is the occurrence's own start and end, `Timed` in UTC milliseconds
+    /// or `AllDay` with Google's dates; never the original start; anything else is an error.
+    /// Finding of review: the view's time and the span come from one read of `start` and
+    /// `end`. Each `dateTime` the view shows is the instant the span holds, for timed events;
+    /// all-day dates are the same in both; a value refused for one is refused for both.
+    #[test]
+    fn the_views_time_and_the_span_come_from_one_read_of_start_and_end() {
+        let zone = IanaZone::new("Europe/Paris").expect("valid");
+        for (start, end) in [
+            ("2026-11-20T10:00:00.250+01:00", "2026-11-20T09:30:00Z"),
+            ("2026-11-20T23:59:59.999-23:59", "2026-11-21T00:00:00+23:59"),
+            ("0000-01-01T00:00:00Z", "9999-12-31T23:59:59.999Z"),
+        ] {
+            let e = event(json!({"id": "t", "etag": "\"1\"",
+                "start": {"dateTime": start}, "end": {"dateTime": end}}));
+            let (Ok(EventSpan::Timed { start: vs, end: ve }), Ok(Span::Timed { start_ms, end_ms })) =
+                (span(&e, &zone), event_span(&e))
+            else {
+                panic!("both timed");
+            };
+            assert_eq!(
+                parse_rfc3339_ms(vs.date_time.as_str()),
+                Ok(start_ms - start_ms.rem_euclid(1000))
+            );
+            assert_eq!(
+                parse_rfc3339_ms(ve.date_time.as_str()),
+                Ok(end_ms - end_ms.rem_euclid(1000))
+            );
+            assert_eq!(start_ms, parse_rfc3339_ms(start).expect("valid"));
+            assert_eq!(end_ms, parse_rfc3339_ms(end).expect("valid"));
+        }
+        let all_day = event(
+            json!({"id": "a", "etag": "\"1\"", "start": {"date": "2026-11-20"}, "end": {"date": "2026-11-22"}}),
+        );
+        let (
+            Ok(EventSpan::AllDay {
+                start_date: vs,
+                end_date: ve,
+            }),
+            Ok(Span::AllDay {
+                start_date,
+                end_date,
+            }),
+        ) = (span(&all_day, &zone), event_span(&all_day))
+        else {
+            panic!("both all day");
+        };
+        assert_eq!((vs, ve), (start_date, end_date));
+        for bad in [
+            "2026-02-30T10:00:00Z",
+            "2026-11-20T24:00:00Z",
+            "2026-11-20T10:00:00+24:00",
+            "2026-11-20T10:00:60Z",
+            "2026-11-20t10:00:00Z",
+            "2026-11-20T10:00:00.Z",
+        ] {
+            let e = event(json!({"id": "b", "etag": "\"1\"",
+                "start": {"dateTime": bad}, "end": {"dateTime": "2026-11-20T11:00:00Z"}}));
+            assert!(span(&e, &zone).is_err() && event_span(&e).is_err(), "{bad}");
+        }
+    }
+
+    #[test]
+    fn a_span_is_the_events_own_start_and_end_as_instants_or_dates() {
+        let occurrence = event(json!({
+            "id": "o", "etag": "\"1\"", "recurringEventId": "s",
+            "originalStartTime": {"dateTime": "2026-11-20T08:00:00+01:00"},
+            "start": {"dateTime": "2026-11-20T10:00:00.250+01:00", "timeZone": "America/New_York"},
+            "end": {"dateTime": "2026-11-20T09:30:00Z"},
+        }));
+        assert_eq!(
+            event_span(&occurrence),
+            Ok(Span::Timed {
+                start_ms: parse_rfc3339_ms("2026-11-20T09:00:00.250Z").expect("valid"),
+                end_ms: parse_rfc3339_ms("2026-11-20T09:30:00Z").expect("valid"),
+            })
+        );
+        let all_day = event(
+            json!({"id": "a", "etag": "\"1\"", "start": {"date": "2026-11-20"}, "end": {"date": "2026-11-22"}}),
+        );
+        assert_eq!(
+            event_span(&all_day),
+            Ok(Span::AllDay {
+                start_date: Date::new("2026-11-20").expect("valid"),
+                end_date: Date::new("2026-11-22").expect("valid"),
+            })
+        );
+        for bad in [
+            json!({"id": "m", "etag": "\"1\"", "start": {"date": "2026-11-20"}, "end": {"dateTime": "2026-11-20T10:00:00Z"}}),
+            json!({"id": "m", "etag": "\"1\"", "start": {"dateTime": "2026-11-20T10:00:00Z"}}),
+            json!({"id": "m", "etag": "\"1\""}),
+            json!({"id": "m", "etag": "\"1\"", "start": {"dateTime": "tomorrow"}, "end": {"dateTime": "2026-11-20T10:00:00Z"}}),
+            json!({"id": "m", "etag": "\"1\"", "start": {"date": "20 November"}, "end": {"date": "2026-11-21"}}),
+        ] {
+            assert!(event_span(&event(bad)).is_err());
+        }
+    }
+
     #[test]
     fn texts_are_cut_at_the_contracts_bounds() {
         let e = event(json!({
@@ -1297,18 +1608,22 @@ mod tests {
     }
 
     #[test]
-    fn the_fields_parameter_asks_only_for_the_granted_members() {
+    fn the_fields_parameter_asks_only_for_the_granted_members_and_always_the_span() {
         assert_eq!(
             Granted::default().fields_param(),
-            "nextPageToken,items(id,etag,status,recurringEventId)"
+            "nextPageToken,items(id,etag,status,recurringEventId,start(date,dateTime),end(date,dateTime))"
         );
         assert_eq!(
             Granted::of(&[EventField::Title]).fields_param(),
-            "nextPageToken,items(id,etag,status,recurringEventId,summary)"
+            "nextPageToken,items(id,etag,status,recurringEventId,start(date,dateTime),end(date,dateTime),summary)"
         );
         assert_eq!(
             Granted::of(&[EventField::OwnResponse]).fields_param(),
-            "nextPageToken,items(id,etag,status,recurringEventId,attendees(email,responseStatus,self),attendeesOmitted)"
+            "nextPageToken,items(id,etag,status,recurringEventId,start(date,dateTime),end(date,dateTime),attendees(email,responseStatus,self),attendeesOmitted)"
+        );
+        assert_eq!(
+            Granted::of(&[EventField::Time]).fields_param(),
+            "nextPageToken,items(id,etag,status,recurringEventId,start,end,originalStartTime)"
         );
         assert_eq!(
             Granted::ALL.fields_param(),
@@ -1602,21 +1917,151 @@ mod tests {
             &target(false)
         ));
         let read = answered("needsAction");
-        assert!(response_confirmed(
-            &response_action(ProposedResponse::Accepted),
-            &read,
-            &answered("accepted"),
-            &t
-        ));
+        assert_eq!(
+            response_differs(
+                &response_action(ProposedResponse::Accepted),
+                &read,
+                &answered("accepted"),
+                &t
+            ),
+            None
+        );
         let mut changed_other = answered("accepted");
         changed_other.attendees[1].raw =
             json!({"email": "a@example.com", "responseStatus": "accepted"});
-        assert!(!response_confirmed(
-            &response_action(ProposedResponse::Accepted),
-            &read,
-            &changed_other,
-            &t
-        ));
+        assert_eq!(
+            response_differs(
+                &response_action(ProposedResponse::Accepted),
+                &read,
+                &changed_other,
+                &t
+            ),
+            Some(Differs::OtherAttendee)
+        );
+        assert_eq!(
+            response_differs(
+                &response_action(ProposedResponse::Declined),
+                &read,
+                &changed_other,
+                &t
+            ),
+            Some(Differs::OwnResponse),
+            "the own answer is named before another entry"
+        );
+    }
+
+    /// 18.7 point 2: the comparison names the first member that differs, as a fixed label, in
+    /// the order title, start, end, zone, description, place, attendees, own answer.
+    #[test]
+    fn the_comparison_names_the_first_member_that_differs() {
+        let t = target(true);
+        let create = create_action(Some("Agenda"), Some("Room"));
+        let base = json!({"description": "Agenda", "location": "Room"});
+        // `null` members are kept here, so that `created` removes them.
+        let with = |extra: Value| {
+            let mut v = base.clone();
+            if let (Some(b), Value::Object(e)) = (v.as_object_mut(), extra) {
+                b.extend(e);
+            }
+            created(v)
+        };
+        assert_eq!(differs(&create, &with(json!({})), &t), None);
+        let cases = [
+            (json!({"summary": "Other"}), Differs::Title),
+            (json!({"summary": null}), Differs::Title),
+            (
+                json!({"start": {"dateTime": "2026-11-20T10:30:00+01:00"}}),
+                Differs::Start,
+            ),
+            (json!({"start": null}), Differs::Start),
+            (
+                json!({"end": {"dateTime": "2026-11-20T11:30:00+01:00"}}),
+                Differs::End,
+            ),
+            (
+                json!({"end": {"dateTime": "2026-11-20T11:00:00+01:00", "timeZone": "Asia/Calcutta"}}),
+                Differs::Zone,
+            ),
+            (json!({"description": "Agenda "}), Differs::Description),
+            (json!({"location": "Hall"}), Differs::Location),
+            (
+                json!({"attendees": [{"email": "a@example.com"}]}),
+                Differs::Attendees,
+            ),
+            // Two members differ: the first in the order is named.
+            (
+                json!({"summary": "Other", "location": "Hall"}),
+                Differs::Title,
+            ),
+            (
+                json!({"description": "x", "start": {"dateTime": "2026-11-20T09:00:00+01:00"}}),
+                Differs::Start,
+            ),
+        ];
+        for (extra, want) in cases {
+            let label = extra.to_string();
+            let event = with(extra);
+            assert_eq!(differs(&create, &event, &t), Some(want), "{label}");
+            assert!(!matches(&create, &event, &t), "{label}");
+        }
+        let mut c = no_changes();
+        c.start = Some(at("2026-11-20T10:00:00+01:00", "Asia/Kolkata"));
+        assert_eq!(
+            differs(&update_action(c), &created(json!({})), &t),
+            Some(Differs::Zone)
+        );
+        assert_eq!(
+            differs(
+                &invitation_action(&["bob@example.com"]),
+                &created(json!({})),
+                &t
+            ),
+            Some(Differs::Attendees)
+        );
+        assert_eq!(
+            differs(
+                &response_action(ProposedResponse::Accepted),
+                &created(json!({})),
+                &t
+            ),
+            Some(Differs::OwnResponse)
+        );
+        // The original start of an occurrence.
+        let occurrence = created(
+            json!({"recurringEventId": "s", "originalStartTime": {"dateTime": "2026-11-20T10:00:00+01:00"}}),
+        );
+        let at_nine_utc = parse_rfc3339_ms("2026-11-20T09:00:00Z").expect("valid");
+        assert_eq!(occurrence_differs(&occurrence, Some(at_nine_utc)), None);
+        assert_eq!(occurrence_differs(&occurrence, None), None);
+        assert_eq!(
+            occurrence_differs(&occurrence, Some(at_nine_utc + 1)),
+            Some(Differs::OriginalStart)
+        );
+        // A delete, and every action that changes no event, is never compared and never
+        // matches.
+        let (account_id, calendar_id) = ids();
+        let delete =
+            Action::ProposeDelete(fabric_desktop_contracts::agent::ProposeDeleteArguments {
+                account_id,
+                calendar_id,
+                event: event_ref(),
+                send_updates: SendUpdates::None,
+                task: Task::new("").expect("valid"),
+            });
+        assert_eq!(differs(&delete, &created(json!({})), &t), None);
+        assert!(!matches(&delete, &created(json!({})), &t));
+    }
+
+    /// 18.7 point 2: the list of normalisations is closed and empty until a live run (LV18)
+    /// and a test against the fake add an entry; a trimmed description and a zone alias are
+    /// differences today.
+    #[test]
+    fn the_list_of_normalisations_is_empty() {
+        assert!(NORMALISATIONS.is_empty());
+        for member in Differs::ALL {
+            assert_eq!(normalised(member, "Agenda  "), "Agenda  ");
+            assert!(!same(member, "Agenda", "Agenda  "));
+        }
     }
 
     #[test]

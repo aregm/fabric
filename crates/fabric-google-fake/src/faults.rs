@@ -138,6 +138,19 @@ pub enum FaultAction {
     Json(u16, Value),
     /// Answer these bytes as they are, then close.
     Raw(Vec<u8>),
+    /// Handle an insert or a PATCH (the change is applied, with a new etag), but store and
+    /// answer the event with the trailing white space of its `description` removed: a fitting
+    /// 200 in another form than was sent (18.7 point 2; LV18).
+    RewriteDescriptionTrimmed,
+    /// Handle an insert or a PATCH (the change is applied, with a new etag), but store and
+    /// answer the event with the `timeZone` of `start` and `end` written `to` where it was
+    /// `from`: a zone alias, such as `Asia/Calcutta` for `Asia/Kolkata` (18.7 point 2; LV18).
+    RewriteZoneAlias {
+        /// The zone as sent.
+        from: String,
+        /// The alias stored and answered.
+        to: String,
+    },
 }
 
 impl FaultAction {
@@ -227,6 +240,8 @@ impl FaultAction {
             FaultAction::Before(_) => "before hook".into(),
             FaultAction::Json(status, _) => format!("json answer {status}"),
             FaultAction::Raw(_) => "raw answer".into(),
+            FaultAction::RewriteDescriptionTrimmed => "rewrite description trimmed".into(),
+            FaultAction::RewriteZoneAlias { from, to } => format!("rewrite zone {from} as {to}"),
         }
     }
 }
@@ -429,6 +444,14 @@ pub(crate) struct Plan {
     pub(crate) id_token: Vec<IdTokenFault>,
     pub(crate) hide_insert_reads: Option<u32>,
     pub(crate) cut_attendees: bool,
+    /// Rewritings of an inserted or patched event, in the order armed.
+    pub(crate) rewrites: Vec<Rewrite>,
+}
+
+/// A rewriting of an inserted or patched event before it is stored and answered.
+pub(crate) enum Rewrite {
+    DescriptionTrimmed,
+    ZoneAlias { from: String, to: String },
 }
 
 pub(crate) enum Instead {
@@ -518,6 +541,13 @@ impl Plan {
             FaultAction::Raw(bytes) => {
                 self.instead.get_or_insert(Instead::Raw(bytes.clone()));
             }
+            FaultAction::RewriteDescriptionTrimmed => {
+                self.rewrites.push(Rewrite::DescriptionTrimmed);
+            }
+            FaultAction::RewriteZoneAlias { from, to } => self.rewrites.push(Rewrite::ZoneAlias {
+                from: from.clone(),
+                to: to.clone(),
+            }),
         }
     }
 }

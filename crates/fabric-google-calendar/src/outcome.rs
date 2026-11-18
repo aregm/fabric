@@ -49,16 +49,106 @@ pub enum SideResult {
     AccessChanged,
 }
 
+/// The first member of the event Google returned that is not what was approved (6.12; 18.7
+/// point 2). A fixed label; it carries no content.
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+pub enum Differs {
+    /// The title (`summary`).
+    Title,
+    /// The instant of the start.
+    Start,
+    /// The instant of the end.
+    End,
+    /// The zone of the start or the end, when Google returns one.
+    Zone,
+    /// The description.
+    Description,
+    /// The place (`location`).
+    Location,
+    /// The attendees: a create's (none), or an invitation's set of addresses.
+    Attendees,
+    /// The answer of the account's own entry (6.1), or the own entry itself.
+    OwnResponse,
+    /// Another attendee's entry, which an answer must leave as it was read.
+    OtherAttendee,
+    /// The original start of an occurrence (CD-Q05b).
+    OriginalStart,
+    /// The event Google returned is cancelled and its revision can be held, so the event is
+    /// named (18.7 point 2).
+    Status,
+    /// The event Google returned, or its revision, cannot be read or held (18.7 point 2). The
+    /// only label when no event is named after a create, an update, an invitation or a response.
+    Event,
+}
+
+impl Differs {
+    /// Every member, for the tests.
+    pub const ALL: [Differs; 12] = [
+        Differs::Title,
+        Differs::Start,
+        Differs::End,
+        Differs::Zone,
+        Differs::Description,
+        Differs::Location,
+        Differs::Attendees,
+        Differs::OwnResponse,
+        Differs::OtherAttendee,
+        Differs::OriginalStart,
+        Differs::Status,
+        Differs::Event,
+    ];
+
+    /// The fixed label, in snake case.
+    #[must_use]
+    pub const fn label(self) -> &'static str {
+        match self {
+            Differs::Title => "title",
+            Differs::Start => "start",
+            Differs::End => "end",
+            Differs::Zone => "zone",
+            Differs::Description => "description",
+            Differs::Location => "location",
+            Differs::Attendees => "attendees",
+            Differs::OwnResponse => "own_response",
+            Differs::OtherAttendee => "other_attendee",
+            Differs::OriginalStart => "original_start",
+            Differs::Status => "status",
+            Differs::Event => "event",
+        }
+    }
+}
+
+/// Prints the label only.
+impl fmt::Debug for Differs {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.label())
+    }
+}
+
+/// Prints the label only.
+impl fmt::Display for Differs {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.label())
+    }
+}
+
 /// The outcome of one changing order (6.10, PD17, PD18).
 #[derive(Clone, PartialEq, Eq)]
 pub enum ChangeOutcome {
-    /// Google answered the change with a plain yes (6.6 to 6.8).
+    /// Google answered the change with a plain yes (6.6 to 6.8). A 200 whose event has the
+    /// right id is always this, whatever the event holds (18.7 point 2).
     Applied {
-        /// The event as Google now has it: its id and new revision. `None` after a deletion.
+        /// The event as Google now has it: its id and new revision. `None` after a deletion. For
+        /// a create, an update, an invitation or a response, `None` only when no revision could
+        /// be held; then `confirmed` is false and `differs` is `event` (18.7 point 2).
         event: Option<EventRef>,
-        /// Whether Google's answer equals what was approved (6.12). Always false for a
-        /// deletion, whose answer has no body (section 7).
+        /// Whether Google's answer equals what was approved (6.12). For a deletion, whether
+        /// the read after it found the event gone (18.7 point 1).
         confirmed: bool,
+        /// The first member that is not what was approved. For a create, an update, an
+        /// invitation or a response, `None` exactly when `confirmed` is true; always `None`
+        /// for a deletion (18.7 point 2).
+        differs: Option<Differs>,
         /// Whether the people of the event were told.
         notification: Notification,
     },
@@ -87,11 +177,13 @@ impl fmt::Debug for ChangeOutcome {
             ChangeOutcome::Applied {
                 event,
                 confirmed,
+                differs,
                 notification,
             } => f
                 .debug_struct("Applied")
                 .field("event", &event.as_ref().map(|_| "present"))
                 .field("confirmed", confirmed)
+                .field("differs", differs)
                 .field("notification", notification)
                 .finish(),
             ChangeOutcome::Transient { retry_after_ms } => f
@@ -245,7 +337,8 @@ pub enum Sentence {
     FreeBusyIncomplete,
     /// A read past its bounds, or with a cut attendee list (6.4, PD23).
     WindowTooLarge,
-    /// A calendar list past 250 calendars (6.2, PD23).
+    /// A calendar list past 250 calendars or past 20 pages (6.2, PD23; 18.6). One sentence, true
+    /// for both.
     TooManyCalendars,
     /// An answer without an own entry (6.1, 6.7).
     NotInvited,
@@ -354,9 +447,7 @@ impl Sentence {
             Sentence::WindowTooLarge => {
                 "The window holds more events than one answer can carry. Ask for a shorter window."
             }
-            Sentence::TooManyCalendars => {
-                "The account has more than 250 calendars, more than Fabric can list."
-            }
+            Sentence::TooManyCalendars => "This account has more calendars than Fabric can list.",
             Sentence::NotInvited => "This account is not invited to this event on this calendar.",
             Sentence::AttendeesCut => "Google sent only part of the attendee list.",
             Sentence::TooManyAttendees => "The event has more attendees than Fabric can hold.",
@@ -1154,10 +1245,33 @@ mod tests {
                     .expect("valid"),
             }),
             confirmed: true,
+            differs: None,
             notification: Notification::Sent,
         };
         let text = format!("{outcome:?}");
         assert!(!text.contains("secretevent"), "{text}");
         assert!(text.contains("present"), "{text}");
+    }
+
+    #[test]
+    fn a_differing_member_prints_only_its_fixed_snake_case_label() {
+        let mut seen = std::collections::HashSet::new();
+        for member in Differs::ALL {
+            let label = member.label();
+            assert!(seen.insert(label), "{label}");
+            assert!(
+                !label.is_empty() && label.bytes().all(|b| b.is_ascii_lowercase() || b == b'_'),
+                "{label}"
+            );
+            assert_eq!(format!("{member:?}"), label);
+            assert_eq!(member.to_string(), label);
+        }
+        let outcome = ChangeOutcome::Applied {
+            event: None,
+            confirmed: false,
+            differs: Some(Differs::Description),
+            notification: Notification::NotRequested,
+        };
+        assert!(format!("{outcome:?}").contains("Some(description)"));
     }
 }
