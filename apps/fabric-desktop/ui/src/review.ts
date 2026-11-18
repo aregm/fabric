@@ -6,6 +6,7 @@ import type { Agent, Grant, ProofReport } from "../../../../contracts/desktop/v1
 import type { Entry, Failure, Model } from "./model.ts";
 import {
   NO_PROOF, OPERATION, OWNER_CAN_DO, TERMINAL, UNDECIDED_REASON, UNDECIDED_REASON_UNKNOWN, agentFacts, agentName, approvalFacts,
+  approvalHolds,
   askedFacts, attemptFacts, authorizationFacts, formatInstant, grantFacts, proofFacts,
 } from "./text.ts";
 import type { Fact } from "./text.ts";
@@ -35,7 +36,7 @@ export interface RequestLines {
 export interface DetailsParts {
   readonly general: readonly Fact[]; // received, last change, why it was not decided (undecided only), account, request digest
   readonly asked: readonly Fact[]; // empty while the approval card shows them
-  readonly decision: readonly Fact[]; // empty when nobody decided
+  readonly decision: readonly Fact[]; // empty when nobody decided, or when the request waits again or expired
   readonly proofIds: readonly string[]; // in the broker's order, newest first
   readonly authorization: readonly Fact[]; // empty when there is none
   readonly attempts: readonly { readonly number: number; readonly facts: readonly Fact[]; readonly proofId: string }[];
@@ -157,7 +158,7 @@ export class ReviewModel {
         { term: "Request digest", values: [r.request_digest] },
       ],
       asked: d.card === null ? askedFacts(d, names) : [], // the card shows them
-      decision: d.approval === null ? [] : approvalFacts(d.approval, names, m.recipientSets),
+      decision: d.approval === null || !approvalHolds(r.status.state) ? [] : approvalFacts(d.approval, names, m.recipientSets),
       proofIds: d.proof_ids,
       authorization: d.authorization === null ? [] : authorizationFacts(d.authorization, z),
       attempts: d.attempts.map((a) => ({ number: a.number, facts: attemptFacts(a, z), proofId: a.proof_id })),

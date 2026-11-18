@@ -4,10 +4,10 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
 import { REQUEST_STATES } from "../../../contracts/desktop/v1/typescript/src/contract.ts";
-import type { Grant, Snapshot } from "../../../contracts/desktop/v1/typescript/src/contract.ts";
+import type { Grant, OwnerError, Snapshot } from "../../../contracts/desktop/v1/typescript/src/contract.ts";
 import { CONTRACT_ROOT } from "../../../contracts/desktop/v1/typescript/src/judge.ts";
 import { ENDED_GRANT_LIMIT, ENDED_REQUEST_LIMIT } from "../ui/src/model.ts";
-import { STATE_TEXT, TERMINAL, bannerText } from "../ui/src/text.ts";
+import { STATE_TEXT, TERMINAL, bannerText, lastingCoversText } from "../ui/src/text.ts";
 import {
   AGENT, DIGEST_A, DIGEST_B, HELLO_RESULT, RECEIVED_AT, RECEIVED_MS, assertRequestsValid, connect, details, entry, fixture,
   flush, pendingCard, request, setup, snapshot,
@@ -116,7 +116,7 @@ test("a card appears only after get_request_details answered", () => {
   assert.equal(model.cardStatus(entry(model)).kind, "none");
   host.reply("get_request_details", details(request("pending_approval", 4)));
   assert.equal(model.cardStatus(entry(model)).kind, "ready");
-  assert.equal(entry(model).duration, "one_request", "the proposed duration is preselected");
+  assert.equal(entry(model).duration, "one_request", "the shortest duration is selected");
   assert.match(announced.at(-1) ?? "", /needs your decision: Create an event, from Synthetic agent \(spike\)/);
 });
 
@@ -156,7 +156,7 @@ test("Escape (dismiss) sends nothing and leaves the request pending", () => {
 });
 
 test("disconnect fails in-flight requests, disables cards and keeps the chosen duration", async () => {
-  const { host, model } = pendingCard();
+  const { host, model } = pendingCard("until_revoked");
   model.chooseDuration("spike-request-1", "session");
   model.decide("spike-request-1", "approve");
   model.checkConnection();
@@ -172,7 +172,7 @@ test("disconnect fails in-flight requests, disables cards and keeps the chosen d
 });
 
 test("after a restart a card is enabled only after the re-read in the new run with the same digest", () => {
-  const { host, model } = pendingCard();
+  const { host, model } = pendingCard("until_revoked");
   model.chooseDuration("spike-request-1", "session");
   model.decide("spike-request-1", "approve");
   const firstId = host.last("decide_request").id;
@@ -183,7 +183,7 @@ test("after a restart a card is enabled only after the re-read in the new run wi
   connect(host, 2, snapshot(1, [request("pending_approval", 4)]));
   const e = entry(model);
   assert.equal(model.cardStatus(e).kind, "waiting", "not before the re-read");
-  host.reply("get_request_details", details(request("pending_approval", 4)));
+  host.reply("get_request_details", details(request("pending_approval", 4), "until_revoked"));
   assert.equal(model.cardStatus(e).kind, "ready");
   assert.equal(e.duration, "session");
   // The same decision reuses the command id; another duration gets a new one.
@@ -192,9 +192,10 @@ test("after a restart a card is enabled only after the re-read in the new run wi
   host.state({ name: "disconnected", reason: "exited", detail: "exit code 1" });
   model.restart();
   connect(host, 3, snapshot(1, [request("pending_approval", 4)]));
-  host.reply("get_request_details", details(request("pending_approval", 4)));
+  host.reply("get_request_details", details(request("pending_approval", 4), "until_revoked"));
   model.chooseDuration("spike-request-1", "until_revoked");
   model.decide("spike-request-1", "approve");
+  assert.deepEqual(host.last("decide_request").params.duration, { kind: "until_revoked" });
   assert.notEqual(host.last("decide_request").id, firstId);
 });
 
@@ -223,32 +224,40 @@ test("a request the new broker does not list is not available", () => {
   assert.equal(model.cardStatus(e).kind, "closed");
 });
 
-test("an approval of an earlier run does not close a card the broker lists as pending again", () => {
-  const { host, model } = pendingCard();
-  model.chooseDuration("spike-request-1", "session");
-  model.decide("spike-request-1", "approve");
-  const frame = host.last("decide_request");
-  const approved = request("approved", 5);
-  host.reply("decide_request", {
-    commit_sequence: 3, request: approved,
-    approval: {
+// Two shapes of the details read after the request is pending again: without an approval, and with
+// the earlier one still in them (what the broker on main sends).
+for (const earlier of [false, true]) {
+  test(`an approval of an earlier run does not close a card the broker lists as pending again (approval in the details: ${earlier})`, () => {
+    const { host, model } = pendingCard("until_revoked");
+    model.chooseDuration("spike-request-1", "session");
+    model.decide("spike-request-1", "approve");
+    const frame = host.last("decide_request");
+    const approved = request("approved", 5);
+    const approval = {
       decision: "approve", command_id: frame.id, decided_at: RECEIVED_AT, approval_digest: DIGEST_B,
       scope: details(approved).card?.scope, duration: { kind: "session" }, effective_request_digest: DIGEST_A, grant_id: "spike-grant-1",
-    },
+    } as const;
+    host.reply("decide_request", { commit_sequence: 3, request: approved, approval });
+    assert.equal(model.cardStatus(entry(model)).kind, "closed");
+    host.state({ name: "disconnected", reason: "exited", detail: "killed by signal 9" });
+    model.restart();
+    connect(host, 2, snapshot(0));
+    host.notice(1, { kind: "request", request: request("received", 1) });
+    assert.equal(entry(model).duration, "session", "kept until the request waits again");
+    host.notice(2, { kind: "request", request: request("pending_approval", 4) });
+    const e = entry(model);
+    assert.equal(e.approval, null);
+    assert.equal(e.duration, "one_request", "a new round starts from the shortest duration");
+    assert.equal(model.cardStatus(e).kind, "waiting", "not before the re-read");
+    const again = details(request("pending_approval", 4), "until_revoked");
+    host.reply("get_request_details", earlier ? { ...again, approval } : again);
+    assert.equal(e.approval, null, "an approval of an earlier round is not this round's decision");
+    assert.equal(model.cardStatus(e).kind, "ready");
+    assert.equal(e.duration, "one_request");
+    assert.equal(model.decide("spike-request-1", "approve"), true);
+    assert.deepEqual(host.last("decide_request").params.duration, { kind: "one_request" });
   });
-  assert.equal(model.cardStatus(entry(model)).kind, "closed");
-  host.state({ name: "disconnected", reason: "exited", detail: "killed by signal 9" });
-  model.restart();
-  connect(host, 2, snapshot(0));
-  host.notice(1, { kind: "request", request: request("received", 1) });
-  host.notice(2, { kind: "request", request: request("pending_approval", 4) });
-  const e = entry(model);
-  assert.equal(e.approval, null);
-  assert.equal(model.cardStatus(e).kind, "waiting", "not before the re-read");
-  host.reply("get_request_details", details(request("pending_approval", 4)));
-  assert.equal(model.cardStatus(e).kind, "ready");
-  assert.equal(e.duration, "session");
-});
+}
 
 test("stale_request reads the request again", () => {
   const { host, model } = pendingCard();
@@ -288,7 +297,7 @@ test("conflict and configuration_error offer no restart", () => {
 });
 
 test("every frame the model builds is a valid owner request", async () => {
-  const { host, model } = pendingCard();
+  const { host, model } = pendingCard("until_revoked");
   model.checkConnection();
   host.reply("hello", HELLO_RESULT);
   model.chooseDuration("spike-request-1", "until_revoked");
@@ -569,23 +578,25 @@ test("without a live session of the agent, the session duration is not taken and
   host.notice(1, { kind: "agent", agent: away });
   const pending = request("pending_approval", 4);
   host.notice(2, { kind: "request", request: pending });
-  const d = details(pending);
-  host.reply("get_request_details", { ...d, card: d.card === null ? null : { ...d.card, proposed_duration: { kind: "session" } } });
+  host.reply("get_request_details", details(pending, "until_revoked"));
   const e = entry(model);
   assert.equal(model.sessionAvailable(e), false);
-  assert.equal(e.duration, "session", "the proposed duration is kept");
-  assert.equal(model.duration(e), "one_request", "but what is shown and sent falls back");
+  assert.equal(e.duration, "one_request", "the shortest duration is selected");
   const before = changes();
   model.chooseDuration("spike-request-1", "session");
-  assert.equal(e.durationChosen, false, "the choice is ignored");
+  assert.equal(e.duration, "one_request", "the choice is ignored");
   assert.ok(changes() > before, "the views render again, so the radio is put back");
+  host.notice(3, { kind: "agent", agent: { ...AGENT, revision: 3 } });
+  model.chooseDuration("spike-request-1", "session");
+  assert.equal(e.duration, "session", "with a live session the choice is taken");
+  host.notice(4, { kind: "agent", agent: { ...away, revision: 4 } });
+  assert.equal(e.duration, "session", "the choice is kept");
+  assert.equal(model.duration(e), "one_request", "but what is shown and sent falls back");
   model.decide("spike-request-1", "approve");
   assert.deepEqual(host.last("decide_request").params.duration, { kind: "one_request" });
   host.error("decide_request", "internal");
-  host.notice(3, { kind: "agent", agent: { ...AGENT, revision: 3 } });
-  assert.equal(model.duration(e), "session", "with a live session again, the proposed duration holds");
-  model.chooseDuration("spike-request-1", "until_revoked");
-  assert.equal(model.duration(e), "until_revoked");
+  host.notice(5, { kind: "agent", agent: { ...AGENT, revision: 5 } });
+  assert.equal(model.duration(e), "session", "with a live session again, the choice holds");
 });
 
 test("a card says so when the broker's state could not be read, and is ready again after a new sync", () => {
@@ -611,7 +622,7 @@ test("the decision is said in one whole sentence per duration", () => {
     until_revoked: "You allowed this. The permission lasts until you take it back.",
   } as const;
   for (const kind of ["one_request", "session", "until_revoked"] as const) {
-    const { host, model, announced } = pendingCard();
+    const { host, model, announced } = pendingCard("until_revoked");
     model.chooseDuration("spike-request-1", kind);
     model.decide("spike-request-1", "approve");
     const approved = request("approved", 5);
@@ -638,4 +649,116 @@ test("'Received, checking' is not measured for a request first seen in a snapsho
   clock.now = RECEIVED_MS - 250; // this computer's clock is behind the broker's
   host.notice(2, { kind: "request", request: request("received", 1, DIGEST_A, "ahead") });
   assert.equal(entry(model, "ahead").checkingDelayMs, null, "a negative difference records nothing");
+});
+
+// ---- The durations a card offers (contract README, section 10) ----
+
+const CREATE_COVERS = "This permission covers more than the request shown: every new event this agent creates in the calendar shown above, for as long as the permission lasts.";
+const OTHER_COVERS = "This permission covers more than the request shown: later requests of the same kind from this agent, for as long as the permission lasts.";
+
+test("a card offers the duration it proposes and the shorter ones, with the shortest selected", () => {
+  const offered = { one_request: ["one_request"], session: ["one_request", "session"], until_revoked: ["one_request", "session", "until_revoked"] } as const;
+  for (const kind of ["one_request", "session", "until_revoked"] as const) {
+    const { model } = pendingCard(kind);
+    const e = entry(model);
+    assert.deepEqual(model.offeredDurations(e), offered[kind]);
+    assert.equal(e.duration, "one_request", kind);
+  }
+});
+
+test("a choice above what the card proposes is ignored, and the views render again", () => {
+  const { model, changes } = pendingCard("session");
+  const e = entry(model);
+  model.chooseDuration("spike-request-1", "session");
+  assert.equal(e.duration, "session");
+  const before = changes();
+  model.chooseDuration("spike-request-1", "until_revoked");
+  assert.equal(e.duration, "session");
+  assert.ok(changes() > before);
+});
+
+test("a re-read with a lower proposal resets the choice; one with the same proposal keeps it", () => {
+  const { host, model } = pendingCard("until_revoked");
+  const e = entry(model);
+  model.chooseDuration("spike-request-1", "until_revoked");
+  host.notice(2, { kind: "request", request: request("pending_approval", 5) });
+  host.reply("get_request_details", details(request("pending_approval", 5), "until_revoked"));
+  assert.equal(e.duration, "until_revoked");
+  host.notice(3, { kind: "request", request: request("pending_approval", 6) });
+  host.reply("get_request_details", details(request("pending_approval", 6), "session"));
+  assert.equal(e.duration, "one_request");
+});
+
+test("what a lasting permission covers: said when chosen, nothing for one request", () => {
+  const { host, model, announced } = pendingCard("until_revoked");
+  const e = entry(model);
+  assert.equal(model.lastingCovers(e), null);
+  model.chooseDuration("spike-request-1", "until_revoked");
+  assert.equal(model.lastingCovers(e), CREATE_COVERS);
+  assert.equal(lastingCoversText("fabric_calendar_propose_create"), CREATE_COVERS);
+  assert.equal(announced.at(-1), CREATE_COVERS);
+  const count = announced.length;
+  model.chooseDuration("spike-request-1", "one_request");
+  assert.equal(model.lastingCovers(e), null);
+  assert.equal(announced.length, count, "choosing only this request says nothing");
+  model.chooseDuration("spike-request-1", "session");
+  assert.equal(model.lastingCovers(e), CREATE_COVERS);
+  host.notice(2, { kind: "agent", agent: { ...AGENT, revision: 2, session: null } });
+  assert.equal(model.lastingCovers(e), null, "a session without a live session is sent as one request");
+});
+
+test("what a lasting permission covers, for a tool without its own sentence", () => {
+  const { host, model } = live();
+  const update = { ...request("pending_approval", 4), tool: "fabric_calendar_propose_update" } as const;
+  host.notice(1, { kind: "request", request: update });
+  host.reply("get_request_details", details(update, "until_revoked"));
+  const e = entry(model);
+  model.chooseDuration("spike-request-1", "until_revoked");
+  assert.equal(model.lastingCovers(e), OTHER_COVERS);
+  assert.equal(lastingCoversText("fabric_calendar_propose_update"), OTHER_COVERS);
+});
+
+const invalidParams = (pointer: string): OwnerError => ({
+  code: "invalid_params", message: "The duration is not one the broker offers.", retryable: false, recovery: "report_problem",
+  detail: { pointer }, correlation_id: null,
+});
+
+test("invalid_params at the duration's kind resets the choice and reads the card again", () => {
+  const { host, model } = pendingCard("until_revoked");
+  const e = entry(model);
+  model.chooseDuration("spike-request-1", "until_revoked");
+  model.decide("spike-request-1", "approve");
+  const reads = host.methods().filter((m) => m === "get_request_details").length;
+  host.fail("decide_request", invalidParams("/params/duration/kind"));
+  assert.equal(e.duration, "one_request");
+  assert.equal(e.note, "The broker does not offer the duration you chose for this request. The request is read again, with “Only this request” selected.");
+  assert.equal(host.methods().filter((m) => m === "get_request_details").length, reads + 1);
+});
+
+test("another invalid_params gets the general note and no further read", () => {
+  const { host, model } = pendingCard("until_revoked");
+  const e = entry(model);
+  model.chooseDuration("spike-request-1", "until_revoked");
+  model.decide("spike-request-1", "approve");
+  const reads = host.methods().filter((m) => m === "get_request_details").length;
+  host.fail("decide_request", invalidParams("/params/duration"));
+  assert.equal(e.duration, "until_revoked");
+  assert.equal(e.note, "The broker did not accept your decision: The duration is not one the broker offers.");
+  assert.equal(host.methods().filter((m) => m === "get_request_details").length, reads);
+});
+
+test("an expired request whose details still carry an approval is closed as no longer waiting", () => {
+  const { host, model } = live();
+  const expired = request("expired", 6);
+  host.notice(1, { kind: "request", request: expired });
+  model.openDetails("spike-request-1", true);
+  const approval = {
+    decision: "approve", command_id: "earlier-command", decided_at: RECEIVED_AT, approval_digest: DIGEST_B,
+    scope: details(expired).card?.scope, duration: { kind: "one_request" }, effective_request_digest: DIGEST_A, grant_id: "spike-grant-1",
+  } as const;
+  host.reply("get_request_details", { ...details(expired), approval });
+  const e = entry(model);
+  assert.equal(e.approval, null);
+  assert.equal(model.decisionText(e), null);
+  assert.deepEqual(model.cardStatus(e), { kind: "closed", text: "This request is no longer waiting for you: Not done: nobody decided in time." });
 });

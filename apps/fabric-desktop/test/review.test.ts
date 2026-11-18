@@ -5,7 +5,7 @@ import { test } from "node:test";
 import type { OwnerError, Request, RequestDetails, Snapshot } from "../../../contracts/desktop/v1/typescript/src/contract.ts";
 import { ReviewModel } from "../ui/src/review.ts";
 import { NO_PROOF, UNDECIDED_REASON } from "../ui/src/text.ts";
-import { assertRequestsValid, connect, details, entry, fixture, flush, setup } from "./support.ts";
+import { assertRequestsValid, connect, details, entry, fixture, flush, request, setup } from "./support.ts";
 
 const RICH: Snapshot = fixture("accept-owner-response-get-snapshot-rich.json").result;
 const result = (name: string): any => fixture(name).result;
@@ -111,6 +111,20 @@ test("an applied request's details: the decision, the proofs in the broker's ord
     [2, "proof-25-permit-2", "The calendar accepted it"],
   ]);
   assert.deepEqual(d.event.map((f) => f.values[0]), ["evt-fabric-0051", "3181162000000000"]);
+});
+
+test("the details of a request that waits again show no decision of an earlier round; a decided request's do", () => {
+  const { host, model, review, notice } = live();
+  const pending = request("pending_approval", 4);
+  notice({ kind: "request", request: pending });
+  host.reply("get_request_details", { ...details(pending), approval: APPLIED.approval });
+  review.toggleDetails("spike-request-1");
+  host.reply("get_request_details", { ...details(pending), approval: APPLIED.approval });
+  assert.deepEqual(review.details(entry(model))?.decision, []);
+  const approved = request("approved", 5);
+  notice({ kind: "request", request: approved });
+  host.reply("get_request_details", { ...details(approved), approval: APPLIED.approval });
+  assert.deepEqual(review.details(entry(model))?.decision.find((f) => f.term === "Decision")?.values, ["You allowed it"]);
 });
 
 test("a failed request shows its reason; redacted details say that the broker did not send them", () => {
