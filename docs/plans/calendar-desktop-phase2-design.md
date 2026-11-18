@@ -35,13 +35,13 @@ C, DD for D, ED for E, and X1 to X25 are the decisions taken while the sections 
 | P1 to P13 | the lead's rulings of 2026-11-17 |
 | step P0 to step P7 (P5a, P5b, P7a, P7b) | the pull requests of ruling P12, ordered in E.2.1; always written "step Pn" or named as steps |
 | G1 to G9 | the branches of existing ledger variants gated on store version 2 (A.4.5) |
-| I1 to I27 | the open invariants of the store (A.4.7, A.5) |
+| I1 to I28 | the open invariants of the store (A.4.7, A.5) |
 | A.2 R1 to R11 | the store's rules for migrations; inside section A written R1 to R11 |
 | B.2 R1 to R6 | the release rule's invariants; inside section B written R1 to R6 |
 | VC1 to VC4 | the validation checks of `fabric_request_result` (B.5.1) |
 | A1 to A18 | the authority checks on the path of a read (B.15) |
 | Q1 to Q21 | the cases of question 10 (B.16.1) |
-| P2-1 to P2-34, CQ-D1 to CQ-D4 | the requests and questions to the contract session (section G) |
+| P2-1 to P2-35, CQ-D1 to CQ-D4 | the requests and questions to the contract session (section G) |
 | SR-n, W5-n, W6-n | the requests to the screens, CD-W05 and CD-W06 sessions (section H) |
 | OD1 to OD26 | the owner's decisions (E.3) |
 | OP, AO, BOP, OPC, CQ-D, OQ-D | open points of the shared vocabulary and of sections A, B, C and D, collected in section I with the lead's rulings on them |
@@ -85,6 +85,17 @@ this design (a delete's read-back, a yes with other content, the evidence bound,
 session accepted all five as written (I.9). Each is a ruled row of I.5 (D-13 to D-17), the requests to the session
 are H.2's W5-11 to W5-15, and the sections state the ruled form (V9, V23, DD17, DD18, B.3.4, D.2, D.6.2, D.7,
 D.8); two of them add owner decisions, OD25 and OD26.
+
+**The checkers' findings on those rulings.** Later on 2026-11-18 the lead ruled a second time, on two checkers'
+findings. P2-31 to P2-34 are asked into pull request 36 (step P2), so V23 has one form, its final one, built in step
+P5a with the edge `dispatching -> needs_owner_resolution` and D.7.5's refusal of `absent` (B.14, D.7.1, D.7.5); the
+port member and the store's place for the event Google returned are drawn now (`Applied.returned` in D.2,
+`EffectEventRecorded.evidence_id` in A.4.3 and A.4.4); `MAX_BEFORE_VIEW_BYTES` is 393 216 for each of the
+before-view and the after-view (D.6.2); an observation too large in `proving_fresh_permit` ends with the stored
+cause `observation_too_large` (0.4.4); and OD26 has new words.
+
+**The screens session's review of H.1.** On 2026-11-18 the lead ruled on the screens session's review of section
+H.1 (the second rulings of that day, H1 to H20); the rulings are in I.10, and the sections state the ruled form.
 
 Date 2026-11-17. Status: Proposed. Code read at main `2d41210`.
 
@@ -135,10 +146,10 @@ made to agree, the X row says how.
 | V7 | No read after an applied change: a confirmed `Applied` moves `dispatching -> applied -> reconciled` in the attempt's commit. W05 ST7 is not built; the theory's pending effects are unchanged. A delete is confirmed by the adapter's one GET of the event inside the delete's own dispatch order, after a 200 or 204 (D.2); that GET is part of carrying out the order, not a read after an applied change | B.14, D.7.1 DD8, D.2; ruled 2026-11-17 (OP5; W5-6, agreed by the CD-W05 session 2026-11-18); the delete's GET ruled 2026-11-18 by the lead |
 | V8 | System proofs are a job of their own (`Job::ProveSystem`), never routed through `accepted()`, filed in `system_proofs` | B.11, A.4.1 |
 | V9 | An `Applied` whose event does not fit the order (another id; for a create an id other than the reserved one; an event on a delete, or none on a non-delete) is handled as `NoAnswer`, with one audit row `provider_mismatch`. An `Applied` delete that is not confirmed is handled as `NoAnswer` with no audit row. A fitting, unconfirmed `Applied` of a create, update, invitation or response follows V23 | B.14 BD16, D.7.1; ruled 2026-11-18 by the lead |
-| V10 | A list or release whose call no longer waits is cancelled (`CallGone`): from `proving_fresh_permit` at the release, and from `received`, `validating`, `proving_classification`, `allowed` and `approved` as soon as its held answer left unsettled or was dropped; recovery cancels every open one. Nothing is built, no release row is written, the operation type is `request.proof` or `request.advance` | B.1 BD3, BD4, B.4.1 |
+| V10 | A list or release whose call no longer waits is cancelled (`CallGone`): from `proving_fresh_permit` at the release, and from `received`, `validating`, `proving_classification`, `allowed` and `approved` as soon as its held answer left unsettled or was dropped; recovery cancels every open one; a list approved through a card is cancelled from `approved` at the approval, with no fresh proof (BD5). Nothing is built, no release row is written, the operation type is `request.proof` or `request.advance` | B.1 BD3, BD4, BD5, B.4.1 |
 | V11 | `AgentInput::Connect` and `AgentInput::Call` exist only under `cfg(debug_assertions)`; a release build reaches a session only through `agent_prove` | C.1 CD12, C.11 |
 | V12 | A frame before an approved handshake gets `not_permitted`, then the connection is closed and counted `frame_before_hello` | C.1 CD11, C.6.2 |
-| V13 | A seeded debug agent has an `agents` row and no `enrollments` row and counts as approved; the debug seed gives it the list grant through the helper of `approve_agent`. It has no key: the handshake refuses it `not_permitted` (counted `unknown_id` with its id), `approve_agent` answers `conflict`, `remove_agent` `invalid_params` at `/params/agent_id`, `get_agent_configuration` `not_found` | C.1 CD1, CD6, C.3.4, C.6.4 row b, E.1.3 |
+| V13 | A seeded debug agent has an `agents` row and no `enrollments` row and counts as approved; the debug seed gives it the list grant through the helper of `approve_agent`. It has no key: the handshake refuses it `not_permitted` (counted `unknown_id` with its id), `approve_agent` answers `conflict`, `remove_agent` `invalid_params` at `/params/agent_id`, `get_agent_configuration` `not_found`. Its `Agent.client` is null, which is how the page tells it (P2-35; ruled 2026-11-18 by the lead) | C.1 CD1, CD6, C.2.1, C.3.4, C.6.4 row b, E.1.3 |
 | V14 | The contract revision of an agent is `enrollments.revision + agents.revision` (a missing row counts 0) | C.1 CD2, C.2.1 |
 | V15 | The read one-request grant ends `consumed` at its release; at a purge `account_disconnected` or `agent_removed` when that caused it; at the 24 h expiry `result_expired` once P2-4 merges, `consumed` until then | B.7.1, A.4.8; open OP8 |
 | V16 | `provider_accounts` gets its row at `connect_google`, with `subject` null until the first `Connected` outcome, under a partial unique index | A.5, D.8.1 |
@@ -148,7 +159,7 @@ made to agree, the X row says how.
 | V20 | Order answers carry the order's `order_id`, unique in the run; every order kind has a core watchdog | B.13, D.5 |
 | V21 | The list grant's helper is `grants::create_enrollment_grant(tx, cx, agent_id)` | C.4.1 |
 | V22 | `enrollment_grants` allows one row per agent ever; after a revoke the permission comes back only through a card, into `grants` | C.4.1, A.4.1 |
-| V23 | A fitting `Applied` of a create, update, invitation or response that is not confirmed is applied and differs from the approval. It is never sent again, never reconciled by reading, and can never end `absence_confirmed`. Its commit records the event's id and revision (`EffectEventRecorded`), writes one audit row `provider_differs` and moves the request to `needs_owner_resolution`, which the owner can resolve only as applied. `confirmed` means equal to the approval after only the normalisations of a closed, named list in the adapter, empty until the live run shows each one (W05 6.12, 18.7, LV18). The event as Google returned it is the attempt's evidence, at most `MAX_EVIDENCE_BYTES`: past it the id and revision are still recorded, the request still waits for the owner and no evidence row is written; it is never refused, because the change has happened. A delete never follows this row (V9). Until P2-31 to P2-34 merge it is reachable only by a practice fault; they are needed before any Google dispatch | B.14, D.7.1, D.7.3; E.3 OD25; section G; ruled 2026-11-18 by the lead |
+| V23 | A fitting `Applied` of a create, update, invitation or response that is not confirmed is applied and differs from the approval. It is never sent again, never reconciled by reading, and can never end `absence_confirmed`. Its commit records the event's id and revision (`EffectEventRecorded`), writes one audit row `provider_differs` with the labels of the members that differed, and moves the request by the direct edge `dispatching -> needs_owner_resolution` (P2-33), with its stored cause `attempt_differs`, read as the reason `applied_differs` (P2-31; D.7.6). The owner sees the event Google returned as `private.after` (P2-32) and can resolve the request only as applied (P2-34; D.7.5 refuses `absent`, built in step P5a). `confirmed` means equal to the approval after only the normalisations of a closed, named list in the adapter, empty until the live run shows each one (W05 6.12, 18.7, LV18). The event as Google returned it (`Applied.returned`, D.2) is the attempt's evidence, named by `EffectEventRecorded.evidence_id`, at most `MAX_EVIDENCE_BYTES`: past it the id and revision are still recorded, the request still waits for the owner and no evidence row is written; it is never refused, because the change has happened; an after-view past `MAX_BEFORE_VIEW_BYTES` is sent as null. A delete never follows this row (V9). V23 is reached by a practice fault (E.1.4 row 8a), by a FAKE fault in tests (W5-12) and, after the live run, by Google. P2-31 to P2-34 are asked into pull request 36 (step P2); V23 is built in step P5a on the port of step P4 and the store of step P3 | B.14, D.7.1, D.7.3, D.7.5; E.3 OD25; section G; ruled 2026-11-18 by the lead, in its final form by the lead's second rulings of that day |
 | AD1 | Migrations 2 and 3 are additive under the rules A.2 R1 to R11; replay does not become version-aware now | A.1, A.2 |
 | AD2 | Migration 2 is one file, `0002_agents_and_results.sql`, landed by the lead after contract schema version 3 merges (step P3) | A.1, A.4 |
 | AD3 | Observations and the event columns of `effects` are in migration 2 (V1) | A.1; ruled 2026-11-17 (AO2) |
@@ -168,7 +179,7 @@ made to agree, the X row says how.
 | BD2 | A list and a release end `proving_fresh_permit -> completed` in one commit `request.release`, with no authorization and no `effects` row | B.1, B.4.1 |
 | BD3 | A release happens only while `Held::waits_for` is true in the step of the release commit; otherwise `cancelled` | B.1, B.4.1 |
 | BD4 | A list or release whose held answer left unsettled or was dropped is cancelled at once from six states; recovery cancels every open one | B.1, B.3.7 |
-| BD5 | A list approved through a card ends `cancelled`; the agent lists again; a one-request approval of a list delivers nothing, so under `ask` no list completes in version 1 | B.1; ruled by the lead for version 1 2026-11-17 (BOP1); owner OD24 answered 2026-11-18: accepted for version 1 |
+| BD5 | A list approved through a card ends `cancelled` at the approval (`approved -> cancelled`), with no fresh proof; the agent lists again; a one-request approval of a list delivers nothing, so under `ask` no list completes in version 1 | B.1; ruled by the lead for version 1 2026-11-17 (BOP1); owner OD24 answered 2026-11-18: accepted for version 1; the end at the approval ruled 2026-11-18 by the lead (I.10) |
 | BD6 | A read's own answer never carries its result; the agent calls `fabric_request_result` | B.1; owner OD1 answered 2026-11-18: two calls |
 | BD7 | A read is authorized and handed off like a change, with `ReadIntent` and `read_attempts` in place of `effects` | B.3.3 |
 | BD8 | The storing commit re-checks authority; a failed check, `Stopped`, a transient failure and the watchdog go `retry_wait` under `retry_due` | B.3.4 |
@@ -183,7 +194,7 @@ made to agree, the X row says how.
 | BD17 | System proofs are accepted by their own rule and recorded whatever their outcome, with operation type `system.proof` | B.11 |
 | CD1 | The contract `Agent` is built from the `enrollments` row and the `agents` row; a pending agent has no `agents` row | C.2.1 |
 | CD2 | The contract revision is the sum of the two rows' revisions (V14) | C.2.1 |
-| CD3 | `add_agent` sets `destination` from the client by a fixed table in the core (P2-22) | C.3.1 |
+| CD3 | `add_agent` stores the client the owner named and sets `destination` from it by a fixed table in the core (P2-22, P2-35) | C.3.1 |
 | CD4 | `approve_agent` refuses in a fixed order, then one commit: `AgentPut`, `EnrollmentPut` approved, the list grant, notices `Agent` then `Grant` | C.3.2 |
 | CD5 | `remove_agent` follows P4's order and raises `revocation_epoch` at least once | C.3.3 (X1) |
 | CD6 | A seeded debug agent cannot be approved or removed | C.3.2, C.3.3 |
@@ -202,7 +213,7 @@ made to agree, the X row says how.
 | CD19 | At quit the main thread waits at most 500 ms for the writers | C.9.6 |
 | CD20 | `prover_unavailable` while the prover is not ready; status always answered | C.8 |
 | CD21 | A list request has a scope that names no calendar, so it can get a card; a grant from such a card has purpose `""` | C.4.2 |
-| CD22 | `get_agent_configuration` is answered through `ConfigurationTexts`, which calls the bridge crate's `config_text` | C.10; ruled 2026-11-17 (OPC2); owner OD21 open |
+| CD22 | `get_agent_configuration` is answered through `ConfigurationTexts`, which calls the bridge crate's `config_text` once, for the agent's stored client | C.10; ruled 2026-11-17 (OPC2); owner OD21 open; one text ruled 2026-11-18 by the lead (P2-35) |
 | CD23 | The snapshot carries every agent; `add_agent` counts the agents' records into the owner budget | C.3.1 |
 | CD24 | Listener connection ids start at `1 << 32` | C.9.2 |
 | DD1 | Every provider order that names a calendar carries one `CalendarTarget` (a read order a list of them), resolved by the core in the sending commit; a list order names its account only | D.3 |
@@ -274,8 +285,9 @@ Each shape is defined once; the other sections point to it.
 | Existing variants and the gated branches G1 to G9 | A.4.5 |
 | Store calls outside `apply`, the commit check, `Store::checkpoint` | A.4.4 |
 | The readers that see both grant tables | A.4.6 |
-| Open invariants I1 to I27 | A.4.7, A.5 |
-| Commit orders: `owner.approve_agent`, `owner.remove_agent`, `request.read`, `request.release`, `timer.result_purge`, `request.attempt`, a read's `request.dispatch` | A.4.8; the removal and approval also in C.3.2, C.3.3 |
+| Open invariants I1 to I28 | A.4.7, A.5 |
+| Commit orders: `owner.approve_agent`, `owner.remove_agent`, `request.read`, `request.release`, `timer.result_purge`, `request.attempt`, a read's `request.dispatch`, every move to `needs_owner_resolution` | A.4.8; the removal and approval also in C.3.2, C.3.3 |
+| The cause of each move to `needs_owner_resolution` (`ResolutionCause`, `resolution_reason_of`) | D.7.6 |
 | Ledger operation types 1 to 40 | A.6 |
 | Content kept outside the ledger, its deletion, what never enters the store | A.7 |
 | The release rule and the lifecycles of a list, a read, a release | B.2, B.3 |
@@ -307,11 +319,12 @@ No value is added by phase 2 except the request P2-4: **`result_expired` (propos
 | Cause (stored text) | When | Contract `UndecidedReason` shown |
 |---|---|---|
 | `observation_failed` | an observe failed and the CO6 table says `undecided` (D.6.3) | `provider_unreachable` after P2-7; `failed` until then |
+| `observation_too_large` | an observe answer past `MAX_BEFORE_VIEW_BYTES` or `MAX_EVIDENCE_BYTES` in `proving_fresh_permit` (D.6.2; ruled 2026-11-18 by the lead) | `failed`, never `provider_unreachable` |
 | `result_not_held` | the release commit finds no held result or no event (purged or mismatched since the proof) | `failed` |
 | `result_too_large` | the answer with the result would pass `MAX_FRAME_BYTES` | `failed` |
 | `release_not_authorizable` | a release permit with no authorizing grant for a read or a list, or naming a grant for a change's outcome (B.6.1) | `failed` |
 
-The four values are added to the stored cause type in the step P3 pull request and first written in step P5 (A.2 R6,
+The five values are added to the stored cause type in the step P3 pull request and first written in step P5 (A.2 R6,
 A.4.5).
 
 #### 0.4.5 Request states and reducer events
@@ -323,8 +336,9 @@ DRAFT's 25 (LC; CC `lifecycle.rs:40`): `received`, `validating`, `proving_classi
 `resolved_as_applied`, `resolved_as_absent`.
 
 Added (P2-1, in DRAFT since `b94b58f`): **`completed`**, terminal, one edge `proving_fresh_permit -> completed`: a
-request the broker completes itself (a list, a release). 26 states, 42 transitions. Invariant I1 gains it in the
-same change (P3; A.4.7).
+request the broker completes itself (a list, a release). 26 states, 42 transitions. P2-33 adds
+`dispatching -> needs_owner_resolution` in the same pull request (step P2): 43 transitions. Invariant I1 gains
+`completed` in the same change (P3; A.4.7).
 
 Reducer events added by phase 2 (core only, not stored):
 
@@ -337,6 +351,7 @@ Reducer events added by phase 2 (core only, not stored):
 | `AgentRemoved` | `received`, `validating`, `proving_classification`, `allowed`, `approved`, `proving_fresh_permit`, `queued`, `retry_wait`, `pending_approval` | `cancelled` | C.3.3; also from `retry_wait` in the commit that moves a removed agent's request `dispatching -> retry_wait` (X22) |
 | `ObservedStale`, `ObservedInvalid` | `validating`, `proving_fresh_permit` (and `pending_approval` for CO12, deferred) | `terminal_failure`, `stale` | D.6.3 |
 | `ReconcileDue`, `ReconcileVerdict(Verdict)` | `outcome_unknown`, `reconciling` | `reconciling`, `applied`, `absence_confirmed`, `needs_owner_resolution` | D.7 |
+| `AppliedDiffers` | `dispatching` | `needs_owner_resolution` | B.14 (V23); the edge is P2-33's |
 | `AccountGone` (reused for a calendar) | `pending_approval` | `stale` | D.9.2 |
 | `Resolved(Resolution)` | `needs_owner_resolution` | `resolved_as_applied`, `resolved_as_absent` | D.7.5 |
 
@@ -351,6 +366,8 @@ Reducer events added by phase 2 (core only, not stored):
 | Enum | Values | Where |
 |---|---|---|
 | `EnrollmentState` | `pending`, `approved`, `removed` | `enrollments.state`, `EnrollmentRow` |
+| `AgentClient` (the contract's, P2-35) | `claude_desktop`, `claude_code`, `codex_desktop` | `EnrollmentRow.client`, inside `enrollments.record`; no column |
+| `ResolutionCause` | `attempt_differs`, `created_found_differs`, `created_found_cancelled`, `found_changed`, `found_gone`, `reads_failed`, `account_disconnected` | `effects.resolution_cause` (D.7.6; contract P2-31) |
 | `ReleaseKind` | `calendars`, `availability`, `events`, `effect` | `releases.kind` (the contract's four result kinds) |
 | `PurgeCause` | `released`, `expired`, `account_disconnected`, `agent_removed` | `held_results.purge_cause` |
 | `ReadOutcome` | `held`, `stopped`, `stale`, `transient`, `rejected`, `no_answer_in_time` | `read_attempts.outcome`; `stale` is V6's failed check; `no_answer_in_time` is the order watchdog |
@@ -368,7 +385,7 @@ Reducer events added by phase 2 (core only, not stored):
 |---|---|---|
 | `handshake_failed` | `{cause, enrollment_id or null, window_start_ms, window_end_ms, count}`, one row per cause and known id per 60 s | C.6.5 |
 | `provider_mismatch` | the request id, no content | B.14 |
-| `provider_differs` | the request id, no content; one row in the commit of a fitting, unconfirmed `Applied` (V23) | B.14 |
+| `provider_differs` | the request id and the fixed labels of the members that differed (`ReturnedEvent.differs`, W5-12), no content; one row in the commit of a fitting, unconfirmed `Applied` (V23) | B.14 |
 
 ### 0.5 Core types and functions used by more than one section
 
@@ -433,6 +450,7 @@ pub enum AuthLostCause { GrantEnded, ClientRejected }
 pub enum EnrollmentState { Pending, Approved, Removed }
 pub struct EnrollmentRow {
     pub enrollment_id: Id, pub revision: u64, pub registered_name: Label, pub destination: Destination,
+    pub client: AgentClient,                    // the owner's statement at add_agent; display only (C.3.1, P2-35)
     pub state: EnrollmentState, pub public_key: Option<PublicKey>, pub added_at_ms: i64,
     pub key_proven_at_ms: Option<i64>, pub approved_at_ms: Option<i64>, pub removed_at_ms: Option<i64>,
 }
@@ -454,6 +472,8 @@ pub struct ReadAttemptRecord { pub row: ReadAttemptRow, pub finished: Option<(i6
 pub enum ReadOutcome { Held, Stopped, Stale, Transient, Rejected, NoAnswerInTime }
 pub struct AgentView { pub enrollment: Option<EnrollmentRow>, pub agent: Option<AgentRow> }   // read type (C.2.1)
 pub enum Notification { Sent, NotRequested, Unknown }
+pub enum ResolutionCause { AttemptDiffers, CreatedFoundDiffers, CreatedFoundCancelled, FoundChanged, FoundGone,
+    ReadsFailed, AccountDisconnected }                      // effects.resolution_cause (D.7.6)
 pub struct SystemProofRow {
     pub proof_id: Id, pub action_kind: SystemActionKind, pub account_id: Id, pub serves_request_id: Option<Id>,
     pub action_digest: Digest, pub prover_kind: ProverKind, pub record: SystemProofRecord, pub recorded_at_ms: i64,
@@ -506,6 +526,15 @@ the placeholder, the row with `subject` null, and the known subjects from it), `
 they ship in step P3. The core applies DD12's state test and D.6.3's five-minute test with `ReadTx::request` on that
 id.
 
+`effect_evidence(&Id) -> Option<Id>` names the evidence row of a V23 attempt (`effects.evidence_id_after`, B.14);
+`get_request_details` reads it with `evidence` to build `private.after` (P2-32). It ships in step P3.
+
+`resolution_cause(&Id) -> Option<ResolutionCause>` reads `effects.resolution_cause` of a request's effect;
+`get_request_details` maps it to `owner_resolution_reason` (P2-31; D.7.6). The reader is used by no guard; only
+`ResolutionCauseRecorded`'s own guard reads the column, which is in the same migration (R3). It ships in step P3.
+`ResolutionCause` also has `pub const ALL: [ResolutionCause; 7]`, its values in the order of 0.4, for the
+exhaustive test of D.7.6.
+
 Ids made by the core and carried in the mutation (A.2 R8): grants `grant-` and 32 hex; releases `release-` and 32
 hex; held results `held-` and 32 hex; observations `obs-` and 32 hex; accounts `account-` and 32 hex; calendars
 `cal-` and 32 hex; agents through `ids::new_id("agent")` (C.3.1).
@@ -553,7 +582,7 @@ pub(crate) const NOT_NARROWING: &[OwnerMethod];
 // worker's own bound is the shell's monotonic stamp plus PROVIDER_CALL_MS (X23)
 pub(crate) fn order_overdue(order_deadline_ms: u64, now_ms: u64) -> bool;
 // the configuration texts (C.10): built by the binary's shell::configuration_texts(&Config)
-pub type ConfigurationTexts = Box<dyn Fn(&Id) -> Option<AgentConfiguration> + Send>;
+pub type ConfigurationTexts = Box<dyn Fn(&Id, AgentClient) -> Option<ConfigurationText> + Send>; // one text (P2-35)
 ```
 
 #### 0.5.4 Jobs and inputs (CORE `ports.rs`)
@@ -608,7 +637,7 @@ before classification (REV-order SEC-event-ids).
 | `AGENT_WRITE_TIMEOUT_MS` | 5_000, the write timeout of a connection's writer thread | BR `listener.rs` | C.9.6 |
 | `ACCEPT_RETRY_MS` | 100, the accept thread's sleep after an accept error | BR `listener.rs` | C.9.2 |
 | `MAX_EVIDENCE_BYTES` | 1_048_576, the whole evidence `{"before", "raw"}` of one observation, and the evidence of a V23 attempt; past it an observation is refused (D.6.2) and a V23 attempt keeps no evidence (B.14) | CORE | the lead's ruling of 2026-11-18, replacing W05 ST3's 262_144; owner OD26 |
-| `MAX_BEFORE_VIEW_BYTES` | 524_288, the before-view in canonical form, and the after-view of V23 (P2-32); lowered (to about 400 KiB) if the frame test of D.6.2 shows that both views and the rest of `get_request_details` do not fit `MAX_FRAME_BYTES` | CORE | the lead's ruling of 2026-11-18; owner OD26 |
+| `MAX_BEFORE_VIEW_BYTES` | 393_216 (384 KiB), the before-view in canonical form, and on its own the after-view of V23 (P2-32). Two views take at most 786_432 bytes, which leaves 262_144 of `MAX_FRAME_BYTES` for the rest of one `get_request_details` answer, the headroom `MAX_READ_RESULT_BYTES` leaves. The frame test of D.6.2 holds both views at this bound; if it fails, the bound is lowered in that step and the value found is written here, in A.7, A.9 ST3, OD5 (b), OD26 and W5-13 | CORE | the lead's rulings of 2026-11-18 (the second lowered it from 524_288); owner OD26 |
 | `ACCOUNT_RESERVE_BYTES` | 98_304 (96 KiB) per account in `owner_state_bytes`; a list whose account record would pass it fails as a whole | CORE `owner/views.rs` | D.11 (DD11); owner OD4 |
 | `OWNER_STATE_BUDGET_BYTES` | 737_280 (720 KiB), now also counting every account at `ACCOUNT_RESERVE_BYTES` and the agents' records (removed agents stay in the snapshot); `add_agent` past it is refused `invalid_params` at `/params/registered_name`, `connect_google` at `/params/account_id` | CORE `owner/views.rs:33` | P10; C.3.1, D.11 |
 | `CARD_REOBSERVE_MS` | 600_000 (deferred) | CORE | W05 CO12 |
@@ -783,11 +812,15 @@ dated 2026-11-17 (P13).
 > window, written as `agent_busy` is; `provider_mismatch`, one row in the commit of the attempt it concerns.
 >
 > Amendment (Proposed 2026-11-18). One more kind: `provider_differs`, one row in the commit of the attempt it
-> concerns, when Google applied a change and returned content that differs from the approval.
+> concerns, when Google applied a change and returned content that differs from the approval; it names the request
+> and the fixed labels of the members that differed, and holds no content.
 
 **ADR-115 D7** (ADR-115:118). Replace the row `payload_blob_id` with:
 
-> | `payload_blob_id` | The ledger names no blob. Since store schema version 2 the store keeps two kinds of content outside the ledger, in the same encrypted file (D1 amendment): held read results, deleted at release, after 24 hours, at the account's disconnect or at the agent's removal; and observation evidence, kept with its request. Each is named in the ledger by a random id, never by a digest of its content, because a digest of low-entropy content would outlive the purge and let a key holder test a guess. |
+> | `payload_blob_id` | The ledger names no blob. Since store schema version 2 the store keeps two kinds of content outside the ledger, in the same encrypted file (D1 amendment): held read results, deleted at release, after 24 hours, at the account's disconnect or at the agent's removal; and evidence (the event as the provider returned it to an observation or to a change that differed), kept for good. Each is named in the ledger by a random id, never by a digest of its content, because a digest of low-entropy content would outlive the purge and let a key holder test a guess. |
+>
+> Amendment (Proposed 2026-11-18). Equal evidence of one event at one revision is kept once, and one evidence row
+> may be named by observations of several requests.
 
 **ADR-115 "Open"** (ADR-115:146). Replace the fourth bullet with the rule set of A.2.
 
@@ -943,6 +976,8 @@ CREATE TABLE observation_evidence (
 ALTER TABLE effects ADD COLUMN event_id_after TEXT;
 ALTER TABLE effects ADD COLUMN revision_after TEXT;
 ALTER TABLE effects ADD COLUMN notification TEXT;  -- sent | not_requested | unknown
+ALTER TABLE effects ADD COLUMN evidence_id_after TEXT;  -- V23's returned event (B.14); no foreign key (R4)
+ALTER TABLE effects ADD COLUMN resolution_cause TEXT;   -- ResolutionCause (D.7.6), set once at the owner's move
 ```
 
 Notes for the builder:
@@ -952,7 +987,7 @@ Notes for the builder:
 - The `ALTER` gives existing rows NULL in the live store, and replay gives them NULL too, because replay applies
   every earlier row before it runs this SQL (ST `ledger.rs:350-381`).
 - `held_result_payloads` references `held_results`, so the payload is written after `HeldResultStored` in the same
-  transaction. `observations.evidence_id` has no foreign key (R4, AD7).
+  transaction. `observations.evidence_id` and `effects.evidence_id_after` have no foreign key (R4, AD7).
 - No table of this migration is seeded.
 
 #### A.4.2 The tables, what writes them and what answers which request
@@ -968,7 +1003,7 @@ Notes for the builder:
 | `system_proofs` | yes | `SystemProofRecorded` | `system_proofs_of` | CO9, PO8 |
 | `observations` | yes | `ObservationRecorded` | `observations_of`, `latest_observation` | ST3, PO2, PO4, CO6, CO8 |
 | `observation_evidence` | no | `WriteTx::put_evidence` | `evidence` | ST3 |
-| `effects` (3 columns) | yes | `EffectEventRecorded` | `effect_event` only, never `EFFECT_COLUMNS` (R3) | ST5, P4 |
+| `effects` (5 columns) | yes | `EffectEventRecorded`, `ResolutionCauseRecorded` | `effect_event`, `effect_evidence` and `resolution_cause` only, never `EFFECT_COLUMNS` (R3) | ST5, P4, V23, P2-31 |
 
 New values in existing TEXT columns, no migration needed (none of these columns has a CHECK on values,
 `0001_initial.sql`): `sessions.end_reason` `agent_removed`; `authorizations.void_reason` `agent_removed`;
@@ -982,15 +1017,16 @@ free now and frozen from the merge (R6). A refused guard is `StoreFault::Invaria
 
 | Variant | Members | Writes | Guards |
 |---|---|---|---|
-| `EnrollmentPut` | `enrollment: EnrollmentRow` | `enrollments` | Columns equal the row (`state`, `public_key`, `revision`, `added_at_ms`). A new row: state `pending`, revision 1, no key, `key_proven_at_ms`, `approved_at_ms`, `removed_at_ms` all null, and no `agents` row has its id. An existing row: revision rises by exactly 1; `enrollment_id`, `registered_name`, `destination`, `added_at_ms` never change. Moves: `pending -> pending` (the key may change; `key_proven_at_ms` is set exactly when the key is set or changed), `pending -> approved` (key present and equal to the previous row's, `approved_at_ms` set, an `agents` row of that id exists), `pending -> removed` and `approved -> removed` (key unchanged, `removed_at_ms` set). Nothing leaves `removed`. A query refuses a key another enrollment holds, with `StoreFault::Invariant`; a removed enrollment keeps its key, so a removed agent's key is never accepted again; a key replaced while pending is free. The unique index stays as the second line |
+| `EnrollmentPut` | `enrollment: EnrollmentRow` | `enrollments` | Columns equal the row (`state`, `public_key`, `revision`, `added_at_ms`). A new row: state `pending`, revision 1, no key, `key_proven_at_ms`, `approved_at_ms`, `removed_at_ms` all null, and no `agents` row has its id. An existing row: revision rises by exactly 1; `enrollment_id`, `registered_name`, `client`, `destination`, `added_at_ms` never change. The store does not check `destination` against `client`: that table is the core's (CD3), and replay must not depend on it. A unit test: an `EnrollmentPut` that changes `client` is refused. Moves: `pending -> pending` (the key may change; `key_proven_at_ms` is set exactly when the key is set or changed), `pending -> approved` (key present and equal to the previous row's, `approved_at_ms` set, an `agents` row of that id exists), `pending -> removed` and `approved -> removed` (key unchanged, `removed_at_ms` set). Nothing leaves `removed`. A query refuses a key another enrollment holds, with `StoreFault::Invariant`; a removed enrollment keeps its key, so a removed agent's key is never accepted again; a key replaced while pending is free. The unique index stays as the second line |
 | `EnrollmentGrantInserted` | `grant: Grant` | `enrollment_grants` | Revision 1, not ended; origin `Enrollment { enrollment_id }` with `enrollment_id == grant.agent_id`; tools exactly `[fabric_calendar_list]`; `scope.calendars` empty and `window`, `fields`, `recipients`, `send_updates` null; term `until_revoked`; purpose `""`; the agent has an `agents` row and either an `approved` enrollment or none (a seeded agent, V13); no earlier row for the agent, tested by a query that refuses with `StoreFault::Invariant` (the unique index stays as the second line); no `grants` row has the same `grant_id` (AD9) |
 | `ResultReleased` | `release: ReleaseRow` | `releases` | The releasing request exists, belongs to `agent_id`, is in `proving_fresh_permit` and has no release yet. The subject exists and belongs to the same agent. The agent's enrollment row, when it has one, is `approved`. `proof_id` names the newest `proof_reports` row of the releasing request (the `ProofRecorded` before it in this transaction, B.4.1 step 1; proof ids alone repeat, `0001_initial.sql:91`), and that row has purpose `fresh_permit`, outcome `permit`, prover `isabelle`; `grant_ids` equals its `authorizing_grants`; its fence `pause_epoch` and `revocation_epoch` equal `counters` now (AD8). `grant_ids` are grants of the agent (`grants_of`, G2). `grant_ids` is empty exactly when `kind` is `effect`. The kind fits the tools: `calendars` exactly when the releasing tool is `fabric_calendar_list`, and then `subject_request_id = request_id`; otherwise the releasing tool is `fabric_request_result` and `json_extract(action, '$.arguments.request_id')` of the releasing request equals `subject_request_id`; `availability` and `events` need the subject's tool `fabric_calendar_availability` and `fabric_calendar_read` and a held result of that kind; `effect` needs a subject whose tool is one of the five change tools, in `applied` or `reconciled`, with an `effects` row whose `notification` is set. `held_result_id` is set exactly for `availability` and `events` and names an unpurged held result of the subject. `result_digest` is set exactly for `calendars` and `effect` |
 | `HeldResultStored` | `held: HeldResultRow` | `held_results` | The request is a `fabric_calendar_availability` or `fabric_calendar_read` of `agent_id`, in `dispatching`; its last `read_attempts` row is finished with outcome `held` (the `ReadFinished` before it in this transaction, A.4.8); the authorization that row names is consumed and its fence epochs equal `counters` now (AD8); no held result for the request yet; not purged; `kind` matches the tool; `purge_due_at_ms > stored_at_ms` (the core sets it from `HELD_RESULT_LIFETIME_MS`, R8). The commit check of A.4.4 requires its payload row |
 | `HeldResultPurged` | `held_result_id: Id, at_ms: i64, cause: PurgeCause` | `held_results`; deletes the `held_result_payloads` row (AD5) | The row exists and is not purged. Sets `purged_at_ms` and `purge_cause`, then `DELETE FROM held_result_payloads WHERE held_result_id = ?` (no row is not an error: replay and a backup copy have none) |
 | `ReadIntent` | `attempt: ReadAttemptRow` | `read_attempts` | The request is an availability or read request in `queued`. The authorization is the request's, `consumed` (the `AuthorizationConsumed` before it in this transaction), and named by no `attempts` or `read_attempts` row. `number` is one more than the request's last attempt, and that attempt is finished |
 | `ReadFinished` | `request_id: Id, number: u32, finished_at_ms: i64, outcome: ReadOutcome` | `read_attempts` | The attempt exists and is unfinished; `finished_at_ms >= started_at_ms`. `finished_at_ms` is the commit's time on the core clock (`cx.now_ms`), as `AttemptFinished` takes it (CORE `service/pipeline.rs:924-929`), never `ReadDone.finished_at_ms` |
-| `EffectEventRecorded` | `effect_id: Id, event: Option<EventRef>, notification: Notification, at_ms: i64` | `effects.event_id_after`, `revision_after`, `notification` | The effect exists; its request is in `dispatching` (an attempt's answer) or `reconciling` (a reconcile answer). `event` is none exactly for a delete. For a create `event.event_id` equals `provider_event_id`; for update, invitation and response it equals the id that `open_effects` computes (ST `read.rs:927-938`): the action's target event, and `instance_id` for a response to one occurrence. May overwrite an earlier value |
+| `EffectEventRecorded` | `effect_id: Id, event: Option<EventRef>, notification: Notification, evidence_id: Option<Id>, at_ms: i64` | `effects.event_id_after`, `revision_after`, `notification`, `evidence_id_after` | The effect exists; its request is in `dispatching` (an attempt's answer) or `reconciling` (a reconcile answer). `event` is none exactly for a delete. For a create `event.event_id` equals `provider_event_id`; for update, invitation and response it equals the id that `open_effects` computes (ST `read.rs:927-938`): the action's target event, and `instance_id` for a response to one occurrence. `evidence_id` is set only while the request is in `dispatching` and `event` is set (the evidence of a V23 attempt, B.14); the commit check of A.4.4 requires its evidence row. May overwrite an earlier value |
 | `SystemProofRecorded` | `proof: SystemProofRow` | `system_proofs` | `serves_request_id`, when set, exists; `prover_kind` is a known kind; `action_kind` matches `record.action` |
+| `ResolutionCauseRecorded` | `effect_id: Id, cause: ResolutionCause` | `effects.resolution_cause` | The effect exists and its request is in `needs_owner_resolution` (the `RequestMoved` before it in this transaction, A.4.8); the column is null (written once: nothing re-enters the state). The cause fits the tool: `created_found_differs` and `created_found_cancelled` only for a create; `found_changed` and `found_gone` only for an update, invitation or response; `attempt_differs` never for a delete (D.7.6). Unit tests: a request in another state, a second write and a cause that does not fit the tool are refused |
 | `ObservationRecorded` | `observation: ObservationRow` | `observations` | The request exists. `proof_id` names a `system_proofs` row serving this request with outcome `permit` and prover `isabelle`. `revision` is set exactly when `outcome` is `found` or `cancelled`; `facts` only for `observe` and `found`; `matches_approved` only for `reconcile` and `found`. The commit check of A.4.4 requires the evidence row when `evidence_id` is set |
 
 The row types (ST `rows.rs`), as 0.5.2 fixes them: `EnrollmentState`,
@@ -998,6 +1034,8 @@ The row types (ST `rows.rs`), as 0.5.2 fixes them: `EnrollmentState`,
 `Notification`, `SystemProofRow`, `SystemProofRecord`, `ObservationRow` and the enums `ObservationPurpose`,
 `ObservationOutcome`, `SystemActionKind`, all snake_case text. Their `Option` members are written as `null`: these
 are new types whose canonical form is fixed at merge, and R6 applies to members added after.
+`ResolutionCause` is one more such type (D.7.6), and `EnrollmentRow` holds `client`, the contract's `AgentClient`
+(P2-35; ruled 2026-11-18 by the lead).
 
 Two shared types are stored as JSON and fixed here (X21; canonical form, keys in order):
 
@@ -1038,16 +1076,16 @@ impl Store {
 
 The commit check (AD6), in `Store::write` after the closure and before the ledger row is appended (ST
 `store.rs:400-410`): for every `HeldResultStored` among the transaction's mutations a `held_result_payloads` row of
-that id exists; for every `ObservationRecorded` with an `evidence_id` an `observation_evidence` row of that id
-exists; and every evidence row written by `put_evidence` in this transaction is named by an `ObservationRecorded` of
-it. A failure is `StoreFault::Invariant` and nothing commits. Both calls go through `usable()` and poison the
-write on a fault, as `apply` does (ST `tx.rs:244-264`).
+that id exists; for every `ObservationRecorded` or `EffectEventRecorded` with an `evidence_id` an
+`observation_evidence` row of that id exists; and every evidence row written by `put_evidence` in this transaction
+is named by an `ObservationRecorded` or an `EffectEventRecorded` of it. A failure is `StoreFault::Invariant` and
+nothing commits. Both calls go through `usable()` and poison the write on a fault, as `apply` does (ST
+`tx.rs:244-264`).
 
 An `ObservationRecorded` may name an evidence row that an earlier commit wrote (the dedupe of D.6.2); the check
 then finds that row. So one evidence row may be named by observations of several requests. No evidence row is
-deleted while any observation names it; a later deletion per request must first check that no other observation
-names the row (ruled 2026-11-18 by the lead). The evidence of a V23 attempt (B.14) is named by no observation;
-the name the ledger gives it is fixed with P2-32, before the live run, and this check is widened then.
+ever deleted (A.7; ruled 2026-11-18 by the lead). The evidence of a V23 attempt (B.14) is named by no observation
+but by its `EffectEventRecorded.evidence_id`, which the check above accepts (ruled 2026-11-18 by the lead).
 
 The fitness test s16 (`crates/fabric-storage/tests/fitness.rs`) gains a second scan: the two non-projection tables
 are written only in `tx.rs` (the two calls), `apply.rs` (the delete of AD5) and `backup.rs` (the delete of A.7).
@@ -1078,10 +1116,10 @@ Other existing variants:
 |---|---|
 | `SessionEnded` | `reason` may be `SessionEndReason::AgentRemoved` (text `agent_removed`); `grant_end_reason(AgentRemoved) = GrantEndReason::AgentRemoved` (ST `mutation.rs:258-285`) |
 | `AuthorizationVoided` | `reason` may be `VoidReason::AgentRemoved` (ST `mutation.rs:290-301`) |
-| `RequestMoved` | P0 adds its optional cause member; phase 2 adds the undecided causes and the state `completed` (0.4.4, 0.4.5). The four causes are added to the stored cause type in step P3 and first written in step P5. `can_transition_to` and `is_terminal` are the contract's (R7) |
+| `RequestMoved` | P0 adds its optional cause member; phase 2 adds the undecided causes and the state `completed` (0.4.4, 0.4.5). The five causes are added to the stored cause type in step P3 and first written in step P5. `can_transition_to` and `is_terminal` are the contract's (R7) |
 | `AccountPut`, `AttemptFinished`, `DispatchIntent`, `ProofRecorded` and the rest | Unchanged. `AttemptFinished` keeps its shape; the applied event is recorded by `EffectEventRecorded` in the same `request.attempt` commit (P4) |
 
-`SessionEndReason::AgentRemoved`, `VoidReason::AgentRemoved` and the four undecided causes of 0.4.4 are added in the
+`SessionEndReason::AgentRemoved`, `VoidReason::AgentRemoved` and the five undecided causes of 0.4.4 are added in the
 step P3 pull request; nothing writes them before steps P5 and P6 (R6).
 
 `EFFECT_COLUMNS` (ST `read.rs:212`) gains no column (R3). A unit test pins its text.
@@ -1130,15 +1168,16 @@ skips an entry with `since > version` or `until < version`. Each query must retu
 | I17 | held result of a non-read | 2 | | `SELECT 1 FROM held_results h JOIN requests r ON r.request_id = h.request_id WHERE json_extract(r.action, '$.tool') NOT IN ('fabric_calendar_availability', 'fabric_calendar_read') OR r.agent_id <> h.agent_id LIMIT 1` |
 | I18 | payload of a purged result | 2 | | `SELECT 1 FROM held_result_payloads p JOIN held_results h ON h.held_result_id = p.held_result_id WHERE h.purged_at_ms IS NOT NULL LIMIT 1` |
 | I19 | read with an effect | 2 | | `SELECT 1 FROM effects WHERE tool IN ('fabric_calendar_list', 'fabric_calendar_availability', 'fabric_calendar_read', 'fabric_request_result') LIMIT 1` |
-| I20 | observation evidence missing | 2 | | `SELECT 1 FROM observations o WHERE o.evidence_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM observation_evidence v WHERE v.evidence_id = o.evidence_id) LIMIT 1` |
+| I20 | observation evidence missing | 2 | | `SELECT 1 FROM observations o WHERE o.evidence_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM observation_evidence v WHERE v.evidence_id = o.evidence_id) UNION ALL SELECT 1 FROM effects e WHERE e.evidence_id_after IS NOT NULL AND NOT EXISTS (SELECT 1 FROM observation_evidence v WHERE v.evidence_id = e.evidence_id_after) LIMIT 1` |
 | I21 | effect event of a create | 2 | | `SELECT 1 FROM effects WHERE tool = 'fabric_calendar_propose_create' AND event_id_after IS NOT NULL AND event_id_after IS NOT provider_event_id LIMIT 1` |
 | I24 | grant id in both tables | 2 | | `SELECT 1 FROM grants g JOIN enrollment_grants e ON e.grant_id = g.grant_id LIMIT 1` |
 | I25 | authorization of two attempts | 2 | | `SELECT 1 FROM read_attempts r JOIN attempts a ON a.authorization_id = r.authorization_id LIMIT 1` |
 | I26 | release kind and grants | 2 | | `SELECT 1 FROM releases x JOIN requests s ON s.request_id = x.subject_request_id WHERE (x.kind = 'effect') <> (json_extract(s.action, '$.tool') LIKE 'fabric_calendar_propose_%') OR (x.grant_ids = '[]') <> (x.kind = 'effect') LIMIT 1` |
-| I27 | stored enum text | 2 | | `SELECT 1 FROM held_results WHERE kind NOT IN ('availability', 'events') OR purge_cause NOT IN ('released', 'expired', 'account_disconnected', 'agent_removed') UNION ALL SELECT 1 FROM releases WHERE kind NOT IN ('calendars', 'availability', 'events', 'effect') UNION ALL SELECT 1 FROM read_attempts WHERE outcome NOT IN ('held', 'stopped', 'stale', 'transient', 'rejected', 'no_answer_in_time') UNION ALL SELECT 1 FROM system_proofs WHERE action_kind NOT IN ('refresh', 'reconcile', 'list_calendars') OR prover_kind NOT IN ('isabelle', 'synthetic') UNION ALL SELECT 1 FROM observations WHERE purpose NOT IN ('observe', 'reconcile') OR outcome NOT IN ('found', 'cancelled', 'absent') UNION ALL SELECT 1 FROM effects WHERE notification NOT IN ('sent', 'not_requested', 'unknown') LIMIT 1`. A NULL column yields no row |
+| I27 | stored enum text | 2 | | `SELECT 1 FROM held_results WHERE kind NOT IN ('availability', 'events') OR purge_cause NOT IN ('released', 'expired', 'account_disconnected', 'agent_removed') UNION ALL SELECT 1 FROM releases WHERE kind NOT IN ('calendars', 'availability', 'events', 'effect') UNION ALL SELECT 1 FROM read_attempts WHERE outcome NOT IN ('held', 'stopped', 'stale', 'transient', 'rejected', 'no_answer_in_time') UNION ALL SELECT 1 FROM system_proofs WHERE action_kind NOT IN ('refresh', 'reconcile', 'list_calendars') OR prover_kind NOT IN ('isabelle', 'synthetic') UNION ALL SELECT 1 FROM observations WHERE purpose NOT IN ('observe', 'reconcile') OR outcome NOT IN ('found', 'cancelled', 'absent') UNION ALL SELECT 1 FROM effects WHERE notification NOT IN ('sent', 'not_requested', 'unknown') OR resolution_cause NOT IN ('attempt_differs', 'created_found_differs', 'created_found_cancelled', 'found_changed', 'found_gone', 'reads_failed', 'account_disconnected') LIMIT 1`. A NULL column yields no row |
+| I28 | owner's resolution without its cause | 2 | | `SELECT 1 FROM requests r WHERE r.state IN ('needs_owner_resolution', 'resolved_as_applied', 'resolved_as_absent') AND NOT EXISTS (SELECT 1 FROM effects e WHERE e.request_id = r.request_id AND e.resolution_cause IS NOT NULL) LIMIT 1`. It holds on a store written by main, which never drives a request into those states (CORE `service/reducer.rs:196-217`; D.7.6) |
 
 Not an invariant, on purpose: an unpurged held result without its payload. A backup copy has none (A.7), and the
-reader fails closed. At version 2 the list has 26 entries and 25 apply (I6 is skipped).
+reader fails closed. At version 2 the list has 27 entries and 26 apply (I6 is skipped).
 
 #### A.4.8 Commit orders the store checks
 
@@ -1152,8 +1191,9 @@ wrote.
 | `request.read` | `ReadFinished`; for outcome `held`: `HeldResultStored`, then `put_held_payload`, then `RequestMoved` `dispatching -> applied` and `applied -> reconciled`; otherwise the moves of section B. A move `dispatching -> retry_wait` of a request whose agent's enrollment is not approved is followed in the same commit by `RequestMoved` `retry_wait -> cancelled` (`AgentRemoved`, X22) |
 | `request.release` | `ProofRecorded`, `ReliedGrantSet`, then `ResultReleased` before any `GrantEnded` or `CounterRaised` (its fence check reads `counters` before them); `HeldResultPurged { cause: Released }` for a held result; `GrantEnded` `consumed` of the read's one-request grant and its `CounterRaised`; `RequestMoved` to `completed` (B.4.1) |
 | `timer.result_purge` | per due row: `HeldResultPurged { cause: Expired }`, then `GrantEnded` of the read one-request grant (`consumed` until P2-4 merges, then `result_expired`; V15) |
-| `request.attempt` | as today, plus `EffectEventRecorded` after `AttemptFinished` when the provider answered an `Applied` that fits the order: a confirmed one before `dispatching -> applied -> reconciled`, an unconfirmed one of V23 before its audit row `provider_differs` and its moves to `needs_owner_resolution` (B.14). A `Transient` that moves a removed agent's change `dispatching -> retry_wait` also moves it `retry_wait -> cancelled` (X22) |
+| `request.attempt` | as today, plus `EffectEventRecorded` after `AttemptFinished` when the provider answered an `Applied` that fits the order: a confirmed one before `dispatching -> applied -> reconciled`, an unconfirmed one of V23, with its `evidence_id` and `put_evidence` in the same transaction when the evidence fits, before its audit row `provider_differs` and its move `dispatching -> needs_owner_resolution` (B.14). A `Transient` that moves a removed agent's change `dispatching -> retry_wait` also moves it `retry_wait -> cancelled` (X22) |
 | `request.dispatch` (a read) | `AuthorizationConsumed`, `ReadIntent`, `RequestMoved` `queued -> dispatching` |
+| every move to `needs_owner_resolution` (`request.attempt`, `request.reconcile`, `request.advance`, `system.proof`, the watchdog commits, `owner.disconnect_google`) | `ResolutionCauseRecorded` for that request's effect right after that `RequestMoved`, with the cause of D.7.6; `owner.disconnect_google` writes one per request it moves (ruled 2026-11-18 by the lead) |
 
 After a commit that applied any `HeldResultPurged`, the core calls `Store::checkpoint()` (AD13).
 
@@ -1272,8 +1312,8 @@ Today's 22 (ST `ledger.rs:25-48`) stay. `OPERATION_TYPES` becomes `[&str; 34]` w
 | 28 | `agent.prove_key` | 2 | agent, the enrollment id (AD15) | null | `EnrollmentPut` `pending -> pending` with the proved key |
 | 29 | `request.read` | 2 | broker | the request id | A.4.8 |
 | 30 | `request.release` | 2 | broker | the releasing request id | A.4.8. A commit entered as a release: it holds a `releases` row and `completed`, or `undecide(result_not_held \| result_too_large)` and no row (B.4.1 steps 2 and 3). A release whose call is gone is `request.proof` (V10) |
-| 31 | `request.reconcile` | 2 | broker | the request id | `ObservationRecorded`, `EffectEventRecorded`, `RequestMoved` |
-| 32 | `system.proof` | 2 | broker | the served request id or null | `SystemProofRecorded`; when the proof does not permit, also the move or the new due time of the served request (B.11.3, D.6.3, D.7.4) |
+| 31 | `request.reconcile` | 2 | broker | the request id | `ObservationRecorded`, `EffectEventRecorded`, `RequestMoved`, and `ResolutionCauseRecorded` after a move to `needs_owner_resolution` (D.7.6) |
+| 32 | `system.proof` | 2 | broker | the served request id or null | `SystemProofRecorded`; when the proof does not permit, also the move or the new due time of the served request (B.11.3, D.6.3, D.7.4), and `ResolutionCauseRecorded` when that move is to `needs_owner_resolution` |
 | 33 | `provider.observation` | 2 | broker | the request id | `ObservationRecorded` and the moves of W05 CO6 |
 | 34 | `timer.result_purge` | 2 | broker | null | A.4.8 |
 | 35 | `owner.connect_google` | 3 | owner | null | W05 CO1 |
@@ -1284,10 +1324,12 @@ Today's 22 (ST `ledger.rs:25-48`) stay. `OPERATION_TYPES` becomes `[&str; 34]` w
 | 40 | `owner.refresh_calendars` | 3 | owner | null | only if P2-11 merges |
 
 Existing types that carry new mutations: `request.dispatch` (a read's handoff), `request.attempt`
-(`EffectEventRecorded`), `owner.revoke_grant` (an enrollment grant, G3), `owner.disconnect_google`
-(`HeldResultPurged { cause: AccountDisconnected }` and its grant ends), `broker.started` (purges due at start),
-`broker.seed` (a seeded agent's enrollment grant, V13), `request.proof` (a release whose call is gone,
-V10). `get_agent_configuration` is a query and writes no row. `delete_custom` (inside `save_profile`) and
+(`EffectEventRecorded`, with `put_evidence` and `ResolutionCauseRecorded` for V23), `owner.revoke_grant` (an
+enrollment grant, G3), `owner.disconnect_google` (`HeldResultPurged { cause: AccountDisconnected }` and its grant
+ends, and `ResolutionCauseRecorded` per moved request), `broker.started` (purges due at start), `broker.seed` (a
+seeded agent's enrollment grant, V13), `request.proof` (a release whose call is gone, V10), `request.advance`
+(`ResolutionCauseRecorded`, D.7.2 step 1; a list approved through a card, `approved -> cancelled`, BD5).
+`get_agent_configuration` is a query and writes no row. `delete_custom` (inside `save_profile`) and
 `list_ended_requests` are not built in phase 2; they keep DRAFT's `unknown_method` answer (DRAFT CORE
 `owner/profiles.rs:50-51`, `owner/mod.rs:153-165`). Deleting a custom profile needs a place in the store: a table
 `deleted_profiles(profile_id TEXT PRIMARY KEY, deleted_at_ms INTEGER NOT NULL) STRICT`, a variant
@@ -1304,7 +1346,7 @@ stay as ADR-115 D2 says: `owner_command` on the owner types, none on the others.
 | Content | Where | Named in the ledger by | Deleted |
 |---|---|---|---|
 | A held read result (availability, event details) | `held_result_payloads.content`, its digest beside it | `held_result_id` (random), never a digest (V3) | By the apply of `HeldResultPurged`: at its release (V4), 24 hours after it was stored (`HELD_RESULT_LIFETIME_MS`, the owner's default, P13), at its account's disconnect, at its agent's removal; due rows at start ride `broker.started`. Then `PRAGMA wal_checkpoint(TRUNCATE)` (AD13). In every backup copy that has the table (version 2 and later), before the copy is verified and named (V18) |
-| Observation evidence (the event as the provider returned it, the before-image), at most 1 MiB, the before-image at most 512 KiB (`MAX_EVIDENCE_BYTES`, `MAX_BEFORE_VIEW_BYTES`); an observation whose evidence equals that of the latest found observation of the same calendar, event and revision names that row and writes none (D.6.2). The event a V23 attempt returned is bounded the same way (B.14) | `observation_evidence.content` | `evidence_id` (random) | Never by a disconnect (CD-Q11h); it stays with its request. One row may be named by observations of several requests (the dedupe), so it is never deleted while any observation names it, and a later deletion per request must first check that no other observation names it. Kept outside the ledger for size only (REV-store ST3 d) |
+| Observation evidence (the event as the provider returned it, the before-image), at most 1 MiB, the before-image at most 384 KiB (`MAX_EVIDENCE_BYTES`, `MAX_BEFORE_VIEW_BYTES`); an observation whose evidence equals that of the latest found observation of the same account, calendar, event and revision names that row and writes none (D.6.2). The event a V23 attempt returned is kept under the same 1 MiB bound, named by its `EffectEventRecorded`; its view past 384 KiB is sent as null (B.14) | `observation_evidence.content` | `evidence_id` (random) | Never by a disconnect (CD-Q11h); it is kept for good and never deleted. One row may be named by observations of several requests (the dedupe). Kept outside the ledger for size only (REV-store ST3 d) |
 
 How the purge holds:
 
@@ -1412,8 +1454,8 @@ date, the command, the seed and the row counts. A fixture is never regenerated a
 | `NOT_PROJECTION`, ST `ledger.rs:51` | 3 | 5 | 5 |
 | `replay_differs`, ST `ledger.rs:451-471` | 17 names | + 7 | + 2 |
 | `OPERATION_TYPES`, ST `ledger.rs:25` | 22 | 34 | 39 (40) |
-| `INVARIANTS`, ST `store.rs:922` | 7 | 26 | 28 |
-| `Mutation` variants, ST `mutation.rs:24` | 30 | 40 | 42 |
+| `INVARIANTS`, ST `store.rs:922` | 7 | 27 | 29 |
+| `Mutation` variants, ST `mutation.rs:24` | 30 | 41 | 43 |
 | replay model, `crates/fabric-storage/tests/replay.rs` | every table non-empty | extended so every new table is non-empty | same |
 
 #### A.8.4 Tests that pin version numbers today and must change
@@ -1477,9 +1519,9 @@ the binary); the builder searches again in step P3 for pins of `seq = ` and run 
 |---|---|---|
 | ST1 | Accepted with this change | `provider_accounts` in migration 3 (A.5). The row is made at `connect_google` with `subject` null until the first `Connected` outcome, under a partial unique index (V16). No CHECK on provider, revocation or problem (R4). Written by `ProviderAccountPut` carrying the whole `ProviderAccountRow`. No token; `token_ref` only. Invariant I23 |
 | ST2 | Accepted with this change | `provider_calendars` in migration 3. `cal-` ids are made by the core and carried in the mutation (R8). Rows never deleted; a lost calendar is `listed: false`. Bound 250 per account, and a list past it fails as a whole (W05 6.2 is fixed to that bound, REV-store ST2 e). Invariant I22 |
-| ST3 | Accepted with this change | In migration 2, not 3 (AD3; AO2, ruled 2026-11-17). Facts in `observations`, keyed by `observation_id` (`proof_reports.proof_id` is not unique, `0001_initial.sql:91`). Raw evidence in `observation_evidence`, named by a random `evidence_id`; its digest only beside it. One evidence table for observe and reconcile reads (V19). Invariant I20. Never purged by a disconnect; outside the ledger for size only. At most 1 MiB for each observation, its before-view at most 512 KiB, and byte-equal evidence of one event at one revision kept once (D.6.2; ruled 2026-11-18 by the lead; owner OD26) |
+| ST3 | Accepted with this change | In migration 2, not 3 (AD3; AO2, ruled 2026-11-17). Facts in `observations`, keyed by `observation_id` (`proof_reports.proof_id` is not unique, `0001_initial.sql:91`). Raw evidence in `observation_evidence`, named by a random `evidence_id`; its digest only beside it. One evidence table for observe and reconcile reads (V19). Invariant I20. Never purged by a disconnect; outside the ledger for size only. At most 1 MiB for each observation, its before-view at most 384 KiB, and byte-equal evidence of one event at one revision kept once (D.6.2; ruled 2026-11-18 by the lead; owner OD26) |
 | ST4 | Accepted with this change | `held_results`, `held_result_payloads` and `releases` in migration 2, one design for CD-W05 and CD-W06. `released_count` is replaced by `releases` rows. The ledger names a random id, never a digest. A read uses `read_attempts`, not `effects` (G9, I19). Purge: A.7. The 24 h lifetime is the owner's (P13) |
-| ST5 | Accepted with this change | Only `event_id_after`, `revision_after` (P4) and `notification`, written by `EffectEventRecorded`, read only by `ReadTx::effect_event` (R3). `revision_before`, `confirmed`, `reconcile_reads` and `next_reconcile_at_ms` are dropped (V2) |
+| ST5 | Accepted with this change | Only `event_id_after`, `revision_after` (P4), `notification` and `evidence_id_after` (V23, B.14), written by `EffectEventRecorded`, read only by `ReadTx::effect_event` and `ReadTx::effect_evidence` (R3), and `resolution_cause` (D.7.6), written by `ResolutionCauseRecorded` and read only by `ReadTx::resolution_cause`. `revision_before`, `confirmed`, `reconcile_reads` and `next_reconcile_at_ms` are dropped (V2) |
 | ST6 | Accepted | No schema change. Two readers, `created_event` and `created_events` (0.5.2), ship in step P3; section D applies DD12's state test. Store note: a later history deletion (CD-Q11h) must keep these rows |
 | ST7 | Not built | Not built (V7): `open_effects` is not widened. The read after an applied change is dropped (the lead's ruling of 2026-11-17, OP5; agreed by the CD-W05 session 2026-11-18, W5-6). A delete is confirmed by the adapter's one GET in the delete's own dispatch order (D.2), which is not a read after an applied change; the theory question is the contract session's |
 | ST8 | Accepted with this change | One list for both packages (A.6), one dated amendment of ADR-115 D2 (A.3). Added beyond W05's list: `timer.result_purge`, `system.proof`, `provider.revoke`, and the CD-W06 types. Existing variants gain no required member (R6) |
@@ -1530,13 +1572,18 @@ the binary); the builder searches again in step P3 for pins of `seq = ` and run 
   approved", I12 also checks the columns against the record.
 - `WriteTx::delete_held_payload` dropped; the apply of `HeldResultPurged` deletes the payload (AD5).
 - `ReadTx::schema_at_least`, `ReadTx::evidence`, `Store::checkpoint`, the commit check of A.4.4.
+- `EffectEventRecorded.evidence_id`, the column `effects.evidence_id_after` and the reader `effect_evidence` (V23,
+  B.14; ruled 2026-11-18 by the lead); I20 also checks the evidence row a V23 attempt names.
 - `ResultReleased` also checks its proof row and fence (AD8); `HeldResultStored` checks its authorization's fence;
   `ObservationRecorded` requires a permitted Isabelle system proof; `ReadIntent` refuses an authorization named by
   an attempt.
 - `owner.refresh_calendars`, conditional type 40.
 - Correlation of `owner.resolve_outcome` (AD14) and actor of `agent.prove_key` (AD15).
 - I26 (release kind and grants): new invariant.
-- `INVARIANTS` count 26 at version 2, 28 at version 3; `Mutation` variants 40 and 42.
+- `INVARIANTS` count 27 at version 2, 29 at version 3; `Mutation` variants 41 and 43.
+- `ResolutionCauseRecorded`, the column `effects.resolution_cause`, the stored enum `ResolutionCause`, the reader
+  `resolution_cause`, I27 widened to it and I28 (D.7.6; ruled 2026-11-18 by the lead). `EnrollmentRow.client`
+  (P2-35), fixed after the row is made.
 - Readers `provider_accounts`, `agent_view`, `unpurged_held_results_of_account`, `unpurged_held_results_of_agent`,
   `next_purge_due_ms`; read types `HeldResultRecord`, `ReadAttemptRecord`, `AgentView`; `SystemProofRecord` gains
   `fence`, `undecided_reason`, `check_theory_text` (0.5.2).
@@ -1575,7 +1622,7 @@ not rely on its exact code.
 | BD2 | A list and a release end `proving_fresh_permit -> completed` in one commit, `request.release`. They get no authorization row and no `effects` row. The release commit is their linearization point: the checks `judge` runs in the same step (fence, every authorizing grant valid now, agent not paused, prover Isabelle) are the handoff checks | P6; W04 D33's "not dispatches" stays true; `Authorization.grant_id` is required (CC `owner.rs:1033`), so a change's outcome could not have one |
 | BD3 | A release happens only when `Held::waits_for` is true in the step of the release commit: a held answer exists for the releasing request, its connection is still bound to the session it was held for, that session is the agent's live one, and its deadline has not passed. Otherwise the request goes `proving_fresh_permit -> cancelled` (`CallGone`), with operation type `request.proof` and no release row (V10) | P6 "only while that call still waits"; J-auth results minor (bound session, deadline) |
 | BD4 | A list or a release whose held answer leaves before the request settles (the 20 s deadline) or is dropped (disconnect, replaced or idle session, removal) is cancelled in the same step (`CallGone`) when it is in `received`, `validating`, `proving_classification`, `allowed`, `approved` or `proving_fresh_permit`. Recovery (`broker.started`) cancels every open list and release in those states. A list in `pending_approval` keeps its card | No call can ever wait for it again, so every further proof is wasted prover time (J-auth results minor 2) |
-| BD5 | A list that needed the owner's card is answered `pending_approval`; after the approval no call waits for it, so it ends `cancelled` at its fresh permit and its one-request grant ends `consumed` as today. The agent calls `fabric_calendar_list` again. Under a one-request approval that call asks again. A one-request approval of a list delivers nothing: the request is cancelled and the grant ends `consumed`. Under `list_and_availability` in mode `ask` (where the card proposes only `one_request`, DRAFT README section 10) no list completes in version 1. The lead accepted this for version 1 on 2026-11-17 (BOP1), with the card's text (SR-7) and P2-29; the owner accepted it on 2026-11-18 (OD24) | Safe and simple; P1 gives a list a card; P6 forbids a release with no waiting call |
+| BD5 | A list that needed the owner's card is answered `pending_approval`; its call was answered then, and after the approval no call waits for it. So it ends at the approval, with no fresh proof: in the pump's next step after the approval, where it would move `approved -> proving_fresh_permit`, it moves `approved -> cancelled` (`CallGone`, LC 61, operation type `request.advance`). A one-request grant then ends `consumed` (`move_request`); a session or until-revoked grant stays and serves the agent's later lists. The agent calls `fabric_calendar_list` again. Under a one-request approval that call asks again. A one-request approval of a list delivers nothing: the request is cancelled and the grant ends `consumed`. Under `list_and_availability` in mode `ask` (where the card proposes only `one_request`, DRAFT README section 10) no list completes in version 1. The card is still shown in every case (P1, OD24). The lead accepted this for version 1 on 2026-11-17 (BOP1), with the card's text (SR-7) and P2-29; the owner accepted it on 2026-11-18 (OD24); the end at the approval, with no fresh proof, was ruled 2026-11-18 by the lead (I.10) | Safe and simple; P1 gives a list a card; P6 forbids a release with no waiting call; a proof for a call that has left is wasted prover time (BD4's reason) |
 | BD6 | A read's own answer never carries its result. A read ends `dispatching -> applied -> reconciled` in the commit that stores its held result; the agent then calls `fabric_request_result` | P6 (two calls in version 1); the owner chose two calls on 2026-11-18 (B.18, OD1) |
 | BD7 | A read is authorized and handed off like a change: `proving_fresh_permit -> queued` with an authorization, `queued -> dispatching` with `ReadIntent` in place of `DispatchIntent`, one `ReadOrder` | REV-results read-dispatch-record; PLAN 5 R04: no read reaches the provider without a consumed authorization |
 | BD8 | The commit that stores a read checks the whole fence, the read authorization's grants and the pause again (V6). A failed check, `Stopped`, a transient failure and an order past its watchdog all finish the attempt and go `dispatching -> retry_wait` under `retry_due` counted over `read_attempts`; past the budget `terminal_failure` (`retry_budget_exhausted`). `Rejected` and a result whose shape does not fit the order go `terminal_failure`. A request of a removed agent never retries: the same commit moves it on `retry_wait -> cancelled` (X22) | V5, V6; `retry_due` bounds a loop that a fence that keeps changing would otherwise make |
@@ -1626,7 +1673,7 @@ of A.6.
 | Edge | `proving_fresh_permit -> completed`, basis `added`, reason "plan 9.2: a request the broker completes itself (a calendar list, a result release) has no provider step" |
 | Who reaches it | only a `fabric_calendar_list` or a `fabric_request_result` request, only in a commit that writes its `releases` row (I15) |
 | Store | `requests.state` text `completed`, `terminal` 1. The open invariant I1 (`request state`, ST `store.rs:924`) gains it in the same pull request as the reducer row (J-store blocker 1) |
-| Contract | request P2-1: `RequestState::Completed`, `is_terminal`, `can_transition_to`, `PlainRequestState`, the agent and owner status schemas; README section 9: 26 states, 18 added transitions |
+| Contract | request P2-1: `RequestState::Completed`, `is_terminal`, `can_transition_to`, `PlainRequestState`, the agent and owner status schemas; README section 9: 26 states, 18 added transitions (19 added with P2-33) |
 | Page | the screens session words `completed` before the first bundled run (J-store minor, "the page learns `completed` too late") |
 | Bridge | W06 3.7 gains a row: `completed`, `isError` false. The answer to the list call or to the `fabric_request_result` call that completed carries the result: "The result follows." A later `fabric_request_status` call on that request shows `completed` with no result, because a status never carries one (R5): "The request is complete." (W6-3, ruled 2026-11-18) |
 
@@ -1640,7 +1687,8 @@ of A.6.
 | `proving_classification -> pending_approval` | 35 | `request.proof` | `CardOpened`, `RequestMoved` | NeedApproval with a ruling; the card's scope names no calendar (P1, DRAFT README line 228). Needs `scope_of(CalendarList)` to return `Scope { calendars: [], window: null, fields: null, recipients: null, send_updates: null }` instead of `None` (CORE `requests.rs:123-124`); that is a change to `scoped` for the list only |
 | `proving_classification -> blocked / undecided` | 36, 37 | `request.proof` | as today | Block with a ruling; Undecided, watchdog, missing report |
 | `pending_approval -> approved / denied / expired / cancelled / stale` | 38-42 | as W04 5.7 | as today | the owner's `decide_request` |
-| `allowed / approved -> proving_fresh_permit` | 43, 44 | pump | `RequestMoved` | relied list is the stored one |
+| `allowed -> proving_fresh_permit` | 44 | pump | `RequestMoved` | relied list is the stored one. An approved list never takes edge 43 (BD5) |
+| `approved -> cancelled` | 61 | pump, `request.advance` | `RequestMoved` (`CallGone`); a one-request grant whose origin is this list ends `consumed` (`move_request`) | a list approved through a card: its call was answered when the card opened, so no fresh proof runs (BD5; ruled 2026-11-18 by the lead) |
 | `proving_fresh_permit -> completed` | P2-1 | `request.release` | `ProofRecorded`, `ReliedGrantSet`, `ResultReleased`, `RequestMoved`; a one-request grant whose origin is this list ends `consumed` (`move_request`, CORE `requests.rs:41-55`) | `Accepted::Release`: Isabelle `Permit`, agent not paused, `authorizing_grants` not empty, each valid now, fence holds; `waits_for` true; the answer frame fits `MAX_FRAME_BYTES` |
 | `proving_fresh_permit -> cancelled` | 62 | `request.proof` | `ProofRecorded`, `RequestMoved` | `Accepted::Release` but `waits_for` false (BD3) |
 | `proving_fresh_permit -> undecided / blocked / pending_approval / stale` | 66-69 | as W04 5.7 | as today | Undecided with a cause from B.6; a re-ask opens a new card |
@@ -1746,21 +1794,22 @@ Only two commits change for a change (section D owns the reconcile rows):
 |---|---|---|---|
 | `dispatching -> applied -> reconciled` | 47, 48 | `request.attempt` | a confirmed, fitting `Applied`: `AttemptFinished(applied)`, `EffectEventRecorded`, two `RequestMoved` (V7, BD16) |
 | `dispatching -> outcome_unknown` | 50 | `request.attempt` or the order watchdog | `NoAnswer`, an unfitting `Applied`, an unconfirmed delete, a dispatch order past its watchdog |
-| `dispatching -> outcome_unknown -> reconciling -> needs_owner_resolution` | 50, then the edges D.8.3 uses | `request.attempt` | a fitting, unconfirmed `Applied` of a create, update, invitation or response (V23): `AttemptFinished(applied)`, `EffectEventRecorded`, the audit row `provider_differs`, three `RequestMoved`, no read; until P2-33 adds `dispatching -> needs_owner_resolution` |
+| `dispatching -> needs_owner_resolution` | P2-33 | `request.attempt` | a fitting, unconfirmed `Applied` of a create, update, invitation or response (V23): `AttemptFinished(applied)`, `EffectEventRecorded` with its `evidence_id` and `put_evidence` when the evidence fits, the audit row `provider_differs`, one `RequestMoved` by `AppliedDiffers`, `ResolutionCauseRecorded` with `attempt_differs` (D.7.6), no read |
 
 #### B.3.7 Reducer events added (core only, not stored)
 
 | Event | From | To | Driver |
 |---|---|---|---|
 | `Release` | `proving_fresh_permit` | `completed` | B.4.1 |
-| `CallGone` | `received`, `validating`, `proving_classification`, `allowed`, `approved`, `proving_fresh_permit` | `cancelled` | BD3, BD4; only for a list or a release |
+| `CallGone` | `received`, `validating`, `proving_classification`, `allowed`, `approved`, `proving_fresh_permit` | `cancelled` | BD3, BD4, and BD5 from `approved` (a list approved through a card); only for a list or a release |
 | `ReadStored` | `dispatching` | `applied`, then `reconciled` | B.3.4 step 2.3 (two moves, one event each move) |
 | `ReadRetry` | `dispatching` | `retry_wait` | BD8; recovery |
 | `AgentRemoved` | as 0.4.5 | `cancelled` | section C's removal |
+| `AppliedDiffers` | `dispatching` | `needs_owner_resolution` | B.14 (V23); the edge is P2-33's |
 
 `Event::Fail` (`dispatching -> terminal_failure`) and `Event::Authorize` (`proving_fresh_permit -> queued`) are reused
 for reads. `DRIVEN` and the left-over test (CORE `service/reducer.rs:121-148, 195-217`) gain these rows. Every row is
-in LC or is P2-1's `completed`.
+in LC, is P2-1's `completed` or is P2-33's edge.
 
 ---------------------------------------------------------------------------------------------------------------------
 
@@ -2217,14 +2266,14 @@ still moves the worker's bound (I.7 X-4; the lead ruled for the monotonic stamp 
 
 ### B.14 Keeping the applied event
 
-`finish_attempt` (CORE `pipeline.rs:917-989`), arm `Applied { event, confirmed, notification }`:
+`finish_attempt` (CORE `pipeline.rs:917-989`), arm `Applied { event, confirmed, notification, returned }`:
 
 | Case | Fits when | Commit `request.attempt` |
 |---|---|---|
-| create | `confirmed` and `event.event_id == effects.provider_event_id` | `AttemptFinished(applied)`, `EffectEventRecorded { effect_id, event: Some(e), notification, at_ms }`, `RequestMoved` to `applied`, then to `reconciled` |
+| create | `confirmed` and `event.event_id == effects.provider_event_id` | `AttemptFinished(applied)`, `EffectEventRecorded { effect_id, event: Some(e), notification, evidence_id: None, at_ms }`, `RequestMoved` to `applied`, then to `reconciled` |
 | update, invitation, response | `confirmed` and `event.event_id` equals the action's target event | same |
 | delete | `confirmed` and `event` is `None`. `confirmed` comes from the adapter's one GET in the delete's own dispatch order: true only when it finds the event gone (D.2) | same, with `event: None` |
-| create, update, invitation, response, not confirmed (V23) | `event` fits as in the rows above; `confirmed` is false | `AttemptFinished(applied)`, `EffectEventRecorded { effect_id, event: Some(e), notification, at_ms }` while the request is in `dispatching`, one audit row `provider_differs` with the request id and no content, then `RequestMoved` `dispatching -> outcome_unknown -> reconciling -> needs_owner_resolution` with no read, until P2-33 adds the edge `dispatching -> needs_owner_resolution` |
+| create, update, invitation, response, not confirmed (V23) | `event` fits as in the rows above; `confirmed` is false | `AttemptFinished(applied)`, `EffectEventRecorded { effect_id, event: Some(e), notification, evidence_id, at_ms }` while the request is in `dispatching`, with `put_evidence` of the returned event when it fits, one audit row `provider_differs` with the request id and the labels of the members that differed (no content), then `RequestMoved` `dispatching -> needs_owner_resolution` (`AppliedDiffers`, P2-33) with no read, then `ResolutionCauseRecorded` with `attempt_differs` (D.7.6) |
 | delete, not confirmed | `event` is `None`; `confirmed` is false | as `NoAnswer` (BD16): `AttemptFinished(outcome_unknown)`, `dispatching -> outcome_unknown`; no audit row |
 | anything else (`event` missing on a non-delete, an event on a delete, another id) | | as `NoAnswer` (BD16): `AttemptFinished(outcome_unknown)`, `dispatching -> outcome_unknown`; one audit row `provider_mismatch` with the request id and no content |
 
@@ -2238,19 +2287,25 @@ order, only after a 200 or 204 (D.2). An unconfirmed delete is not a mismatch an
 reconciled by reading (D.7). Ruled 2026-11-18 by the lead.
 
 A fitting `Applied` that is not confirmed (V23) means Google made the change and returned content that differs
-from the approval; the adapter's comparison names the member as a fixed label with no content (W05 18.7). It is
-never sent again, never read back and can never end `absence_confirmed`: under the first rule a PATCH that
-Google normalised without moving the revision could end absent after two reads (D.7.3, "not yet"), and a new
-request could then repeat a change that notifies guests. The owner sees what Google holds and can resolve it
-only as applied (P2-34; E.3 OD25). The chain through `outcome_unknown` and `reconciling` is an interim until the
-contract adds the edge (P2-33); it writes no observation, no order and no due time. The event as Google returned
-it is the attempt's evidence, at most `MAX_EVIDENCE_BYTES` (1 048 576): past it the id and revision are still
-recorded, the request still goes to `needs_owner_resolution` and no evidence row is written; it is never
-refused, because the change has already happened. The owner is shown it as `private.after` (P2-32), at most
-`MAX_BEFORE_VIEW_BYTES`. The port member that carries that event to the core and the ledger's name for the
-attempt's evidence row are not drawn in D.2 or A.4 yet; they are fixed with P2-32, before the live run. P2-31 to
-P2-34 are needed before any Google dispatch, so until they merge V23 is reachable only by a practice fault
-(E.1.4 row 8a). Ruled 2026-11-18 by the lead.
+from the approval; the adapter's comparison names each member that differed as a fixed label with no content (W05
+18.7), and `Applied.returned` carries the labels and the event as Google returned it (D.2). It is never sent
+again, never read back and can never end `absence_confirmed`: under the first rule a PATCH that Google normalised
+without moving the revision could end absent after two reads (D.7.3, "not yet"), and a new request could then
+repeat a change that notifies guests. The request moves by the direct edge `dispatching -> needs_owner_resolution`
+(P2-33), with its stored cause `attempt_differs` (`ResolutionCauseRecorded`, D.7.6), read as the reason
+`applied_differs` (P2-31); the commit writes no observation, no order and no due time. The owner sees what
+Google holds as `private.after` (P2-32) and can resolve the request only as applied (P2-34; D.7.5 check 3; E.3
+OD25). The event as Google returned it is the attempt's evidence: in the same commit `put_evidence` writes
+`{"before": null, "raw": text}`, as for a reconcile row (D.6.2), and `EffectEventRecorded` names it by
+`evidence_id` (A.4.3, A.4.4). The whole is at most `MAX_EVIDENCE_BYTES` (1 048 576), measured in canonical form
+before `put_evidence` is called. Past it, the id and revision are still recorded, the request still goes to
+`needs_owner_resolution`, no evidence row is written and `private.after` is null; it is never refused, because the
+change has already happened. `get_request_details` builds `private.after` from that evidence by the same view
+function as `private.before`. A kept evidence row whose view, built by the before-view's own function, passes
+`MAX_BEFORE_VIEW_BYTES` (393 216) gives `private.after` null at read time; the row is still kept. P2-31 to P2-34 are
+asked into pull request 36 (step P2), and V23 is built in step P5a on the port of step P4 and the store of step P3. It
+is reached by a practice fault (E.1.4 row 8a), by a FAKE fault in tests (W5-12) and, after the live run, by Google.
+Ruled 2026-11-18 by the lead.
 
 A store written by main holds changes in `applied`: on main `applied` ends a change and is not terminal ("`applied`
 stays open until CD-W05", PW 4.1 at `calendar-desktop-prover-wiring-design.md:594`), and recovery does nothing for
@@ -2367,7 +2422,7 @@ which step P5b builds (E.2.1); Q18 lands in step P6. G2a is put to the owner wit
 | r16 | `the_disclose_job_carries_the_target_digest_and_result_held` | a digest of the request_result action |
 | r21 | `a_read_never_gets_an_effects_row_and_recovery_moves_it_to_retry_wait` | I19; `outcome_unknown` for a read |
 | r22 | `a_stale_read_retries_within_the_budget_then_fails` | an unbounded loop |
-| r23 | `a_read_result_with_a_field_or_an_interval_outside_the_action_is_not_stored`: a provider double returns one extra member, one interval outside the window, one interval that starts before the window, and a title-only event outside it (its span outside the window); also an all-day event two days before the window, a span count that differs from the event count and a timed view whose time differs from its span, each rejected; and, accepted, an all-day event on the day before the window (the known residual of `ZONE_SLACK_MS`, I.5 D-18) and an all-day event on the window's edge day in a calendar at `Pacific/Kiritimati` and in one at `Pacific/Pago_Pago` | a field cut missed by the adapter released under a narrower grant; an all-day span widened by the adapter, or not widened by the core |
+| r23 | `a_read_result_with_a_field_or_an_interval_outside_the_action_is_not_stored`: a provider double returns one extra member, one interval outside the window, one interval that starts before the window, and a title-only event outside it (its span outside the window); also an all-day event two days before the window (the window starting at 00:00 UTC), a span count that differs from the event count and a timed view whose time differs from its span, each rejected; and, accepted, an all-day event on the day before the window (the known residual of `ZONE_SLACK_MS`, I.5 D-18) and an all-day event on the window's edge day in a calendar at `Pacific/Kiritimati` and in one at `Pacific/Pago_Pago` | a field cut missed by the adapter released under a narrower grant; an all-day span widened by the adapter, or not widened by the core |
 | r24 | `a_read_without_time_puts_no_instant_of_an_event_anywhere`: an event planted at a random distinctive second, read with `fields` naming `title` only; the scan of B.16.1 looks for its RFC 3339 text and its millisecond value; allowed places: none | a span stored, logged or shown, or a time member filled when `time` is not granted (DD17) |
 | f01 | `an_observed_proof_holds_while_the_stored_revision_is_unchanged` | today's equality against `None` |
 | v01 | `an_update_whose_start_is_after_the_events_end_gets_the_same_first_answer_as_one_before_it`: an agent with no grant, one event at its revision, two updates that set only a start, one after the event's end and one before it: both open a card | a start-before-end check before classification, which tells the agent the event's times |
@@ -2462,7 +2517,7 @@ chose no card for a release (OD2; NOV18-RELEASE-CARD).
 
 | # | Point | Recommendation | Owner |
 |---|---|---|---|
-| BOP1 | A list approved through a card ends `cancelled` (BD5); under a one-request approval the next list asks again, so under `ask` no list completes. The owner accepted that for version 1 on 2026-11-18 (OD24) | If he does not accept it: keep an unused one-request list grant live when its origin was cancelled by `CallGone`, and offer it to the agent's next list (the list action has no arguments, so the digest is the same); one disclosure still happens; built in step P5b. Default: not in version 1. Ruled 2026-11-17 by the lead: accepted for version 1, with the card's text (SR-7) and P2-29; the owner accepted it on 2026-11-18 (OD24) | owner (OD24), lead for the build |
+| BOP1 | A list approved through a card ends `cancelled` at the approval, with no fresh proof (BD5); under a one-request approval the next list asks again, so under `ask` no list completes. The owner accepted that for version 1 on 2026-11-18 (OD24) | If he does not accept it: keep an unused one-request list grant live when its origin was cancelled by `CallGone`, and offer it to the agent's next list (the list action has no arguments, so the digest is the same); one disclosure still happens; built in step P5b. Default: not in version 1. Ruled 2026-11-17 by the lead: accepted for version 1, with the card's text (SR-7) and P2-29; the owner accepted it on 2026-11-18 (OD24) | owner (OD24), lead for the build |
 | BOP2 | The cancellation of BD4 at 20 s also cancels a release that a slow prover queue delayed | Accept: the agent calls again; the held result and its grant are untouched. Ruled 2026-11-17: accepted | lead |
 | BOP3 | The `still_allowed` flag and the storing check use the global fence, so any grant end anywhere stops reads in flight (REV-core "one read order") | Keep V6 in version 1; measure restarts on the practice calendar (OP4). Ruled 2026-11-17: the whole fence in version 1, measured on the practice calendar in step P5 | lead |
 
@@ -2479,9 +2534,13 @@ chose no card for a release (OD2; NOV18-RELEASE-CARD).
 4. `latest_observation(&Id)` returns the latest row with `purpose = observe` and `outcome = found` (B.12); reconcile
    rows never feed a fence.
 5. V9 widens: an `Applied` whose event does not fit the order is handled as `NoAnswer` too (BD16), with one audit row
-   `provider_mismatch` (a new audit kind, no migration).
+   `provider_mismatch` (a new audit kind, no migration). V9 also handles an unconfirmed delete as `NoAnswer` with no
+   audit row, and V23 is added (the lead's ruling of 2026-11-18; B.14).
 6. The operation type `system.proof` names every recorded system proof (accepted with its order, or refused), not only
    accepted ones.
+7. `AppliedDiffers` (0.4.5), the reducer event of V23's edge `dispatching -> needs_owner_resolution` (P2-33; B.14).
+8. V10 and BD5: a list approved through a card moves `approved -> cancelled` (`CallGone`) at the approval, with no
+   fresh proof (ruled 2026-11-18 by the lead, I.10).
 
 #### B.19.3 Names added
 
@@ -2491,7 +2550,7 @@ chose no card for a release (OD2; NOV18-RELEASE-CARD).
 (with `expects` and `still_allowed`) and `Core.orders`; the shell's monotonic stamp and `until` (X23); tests o03, r23,
 m02, Q21, h16 and r24; the test file `crates/fabric-broker-core/tests/q10.rs` and its helper
 `assert_marker_only_where_allowed`; the audit kind `provider_mismatch`; and `provider_differs` (V23, ruled
-2026-11-18).
+2026-11-18); the reducer event `AppliedDiffers` (V23, B.3.6).
 
 ---------------------------------------------------------------------------------------------------------------------
 
@@ -2501,7 +2560,7 @@ m02, Q21, h16 and r24; the test file `crates/fabric-broker-core/tests/q10.rs` an
 owner channel (add, approve with the pairing code, remove), the list permission that the approval gives, the
 handshake that every agent connection makes before its first tool call, sessions and the closing of connections,
 the refusal of new requests while the rule prover is not ready, the Unix socket listener in the broker binary, the
-configuration text for the three clients, and what a release build must not contain. It answers the lead requests
+configuration text for the agent's client, and what a release build must not contain. It answers the lead requests
 LR-C1, LR-C2, LR-C3, LR-C6, LR-C7, LR-S4 and LR-B1 to LR-B5 of W06 7.1 and 7.2 (table in C.13), and ends with the
 requests to the contract, screens and bridge sessions.
 
@@ -2529,7 +2588,7 @@ W04, W06, PART-agents, J-store, J-auth. "README" means `contracts/desktop/v1/REA
 |---|---|---|
 | CD1 | The contract `Agent` is built from two store rows: the `enrollments` row (state, key, times) and the `agents` row (paused, the session's foreign key). A pending agent has no `agents` row. A seeded debug agent has an `agents` row and no `enrollments` row and counts as approved (V13) | P1, P3; `agents` and `AgentPut` stay untouched (ST `apply.rs:86-104`), so replay of version 1 rows is unchanged (PART-agents 1.1) |
 | CD2 | The contract revision of an agent is `enrollments.revision + agents.revision`, a missing row counting 0 (V14). Every `expected_revision` check and every `conflict` detail of an agent uses it, `pause_agent` included | P3. A new `AgentPut` row must start at revision 1 (ST `apply.rs:86-88`), so the sum is the only form that never goes back across approval (J-store, revision defect) |
-| CD3 | `add_agent` sets `destination` from the client by a fixed table in the core (C.3.1) | DRAFT README section 7 ("sets `destination` from the kind of client") fixes the rule, not the labels; the labels go to the contract session as P2-22 |
+| CD3 | `add_agent` stores the client the owner named and sets `destination` from it by a fixed table in the core (C.3.1). Both are stored in the enrollment and never change. The client is the owner's statement, not a checked fact (OPC9): display data read by no fact, proof or authorization, and by no guard but `EnrollmentPut`'s check that it never changes (ruled 2026-11-18 by the lead) | DRAFT README section 7 ("sets `destination` from the kind of client") fixes the rule, not the labels; the labels go to the contract session as P2-22, the stored client as P2-35 |
 | CD4 | `approve_agent` refuses in this order: `not_found`, `conflict` (revision), `conflict` (not pending), `invalid_params` at `/params/pairing_code` (no key, or another code), `invalid_params` at `/params` (owner budget). Then one commit: `AgentPut`, `EnrollmentPut` approved, `create_enrollment_grant`, notices `Agent` then `Grant`. The result carries the grant | P1 (DRAFT choice 61), P5, A.4.8; J-store notice-order defect |
 | CD5 | `remove_agent` follows P4's order in one commit and raises `revocation_epoch` at least once, also when no grant ended (a pending agent) | P4, P10 (`remove_agent` is in `NARROWING_COMMANDS`); the same rule `disconnect_google` keeps (CORE `owner/commands.rs:258-261`) |
 | CD6 | A seeded debug agent cannot be approved or removed: `approve_agent` answers `conflict` (not pending), `remove_agent` answers `invalid_params` at `/params/agent_id` | V13: a seeded agent has no `enrollments` row, and `EnrollmentPut` accepts a new row only as `pending` (A.4.3). Debug builds only |
@@ -2548,7 +2607,7 @@ W04, W06, PART-agents, J-store, J-auth. "README" means `contracts/desktop/v1/REA
 | CD19 | At quit the main thread waits at most `QUIT_WRITE_BOUND_MS` (500 ms) for the writer threads to flush, then removes the socket file | P7 ("quit answers each with its status and then closes"); J-auth (nothing waited for the last answers) |
 | CD20 | While `prover_ready()` is false, a call that would create a request gets `prover_unavailable` at once and nothing is written. A repeated call id still gets its request's status, and `fabric_request_status` is always answered | P8 |
 | CD21 | A calendar list request has a scope that names no calendar, so a list that needs approval gets a card (C.4.2). A grant made from such a card has purpose `""` | P1, DRAFT README section 10 and choice 50; today `scope_of` gives a list no scope (CORE `service/requests.rs:120-157`) and `create_grant` takes the purpose from `task_of`, which is `None` for a list (`service/grants.rs:50-51`, `service/requests.rs:93-95`): that would halt the broker |
-| CD22 | `get_agent_configuration` is answered by a function the binary gives the broker at start (`ConfigurationTexts`), which calls `fabric_mcp_bridge::config_text::config_text`. The broker binary depends on the bridge's library crate | P9 (LR-B5); W06 A24 (one function makes the text) |
+| CD22 | `get_agent_configuration` is answered by a function the binary gives the broker at start (`ConfigurationTexts`), which calls `fabric_mcp_bridge::config_text::config_text` once, for the agent's stored client (P2-35). The broker binary depends on the bridge's library crate | P9 (LR-B5); W06 A24 (one function makes the text) |
 | CD23 | The snapshot carries every agent: pending, approved, removed and seeded. `add_agent` counts the agents' records into the owner budget and refuses past it | P1 (a removed agent stays in the snapshot), so agents only grow; the frame bound needs a cap (`OWNER_STATE_BUDGET_BYTES`, CORE `owner/views.rs:28-33`) |
 | CD24 | Connection ids of the listener start at `FIRST_LISTENER_CONNECTION` (`1 << 32`); the synthetic agent keeps `ConnectionId(1)` | P4; BR `synthetic.rs:284` |
 
@@ -2567,6 +2626,7 @@ approved"); that stays only for a seeded agent.
 | `agent_id` | `enrollment_id` | same | same | `agents.agent_id` |
 | `revision` | `e.revision` | `e.revision + a.revision` | same | `a.revision` |
 | `registered_name`, `destination` | from `EnrollmentRow` | from `EnrollmentRow` (equal to `AgentRow`) | same | from `AgentRow` |
+| `client` (P2-35) | `e.client` | same | same | null |
 | `enrollment` | `pending` | `approved` | `removed` | `approved` |
 | `pairing_code` | `pairing_code(key)` or null before a key | `pairing_code(key)` | `pairing_code(key)` or null | null |
 | `added_at` | `added_at_ms` | same | same | `enrolled_at_ms` |
@@ -2576,6 +2636,11 @@ approved"); that stays only for a seeded agent.
 | `paused` | false | `a.paused` | `a.paused` or false | `a.paused` |
 | `session` | null | the live session, as today | null (I11) | as today |
 | `last_tool_call_at` | null | from memory (W04 D35) | from memory or null | from memory |
+
+`client` is the owner's statement at `add_agent`, written by the `owner.add_agent` commit, copied unchanged by every
+later `EnrollmentPut`, and read by no fact, proof or authorization, and by no guard but `EnrollmentPut`'s check that
+it never changes. It is null exactly for a seeded agent (V13), which is how the page tells one (P2-35; ruled
+2026-11-18 by the lead).
 
 `e` is the `enrollments` row, `a` the `agents` row. `pairing_code` is `fabric_desktop_contracts::handshake::
 pairing_code` (DRAFT CC `handshake.rs:83-93`); the code is never stored, only the key. The reader is
@@ -2637,7 +2702,8 @@ Params `{registered_name, client}` (DRAFT CC `owner.rs:1898-1905`).
    | `claude_code` | `{kind: cloud, processor: "Anthropic"}` |
    | `codex_desktop` | `{kind: cloud, processor: "OpenAI"}` |
 
-3. `EnrollmentPut` with a new row: `pending`, revision 1, no key, `added_at_ms = now`.
+3. `EnrollmentPut` with a new row: `pending`, revision 1, no key, the `client` as given, the `destination` of step 2,
+   `added_at_ms = now`. Every later `EnrollmentPut` copies `client` unchanged (A.4.3).
 4. Budget (CD23): if the agents' records now take the owner budget past `OWNER_STATE_BUDGET_BYTES`, refuse
    `invalid_params` at `/params/registered_name` with a fixed message ("Fabric Calendar holds too many agents to
    show them in one snapshot; this build cannot add another."). `owner_state_bytes` (CORE `owner/views.rs:72-77`)
@@ -2711,10 +2777,11 @@ cancelled in step 3 changes nothing, because `judge` ignores a request no longer
 
 #### C.3.4 `get_agent_configuration` (a query)
 
-Params `{agent_id}`. A pending or approved agent: `{configuration: texts}` where `texts` is the result of the
-binary's `ConfigurationTexts` for that id, or null when the broker cannot name an installed bridge (C.10). An
-unknown id, a removed agent, or a seeded agent: `not_found` (a removed id is never accepted again, so a text naming
-it would mislead). No ledger row and no audit row.
+Params `{agent_id}`. A pending or approved agent: `{configuration: text}` where `text` is the one result of the
+binary's `ConfigurationTexts` for that id and the agent's stored `client`, or null when the broker cannot name an
+installed bridge (C.10; P2-35, ruled 2026-11-18 by the lead). An unknown id, a removed agent, or a seeded agent:
+`not_found` (a removed id is never accepted again, so a text naming it would mislead). No ledger row and no audit
+row.
 
 #### C.3.5 Commands that change because of enrollment
 
@@ -2778,11 +2845,20 @@ so a `need_approval` verdict ends `undecided` (`service/pipeline.rs:170-172` and
    `service/requests.rs:163-173`). A list request stored before the change keeps its stored digest and scope
    `None`, and still ends `undecided` on `need_approval`. No stored value changes.
 3. `open_card` (`service/pipeline.rs:879-905`) needs no change: the card's scope is the request's.
-   `proposed_duration` comes from the duration rule (P0): under `ask` it is `one_request`; under `allow` with no grant
-   (the list grant revoked) the rule may propose `until_revoked`. The page selects `one_request` first
-   (NOV17-DURATION). A one-request approval of a list delivers nothing: the request is cancelled at its fresh permit
-   (BD5) and the grant ends `consumed`. Under `list_and_availability` in mode `ask` no list completes in version 1
-   (owner OD24, accepted 2026-11-18; BOP1).
+   `proposed_duration` comes from the duration rule (P0) with one cell for the calendar list, which step P5b adds to
+   the core's `proposed_duration`: `until_revoked` when the row `list_and_availability` of the active profile is
+   `allow` and the run can serve (the one fact the rule uses for a create: the prover's kind is Isabelle and a
+   provider is attached); `one_request` in every other case. No condition on the grant's origin. The phase 2 design
+   wins here over the duration rule as built, under which no list card opens (ruled 2026-11-18 by the lead). Under
+   `allow` a list card opens only while the agent holds no live list grant, so this card is the only way to give
+   listing back after a revoke (C.4.1, V22). The page offers the proposal and the shorter durations and selects
+   `one_request` first (NOV17-DURATION). No approval gives the list to the call that opened the card: that call was
+   answered `pending_approval` when the card opened (B.8.1, `settled`). The request ends at the approval,
+   `approved -> cancelled`, with no fresh proof (BD5); a one-request grant then ends `consumed`, and a session or
+   until-revoked grant stays and serves the agent's later lists while the row is `allow`. Under `ask` the card
+   proposes only `one_request` and no list completes in version 1 (owner OD24, accepted 2026-11-18; BOP1). The card
+   is shown in every case (P1, OD24), with the lines of SR-7. A theory lemma that a card-made list grant serves a
+   later list under `allow` is optional and no precondition of step P5b.
 4. `decide_request`: `selected` is null or the same empty scope; there is nothing to narrow.
 5. `create_grant` (`service/grants.rs:19-82`) takes the purpose from `task_of`, which is `None` for a list. It
    becomes: `task_of(action)`, or `""` when the tool is `fabric_calendar_list`; any other `None` stays an invariant
@@ -3160,15 +3236,16 @@ for at most `QUIT_WRITE_BOUND_MS` (500 ms) in all, then removes the socket file.
 
 The owner method `get_agent_configuration` needs a text that names the bridge's path; the core knows no path.
 
-- `CORE ports.rs`: `pub type ConfigurationTexts = Box<dyn Fn(&Id) -> Option<AgentConfiguration> + Send>;`
-  (`AgentConfiguration` is DRAFT's, CC `owner.rs`). `Broker::start` takes it and keeps it in `Broker`, beside the
-  opener; the owner channel calls it for `get_agent_configuration` after the agent check of C.3.4.
+- `CORE ports.rs`: `pub type ConfigurationTexts = Box<dyn Fn(&Id, AgentClient) -> Option<ConfigurationText> + Send>;`
+  (`ConfigurationText` is the contract's, CC `scalar.rs:484`; one text, for the agent's stored client, P2-35;
+  ruled 2026-11-18 by the lead). `Broker::start` takes it and keeps it in `Broker`, beside the opener; the owner
+  channel calls it for `get_agent_configuration` after the agent check of C.3.4.
 - `BR shell.rs`: `pub fn configuration_texts(config: &Config) -> ConfigurationTexts` builds the closure once at
   start. It finds the bridge beside the broker: `std::env::current_exe()`'s parent joined with
-  `fabric-mcp-bridge`, which must be a file; otherwise the closure returns `None` for every id. For each id it calls
-  `fabric_mcp_bridge::config_text::config_text(client, bridge_path, id, debug_extras, &rule)` for the three clients
-  (W06 6; bridge branch `apps/fabric-mcp-bridge/src/config_text.rs:196-202`); any `Err` makes the whole answer
-  `None` (DRAFT choice 63: all three texts or null).
+  `fabric-mcp-bridge`, which must be a file; otherwise the closure returns `None` for every id. For an id and a
+  client it calls `fabric_mcp_bridge::config_text::config_text(client, bridge_path, id, debug_extras, &rule)` once,
+  with the bridge's value for that client (W06 6; bridge branch `apps/fabric-mcp-bridge/src/config_text.rs:196-202`);
+  an `Err` makes the answer `None` (choice 63 as P2-35 amends it: the agent's text or null).
 - `apps/fabric-broker/Cargo.toml` gains `fabric-mcp-bridge = { path = "../fabric-mcp-bridge" }`. It brings no new
   package to the lock beyond the bridge's own (`ed25519-dalek`, `getrandom`, `sha2`, `zeroize`, and `rustix` on unix,
   bridge branch `Cargo.toml`). No cycle: the bridge depends on the contract crate only.
@@ -3262,7 +3339,7 @@ the Keychain. Keys are fixed test seeds (DRAFT `fixtures/handshake.json` and the
 
 | Id | Shows | Catches |
 |---|---|---|
-| ct01 | `add_agent` gives a pending agent at revision 1, one `owner.add_agent` row, one agent notice, the destination of C.3.1 | wrong type, missing notice, wrong destination |
+| ct01 | `add_agent` gives a pending agent at revision 1, one `owner.add_agent` row, one agent notice, the destination of C.3.1 and the client as given, in the result, the notice and the snapshot after a restart | wrong type, missing notice, wrong destination, a client lost at a restart |
 | ct02 | `agent_hello` for an unknown, a pending, an approved and a removed id: answers of one shape, a fresh 64-hex nonce each; ledger head and audit unchanged | a store read or a decision at hello |
 | ct03 | hello with schema version 2: `unsupported_schema_version` with `{received: 2, supported: 3}`, close, count `unsupported_schema` | a missing version check |
 | ct04 | a one-bit-flipped signature, and a non-canonical one that `verify` accepts and `verify_strict` refuses: `not_permitted`, close, no session, no row, count `(bad_signature, null)` | skipped or weak verification |
@@ -3289,11 +3366,17 @@ the Keychain. Keys are fixed test seeds (DRAFT `fixtures/handshake.json` and the
 | ct25 | a challenge past 5 s on the core clock: closed at the next pump, `timed_out` | CD14 |
 | ct26 | unavailable mode: `Line` and `Oversized` close, `Refused` dropped, nothing answered | |
 | ct27 | prover `Starting`: a new action gets `prover_unavailable` and no row; a repeated call id gets its status; `fabric_request_status` answered | P8 |
-| ct28 | a list request after the list grant was revoked, under `allow`: a card whose scope names no calendar; approving it makes a grant with purpose `""` in `grants`; the broker does not halt (step P5b) | CD21 |
+| ct28 | a list request after the list grant was revoked, under `allow`: a card whose scope names no calendar, proposing `until_revoked` with Isabelle-kind attachments and a provider and `one_request` with the synthetic kind or no provider; approving it makes a grant with purpose `""` in `grants`; the broker does not halt (step P5b) | CD21; the list cell of C.4.2 item 3 |
 | ct29 | the list grant of an approved agent permits a list under Careful and Flexible; it serves no tool that names a calendar | P5 |
 | ct30 | release only: C.11 | a handshake-free session in release |
 | ct31 | debug `Connect` for a removed or pending id: closed; for a bound `ConnectionId`: the old binding is closed first | J-auth removed-agent defect |
-| ct32 | `get_agent_configuration`: texts for pending and approved, `not_found` for removed and unknown, null when the closure returns none; no row | C.3.4 |
+| ct32 | `get_agent_configuration`: for a pending and an approved agent, the one text of its stored client (a Claude Code agent gets the Claude Code text); `not_found` for removed, seeded and unknown; null when the closure returns none; no row | C.3.4, P2-35 |
+| ct33 | a seeded agent (debug): `client` null in the snapshot; `remove_agent` answers `invalid_params` at `/params/agent_id`; `get_agent_configuration` answers `not_found` | a seeded agent shown as one the owner added (V13, P2-35) |
+| ct34 | a one-request approval of a list card: `approved -> cancelled` in the pump's next step, with no `ProofRecorded` and no `releases` row; the grant ends `consumed`; the next list opens a new card (step P5b) | a fresh proof for a call that has left (BD5) |
+| ct35 | an until-revoked approval of a list card: `approved -> cancelled` with no fresh proof, the grant live; the next list is permitted at classification and completes with a `releases` row; after a revoke the next list opens a card proposing `until_revoked` (step P5b) | a revoked list permission that can never come back (C.4.1, V22) |
+| ct36 | a session approval of a list card: the next list in the same session completes; after the session ends its grant has ended and the next list opens a card; with no live session at the decision, `session` is refused at `/params/duration` (CORE `service/grants.rs:18`, `39`; `tests/grants.rs:301`) (step P5b) | a session list grant outliving its session |
+| ct37 | a custom profile with `list_and_availability` in `ask`: the card proposes `one_request`; `session` and `until_revoked` are refused at `/params/duration/kind`; a one-request approval ends `cancelled` and the grant `consumed` (step P5b) | a longer duration where no grant would serve |
+| ct38 | a card under `allow` proposing `until_revoked`; the custom profile with list `ask` is made active before the decision; `until_revoked` approved: the request ends `cancelled` with no fresh proof and no second card, the grant live; the next list opens a card proposing `one_request` (step P5b) | a second card for a call that has left (the stale ceiling, G3 of the duration rule's design) |
 
 #### C.14.2 Binary (`apps/fabric-broker/tests/agent_socket.rs`, unix, debug, test key, scratch data directory)
 
@@ -3315,7 +3398,7 @@ the Keychain. Keys are fixed test seeds (DRAFT `fixtures/handshake.json` and the
 | bt14 | 15 held answers settle in one step: all arrive, the connection stays open | the writer queue bound |
 | bt15 | quit with held answers: each arrives before the process exits | CD19 |
 | bt16 | `peer_uid` of one end of `UnixStream::pair()` equals `own_euid()` (a peer of another user needs root; stated, not faked) | reading the wrong id |
-| bt17 | `get_agent_configuration` from a debug broker beside a built bridge: three texts with the test line and the scratch socket and key paths | C.10 |
+| bt17 | `get_agent_configuration` from a debug broker beside a built bridge: the text of the agent's stored client, with the test line and the scratch socket and key paths | C.10 |
 | bt18 (CI) | the Windows build compiles without `listener.rs` and without `nix` | unix code in shared paths |
 
 ---------------------------------------------------------------------------------------------------------------------
@@ -3331,21 +3414,22 @@ the Keychain. Keys are fixed test seeds (DRAFT `fixtures/handshake.json` and the
 | P2-17 | Optional, as section G (`sessions_per_minute_per_agent` so C.6.4 row e can answer `busy`) |
 | P2-18 | Asked, as section G (`health.agent_channel`), so that a failed path check is visible in `health` (W06 LR-B2); add `run_dir_owner` to its problems if the owner check of C.9.1 is reported apart |
 | P2-21 (new) | `owner#/$defs/result_approve_agent` gains `grant: grant` (the list grant made in the same commit); CC `ApproveAgentResult` gains `pub grant: Grant`. P5: "approve_agent returns the grant" |
-| P2-22 (new) | A data table of the destination of each client of `add_agent` (`data/agent-clients.json`, or a README table): `claude_desktop` and `claude_code` `{kind: cloud, processor: "Anthropic"}`, `codex_desktop` `{kind: cloud, processor: "OpenAI"}`. Until it exists the core's table of C.3.1 is the rule |
+| P2-22 (new) | A data table of the destination of each client of `add_agent` (`data/agent-clients.json`, or a README table): `claude_desktop` and `claude_code` `{kind: cloud, processor: "Anthropic"}`, `codex_desktop` `{kind: cloud, processor: "OpenAI"}`. Until it exists the core's table of C.3.1 is the rule. `add_agent` stores the client with the destination; the table applies when the agent is added and is not re-applied to a stored agent |
 | P2-23 (new) | README section 15: the handshake limits are now the broker's (5 s, 8 at once, 6 sessions per agent per minute, one key change per minute and 20 in all while pending) and what it records of a failed one (one audit row per minute per cause and known id); remove that line from "Not covered" |
 | P2-28 (new) | README section 7 states seven answers the core gives: `conflict` for approving an agent that is not pending and for removing one that is removed; `conflict` for pausing a pending or removed agent; `invalid_params` at `/params` for the owner budget at approval; `not_found` for a removed agent's configuration; `invalid_params` at `/params/registered_name` when `add_agent` would pass the owner budget; `invalid_params` at `/params/account_id` when `connect_google` would; and "A proved key that differs from the agent's current key raises the agent's revision; proving the current key again changes nothing" in place of "Every proved key raises the agent's revision" |
+| P2-35 (new) | As section G: `Agent.client`, null only for a debug build's seeded agent, and one configuration text, for the agent's stored client; needed in pull request 36 before step P3 merges (ruled 2026-11-18 by the lead) |
 
 #### C.15.2 To the screens session: the Agents screen (S07)
 
 | # | Request |
 |---|---|
-| SR-1 | Add an agent: the client (Claude Desktop, Claude Code, Codex desktop) and a name; then `get_agent_configuration` and the text for that client with a copy control and W06 6's words for it. When `configuration` is null, say that Fabric Calendar cannot find its bridge and must be in `/Applications` |
+| SR-1 | Add an agent: the client (Claude Desktop, Claude Code, Codex desktop) and a name. The form says that Fabric Calendar keeps the answer and cannot check which program actually uses the agent; that a wrong client is corrected only by removing the agent and adding it again; and that a removed agent stays in the count of agents (CD23). Then `get_agent_configuration`, which answers one text, for the agent's stored `client` (P2-35), with a copy control and W06 6's words for it; show it for any pending or approved agent with a client, also after a reload, and never offer another client's text. The copy control tries the web clipboard, then the older copy command on the selected field, says whether the copy worked, and always shows the text in a field that can be selected by hand; the lead tries it in the packaged window before S07 is put to the owner (E.2.1). When `configuration` is null, say that Fabric Calendar cannot find its bridge and must be in `/Applications`. The design gives the meaning; the words are the screens session's (ruled 2026-11-18 by the lead, I.10) |
 | SR-2 | A pending agent: "Waiting for the client to connect" while `pairing_code` is null; then the code in three groups, `key_proven_at`, and Approve and Remove. Tell the owner to compare the code with the one the agent shows, or with `fabric-mcp-bridge code --enrollment <id>` in a terminal. When the code changes while the screen is open, show the new code and require a new look before Approve |
 | SR-3 | `approve_agent` answers: `conflict` means the agent changed (a new key): reload and compare again; `invalid_params` at `/params/pairing_code` means the code is not the current key's |
-| SR-4 | The approval step must tell the owner, before he approves, in plain words (P5): (a) the permission: "This agent may list your calendars at any time, without asking you each time"; (b) the destination, as a label the owner gave, not a checked fact: "You said this agent is {client}. {client} normally sends what it reads to {processor}. Fabric Calendar cannot check which program uses this agent's key or where that program sends data." (from `destination`; OPC9); (c) that it covers calendars and accounts selected later: "This includes calendars you select or accounts you connect later"; (d) what a calendar list holds: for each selected calendar of each connected account, the account, the calendar's id and name, whether the owner can write to it, and whether it is the Agent Drafts calendar; no events. (e) That he can revoke this permission alone under the agent's permissions, and that the agent then asks him the next time |
-| SR-5 | An approved agent: name, destination notice, connected or not, last tool call, Pause and Resume, Remove, and its permissions with the list permission first ("List your calendars, until you revoke it"). "For this session" is worded "until this client disconnects" (W06 4.5) |
-| SR-6 | A removed agent stays in the list, marked removed, with its history; its requests still open (`dispatching`, `outcome_unknown`, `reconciling`, `applied`, `needs_owner_resolution`) are shown under its name. Remove asks for confirmation and says that requests already handed to Google run to their end |
-| SR-7 | A card for a calendar list: its scope names no calendar; show "List your calendars (names only, no events)" and the duration choices as for any card. Say that approving for one request lets nothing through (the list is cancelled, BD5) and that "until revoked" restores listing (OD24) |
+| SR-4 | The approval step must tell the owner, before he approves, in plain words (P5): (a) the permission: "With this permission, this agent's calendar lists need no approval from you each time, while your profile allows "See calendar names and when you are free or busy"" (true under every profile and while the agent is paused); (b) the destination, as the owner's statement, not a checked fact: "You added this agent as {client}. {client} normally sends what it reads to {processor}. Fabric Calendar cannot check which program uses this agent's key or where that program sends data." ({client} from `agent.client`, P2-35; {processor} from `destination`; OPC9; ruled 2026-11-18 by the lead); (c) that it covers calendars and accounts selected later: "This includes calendars you select or accounts you connect later"; (d) what a calendar list holds: for each selected calendar of each connected account, the account, the calendar's id and name, whether the owner can write to it, and whether it is the Agent Drafts calendar; no events. (e) That he can revoke this permission alone under the agent's permissions, and that the agent then asks him the next time, unless his profile blocks listing |
+| SR-5 | An approved agent: name, the destination notice in the words of SR-4 (b), connected or not, last tool call, Pause and Resume, Remove, and its permissions with the list permission first, worded by its duration (for the approval's permission "List your calendars, until you revoke it"), shown only here, each with purpose, scope, duration, expiry and Take back (plan S05); "Review agent actions" keeps the requests and one line that points here. A session permission keeps the words "Until this agent's current session ends", with a fixed note beside the session choice and on every session permission that lists the ends of a session (C.7.1): the client closes or quits, 30 minutes pass without a call, Fabric Calendar quits or restarts, another copy of the client connects with the same agent, or the agent is removed; it covers every chat of that client until then. The text of the grant end `session_disconnected` also covers a replaced session (ST `mutation.rs`: `Disconnected` and `Replaced` both give it). An agent whose `client` is null is a debug build's seeded agent (P2-35): no Remove, no configuration control and no "You added" sentence; its destination alone and one line that it is built into the debug build (ruled 2026-11-18 by the lead, I.10) |
+| SR-6 | A removed agent stays on the Agents screen in a group "Removed agents" after the others, closed at first, newest removal first; the group's heading counts the removed agents and those with a request still open. An agent's history in version 1 is the record's times (added, key proven, approved, removed, last tool call), its requests still open from the snapshot (for a removed agent `dispatching`, `outcome_unknown`, `reconciling`, `applied`, `needs_owner_resolution`), and the requests and permissions that ended while the window was open, under a fixed note that those that ended before the window opened are not listed. The page does not call `list_ended_requests` (A.6, AO8). Remove asks for confirmation and says that requests already handed to the calendar run to their end (ruled 2026-11-18 by the lead, I.10) |
+| SR-7 | A card for a calendar list (CD21, C.4.2): its scope names no calendar; its action is seeing the selected calendars, their names, accounts and access, and no events. Offer the durations as on every card: up to `proposed_duration`, `one_request` selected first (SR-16). Choose its lines from the tool, the card's `proposed_duration` and the selected duration only, never from the profile or the grants. Their meaning (the words are the screens session's): (L0, always) whatever is chosen, this request ends without giving the agent the calendars, because its call was answered when the card opened; to get the list the agent must call again. (S1, while `one_request` is selected or is the only duration) allowing only this request lets nothing through, and the permission ends with this request. (S1b, when `one_request` is the only duration) an agent gets the list only while the profile allows the row. (S34, while `session` or `until_revoked` is selected, in place of the general lasting line) for as long as the permission lasts, and while the profile allows "See calendar names and when you are free or busy", the agent's later lists need no approval; each list shows the calendars selected at that time, including ones selected or accounts connected later (BD5, OD24; ruled 2026-11-18 by the lead, I.10) |
 | SR-8 | Google's credentials stay with Fabric Calendar; the agent never receives them (PLAN S07) |
 
 #### C.15.3 To the CD-W06 bridge session
@@ -3420,7 +3504,7 @@ states `resolved_as_applied`, `resolved_as_absent`.
 | DD13 | Google is attached to a run only when the core's reconciliation (D.7) is merged and tested against the practice provider and FAKE. Until then `can_carry_out` is false for every Google account | P10; REV-port "Condition 1" of rule PD17 |
 | DD14 | The practice provider implements the whole port (dispatch, observe, read, reconcile, list) with the answers of D.12 before a real agent uses it | P11; REV-port rule PD17 "Condition 2" |
 | DD15 | An account signal (`AuthLost`, `AccessChanged`) is applied in the commit of the result that carries it. When that result is ignored (a late or unknown order), an `AuthLost` is still applied, in a commit of its own (`provider.auth_lost`) | REV-port PO6 answer 3. The adapter has already deleted the token (W05 3.8), so the account must not stay `connected` |
-| DD16 | The broker's own reads are proven (W05 OQ9 default): observe, reconcile and list each run under an accepted Isabelle system proof. The list waits for TH1 (P2-6). A dispatch order's own GET of its target event, before an invitation or a response or after a 2xx delete, is not a broker read and needs no system proof (D.4) | W05 PD29; REV-port PO5; P13; the GET ruled 2026-11-18 by the lead |
+| DD16 | The broker's own reads are proven (W05 OQ9 default): observe, reconcile and list each run under an accepted Isabelle system proof. The list waits for TH1 (P2-6). A dispatch order's own GET of its target event, before an invitation or a response or after a 200 or 204 to a delete, is not a broker read and needs no system proof (D.4) | W05 PD29; REV-port PO5; P13; the GET ruled 2026-11-18 by the lead |
 | DD17 | A read answer's span is typed: `ReadSpan::Timed` with start and end in milliseconds from Google's `dateTime`, or `ReadSpan::AllDay` with Google's two dates exactly. The adapter asks Google for `start(date,dateTime)` and `end(date,dateTime)` of every event whatever the grant, uses them only for the span, builds it from the occurrence's own start and end (never `originalStartTime`), and neither widens nor does zone arithmetic. The core alone widens an all-day span by `ZONE_SLACK_MS` (14 h) each way for its overlap check (B.3.4 step 2.1); that bound is never stored or released. Exact bounds wait for a zone database, CD-W09's (I.5 D-18) | W5-2. The span is needed most when `time` is not granted, which is when a title could leave without its time (r23). The workspace has no zone database, and the zone in which Google filters all-day events is unverified until LV17. If the adapter widened, the core's own check would mean nothing. Ruled 2026-11-18 by the lead (I.5 D-16) |
 | DD18 | The account link. The shell supersedes a sign-in only through the adapter's flow handle, under the lock of the token write, keyed by the order's account and the core's generation (D.2, D.8.1). A disconnect's revoke and forget are one job, `Unlink { account_id, revoke }`, on a worker of its own that is not the sign-in worker: drop the cached access token, one revocation attempt with the token still in the store, then forget (D.8.3). A disconnect raises `connect_generation`. At start every pending revocation is unlinked again, and every other Google account that is not connected is unlinked without revoking (D.8.4) | The revocation reads the token from the store and never deletes it, so a forget first would lose the revocation; behind a sign-in the token could stay 300 s in the store; a supersede without the lock lets a flow that passed its last check still write. Ruled 2026-11-18 by the lead (I.5 D-17) |
 
@@ -3439,10 +3523,10 @@ After this section the port has five orders on the provider worker (dispatch, ob
 second trait, `AccountLink`, on two workers of its own (W05 PO7; DD18): the sign-in worker runs `connect` and the
 `forget` that follows a sign-in outcome (D.8.2, D.8.6); the unlink worker runs `unlink` for `disconnect_google` and
 at start (D.8.3, D.8.4), so a disconnect never waits behind a sign-in. Each worker has its own `AccountLink` value
-over the one token store and access-token cache, which take their own locks (the CD-W05 session, 2026-11-18).
-Each order carries a
-proof, an id and a deadline, and every order but the list a target. Each answer carries the order's id and an
-optional account signal.
+over the one token store and access-token cache, which take their own locks (`MemoryTokenStore` clones share one
+map under a mutex, GC `tokens.rs:68-70` at `595f1c8`, and `AccessCache` clones one cache, `:125-127`; the Keychain
+store must do the same, W5-15). Each order carries a proof, an id and a deadline, and every order but the list a
+target. Each answer carries the order's id and an optional account signal.
 
 ### D.2 The types (CORE `ports.rs`)
 
@@ -3479,11 +3563,16 @@ pub struct ReconcileOrder { pub order_id: u64, pub request_id: Id, pub effect_id
 pub struct ListOrder { pub order_id: u64, pub account_id: Id, pub proof: OrderProof, pub deadline_ms: u64 }
 
 pub enum AttemptReport {
-    Applied { event: Option<EventRef>, confirmed: bool, notification: Notification },
+    Applied { event: Option<EventRef>, confirmed: bool, notification: Notification,
+              returned: Option<ReturnedEvent> },
     Transient { retry_after_ms: Option<u64> },
     Rejected { code: FailureCode, explanation: Explanation },
     NoAnswer,
 }
+/// The event Google returned with a fitting `Applied` that is not confirmed, of a create, update, invitation or
+/// response (V23, B.14); None in every other answer. `raw` is the event as received, uncut, under the adapter's
+/// 4 MiB read bound (W5-13); `differs` holds the fixed labels of the members that differed, never content (W5-12).
+pub struct ReturnedEvent { pub raw: Vec<u8>, pub differs: Vec<&'static str> }
 pub struct AttemptDone { pub order_id: u64, pub request_id: Id, pub effect_id: Id, pub attempt: u32,
     pub report: AttemptReport, pub finished_at_ms: u64, pub account_signal: Option<AccountSignal> }
 
@@ -3555,7 +3644,7 @@ What each answer means, and what a failure is:
 
 | Order | Success | `Transient` / `Failed(Transient)` | `Rejected` / `Failed(Rejected)` | No answer at all |
 |---|---|---|---|---|
-| dispatch | `Applied`: a yes with the event (W05 6.6-6.8). `confirmed` is true when the event equals the approval after only the normalisations of the adapter's closed, named list, empty until the live run (W05 6.12, 18.7); a fitting `Applied` that is not confirmed is still applied (V23). For a delete, which has no body, `confirmed` is true only when the adapter's one GET of the same event, in the same order, under the same proof and `until`, made only after a 200 or 204, with the access token the DELETE used and with no retry, finds the event gone (404, 410 or `status: cancelled`, at any revision); otherwise it is false. That GET is mapped by its own function, never turns `Applied` into another class, and returns no event, revision, content or evidence | certainly nothing was changed: nothing sent, or refused before acting (W05 6.10) | a plain refusal with a contract `FailureCode` | `NoAnswer`: unknown. Also every 5xx, every unreadable 2xx, every answer past the deadline (W05 PD17) |
+| dispatch | `Applied`: a yes with the event (W05 6.6-6.8). `confirmed` is true when the event equals the approval after only the normalisations of the adapter's closed, named list, empty until the live run (W05 6.12, 18.7); a fitting `Applied` that is not confirmed is still applied and carries `returned`: the event as Google returned it and the labels of the members that differed (V23). For a delete, which has no body, `confirmed` is true only when the adapter's one GET of the same event, in the same order, under the same proof and `until`, made only after a 200 or 204, with the access token the DELETE used (no refresh, nothing read from the token store), started only before `until`, and with no retry, finds the event gone (404, 410 or `status: cancelled`, at any revision); otherwise it is false. That GET is mapped by its own function, never turns `Applied` into another class, and returns no event, revision, content or evidence | certainly nothing was changed: nothing sent, or refused before acting (W05 6.10) | a plain refusal with a contract `FailureCode` | `NoAnswer`: unknown. Also every 5xx, every unreadable 2xx, every answer past the deadline (W05 PD17) |
 | observe | `Found` with the facts, the before-image and the raw event; `Absent` for 404, 410 or a cancelled event (W05 6.5) | a read that may pass, including a 5xx and no answer (W05 6.10 "For a read ... there is no NoAnswer") | a refusal, with its code (`invalid_arguments` for an id of the wrong form, W05 5.3; for a cut attendee list, W05 6.5) | the watchdog makes it `Failed(Transient)` |
 | read | `Done { result, spans }` only when every page of every calendar arrived (W05 6.4, PD23); `Stopped` when the flag was false before a page | as observe | as observe; past the bounds of PD23 too | the watchdog: `ReadOutcome::NoAnswerInTime` (section B) |
 | reconcile | `Found` with `matches_approved` computed by the provider's own `matches` (W05 6.12); `Cancelled`; `NotFound` | as observe | as observe | the watchdog makes it `Failed(Transient)` |
@@ -3607,9 +3696,9 @@ held is therefore a store fault (REV-port PO1 answer 3), never a fallback.
   `Failed(Rejected { provider_rejected })`. A test of the core (with FAKE) asserts that every request FAKE logs
   matches one consumed authorization or one `system_proofs` row of the store (REV-port PO8).
 - A dispatch order may make, under its own consumed authorization, one GET of its target event before the change
-  (invitation, response) or after a 2xx delete; such a GET is not a broker read and needs no system proof (DD16,
-  OD7). The FAKE log test therefore accepts, per consumed authorization, one changing request plus one GET before
-  it (invitation, response) or one GET after it (delete), and nothing else. Ruled 2026-11-18 by the lead.
+  (invitation, response) or after a 200 or 204 to a delete; such a GET is not a broker read and needs no system
+  proof (DD16, OD7). The FAKE log test therefore accepts, per consumed authorization, one changing request plus one
+  GET before it (invitation, response) or one GET after it (delete), and nothing else. Ruled 2026-11-18 by the lead.
 
 ### D.5 Order ids, deadlines and the watchdog
 
@@ -3702,18 +3791,20 @@ The observe answer is handled in one commit, `provider.observation`:
 2. For `found`, the before-image and the raw event go to `observation_evidence` by `WriteTx::put_evidence` in the
    same transaction (A.4.4). The content is the canonical JSON `{"before": EventView, "raw": text}`, where `raw` is
    the provider's event as UTF-8 text; for a reconcile row it is `{"before": null, "raw": text}`.
-   `MAX_BEFORE_VIEW_BYTES` (524 288) bounds the before-view and `MAX_EVIDENCE_BYTES` (1 048 576) the whole, both
+   `MAX_BEFORE_VIEW_BYTES` (393 216) bounds the before-view and `MAX_EVIDENCE_BYTES` (1 048 576) the whole, both
    measured in canonical form before `put_evidence` is called, because a fault there poisons the write (A.4.4).
-   Past either, the core stores no observation and no evidence, handles the answer as
-   `Failed(Rejected { invalid_arguments })` and gives the fixed explanation "Google's copy of this event is too
-   large for Fabric to keep a record of. Nothing was changed. Make this change in Google Calendar." In
-   `validating` that is `terminal_failure` `invalid_arguments`; in `proving_fresh_permit` it is `undecide()` with
-   cause `observation_failed` (D.6.3). No card opens and nothing is dispatched: no proof runs without a
-   before-image the owner can be shown. The card's attendee list is never cut, and `ObservedEvent.attendees`
-   stays complete. A stated limit of version 1 (owner OD26). When the latest found observation of the same
-   account, calendar, event and revision has evidence of the same digest, the new `ObservationRecorded` names
-   that `evidence_id` and `put_evidence` is not called (A.4.4, A.7); no ledger payload carries the digest (V3).
-   Ruled 2026-11-18 by the lead.
+   Past either, the core stores no observation and no evidence. In `validating` the request ends
+   `terminal_failure` `invalid_arguments` with the fixed explanation "Google's copy of this event is too large for
+   Fabric to keep a record of. Nothing was changed. Make this change in Google Calendar." In
+   `proving_fresh_permit` (the event grew past the bound after the request's first observation) it is
+   `undecide()` with the stored cause `observation_too_large` (0.4.4), shown as `failed`, never as
+   `provider_unreachable`, with no explanation, not through D.6.3's rows. The fixed sentence is shown only for a
+   change not yet sent; it is never shown for a request whose change may have been sent. No card opens and nothing
+   is dispatched: no proof runs without a before-image the owner can be shown. The card's attendee list is never cut,
+   and `ObservedEvent.attendees` stays complete. A stated limit of version 1 (owner OD26). When the latest found
+   observation of the same account, calendar, event and revision has evidence of the same digest, the new
+   `ObservationRecorded` names that `evidence_id` and `put_evidence` is not called (A.4.4, A.7); no ledger payload
+   carries the digest (V3). Ruled 2026-11-18 by the lead.
 3. The move or the proof of D.6.3. When the proof starts, `facts::proof_job` reads, in this same transaction, the
    request's latest `observe` row with outcome `found` and builds `TrustedFacts.event` from its `facts` (today always
    `None`, CORE `service/facts.rs:163`) and the fence from its `revision` (DD5). Facts and fence come from one read.
@@ -3726,13 +3817,14 @@ hook (BR `shell.rs:378-392`; PW 4.4) is removed in the same pull request.
 Core tests of the bounds (ruled 2026-11-18 by the lead):
 `an_observe_answer_one_byte_past_either_bound_stores_nothing_and_fails` (in `validating`: `terminal_failure`
 `invalid_arguments` with the fixed explanation, no `observations` row and no evidence row; in
-`proving_fresh_permit`: `undecided` `observation_failed` and no dispatch);
+`proving_fresh_permit`: `undecided` `observation_too_large` and no dispatch);
 `two_observations_of_one_event_at_one_revision_leave_one_evidence_row`; and
-`the_largest_request_details_answer_fits_one_frame`: a before-view at `MAX_BEFORE_VIEW_BYTES`, an after-view at
-the same bound once P2-32 adds `private.after` (V23), an invitation action of 200 addresses of 320 bytes, 200
-proof ids, 20 attempts and the warnings at their maximum fit `MAX_FRAME_BYTES`. If they do not, the core lowers
-`MAX_BEFORE_VIEW_BYTES` (to about 400 KiB) until they do. The after-view is bounded by `MAX_BEFORE_VIEW_BYTES`
-too.
+`the_largest_request_details_answer_fits_one_frame`: a before-view and an after-view (V23, P2-32), each at
+`MAX_BEFORE_VIEW_BYTES` from the test's first build (a stand-in of that size for the after-view until P2-32 is in
+the contract crate), an invitation action of 200 addresses of 320 bytes, 200 proof ids, 20 attempts and the
+warnings at their maximum fit `MAX_FRAME_BYTES`. The two views take at most 786 432 bytes, which leaves 262 144 for
+the rest of the answer, the headroom `MAX_READ_RESULT_BYTES` leaves. If the test fails, the bound is lowered in the
+step that builds it (P5a) and the value found is written into 0.6, A.7, A.9 ST3, OD5 (b), OD26 and W5-13.
 
 #### D.6.3 What an observation leads to
 
@@ -3772,31 +3864,43 @@ checks, so the move is true to what happened.
 | Attempt answer (`request.attempt`) | Commit |
 |---|---|
 | `Applied { confirmed: true, event, notification }` | attempt finished `applied`; `EffectEventRecorded { event, notification }`; `dispatching -> applied -> reconciled` (DD8). For a delete, `event: None`, and `confirmed` comes from the adapter's one GET in the order (D.2) |
-| `Applied { confirmed: false, event }` that fits the order, for a create, update, invitation or response (V23) | attempt finished `applied`; `EffectEventRecorded { event, notification }` while the request is in `dispatching`; one audit row `provider_differs`; then `dispatching -> outcome_unknown -> reconciling -> needs_owner_resolution` in the same commit, with no read and no due time, until P2-33 adds the edge `dispatching -> needs_owner_resolution` (B.14). Never sent again, never read back, never `absence_confirmed` |
+| `Applied { confirmed: false, event }` that fits the order, for a create, update, invitation or response (V23) | attempt finished `applied`; `EffectEventRecorded { event, notification, evidence_id }` while the request is in `dispatching`, with the returned event's evidence when it fits; one audit row `provider_differs` with the labels; then `dispatching -> needs_owner_resolution` (P2-33) and `ResolutionCauseRecorded` with `attempt_differs` (D.7.6) in the same commit, with no read and no due time (B.14). Never sent again, never read back, never `absence_confirmed` |
 | `Applied { confirmed: false, event: None }` of a delete | as `NoAnswer` (V9), with no audit row; D.7.2 reads it back |
 | an `Applied` that does not fit the order (V9) | as `NoAnswer`, with one audit row `provider_mismatch`. Nothing is written to the effect's event columns |
 | `NoAnswer`, or the dispatch watchdog | attempt finished `outcome_unknown` (CORE `service/pipeline.rs:984-987`); `dispatching -> outcome_unknown`; `due_at_ms` = this commit's time + `RECONCILE_FIRST_READ_DELAY_MS` (10 000) |
 | `Transient` | as today: `retry_wait` while `retry_due` allows, else `terminal_failure` `retry_budget_exhausted` (`service/pipeline.rs:947-970`). For an agent whose enrollment is not approved (removed), the same commit moves it on `retry_wait -> cancelled` (`AgentRemoved`, X22) |
 | `Rejected` | as today: `terminal_failure` with its code (`service/pipeline.rs:971-983`) |
 
-If the account is `disconnected` when the answer arrives, a request that would stay in `outcome_unknown` continues in
-the same commit `outcome_unknown -> reconciling -> needs_owner_resolution` (D.8.3).
+If the account is `disconnected` when the answer or the dispatch watchdog arrives, a request that would stay in
+`outcome_unknown` continues in the same commit `outcome_unknown -> reconciling -> needs_owner_resolution`, with the
+stored cause `account_disconnected` (D.8.3, D.7.6). The watchdog is handled as `NoAnswer` (D.5) and dispatch orders
+survive a disconnect, so the rule covers it as it covers an answer (ruled 2026-11-18 by the lead). A V23 answer on a
+disconnected account stores `attempt_differs`, because the change was made.
 
 Core tests (ruled 2026-11-18 by the lead): `a_confirmed_delete_is_applied_and_reconciled_in_its_attempts_commit`;
 `an_unconfirmed_delete_goes_to_reconciliation_with_no_audit_row`; and
-`a_fitting_unconfirmed_applied_waits_for_the_owner_with_its_event_recorded_and_no_read`, the interim chain on a
-practice fault: the fault `applied_differs` (E.1.4 row 8a) answers a create and an update with a fitting
-`Applied { confirmed: false }`; each commit records the event, writes one `provider_differs` row and moves the
-request through `outcome_unknown` and `reconciling` to `needs_owner_resolution`; no order follows, no
-`observations` row is written, and the request recovered at `broker.started` gets no due time. An `Applied`
-with another id still goes to reconciliation with `provider_mismatch`.
+`a_fitting_unconfirmed_applied_waits_for_the_owner_with_its_event_recorded_and_no_read`, on a practice fault: the
+fault `applied_differs` (E.1.4 row 8a) answers a create and an update with a fitting
+`Applied { confirmed: false, returned: Some(_) }`; each commit records the event and its evidence, writes one
+`provider_differs` row and moves the request `dispatching -> needs_owner_resolution` by the one edge; no order
+follows, no `observations` row is written, and the request recovered at `broker.started` gets no due time. An
+`Applied` with another id still goes to reconciliation with `provider_mismatch`. And
+`a_returned_event_past_the_evidence_bound_is_recorded_without_evidence`: the id and revision are recorded, the
+request waits for the owner, no evidence row is written and `private.after` is null; and a returned event whose view
+alone passes `MAX_BEFORE_VIEW_BYTES` keeps its evidence and gives `private.after` null.
 
 #### D.7.2 One reconcile read
 
 `step` gains arms for `outcome_unknown` and `reconciling` (today the fallback arm clears their due time, CORE
 `service/pipeline.rs:567-577`). When such a request is due:
 
-1. If its account is not `connected`, or the prover is not `Ready`, or `can_carry_out` is false for the account:
+1. If its account is `disconnected`: `outcome_unknown -> reconciling -> needs_owner_resolution` (from `reconciling`
+   the last move only), with the stored cause `account_disconnected` (D.7.6), in one commit `request.advance`;
+   nothing is read. This closes a change that was `dispatching` at a disconnect and whose answer a restart lost:
+   recovery moves it to `outcome_unknown` with a due time (D.7.4), and it would otherwise wait for good (ruled
+   2026-11-18 by the lead). Test:
+   `a_lost_answer_of_a_disconnected_account_ends_needs_owner_resolution_account_disconnected`. Otherwise, if its
+   account is not `connected`, or the prover is not `Ready`, or `can_carry_out` is false for the account:
    `due_at_ms: None`. Recovery of a run that can carry it out makes it due (D.7.4). Nothing is read and no budget
    is used. The commit that makes the account `connected` again (D.8.2) sets every `outcome_unknown` and
    `reconciling` request of the account due at its time + 10 000; the prover's change to `Ready` makes them due at
@@ -3842,13 +3946,14 @@ that its `observed_at_ms` is at least 60 000 after the first `not yet` row's; if
 core clock, which never goes back (W04 D34).
 
 A request in `needs_owner_resolution` is open in schema version 3 and leaves only by `resolve_outcome` (DRAFT
-README section 9). The reason the owner sees is derived from the latest `reconcile` observation and the tool; nothing
-new is stored. `absence_confirmed` is the broker's two reads, not Google's statement: a late PATCH or DELETE can
+README section 9). Each move to `needs_owner_resolution` stores its cause in the same commit, and the reason the
+owner sees is derived from that cause, never from the latest observation (D.7.6; ruled 2026-11-18 by the lead).
+`absence_confirmed` is the broker's two reads, not Google's statement: a late PATCH or DELETE can
 still land (REV-core rule PD20); the screens' wording must say "not found", not "confirmed absent".
 
-A request moved to `needs_owner_resolution` by V23 has no `reconcile` observation. Its reason is "applied,
-differs", derived from its effect's recorded event and its attempt's outcome `applied`; the contract carries
-that reason with P2-31, before any Google dispatch (B.14). Ruled 2026-11-18 by the lead.
+A request moved to `needs_owner_resolution` by V23 has no `reconcile` observation. Its stored cause is
+`attempt_differs`, read as the reason `applied_differs` (D.7.6); the contract carries that reason with P2-31 in
+schema version 3 (step P2; B.14). Ruled 2026-11-18 by the lead.
 
 Why this is safe against a repeat. Update, invitation, response and delete carry `If-Match` with the approved
 revision (W05 PD14), so a late original and a later new request for the same change cannot both apply. A create has
@@ -3866,15 +3971,16 @@ asked.
 
 - A failed reconcile read (a `Failed` read-back, the watchdog, a system proof that does not permit) writes no
   observation. The request stays in `reconciling` and is due again at `retry_due(RetryPolicy::PLAN, failed + 1,
-  first_failed_at, hint, now)`; the count and `first_failed_at` are in memory and restart at zero after a restart
-  (they only add reads). When `retry_due` returns `None`: `-> needs_owner_resolution` (OP11). A `Found`
-  read-back whose evidence passes `MAX_EVIDENCE_BYTES` is such a failed read; it never counts as `NotFound` or
-  `Cancelled`, nor toward the two reads of D.7.3 (D.7.2 step 4). A core test,
-  `an_oversized_reconcile_read_back_is_a_failed_read_and_never_absence_confirmed`, pins it: at the end of the
-  budget the request is in `needs_owner_resolution`. Ruled 2026-11-18 by the lead.
+  first_failed_at, hint, now)`; the count and `first_failed_at` are in memory and restart at zero after a restart (they
+  only add reads). When `retry_due` returns `None`: `-> needs_owner_resolution`, with the stored cause `reads_failed`
+  (OP11, D.7.6). A `Found` read-back whose evidence passes `MAX_EVIDENCE_BYTES` is such a failed read; it never counts
+  as `NotFound` or `Cancelled`, nor toward the two reads of D.7.3 (D.7.2 step 4). A core test,
+  `an_oversized_reconcile_read_back_is_a_failed_read_and_never_absence_confirmed`, pins it: at the end of the budget the
+  request is in `needs_owner_resolution`, with the stored cause `reads_failed`; no reason value says "too large to
+  record". Ruled 2026-11-18 by the lead, twice.
 - If the failure carried `AuthLost`, or the account is not `connected` at the commit, the request waits as in D.7.2
-  step 1 and its failed-read count restarts when the account is connected again. A lost sign-in is not Google's
-  answer about the change.
+  step 1, or, for a `disconnected` account, moves as that step says; its failed-read count restarts when the account
+  is connected again. A lost sign-in is not Google's answer about the change.
 - Recovery (`broker.started`, CORE `service/recovery.rs:22-90`) keeps today's `dispatching -> outcome_unknown` and
   gives it a due time; it gives `outcome_unknown` and `reconciling` a due time too (today they get none, `:86`):
 
@@ -3888,7 +3994,7 @@ asked.
 
   A recovered request never skips a read: the count of successful reads is in the store, and a lost order or a
   lost answer only causes another read. A request in `needs_owner_resolution` gets no due time, as today; a V23
-  request is never in `outcome_unknown` or `reconciling` across a commit (B.14), so recovery never makes it due.
+  request never passes through `outcome_unknown` or `reconciling` (B.14), so recovery never makes it due.
 
 #### D.7.5 `resolve_outcome`
 
@@ -3900,6 +4006,7 @@ on the practice account, where D.7.4 and D.8.3 first move requests into `needs_o
 |---|---|---|
 | 1 | No request with that id | `not_found` |
 | 2 | `expected_revision` is not the request's revision, or its state is not `needs_owner_resolution` | `stale_request` (DRAFT choice 55; params `{request_id, expected_revision, resolution}`, DRAFT CC `owner.rs:1875-1879`) |
+| 3 | `resolution` is `absent` and the request's reason is `applied_differs` (V23, or a create found under its reserved id with other content; D.7.6; P2-31, P2-34) | `invalid_params` at `/params/resolution` |
 
 Then one commit: `RequestMoved` by the reducer event `Resolved(Resolution)` (0.4.5) to `resolved_as_applied` or
 `resolved_as_absent`; the terminal move ends the request's one-request grants `consumed` through `move_request`
@@ -3907,9 +4014,57 @@ Then one commit: `RequestMoved` by the reducer event `Resolved(Resolution)` (0.4
 `{commit_sequence, request}` (DRAFT CC `owner.rs:1884-1887`). The request leaves
 the open-request limits. `resolved_as_applied` names no event, so its outcome is never released (B.5.3).
 
-For a request of V23 the contract will refuse `absent` (P2-34). The core adds no interim check of its own: until
-P2-31 to P2-34 merge, V23 is reachable only by a practice fault, and they are needed before any Google dispatch.
+Check 3 is P2-34's rule. The merged contract of step P2 states it, and the core enforces it from step P5a, which
+builds V23; the answer `invalid_params` at `/params/resolution` is the design's ask in P2-34, the form of the other
+refusals of a parameter (P2-28). Core test: `resolve_outcome_refuses_absent_for_a_request_that_applied_and_differs`.
 Ruled 2026-11-18 by the lead.
+
+#### D.7.6 Why a request waits for the owner
+
+Each move to `needs_owner_resolution` stores its cause in the same commit: `ResolutionCauseRecorded { effect_id,
+cause }` right after the `RequestMoved` (A.4.3, A.4.8), into the column `effects.resolution_cause` of migration 2.
+`get_request_details` maps it to the contract's `owner_resolution_reason` (P2-31) by one exhaustive function, CORE
+`owner/views.rs` `resolution_reason_of(cause: ResolutionCause) -> OwnerResolutionReason`, total, as `reason_of` maps
+the undecided cause, and sets the member only in `needs_owner_resolution`, `resolved_as_applied` and
+`resolved_as_absent`. The reason is derived from nothing else at read time: not from the latest observation (a request
+can reach the state with none, or after a "not yet" row), and not from the account's state now (an account can be
+connected or disconnected later). It is a column, not a member of `RequestMoved` as P0 keeps the undecided cause:
+`owner.disconnect_google` moves several requests in one commit with correlation null, and the ledger's append check
+on main refuses a move that names its cause in a row not correlated to its request (ST `ledger.rs:150-161`). Every
+request that reaches the state is a change, and `effects.request_id` is unique (`0001_initial.sql:107`), so one
+column per request is exact. Ruled 2026-11-18 by the lead (I.10).
+
+| Stored cause | Way in | Commit | Decided from | `owner_resolution_reason` |
+|---|---|---|---|---|
+| `attempt_differs` | V23: a fitting, unconfirmed `Applied` of a create, update, invitation or response (B.14, D.7.1), also on a disconnected account, because the change was made | `request.attempt` | the attempt's answer in this commit | `applied_differs` |
+| `created_found_differs` | D.7.3: a create read back `Found`, not matching | `request.reconcile` | this commit's reconcile row | `applied_differs` |
+| `created_found_cancelled` | D.7.3: a create read back `Cancelled` | `request.reconcile` | this commit's reconcile row | `event_gone` |
+| `found_changed` | D.7.3: an update, invitation or response read back `Found` at another revision, not matching | `request.reconcile` | this commit's reconcile row | `event_changed` |
+| `found_gone` | D.7.3: an update, invitation or response read back `Cancelled` or `NotFound` | `request.reconcile` | this commit's reconcile row | `event_gone` |
+| `reads_failed` | D.7.4: `retry_due` gives `None`; an oversized read-back is such a failed read (D.7.2 step 4) | the commit of the last failed read: `request.reconcile`, `system.proof` or the reconcile order's watchdog | the failed-read count and `first_failed_at`, which are in memory only; this is why the cause is stored | `reads_failed` |
+| `account_disconnected` | D.8.3 step 1; D.7.1 (an answer or the dispatch watchdog on a `disconnected` account); D.7.2 step 1 (a due request of a `disconnected` account, after a restart included) | `owner.disconnect_google`; `request.attempt` or the dispatch watchdog's commit; `request.advance` | the command, or the account row read in that commit | `account_disconnected` |
+
+One way in gives one value. A delete reaches the state only by `reads_failed` or `account_disconnected`: its D.7.3
+rows end `applied` or `absence_confirmed`, and V23 never takes a delete. A confirmed `Applied` never reaches it. The
+guard of `ResolutionCauseRecorded` refuses a cause that does not fit the tool (A.4.3). `applied_differs` also covers
+a create whose read-back finds the event under its reserved id with other content: only Fabric knows a reserved id,
+so the create was made, and "absent" would be false and would let the agent create a duplicate. For
+`applied_differs` the owner can resolve only as applied (D.7.5 check 3, P2-34, E.3 OD25). When the V23 evidence was
+not kept, or its view passes `MAX_BEFORE_VIEW_BYTES`, the reason stays `applied_differs` and `private.after` is null.
+
+What the owner is told for each value (the meaning; the words are the screens session's, SR-13, SR-18):
+`applied_differs`, the calendar made this change, but the copy it returned differed from what he approved;
+`event_changed`, when Fabric checked, the event had changed since he approved it and did not match;
+`event_gone`, when Fabric checked, the calendar showed the event deleted, or did not find it; `reads_failed`,
+Fabric tried to check the change with the calendar and could not; `account_disconnected`, the account was
+disconnected before Fabric could check whether the change was made. No value says that Fabric gave up.
+
+Core tests (step P5a): one per way in, each asserting the stored cause and the contract value;
+`each_resolution_cause_reads_its_contract_value` (exhaustive, with `ResolutionCause::ALL.len()`);
+`a_create_read_not_found_then_failing_to_the_budget_ends_reads_failed`;
+`a_v23_answer_on_a_disconnected_account_ends_attempt_differs`; and the test of D.7.2 step 1. Store tests (step P3):
+the guard refuses the variant for a request in another state, a second write and a cause that does not fit the
+tool; I28 fails a store with a request in the state and no cause.
 
 ### D.8 Accounts in the core (CO1 to CO4, CO11)
 
@@ -3928,7 +4083,9 @@ One commit, `owner.connect_google`; DRAFT's params carry only `account_id` (CC `
 3. In both cases: `connect_generation` + 1, state `awaiting_consent`, account revision + 1, `revocation_epoch` + 1
    (W04 5.6), notices `Change::Account` and the provider account change (P2-9), the answer, and after the commit
    `Job::Connect(ConnectOrder { account_id, generation, subject: the stored subject, known_subjects: every other
-   non-null subject of `provider_accounts()` })`.
+   non-null subject of `provider_accounts()` })`. The sign-in worker opens the browser with `/usr/bin/open` (W05
+   PD7); the page and the host open no address. A browser that cannot be started ends the attempt `cancelled` with
+   `last_connect_problem: browser_not_opened` (P2-9). Ruled 2026-11-18 by the lead.
 4. One sign-in at a time (W05 PD5): when the shell queues a `Connect` it first calls `Flow::supersede_latest()`
    (D.2), which takes the lock of the token write; the old flow answers `Cancelled(Superseded)` with its own
    generation and, once the call has returned, never writes the token store. A queued `Connect` that is already
@@ -3939,9 +4096,10 @@ One commit, `owner.connect_google`; DRAFT's params carry only `account_id` (CC `
    shell calls `Flow::supersede_latest()` and does not wait for the unlink worker; a revocation still pending stays
    `pending` in the store (D.8.4). Ruled 2026-11-18 by the lead (DD18).
 
-A `connected` account given to `connect_google` is not connected for up to `SIGN_IN_WAIT_MS` (300 000): every proof
-sees it as not connected and its agents' work stops (REV-core CO1 c). The contract's state machine has no
-"connected, re-consenting"; the screens must say so (OP7, owner).
+A `connected` account given to `connect_google` is not connected until the sign-in ends, is cancelled or times out
+(at most `CONNECT_WATCHDOG_MS`, 365 000, D.8.6; a restart restores its state, D.8.4): every proof sees it as not
+connected and its agents' work stops (REV-core CO1 c). The contract's state machine has no "connected,
+re-consenting"; the screens must say so (OP7, owner OD13, SR-14).
 
 #### D.8.2 The sign-in outcome (PO7, CO11)
 
@@ -3975,7 +4133,8 @@ account. Steps 4 and 5 are built in step P7b. Added, in the same commit `owner.d
 
 1. Every request of the account in `outcome_unknown`: `-> reconciling -> needs_owner_resolution`; in `reconciling`:
    `-> needs_owner_resolution` (REV-core CO4 a; `outcome_unknown -> needs_owner_resolution` is not an edge). The
-   account may never come back, and an open request would wait for good.
+   account may never come back, and an open request would wait for good. Each move stores the cause
+   `account_disconnected` (D.7.6).
 2. Held results of the account purged, `HeldResultPurged { cause: account_disconnected }` (section B).
 3. In-flight observe, reconcile and list orders of the account are dropped from `orders`, and every system proof in
    flight that serves a request this commit moved; their answers and results are then ignored (B.11.3, D.5; an
@@ -3990,8 +4149,8 @@ account. Steps 4 and 5 are built in step P7b. Added, in the same commit `owner.d
    and then forgets at once, so a disconnected account's token stays in the store for that attempt at most, not
    behind a sign-in for 300 s. `Unlinked(account_id, Some(outcome))` is recorded in a later commit
    `provider.revoke`: `revoked` or `not_confirmed`, with the provider account change. `Unlinked(account_id, None)`
-   (no revocation asked) writes nothing. Either way the account leaves `unlink_in_flight`, and a `Connect` held
-   back for it leaves (D.8.1). Ruled 2026-11-18 by the lead (DD18, I.5 D-17).
+   (no revocation asked) writes no commit. Either way the account leaves `unlink_in_flight` in memory, and a
+   `Connect` held back for it is sent then (D.8.1). Ruled 2026-11-18 by the lead (DD18, I.5 D-17).
 
 A request in `dispatching` at the disconnect runs on (DRAFT README section 7, `remove_agent`: no false rollback). Its
 answer is applied by D.7.1, including the rule for a disconnected account. The unlink may remove the token before the
@@ -4171,10 +4330,10 @@ and when it ships; these are the answers it must give under D.2's shapes.
 | dispatch row 4, an effect applied before (`practice.rs:264-269`) | removed: under DD6 the core never sends again after `Applied` or `NoAnswer`; a resend meets row 7 as at Google |
 | dispatch, update or delete of a missing event (`practice.rs:356-362`) | `Rejected { revision_conflict }` (W05 6.7, 6.8: 404 and 410), not `invalid_arguments` |
 | dispatch, an update whose start would not be before its end | `Rejected { InvalidArguments, "the new start is not before the end" }`, as Google answers 400 (W05 6.9, 6.10); the core does not check it before (D.13 CO6) |
-| dispatch, applied | create and update: `Applied { event: Some(EventRef), confirmed: true, notification: not_requested }`; delete: `Applied { event: None, confirmed: true, notification: not_requested }`, from its own locked state with no read. Today a delete answers `Some(reference)` (`practice.rs:297-300`), which B.14 would treat as a mismatch |
+| dispatch, applied | create and update: `Applied { event: Some(EventRef), confirmed: true, notification: not_requested, returned: None }`; delete: `Applied { event: None, confirmed: true, notification: not_requested, returned: None }`, from its own locked state with no read. Today a delete answers `Some(reference)` (`practice.rs:297-300`), which B.14 would treat as a mismatch |
 | fault `lose_answers` (applied, answer lost) | kept: `NoAnswer` after the change |
 | new fault `unknown_not_applied` | `NoAnswer` with no change, so reconciliation's absence path runs |
-| new fault `applied_differs` | the change is made; `Applied { event: Some(EventRef), confirmed: false, notification: not_requested }` for a create or an update, so V23's interim chain runs (D.7.1); never for a delete |
+| new fault `applied_differs` | the change is made; `Applied { event: Some(EventRef), confirmed: false, notification: not_requested, returned: Some(ReturnedEvent { raw, differs: ["practice_fault"] }) }`, with `raw` the practice event's canonical JSON, for a create or an update, so V23 runs (D.7.1); never for a delete. `practice_fault` is the practice provider's own fixed label, not a member label (W5-12): the fault changes no member |
 | a poisoned lock (`practice.rs:248-250`) | kept: `NoAnswer` (the state is unknown) |
 | observe | `Found` from its state with its own `fabric_created` (the core overwrites it with DD12's value before storing, D.6.2), `before` built from the stored event, evidence the event's canonical JSON; `Absent` for a missing or deleted event |
 | read | availability (each interval cut to the window) and event details over its one calendar, every field the action grants, with one `ReadSpan::Timed` for each event (it holds timed events only); `Stopped` when `still_allowed` is false |
@@ -4268,12 +4427,15 @@ These go to the owner as E.3 OD20 (D27 as OD12).
 | `unknown_not_applied` | new practice fault | D.12 |
 | `applied_differs` | new practice fault | V23; D.12, D.7.1 |
 | `provider_differs` | new audit kind | V23; B.14 |
-| `MAX_BEFORE_VIEW_BYTES` | new, 524 288 | D.6.2; owner OD26 |
+| `MAX_BEFORE_VIEW_BYTES` | new, 393 216 (384 KiB), for each of the before-view and the after-view (524 288 in the first ruling) | D.6.2; owner OD26 |
+| `ReturnedEvent`, `Applied.returned` | new port type and member: the event Google returned with a fitting, unconfirmed `Applied`, and the labels of the members that differed | V23; B.14, D.2 |
+| `observation_too_large` | new undecided cause | D.6.2; 0.4.4 |
 | `MAX_EVIDENCE_BYTES` | 1 048 576, was 262 144 | D.6.2; owner OD26 |
 | `ReadSpan` | new port type, `Timed { start_ms, end_ms }` or `AllDay { start_date, end_date }`; replaces `spans: Vec<(i64, i64)>` | DD17; B.3.4 step 2.1 |
 | `ZONE_SLACK_MS` | new, 50 400 000 (14 h) | DD17; B.3.4 step 2.1 |
 | `Job::Unlink`, `Input::Unlinked`, `AccountLink::unlink` | replace `Job::Revoke`, `Input::Revoked` and `AccountLink::revoke`; `unlink` takes whether to revoke | DD18; D.8.3 |
 | `unlink_in_flight` | new in-memory set of the core: the accounts whose unlink has not answered; no `Connect` is sent for them | DD18; D.8.1, D.8.3 |
+| `ResolutionCause`, `ResolutionCauseRecorded`, `resolution_reason_of`, D.7.6 | new stored enum, mutation variant and read-time map: the cause of each move to `needs_owner_resolution`, read as `owner_resolution_reason` | P2-31; ruled 2026-11-18 by the lead |
 
 ---------------------------------------------------------------------------------------------------------------------
 
@@ -4301,7 +4463,7 @@ PW). "PW practice rule P1" means the practice rule P1 of PW 4.1; "PW decision P2
 | ED3 | The shell seeds the practice account through `Broker::seed` with an account-only seed, in the first turn in which the store is ready: before the turn's input is routed and again after it, before the synthetic agent's tick. The calendar is named "Practice calendar (test build)" in that seed only; `SyntheticAgent::seed()` is unchanged | P11 "the shell seeds the practice account". A real agent must find the account without the script. Seeding twice in the turn closes the case where the input that reopens the store is the `subscribe` that starts the script (W04 D9), so the practice name always wins. The synthetic run without Isabelle keeps its own name (J-store practice minor) |
 | ED4 | The practice provider implements the whole `Provider` trait of D.2 (dispatch, observe, read, reconcile, list) in step P4. The shell's observation hook (BR `shell.rs:384-392`) goes in step P5, in the pull request in which the core first sends `ObserveOrder` | P11: the extended port before a real agent uses it (step P6). Removing the hook before the core observes would leave every practice update and delete without `facts.event`, so the theory would block them (MODEL `event_known`; PW X6) |
 | ED5 | The provider-neutral core of CO6 (observe before a proof, the CO6 table) and of CO8 (reconcile after an unknown outcome, the PD20 rule) is built in step P5, with the fence fix of P10 and the order watchdogs (V20). Step P7b adds only what is Google's | V1 puts `observations` in migration 2 for this reason; P10 "Google is not attached before reconciliation exists in the core"; REV-port cross-cutting "fence equality": setting `event_revision` without the fix discards every observed proof. Building them on the practice provider tests them before Google exists |
-| ED6 | The practice provider's dispatch table changes for P10 (E.1.4): a passed deadline answers `Transient`; an update or delete whose `send_updates` is not `none` is refused; a new fault answers `NoAnswer` with no change; `Applied` carries `confirmed: true` and `notification: not_requested`. Row 4 (a retry of an applied effect answers the same `EventRef`) is removed, as D.12 says: a resend meets row 7 and is refused, as at Google (X6) | P10: `Transient` means "certainly did not happen". Practice events have no attendees and the practice calendar notifies nobody, so a change that asks to notify would report a false outcome. Under DD6 the core never sends a change again; with row 4 a resend by mistake would look like success, without it the resend is refused. Neither form repeats a change |
+| ED6 | The practice provider's dispatch table changes for P10 (E.1.4): a passed deadline answers `Transient`; an update or delete whose `send_updates` is not `none` is refused; a new fault answers `NoAnswer` with no change; `Applied` carries `confirmed: true` (but for the fault `applied_differs`, row 8a) and `notification: not_requested`; a delete answers `event: None`. Row 4 (a retry of an applied effect answers the same `EventRef`) is removed, as D.12 says: a resend meets row 7 and is refused, as at Google (X6) | P10: `Transient` means "certainly did not happen". Practice events have no attendees and the practice calendar notifies nobody, so a change that asks to notify would report a false outcome. Under DD6 the core never sends a change again; with row 4 a resend by mistake would look like success, without it the resend is refused. Neither form repeats a change |
 | ED7 | For an account with no `provider_accounts` row in a practice run the core resolves the order's `CalendarTarget` as `{calendar, provider_calendar_id: the broker's calendar id, time_zone: "Etc/UTC", is_primary: true}`, and `can_carry_out(attachments, account, false)` is true only when `attachments.provider` is `Practice`. The practice provider still refuses every pair but (`synthetic-account`, `synthetic-calendar`) | V17 and P10 (one target on every order, resolved by the core). The practice account is the only account a store can hold without a `provider_accounts` row once `connect_google` exists (V16), and practice row 3 is the second guard |
 | ED8 | `ProviderKind::Practice` exists only under `cfg(debug_assertions)`; so do `practice.rs`, the practice seed, `Plan.practice` and the label | A release build cannot name the variant, so no release code path can attach it (W04 D11) |
 | ED9 | Labels: the `hello` build label ends ` practice` (` synthetic practice` with the script); `main.rs` writes one fixed stderr line; the practice calendar's name; the agent's `agent_prove` answer carries `practice: true` (P2-19, asked, no longer optional) and the bridge says so to the model; the page's practice line shows only in a practice run | P11 "labelled as practice for the owner and for the agent". Without P2-19 an agent sees practice only after its first list, and an `applied` change looks like a real effect (J-auth practice minor) |
@@ -4453,8 +4615,8 @@ PW 4.3) with these changes:
 | 6a | **new** fault `unknown_not_applied > 0` (decremented) | `NoAnswer`, no change (shows the path to `absence_confirmed`) |
 | 7 | create: no event has the reserved id; update or delete: the event exists, is not deleted, and the action's revision is current; update: the new start is before the new end (a start or an end the update leaves out is the event's own) | else `Rejected { ProviderRejected, "an event with this id exists" }`, `Rejected { RevisionConflict, "no such event" }` (W05 6.7, 6.8; D.12, X7), `Rejected { RevisionConflict, "the event changed" }` or `Rejected { InvalidArguments, "the new start is not before the end" }` (W05 6.9, 6.10; D.12); then the change as today |
 | 8 | fault `lose_answers > 0` | the change is kept, `NoAnswer` (shows the path to `reconciling`) |
-| 8a | **new** fault `applied_differs > 0` (decremented), create or update only | the change is kept, `Applied { event: Some(EventRef { event_id, revision }), confirmed: false, notification: NotRequested }` (shows V23's interim chain to `needs_owner_resolution`, D.7.1) |
-| 9 | | create and update: `Applied { event: Some(EventRef { event_id, revision }), confirmed: true, notification: NotRequested }`; delete: `Applied { event: None, confirmed: true, notification: NotRequested }`, from its own locked state with no read (D.12) |
+| 8a | **new** fault `applied_differs > 0` (decremented), create or update only | the change is kept, `Applied { event: Some(EventRef { event_id, revision }), confirmed: false, notification: NotRequested, returned: Some(ReturnedEvent { raw, differs: ["practice_fault"] }) }`, with `raw` the canonical JSON of the practice event (shows V23's edge to `needs_owner_resolution`, D.7.1); `practice_fault` is the practice provider's own label, not a member label (D.12) |
+| 9 | | create and update: `Applied { event: Some(EventRef { event_id, revision }), confirmed: true, notification: NotRequested, returned: None }`; delete: `Applied { event: None, confirmed: true, notification: NotRequested, returned: None }`, from its own locked state with no read (D.12) |
 
 The poisoned lock answers `NoAnswer` (a panic may have left a change half made). A missing target answers
 `revision_conflict`, as D.12 fixes it (REV-port for_the_lead). Faults stay in-process only (PW X4): `Plan::of` always
@@ -4526,9 +4688,11 @@ For the owner:
 - One fixed stderr line from `main.rs` after `Plan::of` when `plan.practice.is_some()`: `fabric-broker: practice run:
   approved changes go to a practice calendar in memory; nothing real changes`. No id, no title.
 - The account shows `synthetic@example.invalid` and the calendar "Practice calendar (test build)".
-- Request to the screens session: show `#practice-line` (`apps/fabric-desktop/ui/index.html:15`) only when the
-  `hello` build ends with ` practice` (PW 9.4 item 1: today it shows in every build, release included). Optional
-  contract request P2-24 (section G) would replace the string test by a capability.
+- Request to the screens session: show `#practice-line` (`apps/fabric-desktop/ui/index.html:15`) only when
+  `hello.capabilities` holds `practice_calendar` (P2-24, asked; SR-11), with no test on the build string (PW 9.4
+  item 1: today it shows in every build, release included). The broker lists `practice_calendar` exactly when
+  `plan.practice.is_some()` (step P6), and a test with those of E.1.7 shows that a release build never lists it.
+  Ruled 2026-11-18 by the lead.
 
 For the agent:
 - P2-19 (asked, ED9): `result_agent_prove` gains `practice: bool`, true exactly in a practice run, the constant false
@@ -4621,8 +4785,8 @@ Proposed. Applied in the pull request named in the last column, after the owner'
 
 The source comments that repeat the old wording change with them: BR `lib.rs:13-17`, `practice.rs:1-14`,
 `config.rs:82-84`, `shell.rs:104-114`. `apps/fabric-desktop/README.md` "The practice run" (118-160) and the harness
-header (`serve.ts:10-19`) are not the lead's files (J-store practice minor): they are written requests to their
-owner, the screens session, unless the owner widens the lead's list.
+header (`serve.ts:10-19`) are the lead's (SR-12, ruled 2026-11-18 by the lead): they change in step P6 with this
+wording, and the screens session reviews the page strings they quote.
 
 #### E.1.10 Answer to LR-B6
 
@@ -4693,13 +4857,13 @@ Each step ends in one pull request that the owner merges, unless the row says tw
 
 | Step | What | Files | Needs first | Writer |
 |---|---|---|---|---|
-| P0 | In progress: the broker part of schema version 2 (`ProverStatus`, `ProverCause`, `ProofDone.cause`, `undecide()`, the cause in `RequestMoved`), then the duration rule | CORE `ports.rs`, `broker.rs`, `service/{core,pipeline,reducer,requests,tests}.rs`, `owner/{views,tests}.rs`, tests; ST `{apply,ledger,mutation,read,rows,testing,tx}.rs`; BR `prover/{map,mod}.rs`, `shell.rs`, `synthetic.rs`, tests; W04 and PW designs (`git diff --stat origin/main...claude/cd-broker-prover-reasons`) | contract schema version 2 (merged, PR 28) | lead |
+| P0 | In progress: the broker part of schema version 2 (`ProverStatus`, `ProverCause`, `ProofDone.cause`, `undecide()`, the cause in `RequestMoved`), then the duration rule | CORE `ports.rs`, `broker.rs`, `service/{core,pipeline,reducer,requests,tests}.rs`, `owner/{views,tests}.rs`, tests; ST `{apply,ledger,mutation,read,rows,testing,tx}.rs`; BR `prover/{map,mod}.rs`, `shell.rs`, `synthetic.rs`, tests; W04 and PW designs (`git diff --stat origin/main...claude/cd-broker-prover-reasons`); in the duration rule's pull request also `apps/fabric-desktop/README.md`, the two sentences the rule makes untrue (SR-12) | contract schema version 2 (merged, PR 28) | lead |
 | P1 | This design document; documents only. No existing document is edited | the design document only | nothing; runs beside P0 | architect, writers A to E, editor |
-| P2 | Contract schema version 3: PR 36 finished from P1's shapes (section G, P2-1 to P2-30; P2-31 to P2-34 in it or in a later pull request, merged before the G2b live run, V23) and rebased on P0. TH1 and TH2 with a real Isabelle run may follow as a second pull request; it is needed before P7b | `contracts/desktop/v1/**`, `crates/fabric-desktop-contracts/**`, `isabelle/**` and the policy crate's mirror for TH1; PR 36's hunks in CORE and ST (`git diff --stat origin/main...origin/claude/contract-v3-owner-commands`: `broker.rs`, `owner/{dedup,frames,mod,profiles,tests}.rs`, `service/{agent,facts,grants,pipeline,reducer,requests,sessions,tests}.rs`, ST `apply.rs`, `store.rs`); `Cargo.lock` (PR 36 adds `ed25519-dalek` to the contracts crate) | P0 merged; P1 merged; the lead has re-read DRAFT's diff since `29cdfdf` (I.7 X-3); OD1, OD2 and OD24 answered (2026-11-18, PLAN 15.3) | contract session |
-| P3 | Migration 2 (section A): the tables, mutations, operation types 23 to 34, invariants with `since`, the gated branches G1 to G9, the v2 fixture, the rehearsal on an encrypted v1 fixture; the shared types of X21 (`SystemAction`, `SystemActionKind`, `ObservedEvent`, `Notification`, `ConnectProblem`, `AuthLostCause`) in ST `rows.rs` with serde; the four undecided causes of 0.4.4 in the stored cause type, `SessionEndReason::AgentRemoved` and `VoidReason::AgentRemoved` (A.4.5); the ADR-115 and W04 amendments of A.3 as approved (OD5, OD20) | `crates/fabric-storage/**`; two test files that pin version numbers (`crates/fabric-broker-core/tests/faults.rs`, `apps/fabric-broker/tests/process.rs`, A.8.4); CORE `owner/views.rs` (`reason_of` and its test: the match over the stored cause is exhaustive on the step P0 branch, so the four causes get the values of 0.4.4 in the same pull request); `docs/adr/ADR-115-broker-ledger-envelope.md`; W04 D3, 3.5, 3.6, section 4, 9.2 and R22 (A.3) | P2 merged (`EnrollmentGrantInserted` carries a version 3 `Grant`); OD5, OD7 and OD20 (its A.3 part) answered; P2-26 met (I.7 X-2) | lead |
-| P4 | The provider port and the practice provider: D.2 types and `Job`/`Input` variants, with `until` on every `Provider` method (X23); `system_action_digest` and the re-exports of X21 in CORE `ports.rs`; `Attachments.provider`; the core ignores the new inputs (no order of those kinds exists yet); the practice provider of E.1.4; the shell routes the new jobs to the provider worker and stamps each job (B.13); the dispatch side of DD1 to DD3 in the core: `dispatch()` builds D.2's `DispatchOrder` with `order_id` from `next_order_id`, `proof: OrderProof::Agent(authorization)` and `target` from `resolve_target` (D.3, practice row); `attempt_done` and `finish_attempt` read D.2's `AttemptDone` and treat `Applied { event, confirmed, notification }` as today's `Applied { event }` (V9, BD16 and B.14 land in step P5); `can_carry_out` (0.5.3) replaces `provider_present` | CORE `ports.rs`, `broker.rs`, `service/pipeline.rs` (`:581-634`, `:667`, `:696-720`, `:917-989`), new `service/provider.rs` (`resolve_target`, D.3), `service/core.rs` (the field `next_order_id`; the test attachments at `:464-472`), `service/mod.rs` (`mod provider`); BR `practice.rs`, `shell.rs` | P0, P2 and P3 merged (P0 and P2 write `broker.rs`, `pipeline.rs`, `ports.rs`; D.2 names `Notification`, `ConnectProblem`, `AuthLostCause` and `SystemAction`, which P3 ships, X21) | lead |
-| P5 | Results, held answers and system proofs (section B): CO5, CO9, CO13, the D17, D18, D33 and `used` amendments, held answers (P7), releases, purges, P8's `prover_unavailable`; and, provider-neutral (ED5), the fence fix, the order watchdogs, observe before a proof (CO6) and reconcile (CO8, PD20); the hook goes (ED4). The Q10 tests on `Input::Attempt` and on the practice provider. Two pull requests in this order (the lead's ruling of 2026-11-17, I.6 E-9): P5a (fence, watchdogs, system proofs with `Prover::prove_system`, observe, reconcile, hook, `resolve_outcome` (D.7.5) and `select_calendars` (D.9.3), both of which need only migration 2 and work on the practice account; steps 1 and 3 of D.8.3 (a disconnect moves the account's requests in `outcome_unknown` and `reconciling` to `needs_owner_resolution` and drops its orders and the system proofs that serve a moved request), which need only migration 2 and apply to the practice account; DD10, and the test of D.9.4 with the partition of `OwnerMethod::ALL` and the entries built so far; step P6 adds `remove_agent`; step P7b adds `connect_google` and `NARROWING_COMMITS`) and P5b (results, held answers, release, the purge at `disconnect_google` (D.8.3 step 2, B.9), `ProofAction::Disclose`, Q10; and the list's authority: `grants::create_enrollment_grant` (C.4.1), the debug seed's call of it (E.1.3), X16's handling of `GrantOrigin::Enrollment`, and CD21: `scope_of(CalendarList)` and the `""` purpose in `create_grant`, so that r01, e14 and Q17 can pass in step P5). `list_ended_requests` and `delete_custom` stay `unknown_method` in phase 2 (A.6, AO8) | CORE `service/{pipeline,facts,grants,reducer,requests,agent,core,recovery,epochs}.rs`, new `service/held.rs`, new `service/results.rs` (B.4.1), `service/provider.rs` (the calls of D.3 for system orders), `ports.rs` (`ProofAction::Disclose`, `Prover::prove_system`, `SystemProofJob`, `SystemProofDone`), `owner/{commands,dedup,mod}.rs` (`resolve_outcome`, `select_calendars`), `owner/preferences.rs` (DD10), `broker.rs`, new `tests/q10.rs`; BR `prover/map.rs` (B.5.2), `prover/mod.rs` (the Isabelle handle's path for `Job::ProveSystem`), `synthetic.rs` (`SyntheticClassifier::prove_system`, which answers with no report; `Practice::a_event` accepts `reconciled`, V7), `apps/fabric-broker/tests/live.rs`, `shell.rs` (the hook), `practice.rs` comments; W04 D14, D17, D18, D33, 5.6, 5.7, 5.8; PW X6, 4.2 to 4.4, decision P2, practice rules P3 and P4 | P3 and P4 merged; OD3, OD9 (the hook), OD11, OD15, OD16, OD17, OD18 and OD20 (W04 5.6 to 5.8) answered; the screens' text for `completed` merged | lead |
-| P6 | The agent channel (section C) in the core and the binary, with the practice mode: enrollment commands, the handshake in the core, removal, `approve_agent`'s call of `create_enrollment_grant` (the helper is P5b's), the listener, the peer check, the configuration text with ED10's debug extras; E.1.1 to E.1.8. Q18 lands here with ct17 | CORE new `service/handshake.rs`, new `service/release_tests.rs` (ct30), `service/mod.rs`, `service/{agent,sessions,grants,core,limits,recovery,reducer,requests,pipeline,facts}.rs` (C.6.1, C.3.3, C.2.1), new `owner/agents.rs` (C.3), `owner/{commands,views,dedup,mod}.rs`, `ports.rs` (`AgentInput`, LR-C7), `broker.rs` (`Output.bound`), `crates/fabric-broker-core/Cargo.toml` (`ed25519-dalek` for CD8; the core does not depend on it today); BR new `listener.rs`, `config.rs`, `shell.rs`, `main.rs`, `practice.rs`, `synthetic.rs`, `Cargo.toml` (bridge crate for `config_text`, `nix` for the peer's user id); root `Cargo.toml`, `Cargo.lock`; `scripts/build-desktop.sh` (bundle the bridge, W06 7.5); `scripts/verify-desktop.sh` (the core's release tests, ct30); W04 D11, D13, D25, D26, D28, L2, 5.5, 5.10, 6.1; PW X2, X5, 3.3, 4.1, practice rules P1, P2, P5, P4/O1, 9.3, 9.4 | P5 merged; the CD-W06 session's bridge on the contract's handshake types merged; P2-19 merged and the bridge's practice text (W6-2) merged (P11: the run is labelled for the agent); OD8, OD9, OD19, OD21 and OD22 (its OPC rows) answered; the Agents screen merged for the owner's run | lead, with the CD-W06 session reviewing |
+| P2 | Contract schema version 3: PR 36 finished from P1's shapes (section G, P2-1 to P2-35; P2-31 to P2-34 in it, because the owner channel is strict and a member added after version 3 costs a schema version, and the page's resolve screen is needed before step P6; V23; P2-24 asked; P2-35, the agent's client, which step P3 needs; each new value the page words with its sentence, the standing rule of section G) and rebased on P0. TH1 and TH2 with a real Isabelle run may follow as a second pull request; it is needed before P7b | `contracts/desktop/v1/**`, `crates/fabric-desktop-contracts/**`, `isabelle/**` and the policy crate's mirror for TH1; PR 36's hunks in CORE and ST (`git diff --stat origin/main...origin/claude/contract-v3-owner-commands`: `broker.rs`, `owner/{dedup,frames,mod,profiles,tests}.rs`, `service/{agent,facts,grants,pipeline,reducer,requests,sessions,tests}.rs`, ST `apply.rs`, `store.rs`); `Cargo.lock` (PR 36 adds `ed25519-dalek` to the contracts crate) | P0 merged; P1 merged; the lead has re-read DRAFT's diff since `29cdfdf` (I.7 X-3); OD1, OD2 and OD24 answered (2026-11-18, PLAN 15.3) | contract session |
+| P3 | Migration 2 (section A): the tables, mutations, operation types 23 to 34, invariants with `since`, the gated branches G1 to G9, the v2 fixture, the rehearsal on an encrypted v1 fixture; `EffectEventRecorded` with its optional `evidence_id` and the column `effects.evidence_id_after` (V23's evidence, B.14; A.4.3, A.4.4); the shared types of X21 (`SystemAction`, `SystemActionKind`, `ObservedEvent`, `Notification`, `ConnectProblem`, `AuthLostCause`) in ST `rows.rs` with serde; `EnrollmentRow.client` (P2-35); the column `effects.resolution_cause`, `ResolutionCauseRecorded`, `ResolutionCause`, the reader `resolution_cause`, I27 widened and I28 (D.7.6); the five undecided causes of 0.4.4 in the stored cause type, `SessionEndReason::AgentRemoved` and `VoidReason::AgentRemoved` (A.4.5); the ADR-115 and W04 amendments of A.3 as approved (OD5, OD20) | `crates/fabric-storage/**`; two test files that pin version numbers (`crates/fabric-broker-core/tests/faults.rs`, `apps/fabric-broker/tests/process.rs`, A.8.4); CORE `owner/views.rs` (`reason_of` and its test: the match over the stored cause is exhaustive on the step P0 branch, so the five causes get the values of 0.4.4 in the same pull request); `docs/adr/ADR-115-broker-ledger-envelope.md`; W04 D3, 3.5, 3.6, section 4, 9.2 and R22 (A.3) | P2 merged (`EnrollmentGrantInserted` carries a version 3 `Grant`; `EnrollmentRow.client` is the contract's `AgentClient`, P2-35); OD5, OD7 and OD20 (its A.3 part) answered; P2-26 met (I.7 X-2) | lead |
+| P4 | The provider port and the practice provider: D.2 types (with `Applied.returned`, V23's returned event, B.14) and `Job`/`Input` variants, with `until` on every `Provider` method (X23); `system_action_digest` and the re-exports of X21 in CORE `ports.rs`; `Attachments.provider`; the core ignores the new inputs (no order of those kinds exists yet); the practice provider of E.1.4; the shell routes the new jobs to the provider worker and stamps each job (B.13); the dispatch side of DD1 to DD3 in the core: `dispatch()` builds D.2's `DispatchOrder` with `order_id` from `next_order_id`, `proof: OrderProof::Agent(authorization)` and `target` from `resolve_target` (D.3, practice row); `attempt_done` and `finish_attempt` read D.2's `AttemptDone` and treat `Applied { event, confirmed, notification, returned }` as today's `Applied { event }` (V9, BD16 and B.14 land in step P5, V23 in P5a); `can_carry_out` (0.5.3) replaces `provider_present` | CORE `ports.rs`, `broker.rs`, `service/pipeline.rs` (`:581-634`, `:667`, `:696-720`, `:917-989`), new `service/provider.rs` (`resolve_target`, D.3), `service/core.rs` (the field `next_order_id`; the test attachments at `:464-472`), `service/mod.rs` (`mod provider`); BR `practice.rs`, `shell.rs` | P0, P2 and P3 merged (P0 and P2 write `broker.rs`, `pipeline.rs`, `ports.rs`; D.2 names `Notification`, `ConnectProblem`, `AuthLostCause` and `SystemAction`, which P3 ships, X21) | lead |
+| P5 | Results, held answers and system proofs (section B): CO5, CO9, CO13, the D17, D18, D33 and `used` amendments, held answers (P7), releases, purges, P8's `prover_unavailable`; and, provider-neutral (ED5), the fence fix, the order watchdogs, observe before a proof (CO6) and reconcile (CO8, PD20); the hook goes (ED4). The Q10 tests on `Input::Attempt` and on the practice provider. Two pull requests in this order (the lead's ruling of 2026-11-17, I.6 E-9): P5a (fence, watchdogs, system proofs with `Prover::prove_system`, observe, reconcile, V23 with the edge `dispatching -> needs_owner_resolution` and its evidence (B.14), the stored cause of every move to `needs_owner_resolution` with `resolution_reason_of` and D.7.2 step 1 for a disconnected account (D.7.6), hook, `resolve_outcome` (D.7.5) with its check 3 (P2-34) and `select_calendars` (D.9.3), both of which need only migration 2 and work on the practice account; steps 1 and 3 of D.8.3 (a disconnect moves the account's requests in `outcome_unknown` and `reconciling` to `needs_owner_resolution` and drops its orders and the system proofs that serve a moved request), which need only migration 2 and apply to the practice account; DD10, and the test of D.9.4 with the partition of `OwnerMethod::ALL` and the entries built so far; step P6 adds `remove_agent`; step P7b adds `connect_google` and `NARROWING_COMMITS`) and P5b (results, held answers, release, the purge at `disconnect_google` (D.8.3 step 2, B.9), `ProofAction::Disclose`, Q10; and the list's authority: `grants::create_enrollment_grant` (C.4.1), the debug seed's call of it (E.1.3), X16's handling of `GrantOrigin::Enrollment`, and CD21: `scope_of(CalendarList)` and the `""` purpose in `create_grant`, so that r01, e14 and Q17 can pass in step P5; the list cell of `proposed_duration` and a list approved through a card ending `approved -> cancelled` at the approval (C.4.2 item 3, BD5; ct28, ct34 to ct38)). `list_ended_requests` and `delete_custom` stay `unknown_method` in phase 2 (A.6, AO8) | CORE `service/{pipeline,facts,grants,reducer,requests,agent,core,recovery,epochs}.rs`, `service/durations.rs` (the list cell, P5b), new `service/held.rs`, new `service/results.rs` (B.4.1), `service/provider.rs` (the calls of D.3 for system orders), `ports.rs` (`ProofAction::Disclose`, `Prover::prove_system`, `SystemProofJob`, `SystemProofDone`), `owner/{commands,dedup,mod,views}.rs` (`resolve_outcome`, `select_calendars`; `resolution_reason_of`, `owner_resolution_reason` and `private.after` in `get_request_details`), `owner/preferences.rs` (DD10), `broker.rs`, new `tests/q10.rs`; BR `prover/map.rs` (B.5.2), `prover/mod.rs` (the Isabelle handle's path for `Job::ProveSystem`), `synthetic.rs` (`SyntheticClassifier::prove_system`, which answers with no report; `Practice::a_event` accepts `reconciled`, V7), `apps/fabric-broker/tests/live.rs`, `shell.rs` (the hook), `practice.rs` comments; W04 D14, D17, D18, D33, 5.6, 5.7, 5.8; PW X6, 4.2 to 4.4, decision P2, practice rules P3 and P4 | P3 and P4 merged; OD3, OD9 (the hook), OD11, OD15, OD16, OD17, OD18 and OD20 (W04 5.6 to 5.8) answered; the screens' text for `completed` merged | lead |
+| P6 | The agent channel (section C) in the core and the binary, with the practice mode: enrollment commands, the handshake in the core, removal, `approve_agent`'s call of `create_enrollment_grant` (the helper is P5b's), the listener, the peer check, the configuration text with ED10's debug extras and for the agent's stored client (P2-35); `practice_calendar` in `hello.capabilities` (P2-24); E.1.1 to E.1.8. Q18 lands here with ct17. Before S07 is put to the owner, the lead, who owns the host, tries the copy control in the packaged debug window: the button, Cmd+C and the context menu (SR-1); if the button fails the host gains a copy command, if Cmd+C fails the host gains the standard Edit menu (ruled 2026-11-18 by the lead) | CORE new `service/handshake.rs`, new `service/release_tests.rs` (ct30), `service/mod.rs`, `service/{agent,sessions,grants,core,limits,recovery,reducer,requests,pipeline,facts}.rs` (C.6.1, C.3.3, C.2.1), new `owner/agents.rs` (C.3), `owner/{commands,views,dedup,mod}.rs`, `ports.rs` (`AgentInput`, LR-C7), `broker.rs` (`Output.bound`), `crates/fabric-broker-core/Cargo.toml` (`ed25519-dalek` for CD8; the core does not depend on it today); BR new `listener.rs`, `config.rs`, `shell.rs`, `main.rs`, `practice.rs`, `synthetic.rs`, `Cargo.toml` (bridge crate for `config_text`, `nix` for the peer's user id); root `Cargo.toml`, `Cargo.lock`; `scripts/build-desktop.sh` (bundle the bridge, W06 7.5); `scripts/verify-desktop.sh` (the core's release tests, ct30); `apps/fabric-desktop/README.md` ("The practice run", "The synthetic demonstration") and the harness lines of `apps/fabric-desktop/harness/serve.ts` (E.1.9, SR-12); `apps/fabric-desktop/src-tauri/**` only if the copy check fails; W04 D11, D13, D25, D26, D28, L2, 5.5, 5.10, 6.1; PW X2, X5, 3.3, 4.1, practice rules P1, P2, P5, P4/O1, 9.3, 9.4 | P5 merged; the CD-W06 session's bridge on the contract's handshake types merged; P2-19 merged and the bridge's practice text (W6-2) merged (P11: the run is labelled for the agent); OD8, OD9, OD19, OD21 and OD22 (its OPC rows) answered; the Agents screen, SR-17 and SR-18 merged for the owner's run | lead, with the CD-W06 session reviewing |
 | P7a | Migration 3 (ST1, ST2; V1): `provider_accounts`, `provider_calendars`, operation types 35 to 39 (and 40, `owner.refresh_calendars`, if P2-11 merges), invariants I22, I23, the v3 fixture and a v2 to v3 rehearsal | `crates/fabric-storage/**` only | P3 merged; runs beside P5 and P6 (they do not edit storage, E.2.3) | lead |
 | P7b | The Google core and binary (section D): CO1 to CO3, and steps 4 and 5 of D.8.3 (CO4: `provider_accounts.revocation`, `connect_generation`, `Unlink`, `provider.revoke`) with the unlinks at start of D.8.4 (DD18), CO7, CO10, CO11, `can_carry_out` for Google, the sign-in, unlink and provider workers, the Google variables and ED2, the relay's and the host's names, process tests against FAKE. CO12 (re-observe a waiting card) stays deferred (D.13) | CORE `service/*`, `owner/*`, `broker.rs`; BR `config.rs`, `shell.rs`, `main.rs`, new workers, `Cargo.toml`, tests; `apps/fabric-desktop/relay/src/config.rs`, `apps/fabric-desktop/src-tauri/src/host.rs`; W04 D27; PW X2's Google clause | P6, P7a, the CD-W05 session's GC phase 2 merged; TH1 merged (P2-6); OD4, OD6, OD12, OD13 and OD20 (W04 D38, R24) answered | lead, with the CD-W05 session |
 
@@ -4710,27 +4874,27 @@ Outside the lead's chain, each its own pull request:
 | CD-W05 phase 1 (pull request 41, merged 2026-11-18) | `crates/fabric-google-calendar`, `crates/fabric-google-fake`, root `Cargo.toml`, `Cargo.lock`, ADR-111, ADR-113, W05 design | nothing | CD-W05 session |
 | CD-W06 phase 1 (open) | `apps/fabric-mcp-bridge`, root `Cargo.toml`, `Cargo.lock`, ADR-115 (checkbox 4), W06 design | nothing | CD-W06 session |
 | GC phase 2a (the lead's rulings of 2026-11-18, I.9): the delete's read-back (W5-11); the member label, the empty list of normalisations and FAKE's two faults (W5-12); start and end asked always and the adapter's typed span (W5-14); the 20-page cap on a calendar list; the supersede methods (W5-15). No type of the port and nothing in the core, the store or the broker binary; it also carries the W05 design's sections 18.6 and 18.7 | `crates/fabric-google-calendar/**`, `crates/fabric-google-fake/**`, the W05 design | nothing: built now from main, as one pull request of its own, ahead of step P4 | CD-W05 session |
-| GC phase 2: the `Provider` and `AccountLink` implementations (the port mapping, `ReadSpan`, `unlink`), the dependency on the core, `KeychainTokenStore`, `SystemBrowser` | `crates/fabric-google-calendar/**` and `Cargo.lock` | P4 merged | CD-W05 session |
+| GC phase 2: the `Provider` and `AccountLink` implementations (the port mapping, `ReadSpan`, `Applied.returned`, `unlink`), the raw event uncut from observe, reconcile and a V23 answer (W5-13), the dependency on the core, `KeychainTokenStore`, `SystemBrowser` | `crates/fabric-google-calendar/**` and `Cargo.lock` | P4 and GC phase 2a merged | CD-W05 session |
 | Bridge phase 2: the contract's handshake types, `practice` (P2-19) in the first text block, the words for `completed` with and without a result and the one sentence for `applied` and `reconciled` (W6-3, W6-4), the cancel of P2-30 when a client cancels a call (once P2-30 merges), the Keychain key store | `apps/fabric-mcp-bridge/**` and `Cargo.lock` | P2 merged | CD-W06 session |
-| Screens for version 3: S07 Agents (SR-1 to SR-8) with the approval text (OD8); the text for `completed`; a grant whose scope names no calendar; requests of a removed agent; `select_calendars`, `resolve_outcome`; the conditional practice line; the README practice section and the harness header | `apps/fabric-desktop/ui/**`, `apps/fabric-desktop/README.md`, `apps/fabric-desktop/harness/serve.ts` | P2 merged; the `completed` text before P5, the rest before P6 | screens session |
+| Screens for version 3: S07 Agents (SR-1 to SR-8) with the approval text (OD8); the text for `completed` (SR-9); a grant whose scope names no calendar; requests of a removed agent; `select_calendars` (SR-17) and `resolve_outcome` (SR-18), before P6; the conditional practice line (SR-11, P2-24); the review of the page strings the README quotes (SR-12). `list_ended_requests` and `delete_custom` are neither called nor offered (H.1) | `apps/fabric-desktop/ui/**`; `apps/fabric-desktop/README.md` "The screens" and "What a person has to check" | P2 merged; the `completed` text before P5, the rest before P6; the lead's copy check in the packaged window before S07 is put to the owner (SR-1) | screens session |
 | Screens for Google: S01 account states, `provider_accounts` (P2-9), `undecided_reason` `provider_unreachable` (P2-7), `notification` (P2-10), `refresh_calendars` (P2-11) | `apps/fabric-desktop/ui/**` | P2 merged; before the G2b live run | screens session |
 | G2a put to the owner, with Q10 (OD10) | none | P5 merged | lead |
-| The G2b live run (W05 15.3) and the independent review | evidence only | P7b; RUNBOOK done; OD22 (D-4), OD23, OD25 and OD26 answered; P2-31 to P2-34 merged and taken into the core (V23: no Google dispatch before them); the Google screens | owner with the lead and the CD-W05 session |
+| The G2b live run (W05 15.3) and the independent review | evidence only | P7b; RUNBOOK done; OD22 (D-4), OD23, OD25 and OD26 answered; the Google screens | owner with the lead and the CD-W05 session |
 | The G2c runs with the three clients | evidence only | G2b; bridge phase 2 | owner with the CD-W06 session |
 
 #### E.2.2 What each step asks of others
 
 | Step | Contract session | Screens session | CD-W05 session | CD-W06 session | Owner |
 |---|---|---|---|---|---|
-| P0 | none | the page's duration choice (branch `claude/cd-w08-page-duration-ceiling`) | none | none | merge |
+| P0 | none | the page's duration choice (branch `claude/cd-w08-page-duration-ceiling`); review the two README sentences the duration rule corrects (SR-12) | none | none | merge |
 | P1 | read section G | read E.2 | adopt V1, V2 and V20; drop its own migration number and ST5 columns but `notification`; adopt `releases` and `request.release`; build GC phase 2a from main (I.9) | adopt V12, V14, P2-19; the guidance changes | approve the design; show-before-apply edits come with each step |
-| P2 | P2-1 to P2-30 (section G), P2-31 to P2-34 by the G2b live run (row P7b); rebase PR 36 on P0; P2-14 pins every v2 fixture; TH1/TH2 with a real Isabelle run | none | review P2-6 to P2-13 | review P2-15 to P2-19 and P2-30; if PR 38 merged first, write the patch to `apps/fabric-mcp-bridge/src/mcp/render.rs` and its test r01 for the new states, carried in PR 36 (E.2.4) | OD1, OD2 and OD24 answered 2026-11-18 (two calls, no card for a release, a list approved for one request is cancelled); the merge is his approval of schema version 3 (NOV17-SCHEMA3) |
+| P2 | P2-1 to P2-35 (section G; P2-24 asked, P2-35 before step P3 merges), each new value the page words with its sentence (the standing rule of section G); rebase PR 36 on P0; P2-14 pins every v2 fixture; TH1/TH2 with a real Isabelle run | the sentences for the values the contract adds (section G) | review P2-6 to P2-13 | review P2-15 to P2-19 and P2-30; if PR 38 merged first, write the patch to `apps/fabric-mcp-bridge/src/mcp/render.rs` and its test r01 for the new states, carried in PR 36 (E.2.4) | OD1, OD2 and OD24 answered 2026-11-18 (two calls, no card for a release, a list approved for one request is cancelled); the merge is his approval of schema version 3 (NOV17-SCHEMA3) |
 | P3 | none | none | review the store shapes it asked (ST1 to ST5 in V1, V2) | review the enrollment tables | OD5, OD7 and OD20 (A.3) before the merge |
 | P4 | none | none | start GC phase 2 on the merged port: the port mapping, `unlink`, the Keychain store and the browser (GC phase 2a went ahead) | none | merge |
 | P5 | none | the `completed` text merged first (J-store results minor) | none | none | OD3, OD9 (hook), OD11, OD15 to OD18 and OD20 (W04 5.6 to 5.8) before the merge; G2a with OD10 after it |
-| P6 | P2-19 merged | S07 merged before the owner's practice run | none | bridge phase 2 merged, with W6-2; review the listener and the configuration text | OD8, OD9, OD19, OD21 and OD22 (its OPC rows) before the merge; the practice run (E.1.8) after it |
+| P6 | P2-19 and P2-24 merged | S07, SR-17 and SR-18 merged before the owner's practice run; review the README sections the lead changes (SR-12) | none | bridge phase 2 merged, with W6-2; review the listener and the configuration text | OD8, OD9, OD19, OD21 and OD22 (its OPC rows) before the merge; the practice run (E.1.8) after it |
 | P7a | none | none | review | none | merge |
-| P7b | TH1 merged; P2-31 to P2-34 merged before the G2b live run (V23) | the Google screens before G2b | GC phase 2 merged; FAKE as a dev-dependency of `apps/fabric-broker`; the CO10 names | none | OD4, OD6, OD12, OD13, OD20 (W04 D38, R24) before the merge; OD22 (D-4), OD23, OD25, OD26 and the RUNBOOK before G2b; OD14 before the release client is created |
+| P7b | TH1 merged | the Google screens before G2b | GC phase 2 merged; FAKE as a dev-dependency of `apps/fabric-broker`; the CO10 names | none | OD4, OD6, OD12, OD13, OD20 (W04 D38, R24) before the merge; OD22 (D-4), OD23, OD25, OD26 and the RUNBOOK before G2b; OD14 before the release client is created |
 
 #### E.2.3 What may run at the same time
 
@@ -4741,8 +4905,8 @@ same file has merged.
 |---|---|
 | P0 and P1 | P1 writes only its own new document; P0's two design edits are W04 and PW |
 | P1 and both phase 1 pull requests | disjoint; the two phase 1 pull requests share the root `Cargo.toml` and `Cargo.lock`: merge one, rebase the other |
-| P2 to P4 and GC phase 2a | GC phase 2a writes only `crates/fabric-google-calendar/**`, `crates/fabric-google-fake/**` and the W05 design, which no step of the lead's chain writes, and changes no type of the port |
-| P3, P4, P5, P6 and the screens for version 3 | the screens write `apps/fabric-desktop/ui/**` only |
+| P0 to P4 and GC phase 2a | GC phase 2a writes only `crates/fabric-google-calendar/**`, `crates/fabric-google-fake/**` and the W05 design, which no step of the lead's chain writes, and changes no type of the port |
+| P3, P4, P5, P6 and the screens for version 3 | the screens write `apps/fabric-desktop/ui/**` and their two sections of `apps/fabric-desktop/README.md`; P0 and P6 write other sections of that file (SR-12): merge one, rebase the other |
 | P3 to P6 and bridge phase 2 | the bridge writes `apps/fabric-mcp-bridge/**`, and `Cargo.lock` for its new dependencies; P6 writes `Cargo.lock` too: merge one, rebase the other |
 | P5, P6 and GC phase 2 | GC writes `crates/fabric-google-calendar/**`, and `Cargo.lock` for its new dependencies; P6 writes `Cargo.lock` too: merge one, rebase the other |
 | P5, P6 and P7a | P7a writes storage only, and P5 and P6 do not (P3 writes `crates/fabric-storage`, two test files, `crates/fabric-broker-core/tests/faults.rs` and `apps/fabric-broker/tests/process.rs`, CORE `owner/views.rs`, and the documents of A.3): every store reader and mutation they need is in P3. A reader found missing waits for P7a or goes into it |
@@ -4772,7 +4936,8 @@ The longest chain: P0, P2, P3, P4, P5, P6, P7b, G2b, G2c.
 | `crates/fabric-broker-core/Cargo.toml` | P6 |
 | `crates/fabric-broker-core/tests/faults.rs`, `apps/fabric-broker/tests/process.rs` | P3 (A.8.4), and the steps that add tests |
 | CORE `service/core.rs`, `service/tests.rs` | P0, P2, P4 (`core.rs`), P5, P6 |
-| CORE `owner/{dedup,mod,frames,views,commands}.rs` | P0 (`views.rs`), P2, P3 (`views.rs`, `reason_of`), P5 (`resolve_outcome`, `select_calendars`), P6, P7b |
+| CORE `service/durations.rs` | P0 (the duration rule), P5 (the list cell, P5b) |
+| CORE `owner/{dedup,mod,frames,views,commands}.rs` | P0 (`views.rs`), P2, P3 (`views.rs`, `reason_of`), P5 (`resolve_outcome`, `select_calendars`; `views.rs`: `resolution_reason_of`, `private.after`), P6, P7b |
 | ST `apply.rs`, `store.rs` | P0 (`apply.rs`), P2, P3, P7a |
 | ST `{mutation,read,rows,ledger,tx,migrate}.rs` | P0, P3, P7a |
 | BR `shell.rs` | P0, P4, P5, P6, P7b |
@@ -4783,12 +4948,14 @@ The longest chain: P0, P2, P3, P4, P5, P6, P7b, G2b, G2c.
 | BR `synthetic.rs` | P0, P5, P6 |
 | `apps/fabric-broker/Cargo.toml` | P6, P7b |
 | root `Cargo.toml`, `Cargo.lock` | CD-W05 phase 1, CD-W06 phase 1, P2 (`Cargo.lock`), bridge phase 2 and GC phase 2 (`Cargo.lock`), P6, P7b |
+| `crates/fabric-google-calendar/**`, `crates/fabric-google-fake/**`, the W05 design | CD-W05 phase 1 (merged), GC phase 2a, GC phase 2 (the two crates) |
 | `apps/fabric-mcp-bridge/src/mcp/render.rs` and its test r01 (the bridge's r01, not B.16's) | CD-W06 phase 1 (PR 38) and P2 (PR 36), in either order. The bridge's table of request states is one `match` with no default arm, so it does not compile against a contract crate with the new states `completed`, `resolved_as_applied` and `resolved_as_absent`. The one that merges second carries the lines: if PR 38 merges first, PR 36 carries a small patch to this file and r01, written by the CD-W06 session; if PR 36 merges first, the CD-W06 session adds the lines to PR 38. So the second merge does not break `main` (ruled 2026-11-18) |
 | `apps/fabric-desktop/relay/src/config.rs`, `src-tauri/src/host.rs` | P7b only (practice needs no change) |
 | `docs/plans/calendar-desktop-w04-design.md` | P0, P3 (D3, 3.5, 3.6, section 4, 9.2, R22), P5 (D14, D17, D18, D33, 5.6, 5.7, 5.8), P6 (D11, D13, D25, D26, D28, L2, 5.5, 5.10, 6.1), P7b (D27, D38, R24) |
 | `docs/plans/calendar-desktop-prover-wiring-design.md` | P0, P5, P6, P7b |
 | `docs/adr/ADR-115-broker-ledger-envelope.md` | CD-W06 phase 1, P3 |
 | `apps/fabric-desktop/ui/**` | W08 duration branch, screens for version 3, screens for Google |
+| `apps/fabric-desktop/README.md`, `apps/fabric-desktop/harness/serve.ts` | P0 (the two sentences the duration rule makes untrue), P6 (E.1.9: the lead's sections and the harness lines), screens for version 3 ("The screens", "What a person has to check"); SR-12 |
 
 ---------------------------------------------------------------------------------------------------------------------
 
@@ -4799,7 +4966,8 @@ and when the answer is needed. The code is built on the default; nothing is appl
 his answer.
 
 The owner answered OD1, OD2 and OD24 on 2026-11-18, each with the default. The record is PLAN section 15.3
-(NOV18-READ-CALLS, NOV18-RELEASE-CARD, NOV18-LIST-CARD). The other rows stay open.
+(NOV18-READ-CALLS, NOV18-RELEASE-CARD, NOV18-LIST-CARD). The other rows stay open. On 2026-11-18 the lead
+corrected the texts of OD8, OD13, OD25 and OD26 before they are put to him; no decision was added (I.10).
 
 | Id | Question | Default | Why | If he chooses otherwise | Needed |
 |---|---|---|---|---|---|
@@ -4807,15 +4975,15 @@ The owner answered OD1, OD2 and OD24 on 2026-11-18, each with the default. The r
 | OD2 | When releasing a held result needs his approval, should he get a card? | No card in version 1: such a release ends `undecided` (P2-3) | A release card needs a scope for `fabric_request_result` and its own card shapes, which the contract does not have (W05 V3-10) | The contract session designs a release card; P5 waits for it | Answered 2026-11-18: no card (PLAN 15.3). It was needed before P2 merges (P2-2, P2-3, P2-29 write the default into the contract README) |
 | OD3 | How long does the broker keep a read's result waiting for its release? | 24 hours; purged at the first release, at the account's disconnect, at the agent's removal, and at 24 h (V4, V15, `PurgeCause`). A one-request read permission shows as in force until then | Short enough to bound what an encrypted store holds; long enough for an agent that polls late (W05 OQ5). One release per held result means no second copy outlives its disclosure (V4, OP2) | A shorter time purges sooner; a longer one keeps content longer. Allowing a later release under a broader permission (plan 9.2) means no purge at release (OP2). Also stated with it: a purged result can stay in older write-ahead-log frames until the next checkpoint (AO4); a result released into a full writer queue is gone, and the agent reads again (OP13, OD17) | before P5 merges |
 | OD4 | How many Google accounts may be connected? | No fixed count: every account counts at `ACCOUNT_RESERVE_BYTES` (96 KiB) into the 720 KiB budget of the owner's records (`OWNER_STATE_BUDGET_BYTES` 737,280; P10, D.11), and a connect past it is refused. So at most 7 accounts fit with no other records, none beside a recipient set at the schema's maximum, and no command gives an account's reserve back (OQ-D3; X8) | Every snapshot must fit in one 1 MiB frame; without a cap a sixth large account made the page unable to load (REV-order OQ14) | A fixed count beside the budget, or a smaller reserve with a lower calendar limit per account (D.14 OQ-D3) | before P7b merges |
-| OD5 | Accept three amendments of ADR-115: (a) migrations only add, and existing replay code may only widen (P2; also W04 3.6 and R22); (b) read results and observation evidence kept outside the ledger, in tables replay does not rebuild; a read result is deleted at its purge and in every backup copy; evidence (the event as Google returned it, at most 1 MiB for each observation, its before-view at most 512 KiB, and an unchanged event at one revision kept once; OD26) stays with its request and is never deleted (A.7; D1, D7; V3, V18; OP14); (c) the ledger's operation types grow from 22 to 34 at store version 2 and to 39 at version 3, 40 if P2-11 adds `owner.refresh_calendars` (D2; A.6; X9) | Accept | (a) keeps every older ledger replayable without version-aware replay (REV-order ADR-115-Open). (b) lets a purge be real: content in the ledger could never be purged. (c) every new commit needs its type | (a) refused: version-aware replay first, a larger step before P3. (b) refused: no held results, so reads cannot return content (OD1's path is gone) until another store is designed. (c) is needed by any design | before P3 merges |
+| OD5 | Accept three amendments of ADR-115: (a) migrations only add, and existing replay code may only widen (P2; also W04 3.6 and R22); (b) read results and observation evidence kept outside the ledger, in tables replay does not rebuild; a read result is deleted at its purge and in every backup copy; evidence (the event as Google returned it, at most 1 MiB for each observation or V23 attempt, its before-view at most 384 KiB, and an unchanged event at one revision kept once; OD26) is kept for good and never deleted (A.7; D1, D7; V3, V18; OP14); (c) the ledger's operation types grow from 22 to 34 at store version 2 and to 39 at version 3, 40 if P2-11 adds `owner.refresh_calendars` (D2; A.6; X9) | Accept | (a) keeps every older ledger replayable without version-aware replay (REV-order ADR-115-Open). (b) lets a purge be real: content in the ledger could never be purged. (c) every new commit needs its type | (a) refused: version-aware replay first, a larger step before P3. (b) refused: no held results, so reads cannot return content (OD1's path is gone) until another store is designed. (c) is needed by any design | before P3 merges |
 | OD6 | After a create whose outcome was unknown and then found absent, a late copy can still appear at Google, and a new create can make a second event. Accept this residual risk? | Accept, with the mitigation: the absent create's reserved id stays on record; a later observe or read that sees it records it as made by Fabric and shows it to him (OP12) | Updates, invitations, responses and deletes are guarded by Google's revision check; a create has no such guard across two requests (REV-core PD20) | Not accepting means no automatic "absent" for a create: every unknown create goes to `needs_owner_resolution` for him to decide | before P7b merges |
-| OD7 | Should the broker's own calendar reads (refresh before a proof, reconcile, the list at connect) each need a proof from the rule checker? | Yes (V8, W05 PD29 and OQ9). A dispatch order may make, under its own consumed authorization, one GET of its target event before the change (invitation, response) or after a 2xx delete; such a GET is not a broker read and needs no system proof (D.4; ruled 2026-11-18 by the lead) | No calendar call without a proof id; one invariant to test | No: fewer checks and no TH1 wait, but calendar reads with no proof behind them | before P3 merges (migration 2 holds `system_proofs` and `observations.proof_id`) |
-| OD8 | What must the approval of an agent tell him? | Five things, on the approval step: the permission (the agent may then list his selected calendars until he revokes that permission or removes the agent); where the client he named normally sends data, and that Fabric cannot check it (OPC9; P2-22); that the permission covers calendars he selects and accounts he connects later; what a calendar list holds (the account, each calendar's name, its access level and whether it is Agent Drafts, and no events); and that he can revoke this permission alone (P5; SR-4) | He gives a standing permission with one click; the text is all he sees of it | Fewer items: he approves without knowing the permission's reach | before P6 merges (the screens session builds it) |
+| OD7 | Should the broker's own calendar reads (refresh before a proof, reconcile, the list at connect) each need a proof from the rule checker? | Yes (V8, W05 PD29 and OQ9). A dispatch order may make, under its own consumed authorization, one GET of its target event before the change (invitation, response) or after a 200 or 204 to a delete; such a GET is not a broker read and needs no system proof (D.4; ruled 2026-11-18 by the lead) | No calendar call without a proof id; one invariant to test | No: fewer checks and no TH1 wait, but calendar reads with no proof behind them | before P3 merges (migration 2 holds `system_proofs` and `observations.proof_id`) |
+| OD8 | What must the approval of an agent tell him? | Five things, on the approval step: the permission (the agent's calendar lists then need no approval each time, while his profile allows listing, until he revokes that permission or removes the agent); where the client he named normally sends data, and that Fabric cannot check it (OPC9; P2-22); that the permission covers calendars he selects and accounts he connects later; what a calendar list holds (the account, each calendar's name, its access level and whether it is Agent Drafts, and no events); and that he can revoke this permission alone (P5; SR-4) | He gives a standing permission with one click; the text is all he sees of it | Fewer items: he approves without knowing the permission's reach | before P6 merges (the screens session builds it) |
 | OD9 | Accept the amendments for the practice mode (E.1.9): a real agent on the practice calendar in debug builds, practice on with the test key and Isabelle without the synthetic agent, the hook removed, and the new labels | Accept | They follow his answer NOV17-PRACTICE and remove no guard (E.1.7) | The practice calendar stays with the synthetic agent only; a real agent's first run is on Google at G2c, without a wiring check before | before P5 (hook) and P6 merge |
 | OD10 | G2a is put to you after step P5. The row "poll a completed read after revocation" is then shown by the Q10 tests on the practice provider, not on Google. Accept that at G2a? | Yes; the same cases run on Google at G2b and G2c | NOV17-STORE kept the default and said his answer is needed before G2a; W04 stores no results, so only the practice provider can show the row before Google | No: G2a waits for G2b | before G2a is put to him, after P5 |
 | OD11 | Accept the amendments of W04 D17, D18, D33 and the meaning of "used" (section B): a permit with no grant only for the broker's own reads and for the release of an agent's own change's outcome (what that means for him is OD15); a one-request read permission lasts until its result is released or purged. W04 D14 is OD18 | Accept | Reads and releases cannot work under the W04 wording (REV-results D17, D18, D33) | Results stay out of version 1 | before P5 merges |
 | OD12 | Accept the amendment of W04 D27 for the Google variables (section D, CO10) and the refusal of the test key with Isabelle and Google together (ED2) | Accept | A misspelt name stays an error; a practice run never meets Google | A configuration with both would need a routing design between two providers | before P7b merges |
-| OD13 | When he reconnects a connected Google account, the account shows "waiting for consent" for up to 300 s and its agents stop meanwhile. Accept, with the page saying so? | Accept (OP7) | The contract's `awaiting_consent` is the only state for it; no contract change | A contract change for a second state | before P7b merges |
+| OD13 | When he reconnects a connected Google account, the account shows "waiting for consent" until the sign-in ends, is cancelled or times out (at most 365 s, D.8.6), and its agents stop meanwhile. Accept, with the page saying so? | Accept (OP7) | The contract's `awaiting_consent` is the only state for it; no contract change | A contract change for a second state | before P7b merges |
 | OD14 | Google's client switch "Use this client for an AI-powered agent" cannot be changed after a client is created. For the development client you answered on 2026-11-17: off (W05 18.2). Off for the release client too? | Off | Google requires it only for clients that call its hosted Workspace MCP servers; Fabric calls the Calendar API directly (RUNBOOK 6.3) | On: the release client is created with the switch on | before the release client is created (CD-W11) |
 | OD15 | After you revoke every permission of an agent it can still fetch the id and revision of each change it made, no title and no time, until you pause or remove it, disconnect the account or deselect the calendar. Accept? | Yes (BD11, lift c; pinned by Q20) | The agent needs the id to update or delete what it made (W06 LR-C4 (2)); it is metadata of its own action | The contract session changes `rows (Disclose change)` in the theory so that a grant is needed; until then the outcome is not released | before P5 merges |
 | OD16 | A read result that waits for its release stays in the store when you revoke the permission it was read under, and can still be released if another permission of yours covers the same read. Keep it? | Keep (B.9) | PLAN 9.2 allows a later release under a still-valid broader grant and a fresh proof (PLAN `:333`); the release is refused unless such a grant exists (B.5.4) | Purge it when every grant the read relied on has ended, so a revoked read is never released later (REV-results retention-OQ5) | before P5 merges |
@@ -4827,8 +4995,8 @@ The owner answered OD1, OD2 and OD24 on 2026-11-18, each with the default. The r
 | OD22 | Accept these residuals, one line each: a 48-bit pairing code can collide before you look (OPC8); same-user software that runs the bundled bridge has the agent's key (OPC9); a process that knows a pending id can force you to remove and add the agent again after 20 key changes (OPC10); a purged result stays in older write-ahead-log frames until the next checkpoint (AO4); a user whose short name is longer than 18 bytes cannot use the agent channel of the installed application, because the socket path is too long (OPC5; the alternative, the broker binding by the relative name from inside its `run` directory, changes how the binary starts its listener and is decided at CD-W11). And these defaults: no `HOME` in the broker's environment, so a bridge under `$HOME/Applications` gets no text (OPC3); repeated wrong keys show only in the audit (OPC4); no warning at a disconnect while a change of that account is unknown (D-4, W05 OQ16) | Accept each | Each is bounded as section C, A or D says | OPC5, OPC8, OPC9, OPC10 and AO4 have no alternative in version 1 and are told to you, not asked; OPC3 (add `HOME` to the relay's allowlist), OPC4 (show wrong keys on the Agents screen) and D-4 (warn before a disconnect) are choices | before P6 merges (the OPC rows); before the G2b live run (D-4) |
 | OD23 | The G2b live run uses a debug build with a Keychain store in its own `FABRIC_DESKTOP_DATA_DIR`, which keeps real tokens in the Keychain (ER5, W5-9). Accept? | Accept | ED2 refuses the test key with Isabelle and Google, so the run cannot use the test key | Another form of the live run, named by section D | before the G2b live run |
 | OD24 | A calendar list approved through a card for one request delivers nothing: the list is cancelled and the permission ends used. Under `list_and_availability` in mode `ask` no calendar list ever completes in version 1. Accept? | Accept for version 1; the card says so (SR-7) | No result is released without a waiting call (P6), and the list's call has left by the time he approves (BD5) | BOP1's carry-over: an unused one-request list permission stays live after the list was cancelled and serves the agent's next list (the same action digest), built in step P5b | Answered 2026-11-18: accepted for version 1 (PLAN 15.3). It was needed before P2 merges (P2-2, P2-3, P2-29 write the default into the contract README) |
-| OD25 | When Google applies a change but returns content that differs from what you approved, the request waits for you, and you can only resolve it as applied. Before the live run every difference waits; after it, only the rewrites shown to keep your meaning are accepted silently. Accept? | Accept (V23; B.14, D.7.1). The adapter's list of accepted rewrites is empty until the live run shows each one (W05 18.7, LV18) | A 200 with the right id means Google made the change. Sending it again, or reading it back and finding it "absent", could let a new request repeat a change that notifies guests. Only the live run shows which rewrites Google makes; its documentation names none | Such a change is handled as an unknown outcome and reconciled by reading, as the first rule did: a change Google rewrote without moving its revision can then end absent after two reads, and a new request can repeat it. Or every difference is accepted silently, and a real difference is hidden from you | before the G2b live run |
-| OD26 | An event whose record would pass 1 MiB (its before-view 512 KiB, or less if the frame test lowers it) cannot be changed or read through Fabric in version 1. The request ends with the fixed sentence "Google's copy of this event is too large for Fabric to keep a record of. Nothing was changed. Make this change in Google Calendar." and no card opens. Accept this limit? | Accept (D.6.2; `MAX_EVIDENCE_BYTES`, `MAX_BEFORE_VIEW_BYTES`) | Every observation is kept for good, and your card must fit one 1 MiB frame (`MAX_FRAME_BYTES`). An event with some thousand attendees can pass 256 KiB, so the first bound of 256 KiB is raised, and the refusal stays (W05 RK21; the CD-W05 session measures events of 1 000 and 2 000 attendees, LV16) | A larger bound needs a card that does not carry the whole before-view in one frame, or evidence that is cut or deleted: a contract and store change before the live run. A smaller bound refuses more events | before the G2b live run |
+| OD25 | When Google applies a change but returns content that differs from what you approved, or Fabric finds the event it created and it differs, the request waits for you, and you can only resolve it as applied. Before the live run every difference waits; after it, only the rewrites shown to keep your meaning are accepted silently. Accept? | Accept (V23; B.14, D.7.1, D.7.6). The adapter's list of accepted rewrites is empty until the live run shows each one (W05 18.7, LV18) | A 200 with the right id means Google made the change. Sending it again, or reading it back and finding it "absent", could let a new request repeat a change that notifies guests. Only the live run shows which rewrites Google makes; its documentation names none | Such a change is handled as an unknown outcome and reconciled by reading, as the first rule did: a change Google rewrote without moving its revision can then end absent after two reads, and a new request can repeat it. Or every difference is accepted silently, and a real difference is hidden from you | before the G2b live run |
+| OD26 | An event whose record would pass the limit (its view 384 KiB, the whole record 1 MiB) cannot be changed through Fabric in version 1; the request ends and says so, and nothing is changed. An agent's read of such an event is bounded, as before, by the size of a read's result. If the event grows past the limit between the card and the dispatch, the request ends undecided and is shown as failed. Accept this limit? | Accept (D.6.2; `MAX_EVIDENCE_BYTES`, `MAX_BEFORE_VIEW_BYTES`) | Every observation is kept for good, and your card must fit one 1 MiB frame (`MAX_FRAME_BYTES`). An event with some thousand attendees can pass 256 KiB, so the first bound of 256 KiB is raised, and the refusal stays (W05 RK21; the CD-W05 session measures events of 1 000 and 2 000 attendees, LV16) | A larger bound needs a card that does not carry the whole before-view in one frame, or evidence that is cut or deleted: a contract and store change before the live run. A smaller bound refuses more events | before the G2b live run |
 
 ---------------------------------------------------------------------------------------------------------------------
 
@@ -4884,7 +5052,7 @@ The owner answered OD1, OD2 and OD24 on 2026-11-18, each with the default. The r
 | `BRIDGE_KEY_DIR = "bridge-keys"` under the data directory, debug builds with the test key | BR | ED10; section C's configuration text carries it |
 | The practice target rule and `can_carry_out(Practice, _, false) = true` | CORE, section D | ED7 |
 | P2-19 asked, no longer optional | section G | ED9 |
-| P2-24 (optional; renumbered from this section's P2-21, X5): the owner's `hello.capabilities` gains `practice_calendar` in a practice run (README section 7: "No capability name is defined yet") | contract session | lets the page show the practice line without reading the build string |
+| P2-24 (asked, by the lead's ruling of 2026-11-18; renumbered from this section's P2-21, X5): the owner's `hello.capabilities` gains `practice_calendar` in a practice run (README section 7: "No capability name is defined yet") | contract session | lets the page show the practice line without reading the build string |
 | Test ids e01 to e19 | E.1.12 | |
 | Owner decision ids OD1 to OD26, risk ids ER1 to ER14 | E.3, E.4 | |
 
@@ -4909,7 +5077,7 @@ the first one named owns it.
 | ST2 | `provider_calendars` | Accepted with this change: core-made `cal-` ids, never deleted, 250 per account | A.5, A.9 |
 | ST3 | observations and evidence | Accepted with this change: in migration 2, not 3 (V1) | A.4, A.9; ruled 2026-11-17 (OP1) |
 | ST4 | held results | Accepted with this change: `held_results`, `held_result_payloads`, `releases`; one design for both packages | A.4, A.7, B.9 |
-| ST5 | event columns of `effects` | Accepted with this change: three columns only (V2) | A.4.1, A.9 |
+| ST5 | event columns of `effects` | Accepted with this change: three columns only (V2), and with `evidence_id_after` (V23) and `resolution_cause` (D.7.6) five | A.4.1, A.9 |
 | ST6 | "Fabric created this" from the store | Accepted: DD12, no schema change | D.0, A.9 |
 | ST7 | `applied` among open effects | Not built (V7); ruled by the lead 2026-11-17, agreed by the CD-W05 session 2026-11-18 (W5-6) | D.13, A.9; OP5 |
 | ST8 | one list of operation types | Accepted with this change: one dated amendment of ADR-115 D2, 34, 39, 40 with P2-11 | A.6, A.3 |
@@ -4958,7 +5126,9 @@ the first one named owns it.
 
 Each is small and exact, against DRAFT at `29cdfdf`. They replace the separate V3 numbering of W05 section 13 and W06
 7.3 (REV-order S16-1); W06's V3-1 to V3-7 are met by DRAFT except as below. "Status at `b94b58f`" says what the
-draft has done since.
+draft has done since. P2-31 to P2-34 are asked into pull request 36 like the others, so into schema version 3 at
+step P2: the owner channel is strict, so a member added after version 3 would cost a schema version, and the page's
+resolve screen is needed before step P6 (ruled 2026-11-18 by the lead).
 
 | # | Request | Section | Status at `b94b58f` |
 |---|---|---|---|
@@ -4983,19 +5153,46 @@ draft has done since.
 | P2-19 | Asked (not optional): `result_agent_prove` gains `practice: bool`, true exactly in a practice run, so the bridge can tell the agent before its first list (P11, ED9) | E.1.6 | Open |
 | P2-20 | Optional: the lemma `a_read_permit_is_its_release` in `isabelle/Fabric_Broker_Examples` (PART-results C3) | B | Open |
 | P2-21 | `owner#/$defs/result_approve_agent` gains `grant: grant` (the list grant made in the same commit); CC `ApproveAgentResult` gains `pub grant: Grant` (P5: "approve_agent returns the grant"; DRAFT CC `owner.rs:1924-1930` has `{commit_sequence, agent}` only). Until it merges the page reads the grant from the `Change::Grant` notice of the same commit | C.3.2 | Open |
-| P2-22 | A data table of the destination of each `add_agent` client (`data/agent-clients.json`, or a README table): `claude_desktop` and `claude_code` `{kind: cloud, processor: "Anthropic"}`, `codex_desktop` `{kind: cloud, processor: "OpenAI"}`. The table is a label for the client the owner named, not a checked fact: the broker cannot check which program holds the key or where it sends data (OPC9). Until it exists the core's table of C.3.1 is the rule | C.3.1 | Open |
+| P2-22 | A data table of the destination of each `add_agent` client (`data/agent-clients.json`, or a README table): `claude_desktop` and `claude_code` `{kind: cloud, processor: "Anthropic"}`, `codex_desktop` `{kind: cloud, processor: "OpenAI"}`. The table is a label for the client the owner named, not a checked fact: the broker cannot check which program holds the key or where it sends data (OPC9). Until it exists the core's table of C.3.1 is the rule. `add_agent` stores the client with the destination (P2-35); the table applies when the agent is added and is not re-applied to a stored agent | C.3.1 | Open |
 | P2-23 | README section 15: the handshake limits are the broker's (5 s, 8 at once, 6 sessions per agent per minute, one key change per minute and 20 in all while pending) and what it records of a failed one (one audit row per minute per cause and known id); remove that line from "Not covered" | C.6.6 | Open |
-| P2-24 | Optional: the owner's `hello.capabilities` gains `practice_calendar` in a practice run (README section 7: "No capability name is defined yet"), so the page need not read the build string | E.1.6 | Open |
+| P2-24 | Asked (not optional; ruled 2026-11-18 by the lead): the owner's `hello.capabilities` gains `practice_calendar` exactly in a practice run (README section 7: "No capability name is defined yet"), so that the page reads only that (SR-11) and never the build string | E.1.6 | Open |
 | P2-25 | With every request state the contract adds, the same pull request edits invariant `I1` (ST `store.rs:924-933`), and every change to replay code that is not a widening carries the record A.2 R7 asks: why no committed row is affected (as A.2 does for `needs_owner_resolution`) | A.2, A.4.7 | Met for `completed` (DRAFT `store.rs` at `b94b58f`); open as a standing rule |
 | P2-26 | A version 2 `Agent` record and a stored `pause_agent` answer must decode under version 3. DRAFT's test `a_version_2_agent_and_a_stored_pause_agent_answer_do_not_decode_under_version_3` records that they do not, because version 3 adds required members to the agent record; the core decodes a stored answer when a command id comes back (CORE `owner/dedup.rs:121-127`), so a repeated `pause_agent` after the upgrade is a `StoreFault` and halts the broker. A.2 R6 asks that the new members be optional and defaulted when read. Needed before step P3 (I.7 X-2, the lead's ruling of 2026-11-17) | A.2 R6, R7 | Open (found at `b94b58f`) |
 | P2-27 | `request_details` gains `releases: [{release_id, request_id, kind, proof_id, grant_ids, released_at}]`, the release records of B.4.3 that name the request as releasing request or subject, so the owner sees what left the broker (SR-10) | B.4.3 | Open |
 | P2-28 | README section 7 states seven answers: `conflict` for approving an agent that is not pending and for removing one that is removed; `conflict` for pausing a pending or removed agent; `invalid_params` at `/params` for the owner budget at approval; `not_found` for a removed agent's configuration; `invalid_params` at `/params/registered_name` when `add_agent` would pass the owner budget; `invalid_params` at `/params/account_id` when `connect_google` would; and "A proved key that differs from the agent's current key raises the agent's revision; proving the current key again changes nothing" in place of "Every proved key raises the agent's revision" (C.3.1 to C.3.5, C.6.4 row h, D.11) | C.15.1 | Open |
-| P2-29 | README section 10 states that a one-request approval of a calendar list delivers nothing in version 1 (the list is cancelled because its call has left), so under a row in mode `ask` no list completes; the section's rule "the broker does not propose a duration whose grant would not serve the request" does not hold for a list (BD5, OD24) | B.1, C.4.2 | Open |
+| P2-29 | README section 10 states, for a calendar list: no approval gives the list to the request on the card, because its call was answered when the card opened; the request ends `cancelled` at the approval, with no fresh proof, and a one-request grant ends used. The broker judges the proposal by the agent's later list calls: under a row `list_and_availability` in mode `allow`, when the run can carry it out, it proposes `until_revoked` (a lasting list grant serves later lists, as the enrollment grant does); otherwise `one_request`, and under `ask` no list completes in version 1. A lasting list grant made from a card has the enrollment grant's tools and scope, so it covers calendars selected and accounts connected later. The section's rule "the broker does not propose a duration whose grant would not serve the request" is read, for a list, against the agent's later lists (BD5, OD24; text ruled 2026-11-18 by the lead) | B.1, C.4.2 | Open |
 | P2-30 | Agent channel, schema version 3: a cancel message from the adapter, so that a call the MCP client cancelled (`notifications/cancelled`) stops waiting in the broker (the CD-W06 design's R14). The adapter names the id of a call it no longer waits for (for example method `agent_cancel` with params `{call_id}`; the name is the contract session's). The broker drops that held answer without a reply, exactly as for a connection that ended, so a release that finds no waiting call releases nothing and the request ends as B says for that case (BD3, BD4). A cancel for an id that is not held is ignored. It is not a request of its own and creates none. README section 8 states it. Asked by the lead's ruling of 2026-11-18 | B.8.4 | Open |
-| P2-31 | Request details gain the reason a request waits in `needs_owner_resolution`, as `owner_resolution_reason: unknown_outcome \| applied_differs \| read_failed \| account_disconnected \| null`, set only in `needs_owner_resolution`, as `undecided_reason` is set only in `undecided` today. `applied_differs` is V23's reason: Google applied the change and returned content that differs from the approval. Without it the owner sees a generic unknown outcome and cannot tell that Google holds something other than he approved. Needed before any Google dispatch, that is before the G2b live run (E.2.1). Asked by the lead's ruling of 2026-11-18 | B.14, D.7.3 | Open |
-| P2-32 | `PrivateDetails` gains `after: EventView \| null`: the event as Google returned it, for a request of V23, shown only with `full` redaction, as `private.before` is. It is bounded by `MAX_BEFORE_VIEW_BYTES`, as the before-view is, so that both views and the rest of `get_request_details` fit `MAX_FRAME_BYTES` (D.6.2's frame test). Without it the owner cannot see what Google holds before he resolves the request. Needed before any Google dispatch (the G2b live run). Asked by the lead's ruling of 2026-11-18 | B.14, D.6.2 | Open |
-| P2-33 | Lifecycle: the edge `dispatching -> needs_owner_resolution`, basis `added`, reason "Google applied the change and returned content that differs from the approval". README choice 53 says the owner resolves only after the broker's own reconciliation gave up; a V23 request reaches the state with no reconciliation. Until it merges the core uses `dispatching -> outcome_unknown -> reconciling -> needs_owner_resolution` with no read (B.14), which shows a path that did not happen. Needed before any Google dispatch (the G2b live run). Asked by the lead's ruling of 2026-11-18 | B.14, D.7.1 | Open |
-| P2-34 | README section 7: for a request whose reason is `applied_differs`, `resolve_outcome` accepts only `applied` (the owner has seen what Google holds); `absent` is refused. Today README line 115 offers both resolutions for every request in `needs_owner_resolution`. The core adds no interim refusal of its own (D.7.5). Needed before any Google dispatch (the G2b live run). Asked by the lead's ruling of 2026-11-18 | D.7.5, B.14 | Open |
+| P2-31 | `request_details` gains a required, nullable member `owner_resolution_reason`, at the top level beside `undecided_reason` (not in `private`: it holds a fixed label and no event content, so it is shown under `redacted` too), `$defs/owner_resolution_reason` in `common.schema.json`, the closed set `applied_differs`, `event_changed`, `event_gone`, `reads_failed`, `account_disconnected`. It is non-null exactly in `needs_owner_resolution`, `resolved_as_applied` and `resolved_as_absent`, and kept after the resolution so the owner sees why he was asked; the schema cannot state the tie, and the broker upholds it, as for `undecided_reason`. README section 7, after `undecided_reason`, says why the broker handed the request to the owner: `applied_differs` when Google made the change and the copy it returned differs from the approval (an answer to the change, V23, or a read-back that found a created event under its reserved id with other content); `event_changed` when a read-back found the event at another revision, not matching the approval; `event_gone` when it found the event cancelled or not at all; `reads_failed` when the broker's reads failed until their budget ended; `account_disconnected` when the account was disconnected while the outcome was unknown. CC: `OwnerResolutionReason` (snake_case, `ALL`) and `RequestDetails.owner_resolution_reason: Option<OwnerResolutionReason>`. Fixtures: one accepted `request_details` per value, one `resolved_as_applied` with `applied_differs`, a reject for an unknown value and one for a missing member. `request_details` is a query answer, not stored, so A.2 R6 and R7 do not apply. The page's sentences for the five values come in the same pull request (the standing rule below). The core stores a finer cause and maps it (D.7.6); P2-34 stays a request of its own. Asked into pull request 36 (step P2), by the lead's rulings of 2026-11-18, amended the same day (I.10) | B.14, D.7.3, D.7.6 | Open |
+| P2-32 | `PrivateDetails` gains `after: EventView \| null`: the event as Google returned it, for a request of V23, shown only with `full` redaction, as `private.before` is. It is bounded by `MAX_BEFORE_VIEW_BYTES` (393 216), as the before-view is, so that both views and the rest of `get_request_details` fit `MAX_FRAME_BYTES` (D.6.2's frame test). The broker builds it from the attempt's evidence by the before-view's function and sends null when that evidence was not kept or its view passes that bound (B.14). Without it the owner cannot see what Google holds before he resolves the request. Asked into pull request 36 (step P2), by the lead's rulings of 2026-11-18 | B.14, D.6.2 | Open |
+| P2-33 | Lifecycle: the edge `dispatching -> needs_owner_resolution`, basis `added`, reason "Google applied the change and returned content that differs from the approval". README choice 53 says the owner resolves only after the broker's own reconciliation gave up; a V23 request reaches the state with no reconciliation. Choice 53 becomes: "The owner can resolve an outcome by hand only in `needs_owner_resolution`, which the broker enters when it cannot settle the outcome itself; `owner_resolution_reason` says why." README section 9 then counts 19 added transitions. The core takes the edge in step P5a (B.14). Asked into pull request 36 (step P2), by the lead's rulings of 2026-11-18 | B.14, D.7.1 | Open |
+| P2-34 | README section 7: for a request whose reason is `applied_differs`, `resolve_outcome` accepts only `applied` (the owner has seen what Google holds); `absent` is refused. Today README line 115 offers both resolutions for every request in `needs_owner_resolution`. The core enforces it from step P5a, in D.7.5's check 3, because the merged contract states it by then; the design asks for the answer `invalid_params` at `/params/resolution`. Asked into pull request 36 (step P2), by the lead's rulings of 2026-11-18 | D.7.5, B.14 | Open |
+| P2-35 | The agent's client and one configuration text. `owner#/$defs/agent` gains `client: agent_client \| null`, where `$defs/agent_client` is the enum of `params_add_agent.client` (`claude_desktop`, `claude_code`, `codex_desktop`), now shared by both; CC `Agent` gains `pub client: Option<AgentClient>`, optional and defaulted to null when read (A.2 R6, as P2-26 asks for the other new members). README section 7: "`client` is the kind of client the owner named in `add_agent`. The broker keeps it with the agent and never changes it. It is the owner's statement: the broker cannot check which program uses the agent's key. It is null only for an agent the owner did not add (a debug build's seeded agent), which has no configuration text and cannot be removed." Choice 60's second sentence becomes "The record keeps the kind of client the owner named and the destination that follows from it; neither changes." `result_get_agent_configuration.configuration` becomes `configuration_text \| null`, the text for the agent's own client, and `AgentConfiguration` is removed; README section 7's "returns three texts, one for each kind of client" becomes "returns the text that starts this agent's bridge in the client the owner named", and the summary line "returns the texts that start its bridge" becomes "returns the text that starts its bridge", and choice 63 becomes "`get_agent_configuration` returns the agent's text, or null when the broker cannot name an installed bridge. It does not say why." Fixtures and the TypeScript types follow. Needed in pull request 36 before step P3 merges, because the stored `EnrollmentRow.client` is the contract's `AgentClient`. Asked by the lead's ruling of 2026-11-18 (I.10) | C.2.1, C.3.1, C.3.4, C.10 | Open |
+
+**A standing rule (ruled 2026-11-18 by the lead).** Each pull request of the contract that adds a value to a closed set
+the page words carries the value's sentence in `apps/fabric-desktop/ui/src/text.ts`, with words asked of the screens
+session before the merge, so that the merged words are final. The page maps each such set with a table the compiler
+checks, and CI runs that check (`scripts/verify-desktop.sh`). The values that will need sentences, by the request
+that adds them:
+
+| Request | Set | New values |
+|---|---|---|
+| P2-4 | `GrantEndReason` | `result_expired` |
+| P2-5 | a system proof's `action.kind` | `refresh`, `reconcile`, `list_calendars` |
+| P2-7 | `UndecidedReason` | `provider_unreachable` |
+| P2-8 | `CalendarAccess` | `writer_without_private_access` |
+| P2-9 | the provider account's `last_connect_problem` and `revocation` | the `ConnectProblem` values of 0.4.7; `not_requested`, `pending`, `revoked`, `not_confirmed` |
+| P2-10 | `notification` | `sent`, `not_requested`, `unknown` |
+| P2-18 | `health.agent_channel` | `listening`, `not_listening`; the problems `path_too_long`, `run_dir_unsafe`, `stale_not_socket`, `socket_mode`, `bind_failed`, `run_dir_owner` |
+| P2-31 | `owner_resolution_reason` | `applied_differs`, `event_changed`, `event_gone`, `reads_failed`, `account_disconnected` |
+| P2-35 | `agent_client` on `Agent` | the three clients, where the page has no sentence for them yet |
+| OD26 | the fixed sentence for an event past the size limit | only if the contract gives it a value of a closed set |
+
+`agent_removed` is not new as a grant end reason: it is in `GrantEndReason` on main and the page words it. The new
+`agent_removed` values are `SessionEndReason` and `VoidReason` (0.4.1, 0.4.2), stored and never sent.
+
+A note for the contract session, not a request: the comment in `ui/src/text.ts` of pull request 36 says 25 states
+where there are 26, as its own test counts; drop the count, so that it cannot go stale (ruled 2026-11-18 by the
+lead).
 
 Questions to the contract session (theory owner), from D.14:
 
@@ -5017,18 +5214,26 @@ change's outcome is released with no authorization row, recorded only in `releas
 
 SR-1 to SR-8 are section C's (C.15.2): the Agents screen, the pending agent and its code, the answers of
 `approve_agent`, what the approval step must tell the owner (P5, owner OD8), an approved agent, a removed agent, the
-card for a list, and Google's credentials. Added by the other sections:
+card for a list, and Google's credentials. Added by the other sections. SR-17 and SR-18, and the words of SR-1,
+SR-4 to SR-7 and SR-9 to SR-16, are the lead's rulings of 2026-11-18 on the screens session's review of H.1 (I.10):
+the design gives what each screen must mean, and the exact words are the screens session's.
 
 | # | Request | Needed | Section |
 |---|---|---|---|
-| SR-9 | Word the state `completed` in the page before step P5 merges | before P5 | B.3.1, E.2.2 |
-| SR-10 | A read is answered `reconciled` with no result; its content comes in a second call. Request details show a release record once the contract has it (P2-27) | before P6 | B.4.3, B.16 |
-| SR-11 | Show `#practice-line` (`apps/fabric-desktop/ui/index.html:15`) only when the `hello` build ends with ` practice` (or, after P2-24, by the capability) | before P6 | E.1.6 |
-| SR-12 | `apps/fabric-desktop/README.md` "The practice run" and the harness header (`harness/serve.ts:10-19`) carry the wording of E.1.9 | before P6 | E.1.9 |
-| SR-13 | `absence_confirmed` is worded "not found", not "confirmed absent"; the reason shown for `needs_owner_resolution` comes from the latest reconcile observation | before P7b | D.7.3 |
-| SR-14 | A connected account given to `connect_google` shows "waiting for consent" for up to 300 s and its agents stop meanwhile; say so (OP7, owner OD13) | before P7b | D.8.1 |
-| SR-15 | The Google screens: S01 account states, `provider_accounts` (P2-9), `undecided_reason` `provider_unreachable` (P2-7), `notification` (P2-10), `refresh_calendars` (P2-11), system proofs in request details (P2-5) | before the G2b live run | E.2.1, D, B.11.4 |
-| SR-16 | A card for a list proposes `one_request` first (the duration rule; NOV17-DURATION), and says, as SR-7, that approving for one request lets nothing through (OD24) | before P6 | C.4.2 |
+| SR-9 | Word the state `completed` by tool before step P5 merges: for a list, "Done: the list of your selected calendars was released to the agent."; for `fabric_request_result`, "Done: the result was released to the agent." ("released", not "got": the release commit comes before the answer is written, and the connection can still drop, B.4.1). Until then the placeholder "Done" of pull request 36 meets it (ruled 2026-11-18 by the lead) | before P5 | B.3.1, E.2.2 |
+| SR-10 | Word `applied` and `reconciled` by tool. For `fabric_calendar_availability`: "Done: Fabric looked up when you are busy. The agent gets what was found only through a separate request for the result, listed on its own."; for `fabric_calendar_read`: "Done: Fabric read the events asked for. The agent gets what was read only through a separate request for the result, listed on its own."; for a change, as today. Request details show each release record once P2-27 merges ("Released to the agent at {time} by request {id}"), or "No release of this result is recorded."; the row itself does not show the release (ruled 2026-11-18 by the lead) | before P6 | B.4.3, B.16 |
+| SR-11 | Show `#practice-line` (`apps/fabric-desktop/ui/index.html:15`) only when `hello.capabilities` holds `practice_calendar` (P2-24, asked); no test on the build string (ruled 2026-11-18 by the lead) | before P6 | E.1.6 |
+| SR-12 | The README of the app (`apps/fabric-desktop/README.md`): the lead owns "The synthetic demonstration", "The practice run" and the harness lines on the broker's variables (`harness/serve.ts:10-19`), and changes them with the wording of E.1.9 in step P6; the screens session owns "The screens" and "What a person has to check" and reviews the page strings quoted anywhere. Whoever changes a behaviour corrects its README sentence in the same pull request. The two sentences the duration rule makes untrue (step 3 of "The practice run" and the until-revoked grants of "The synthetic demonstration") are corrected in the lead's duration rule pull request (step P0), whose scope says so (ruled 2026-11-18 by the lead) | a review before P0 and P6 merge | E.1.9 |
+| SR-13 | `absence_confirmed` is worded "not found", not "confirmed absent". A request in `needs_owner_resolution`, `resolved_as_applied` or `resolved_as_absent` shows `owner_resolution_reason` (P2-31) with the meaning D.7.6 gives each value; the state's own label is true for every reason. Its resolve screen is SR-18 (ruled 2026-11-18 by the lead) | with SR-18, before P6 | D.7.3, D.7.6 |
+| SR-14 | `awaiting_consent` is the state of a first connect and of a reconnect alike; the page does not infer a reconnect and shows no number of seconds. Beside "Sign in again" on a `connected` account, before the press: while he signs in again no agent can use this account, and this lasts until the sign-in ends, is cancelled or times out. On every account in `awaiting_consent`: Fabric opens Google's sign-in in his browser and waits for him to finish there, and until then no agent can use the account; when `email` is not null, also that he signs in as {email} (a different Google account is refused, D.8.2). The broker opens the browser; the page and the host open nothing (D.8.1). OP7, owner OD13; ruled 2026-11-18 by the lead | before P7b | D.8.1, D.8.6 |
+| SR-15 | The Google screens: S01 account states, `provider_accounts` (P2-9), `undecided_reason` `provider_unreachable` (P2-7), `notification` (P2-10), `refresh_calendars` (P2-11), system proofs in request details (P2-5); after `connect_google`, that the browser opens Google's sign-in and to finish there, and the wording of `browser_not_opened` (D.8.1). Also `health.agent_channel` (P2-18), before P6 | before the G2b live run | E.2.1, D, B.11.4 |
+| SR-16 | The page offers what the card proposes, with `one_request` selected first (NOV17-DURATION, pull request 40). A list card proposes `until_revoked` under a row `list_and_availability` in mode `allow` when the run can serve (the Isabelle kind and a provider), and `one_request` otherwise (C.4.2 item 3, step P5b); nothing to build beyond SR-7 (ruled 2026-11-18 by the lead) | before P6 | C.4.2 |
+| SR-17 | Selecting calendars (`select_calendars`, D.9.3). Under each account, list its calendars with name and access, a choice per calendar of whether agents may use it (`selected`), and one choice of the Agent Drafts calendar among the selected calendars whose access is `owner` or `writer`, or none. One save sends the whole selection with the account's revision. Before the save, say what it does: a calendar taken out ends the permissions that name it, and waiting approvals for it become out of date; naming another Agent Drafts calendar, or none, makes waiting approvals for those calendars out of date; calls already allowed and not yet sent are checked again; nothing changes in Google Calendar, so an Agent Drafts calendar is made there first and then named here. A calendar newly listed from Google is shown not selected. Answers: `conflict`, read the account again and show what changed; `invalid_params`, the Agent Drafts calendar must be selected and writable (the page should not allow it); `not_found`, the account or a calendar is gone, read again. At most 200 calendars of one account can be selected (CQ-D4). The practice calendar is seeded selected and not Agent Drafts (E.1.3), so the practice run needs this screen to try the Agent Drafts rows (ruled 2026-11-18 by the lead) | before P6 | D.9.3, E.2.1 |
+| SR-18 | Resolving an outcome (`resolve_outcome`, D.7.5). A request in `needs_owner_resolution` shows what it asked, its reason (SR-13, P2-31) and two choices worded by tool: that the change is in the calendar (`applied`) or is not (`absent`); for a delete "applied" means the event is gone from the calendar and "absent" that it is still there. For `applied_differs` only "applied" is offered, with what he approved (the action, and for an update, invitation or response the before-view) beside `private.after` (P2-32, P2-34); when `private.after` is null, as for a create found under its reserved id or evidence not kept, no comparison is shown and the reason still holds. No wording says that Fabric gave up. The controls are offered only from loaded details, never from the snapshot row. Before the press, say that Fabric sends nothing to the calendar and does not try again, that this records what the owner saw, and that the agent gets no result for this request either way. `stale_request`: read the request again. `resolved_as_applied` and `resolved_as_absent` are worded as the owner's statement, not as what Fabric saw. A removed agent's request is resolved the same way (ruled 2026-11-18 by the lead) | before P6 | D.7.5, D.7.6 |
+
+The page does not call `list_ended_requests` and does not offer `delete_custom` in version 1: the broker answers
+`unknown_method` to both in all of phase 2 (A.6, AO8), and their shapes are decided when their readers are built
+(ruled 2026-11-18 by the lead).
 
 ### H.2 To the CD-W05 session
 
@@ -5045,10 +5250,10 @@ card for a list, and Google's credentials. Added by the other sections:
 | W5-9 | Process tests against FAKE run in process, feeding `Input::ProofDone`, under ED2's literal form; the G2b live run uses a debug build with a Keychain store in its own `FABRIC_DESKTOP_DATA_DIR` (ER5); ruled by the lead 2026-11-17 (I.6 E-1) | E.1.1, E.4 |
 | W5-10 | W05 CO6's last sentence (a changed start stays before the end, checked against the before-image) is not built in the core: run before classification, its answer would tell an agent with no `time` field where an event starts and ends. The adapter's mapping of 400 to `Rejected invalid_arguments` stays | D.6.3, D.13 |
 | W5-11 | A delete's read-back (W05 18.7 point 1): only after a 200 or 204 to its DELETE, one GET of the same event in the same order, with the access token the DELETE used (no refresh, nothing read from the token store), started only before `until` and bounded by it, with no retry. `confirmed` is true only for 404, 410 or `status: cancelled` at any revision; false for a live event, a failed read, an unreadable body, any other status or no time left. The GET is mapped by its own function, never turns the outcome into `Transient`, `Rejected` or `NoAnswer`, and returns no event, revision, content or evidence. Live check LV15. Agreed 2026-11-18; built in GC phase 2a (E.2.1) | D.2, D.4, DD8 |
-| W5-12 | A yes with other content (W05 18.7 point 2): `confirmed` is equality with the approval after only the normalisations of a closed, named list in the adapter, empty until the live run; an entry is added only with a live result and a test against FAKE (LV18). The comparison reports which member differed as a fixed label with no content. FAKE gains two faults that answer a fitting 200, one with a trimmed description and one with a zone alias. Agreed 2026-11-18; built in GC phase 2a | D.2, V23, B.14 |
-| W5-13 | The evidence bound (W05 18.7 point 3): keep the 4 MiB bound on what is read from Google; return the raw event as received, uncut, from an observe and from a reconcile read alike; W05 ST3 becomes 1 MiB with the bound on the before-view (`MAX_EVIDENCE_BYTES`, `MAX_BEFORE_VIEW_BYTES`); its risk RK21 states the limit (OD26). Live check LV16. Agreed 2026-11-18 | D.6.2, 0.6 |
+| W5-12 | A yes with other content (W05 18.7 point 2): `confirmed` is equality with the approval after only the normalisations of a closed, named list in the adapter, empty until the live run; an entry is added only with a live result and a test against FAKE (LV18). The comparison reports which member differed as a fixed label with no content. FAKE gains two faults that answer a fitting 200, one with a trimmed description and one with a zone alias. Agreed 2026-11-18; built in GC phase 2a. After step P4, GC phase 2's port mapping puts the labels and the event as Google returned it into `Applied.returned` (D.2, B.14) | D.2, V23, B.14 |
+| W5-13 | The evidence bound (W05 18.7 point 3): keep the 4 MiB bound on what is read from Google; return the raw event as received, uncut, from an observe, from a reconcile read and in `Applied.returned` (V23) alike; W05 ST3 becomes 1 MiB with the bound of 384 KiB on each view (`MAX_EVIDENCE_BYTES`, `MAX_BEFORE_VIEW_BYTES`); its risk RK21 states the limit (OD26). Live check LV16. Agreed 2026-11-18; built in GC phase 2, after step P4 | D.6.2, 0.6 |
 | W5-14 | Spans (W05 18.7 point 4): ask Google for `start(date,dateTime)` and `end(date,dateTime)` of every event whatever the grant and use them only for the span; build the span from the occurrence's own start and end, never from `originalStartTime`, `Timed` in milliseconds or `AllDay` with Google's two dates exactly, with no widening and no zone arithmetic; a test that a read without `time` puts no start or end into the view and that there is one span per event. Live check LV17. Agreed 2026-11-18; built in GC phase 2a with the adapter's own span type, mapped to the port's `ReadSpan` after step P4 | D.2, B.3.4, DD17 |
-| W5-15 | The account link (W05 18.7 point 5): `Flow::supersede_latest()`, `Flow::supersede(generation)` and `PendingFlow::generation()`, each taking the lock of the token write, with a test that once a supersede returns the flow never writes the token store, keyed by the order's account and the core's generation (build note 5a); `AccountLink::unlink(account_id, revoke)` as one function (drop the cached access token, the one revocation attempt when asked, then forget; build note 5b), with a test that the forget never runs before the revocation has read the token; deleting a missing token-store item is `Ok`, the Keychain store's "item not found" included (I.9). Agreed 2026-11-18; the supersede methods in GC phase 2a, `unlink` and the Keychain store after step P4 | D.2, D.8, DD18 |
+| W5-15 | The account link (W05 18.7 point 5): `Flow::supersede_latest()`, `Flow::supersede(generation)` and `PendingFlow::generation()`, each taking the lock of the token write, with a test that once a supersede returns the flow never writes the token store, keyed by the order's account and the core's generation (build note 5a); `AccountLink::unlink(account_id, revoke)` as one function (drop the cached access token, the one revocation attempt when asked, then forget; build note 5b), with a test that the forget never runs before the revocation has read the token; deleting a missing token-store item is `Ok`, the Keychain store's "item not found" included (I.9). The link gives two handles, one per worker (sign-in and unlink), that share the token store and the cached access token, each safe on its own thread (D.1; the lead's ruling of 2026-11-18). Agreed 2026-11-18; the supersede methods in GC phase 2a, `unlink` and the Keychain store after step P4 | D.2, D.8, DD18 |
 
 **Live checks the CD-W05 session took on (2026-11-18)**, for the G2b live run beside its LV1 to LV14 (W05 15.3):
 LV15, what a GET answers right after a 204, and whether a deleted event can be restored under its id from Google's
@@ -5088,8 +5293,9 @@ them. "Closed" rows were settled while the sections were made to agree; they sta
 
 The lead ruled on the lead's points on 2026-11-17, after reading this section. Each ruled row ends its
 recommendation with "Ruled 2026-11-17:" and what was chosen; unless it says otherwise, the ruling accepts the
-recommendation. Rows the lead did not rule on are unchanged. The owner's points stay open except OD1, OD2 and OD24, answered
-2026-11-18, and are collected in E.3 (OD1 to OD26); where a row is the lead's and the owner's, only the lead's part is ruled.
+recommendation. Rows the lead did not rule on are unchanged. The owner's points stay open except OD1, OD2 and
+OD24, answered 2026-11-18, and are collected in E.3 (OD1 to OD26); where a row is the lead's and the owner's, only
+the lead's part is ruled.
 
 ### I.1 Points of the shared vocabulary (OP1 to OP15)
 
@@ -5101,7 +5307,7 @@ recommendation. Rows the lead did not rule on are unchanged. The owner's points 
 | OP4 | When a read's result is stored, V6 checks the whole fence; the narrower per-order test was not chosen | lead | Whole fence in version 1; measure on the practice calendar (also BOP3). **Ruled 2026-11-17:** the whole fence in version 1, measured on the practice calendar in step P5 |
 | OP5 | V7 drops the read after an applied change: W05 ST7 is not built and the theory is unchanged | lead with the CD-W05 session | Drop it (W5-6). **Ruled 2026-11-17:** dropped; W05 ST7 is not built; to be agreed with the CD-W05 session (W5-6). Agreed by it on 2026-11-18, with a delete confirmed by one GET in its own order (I.5 D-13) |
 | OP6 | The list order (PO5) waits for TH1 (P2-6); until then the practice account gets its calendars from the seed only | contract session | Build PO5 in the port, issue it only after TH1 |
-| OP7 | A connected account sent through `connect_google` again is not connected for up to 300 s | owner (screens wording) | Wording on the page, no contract change (OD13, SR-14) |
+| OP7 | A connected account sent through `connect_google` again is not connected until the sign-in ends, is cancelled or times out (D.8.6) | owner (screens wording) | Wording on the page, no contract change (OD13, SR-14) |
 | OP8 | Until P2-4 merges, a held result that expires unreleased ends its one-request grant `consumed` | contract session | `consumed`, then `result_expired` |
 | OP9 | `MAX_AGENT_CONNECTIONS = 32` is in no ruling | lead | Keep 32. **Ruled 2026-11-17:** 32 connections |
 | OP10 | A removed agent's `needs_owner_resolution` requests stay open and count against the total limit | lead | Keep them open; the owner resolves them; shown with the removed agent (SR-6). **Ruled 2026-11-17:** they stay open |
@@ -5136,7 +5342,7 @@ recommendation. Rows the lead did not rule on are unchanged. The owner's points 
 
 | # | Point | Whose | Recommendation |
 |---|---|---|---|
-| BOP1 | A list approved through a card ends `cancelled` (BD5); under a one-request approval the next list asks again, so under `ask` no list completes. This follows from P1 (a list may get a card) with P6 (no release without a waiting call); no safety rule is broken, but the card invites an approval that has no effect | owner (OD24); lead for the build | Accept for version 1, with the card's text (SR-7) and P2-29; the alternative is to keep an unused one-request list grant live after `CallGone` and offer it to the next list (same digest), built in step P5b. **Ruled 2026-11-17:** the lead accepts it for version 1, with the card's text (SR-7) and the request to the contract session (P2-29); the owner accepted it on 2026-11-18 (OD24) |
+| BOP1 | A list approved through a card ends `cancelled` at the approval, with no fresh proof (BD5); under a one-request approval the next list asks again, so under `ask` no list completes. This follows from P1 (a list may get a card) with P6 (no release without a waiting call); no safety rule is broken, but the card invites an approval that has no effect | owner (OD24); lead for the build | Accept for version 1, with the card's text (SR-7) and P2-29; the alternative is to keep an unused one-request list grant live after `CallGone` and offer it to the next list (same digest), built in step P5b. **Ruled 2026-11-17:** the lead accepts it for version 1, with the card's text (SR-7) and the request to the contract session (P2-29); the owner accepted it on 2026-11-18 (OD24) |
 | BOP2 | BD4 also cancels a release that a slow prover queue delayed past 20 s | lead | Accept: the agent calls again; the held result and its grant are untouched. **Ruled 2026-11-17:** accepted |
 | BOP3 | The global fence stops every read in flight on any grant end anywhere (as OP4) | lead | Keep in version 1; measure on the practice calendar. **Ruled 2026-11-17:** the whole fence in version 1, measured on the practice calendar in step P5 (as OP4) |
 | B-4 | Owner (B.18, carried into P13): two calls for a read (default A); no card for a release; the 24 h life and the purges, with the stricter alternative of purging when every relied grant ended; the outcome of a change released with no grant after every grant is revoked (pinned by Q20); a lost answer after a release cannot be re-sent (OP13) | owner | The defaults of B.18 (OD1, OD2, OD3, OD11, OD15, OD16, OD17); OD1 and OD2 answered 2026-11-18 with the defaults |
@@ -5181,11 +5387,12 @@ recommendation. Rows the lead did not rule on are unchanged. The owner's points 
 | D-11 | The pre-check before an observe (D.6.1) covers the pause and the calendar's write access only. A row the profile blocks is not pre-checked, so an unpaused agent learns the event's state there (`revision_conflict`, `invalid_arguments`, `stale`) as the theory's own rules would tell it, and its call costs one system proof and one Calendar read. Linked to CQ-D2 | contract session (theory owner) | Keep for version 1; if the theory answers CQ-D2 so that the observe names the event, add `mode_not_blocked` to the pre-check. Closed by D-12 (ruled 2026-11-17): the pre-check refuses a row the profile blocks (D.6.1) |
 | D-12 | D-11's gap is in the core's own pre-check and does not wait on CQ-D2. Under a profile that blocks the action's row the theory answers `mode_not_blocked` before `event_known` (THY `block_rules`), whatever the event's state; D.6.1 still observes, so the agent learns `revision_conflict` or `invalid_arguments` and drives a Calendar read on a row the owner blocked. For a response, an invitation and a delete the row is known without the event (THY `rows`); an update is blocked whatever the event when both edit rows block | lead (D-11 was left with the contract session on 2026-11-17) | Add to D.6.1's first check: the profile does not block the action's row (`respond_to_invitation` for a response, `send_or_change_invitations` for an invitation, `edit_fabric_created_event` and `edit_preexisting_event` both for an update; a delete always asks, THY `delete_row_always_asks`); when it does, no system proof and no observe start and the theory answers `mode_not_blocked`. D-11 then closes. **Ruled 2026-11-17:** accepted; applied in D.6.1 and D.6.3; D-11 is closed |
 | D-13 | A delete's read-back (the CD-W05 session's point 1, I.9): Google answers a DELETE with no body, so every successful delete would sit in `outcome_unknown` for at least 10 s and be shown so | lead with the CD-W05 session | One GET of the event inside the delete's own order, under its agent permit, with the conditions of D.2; confirmed goes `applied -> reconciled`, unconfirmed is handled as no answer and reconciled by reading, with no audit row (V9). **Ruled 2026-11-18 by the lead:** accepted with those conditions; W5-6 is agreed; W5-11, LV15 |
-| D-14 | A yes with other content (point 2): a fitting 200 whose content differs from the approval was an unknown outcome, so a PATCH that Google normalised without moving the revision could end `absent` after two reads, and a new request could repeat a change that notifies guests | lead with the CD-W05 session; owner OD25 | A fitting `Applied` of a create, update, invitation or response is applied, never unknown; when it differs, the event's id and revision are recorded and the request waits for the owner, who can only resolve it as applied (V23); `confirmed` uses a closed, named list of normalisations, empty today. **Ruled 2026-11-18 by the lead:** accepted; P2-31 to P2-34 are a precondition of any Google dispatch; no interim refusal of `absent` in the core (D.7.5); W5-12, LV18 |
-| D-15 | The evidence bound (point 3): 262 144 bytes refused an event with about a thousand attendees | lead; owner OD26 | `MAX_EVIDENCE_BYTES` 1 048 576 and `MAX_BEFORE_VIEW_BYTES` 524 288 (lowered if the frame test of D.6.2 fails); past either no observation is stored and the request ends with a fixed sentence. **Ruled 2026-11-18 by the lead:** accepted, a stated limit of version 1 for the owner (OD26); W5-13, LV16 |
+| D-14 | A yes with other content (point 2): a fitting 200 whose content differs from the approval was an unknown outcome, so a PATCH that Google normalised without moving the revision could end `absent` after two reads, and a new request could repeat a change that notifies guests | lead with the CD-W05 session; owner OD25 | A fitting `Applied` of a create, update, invitation or response is applied, never unknown; when it differs, the event's id and revision are recorded and the request waits for the owner, who can only resolve it as applied (V23); `confirmed` uses a closed, named list of normalisations, empty today. **Ruled 2026-11-18 by the lead:** accepted; W5-12, LV18. **Ruled again the same day:** P2-31 to P2-34 go into pull request 36 (step P2), and V23 is built in its one, final form in step P5a, with the edge `dispatching -> needs_owner_resolution` and D.7.5's refusal of `absent` (check 3); the port member and the evidence are drawn in D.2 and A.4 |
+| D-15 | The evidence bound (point 3): 262 144 bytes refused an event with about a thousand attendees | lead; owner OD26 | `MAX_EVIDENCE_BYTES` 1 048 576 and `MAX_BEFORE_VIEW_BYTES` 393 216 for each of the before-view and the after-view (lowered if the frame test of D.6.2 fails); past either no observation is stored: in `validating` the request ends with a fixed sentence, in `proving_fresh_permit` it ends `undecided` with the cause `observation_too_large`. **Ruled 2026-11-18 by the lead:** accepted, a stated limit of version 1 for the owner (OD26); W5-13, LV16. **Ruled again the same day:** 393 216, not 524 288; the cause `observation_too_large`; an oversized reconcile read-back stays a failed read (D.7.4) |
 | D-16 | Spans (point 4): a span for every event needs Google's start and end whatever the grant, and an all-day event has dates, not instants; the session proposed that the adapter widen | lead with the CD-W05 session | Typed spans from the adapter; the core widens an all-day span by `ZONE_SLACK_MS` for its check only (DD17, B.3.4 step 2.1). **Ruled 2026-11-18 by the lead:** accepted with one change, the core widens, not the adapter; W5-14, LV17; exact bounds are D-18 |
 | D-17 | The account link (point 5): `connect` blocks its worker for up to 300 s with no supersede that takes the lock of the token write, and a disconnect's revoke and forget wait behind it; the session offered to forget at once on another thread, but its revocation reads the token from the store | lead with the CD-W05 session | Supersede under the lock of the token write; revoke and forget as one `unlink` job on a worker of its own; a disconnect raises `connect_generation`; the unlinks repeat at start (DD18, D.8). **Ruled 2026-11-18 by the lead:** accepted in this form, not as the session proposed, with the two build notes of I.9; W5-15 |
 | D-18 | Exact all-day bounds: the core widens an all-day span by 14 h each way, so an all-day event of the day just before or after the window passes its check when the adapter's own window was wrong (Google's filter is the first barrier) | CD-W09 | Make the bound exact in the calendar's zone once the workspace has a zone database and LV17 has shown in which zone Google filters all-day events. Open, not a blocker; recorded by the lead's ruling of 2026-11-18 (D-16) |
+| D-19 | An update, invitation or response whose answer was lost (the dispatch watchdog, a restart) and that Google normalised without moving the revision is read back `Found`, at the approved revision, not matching: "not yet" twice ends `absence_confirmed` (D.7.3), and a new request could repeat it. The ruling for a live 200 (V23) does not cover a lost answer | lead with the CD-W05 session | Flag only. Revisit with the live checks LV3 and LV18: if Google can normalise a value without moving the revision, that D.7.3 row goes to the owner instead. Open; recorded by the lead's ruling of 2026-11-18 (I.10) |
 
 ### I.6 Points of section E
 
@@ -5195,7 +5402,7 @@ recommendation. Rows the lead did not rule on are unchanged. The owner's points 
 | E-2 | The names of the CO10 variables, and row 8 of E.1.2 | section D | Closed by X17 |
 | E-3 | Whether "no such event" on a conditional change maps to `revision_conflict` | section D | Closed by X7 |
 | E-4 | Confirm ED10 in the configuration text, and `FIRST_LISTENER_CONNECTION = 1 << 32` for test e10 | section C | Closed: C.9.1 step 5, C.10, CD24 |
-| E-5 | `apps/fabric-desktop/README.md` and `harness/serve.ts` carry the E.1.9 wording | screens session, unless the owner widens the lead's list | SR-12 |
+| E-5 | `apps/fabric-desktop/README.md` and `harness/serve.ts` carry the E.1.9 wording | lead (ruled 2026-11-18 by the lead); the screens session reviews the page strings they quote | SR-12; changed in step P6 |
 | E-6 | Bundle the bridge in the debug app by step P6 | lead (step P6); the CD-W06 session reviews | W6-6 |
 | E-7 | OD1 to OD26 are the owner's; OD1, OD2 and OD24, needed before step P2, were answered on 2026-11-18 with the defaults; the first still needed are OD5 (with the A.3 part of OD20) and OD7 before step P3. The two he must answer first: OD5, OD7 | owner | E.3 |
 | E-8 | Not verified: that Isabelle proves `System_refresh` for the seeded practice account, and the latency of the extra system proofs inside the 20 s hold (ER9) | lead | Check in step P5 on the practice calendar. **Ruled 2026-11-17:** checked in step P5 |
@@ -5212,6 +5419,8 @@ recommendation. Rows the lead did not rule on are unchanged. The owner's points 
 | X-3 | DRAFT moved to `b94b58f` while this design was written; the rest of it was read at `29cdfdf` | lead | Re-read DRAFT's diff before step P2 starts. **Ruled 2026-11-17:** the lead re-reads the diff before step P2 |
 | X-4 | The worker's bound is a monotonic stamp the shell takes (X23, B.13). The smaller change, the core writing `deadline_ms - clock.offset_ms()` into the order, keeps one number but moves with a wall clock that goes back after the order was sent | lead | Keep the monotonic stamp. **Ruled 2026-11-17:** the monotonic stamp |
 | X-5 | A removed agent's request that would retry ends `cancelled` (X22); the other form, `terminal_failure` with `retry_budget_exhausted`, was proposed by a checker | lead | Keep `cancelled`. **Ruled 2026-11-17:** `cancelled` |
+| X-6 | `Unlinked(account_id, None)` writes no commit; the account leaves `unlink_in_flight` in memory and a held `Connect` is sent then (D.8.3) | lead | Keep as written. **Ruled 2026-11-18:** accepted as written |
+| X-7 | Each worker has its own `AccountLink` handle over the one token store and access-token cache (D.1) | lead with the CD-W05 session | Keep as written. **Ruled 2026-11-18:** accepted; asked of the CD-W05 session in W5-15 |
 
 ### I.8 Answers of the CD-W06 session (2026-11-18)
 
@@ -5233,17 +5442,47 @@ ruled on them on 2026-11-18:
 The CD-W05 session accepted every row of F for its ids and W5-1 to W5-10, and raised five points before building
 its phase 2. The lead ruled on them on 2026-11-18 (I.5 D-13 to D-17) and the session accepted all five as written.
 They are section 18.7 of its design (`docs/plans/calendar-desktop-w05-design.md` at `8ff66ec` on branch
-`claude/cd-w05-google-provider-27ca35`; not on main yet, a pull request of its own will carry it). It took on the
+`claude/cd-w05-google-provider-27ca35`; not on main yet; GC phase 2a (E.2.1) carries it). It took on the
 live checks LV15 to LV18 (H.2) and records the limit of point 3 as its risk RK21.
 
 | # | Point | Ruling | Where |
 |---|---|---|---|
 | 1 | A delete's read-back | Accepted with conditions: one GET of the same event in the delete's own order, only after a 200 or 204, with the DELETE's access token, inside the order's bound, no retry; confirmed only when the event is gone; the core unchanged; W5-6 agreed | V7, V9, DD8, D.2, D.4, D.7.1, D.7.3; W5-6, W5-11 |
-| 2 | A yes with other content | A fitting 200 of a create, update, invitation or response is applied, never unknown; when it differs the request waits for the owner, who can only resolve it as applied; four contract requests before any Google dispatch | V9, V23, DD6, B.14, D.7.1, D.7.5; G P2-31 to P2-34; E.3 OD25; W5-12 |
-| 3 | The evidence bound | 1 048 576 bytes for the whole evidence, 524 288 for the before-view (lower if the frame test fails); past either, no observation and a fixed sentence; a stated limit of version 1 | 0.6, A.7, A.9 ST3, D.6.2; E.3 OD26; W5-13 |
+| 2 | A yes with other content | A fitting 200 of a create, update, invitation or response is applied, never unknown; when it differs the request waits for the owner, who can only resolve it as applied; four contract requests, asked into pull request 36 (step P2; ruled again the same day) | V9, V23, DD6, B.14, D.7.1, D.7.5; G P2-31 to P2-34; E.3 OD25; W5-12 |
+| 3 | The evidence bound | 1 048 576 bytes for the whole evidence, 393 216 for each of the before-view and the after-view (ruled again the same day; lower if the frame test fails); past either, no observation and a fixed sentence before a change is sent; a stated limit of version 1 | 0.6, A.7, A.9 ST3, D.6.2; E.3 OD26; W5-13 |
 | 4 | Spans | Start and end asked always; typed spans with no widening in the adapter; the core widens an all-day span by 14 h for its check only; exact bounds wait for CD-W09 | DD17, 0.6, B.3.4, B.16.2, D.2; I.5 D-18; W5-14 |
 | 5 | The account link | (a) supersede under the lock of the token write, through the shell's clone of the flow handle; (b) revoke and forget as one `unlink` on a worker of its own, repeated at start | DD18, 0.5.4, 0.6, D.1, D.2, D.8; W5-15 |
-| 6 | Deleting a missing token-store item (asked by the lead) | Confirmed: `Ok` by the contract of the session's `TokenStore` trait; the memory store does so and a test asserts it; the Keychain store, written in phase 2, answers `Ok` on "item not found" and its ignored test covers that case. So the unlinks at start can repeat | D.8.4; W5-15 |
+| 6 | Deleting a missing token-store item (asked by the lead) | Confirmed: `Ok` by the contract of the session's `TokenStore` trait; the memory store does so and a test asserts it; the Keychain store, written in phase 2, will answer `Ok` on "item not found", and its ignored test will include that case. So the unlinks at start can repeat | D.8.4; W5-15 |
 | 7 | Build note (5a) | A supersede is keyed by the order's account and the core's generation, not by the flow's own count, so "superseded while queued" is decided on the core's numbers. Agreed by the lead | D.2, D.8.1 |
 | 8 | Build note (5b) | `unlink` takes whether to revoke, since a disconnect without `revoke_provider_token` only forgets. Agreed by the lead | D.2, D.8.3 |
 | 9 | The order | The session builds now, from main, as one pull request of its own and ahead of step P4, the parts that need no type of the port: the delete's read-back, the member label, the empty list of normalisations and FAKE's two faults, asking for start and end always and the typed span, the 20-page cap on a calendar list, and the supersede methods. It touches only its two crates and its design. The Keychain store, `unlink`, the port mapping and the browser stay for after step P4. Agreed by the lead | E.2.1 (GC phase 2a), E.2.2, E.2.3 |
+
+### I.10 The screens session's review of H.1 (2026-11-18)
+
+The screens session read section H.1 at `6002809` on 2026-11-17, with sections C.2 to C.4, C.10, C.15, D.7.3, D.8.1,
+E.2, E.3 and G and the draft of schema version 3 at `b94b58f`, and said which of SR-1 to SR-16 could not be built on
+the page as worded. Its four findings are right: SR-1 with SR-4 (b), SR-7, the second half of SR-13 and SR-6 "with
+its history" could not be built as worded. The lead ruled on the review on 2026-11-18 (the second rulings of that
+day, H1 to H20), after four readers and a skeptic had checked each point; the sections state the ruled form. The ids
+these rulings add: P2-35, SR-17, SR-18, D.7.6 with `ResolutionCause` and invariant I28, I.5 D-19, and the tests ct33
+to ct38.
+
+| # | Point | Ruling | Where |
+|---|---|---|---|
+| 1 | SR-1 and SR-4 (b): the page does not know an agent's client. The draft's `Agent` has no `client`, and two clients share one destination | `Agent` gains `client`, null only for an agent the owner did not add (a debug build's seeded agent). It is `EnrollmentRow.client` in `enrollments.record` of migration 2 (no new column), written by the `owner.add_agent` commit, copied unchanged by every later write of the row, read by no guard, fact, proof or authorization: display data, the owner's own statement, which the broker cannot check. `get_agent_configuration` answers one text, for the stored client, or null. One request, P2-35, in pull request 36 before step P3 merges; it amends the draft's choices 60 and 63. The screens say "You added this agent as {client}" and that Fabric Calendar cannot check it; a wrong client is corrected only by removing the agent and adding it again, and a removed agent stays in the count of agents (CD23) | 0.4.7, 0.5.2, A.4.3, C.1 CD3, CD22, C.2.1, C.3.1, C.3.4, C.10, C.14.1 ct01, ct32, G P2-35, C.15.2 SR-1, SR-4 (b) |
+| 2 | SR-7 and SR-16: the sentence on "until revoked" on a card that does not offer it; the duration rule as built proposes `one_request` for every list, so its Allow can let nothing through | The phase 2 design wins: in step P5b the core's `proposed_duration` gains a cell for the list, `until_revoked` when the row `list_and_availability` is `allow` and the run can serve (the Isabelle kind and a provider), `one_request` in every other case; no origin condition; a theory lemma is optional. A list whose card is approved ends `approved -> cancelled` at the approval, with no fresh proof; a one-request grant ends consumed, a lasting grant stays and serves later lists. The edge is in the draft's lifecycle (LC 61 at `29cdfdf`, line 62 at `b94b58f`), so no contract request. The card is still shown in every case. Its lines are chosen from the tool, the card's proposal and the selected duration only, with the meanings L0, S1, S1b and S34; SR-7, SR-16 and P2-29 are rewritten. Inside OD24 | 0.2 V10, BD5, B.1 BD5, B.3.2, B.3.7, C.4.2, C.14.1 ct28, ct34 to ct38, G P2-29, C.15.2 SR-4 (a), SR-7, H.1 SR-16, E.2.1 |
+| 3 | SR-13, second half: the reason for `needs_owner_resolution`. The request details carry none, and the design's "derived from the latest reconcile observation" could not be built and was not true | One member `owner_resolution_reason`, required and nullable, beside `undecided_reason`, non-null exactly in `needs_owner_resolution` and the two resolved states, five values (P2-31 amended; P2-34 stays its own request). The core stores a finer cause at each move (`effects.resolution_cause`, `ResolutionCauseRecorded`, `ResolutionCause`, I27 widened and I28, A.4.8) and maps it by one exhaustive function at read time. `applied_differs` also covers a create found under its reserved id with other content. An oversized read-back stays a failed read (G6 of the same rulings). A request of a disconnected account no longer waits for good (D.7.2 step 1), and D.7.1's rule covers the dispatch watchdog. A side finding is flagged as I.5 D-19 | 0.4.7, A.4.1 to A.4.8, B.14, D.7.1 to D.7.6, D.8.3, G P2-31, E.3 OD25, I.5 D-19 |
+| 4 | SR-6 "with its history": the page holds no history, and `list_ended_requests` has no agent filter | History in version 1 is the record's times, the agent's open requests from the snapshot and what ended while the window was open, under a fixed note. Removed agents are a group of their own after the others, closed at first. No request for an `agent_id` filter (a reader's P2-35 is refused): the method answers `unknown_method` in all of phase 2, the owner's go for schema version 3 does not cover it, and its filter is decided when its reader is built | C.15.2 SR-6 |
+| 5 | Missing from H.1: `select_calendars`, `resolve_outcome`, `list_ended_requests`, `delete_custom` | SR-17 (`select_calendars`) and SR-18 (`resolve_outcome`, one request with the reason of point 3: no "gave up" wording, choices worded by tool, only "applied" for `applied_differs` with the before-view and `private.after`), both before step P6. The page neither calls `list_ended_requests` nor offers `delete_custom` in version 1 | H.1, E.2.1, E.2.2 |
+| 6 | SR-1, the copy control in the packaged window | The page tries the web clipboard, then the older copy command on the selected field, says whether it worked and always shows a field that can be selected by hand. The lead, who owns the host, tries the button, Cmd+C and the context menu in the packaged debug window before S07 is put to the owner; if the button fails the host gains a copy command, if Cmd+C fails the standard Edit menu | C.15.2 SR-1, E.2.1 P6 and the screens row |
+| 7 | SR-5, "until this client disconnects" | The duration stays "until this agent's current session ends", with a fixed note that lists the ends of a session (C.7.1); the text of `session_disconnected` also covers a replaced session | C.15.2 SR-5 |
+| 8 | SR-5, the permissions under the agent | Shown under each agent, in one place | C.15.2 SR-5 |
+| 9 | SR-9 and SR-15: a contract pull request that adds a value the page words | A standing rule in G: that pull request carries the value's sentence in `ui/src/text.ts`, with words from the screens session; the list of values that need sentences goes with it (`agent_removed` is not new as a grant end reason). SR-9 and SR-10 are worded by tool ("released", not "got") | G, H.1 SR-9, SR-10 |
+| 10 | SR-10, a read in `reconciled` reads "Done and confirmed" | Worded by tool; the release records in the details once P2-27 merges | H.1 SR-10 |
+| 11 | SR-11 and P2-24 | P2-24 is asked, not optional: `hello.capabilities` lists `practice_calendar` exactly in a practice run, and SR-11 reads only that | G P2-24, E.1.6, E.6, H.1 SR-11 |
+| 12 | SR-12, who owns "The practice run" of the app's README | The lead owns "The synthetic demonstration", "The practice run" and the harness lines on the broker's variables; the screens session owns "The screens" and "What a person has to check" and reviews page strings quoted anywhere. Whoever changes a behaviour corrects its README sentence in the same pull request; the two sentences made untrue by the duration rule are corrected in the lead's duration rule pull request | H.1 SR-12, E.1.9, E.2.1 to E.2.4, I.6 E-5 |
+| 13 | SR-14: one state for a first connect and a reconnect | No "was connected before" wording; "until the sign-in ends, is cancelled or times out"; no number of seconds | H.1 SR-14, D.8.1 |
+| 14 | A seeded agent (debug) | Told by `client` null only, stated in the contract's text of that member. The page hides Remove and the configuration control for it and shows one line: one line in SR-5, not a new SR, and nothing added to P2-28 | 0.2 V13, C.2.1, C.14.1 ct33, C.15.2 SR-5, G P2-35 |
+| 15 | The sign-in: who opens the browser | The broker's sign-in worker opens it; the page and the host open nothing | D.8.1, H.1 SR-14, SR-15 |
+| 16 | Pull request 36 edits files of the page; its `ui/src/text.ts` says 25 states where there are 26 | A note to the contract session in G, not a request row: drop the count | G |
+| 17 | Texts of open owner decisions untrue in some state (found by the skeptic, not by the review) | Corrected before he is asked, with no new decision: OD8 (listing needs the profile to allow it, as SR-4 (a) says), OD13 (not "up to 300 s": D.8.6's bound), OD25 ("or Fabric finds the event it created and it differs"), OD26 (the first part of the same rulings) | E.3, I.1 OP7, D.8.1 |
