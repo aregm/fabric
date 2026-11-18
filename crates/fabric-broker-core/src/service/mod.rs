@@ -14,6 +14,7 @@ pub(crate) mod activity;
 pub(crate) mod agent;
 pub(crate) mod clock;
 pub(crate) mod core;
+pub(crate) mod durations;
 pub(crate) mod epochs;
 pub(crate) mod facts;
 pub(crate) mod grants;

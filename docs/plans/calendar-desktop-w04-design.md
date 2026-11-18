@@ -17,7 +17,10 @@ from this document. Section 4 is proposed to the owner as ADR-115 (Proposed).
 Date 2026-11-16. Status: as built, describing the worktree of `CD-W04` before merge; updated 2026-11-17 by the broker
 part of contract schema version 2 (branch `claude/cd-broker-prover-reasons`): the stored cause of a move to
 `undecided` (3.6, 4, 5.7), the prover's status (10.3) and the synthetic classifier's health (5.10), with the tests
-s18 to s23 and c32 to c36.
+s18 to s23 and c32 to c36; updated 2026-11-17 by the duration rule of contract schema version 2 (branch
+`claude/cd-broker-duration-rule`): the duration a card proposes and the refusal of a longer one (D40, D22, D20, 5.7,
+6.1), the approval the details carry (6.1), the session's idle boundary (5.5), with the tests c37 to c39, p09 and p10
+and the changed process tests p04, p06 and p07 (9.4).
 
 Abbreviations (paths relative to the repository root):
 
@@ -63,9 +66,9 @@ Abbreviations (paths relative to the repository root):
 | D17 | Permit that cannot authorize | `proving_fresh_permit -> undecided`, no authorization, when there is no provider, the prover is not Isabelle, the agent is paused, the tool changes no calendar, or `authorizing_grants` is empty (L7). A result is first checked for its binding to its job (D39); then a result whose `authorizing_grants` names an id outside the job's `facts.grants` is refused before the fence or the verdict is looked at, whatever its purpose and verdict: recorded, relied list unchanged, request `undecided` (5.7); it is never a store fault | Fail-closed; no authorization exists that nothing can use or that rests on no grant. A wrong adapter cannot halt the broker, which would recur after every restart. |
 | D18 | One-request grant | Offered only to its origin request; ends `consumed` in the commit that makes the origin request terminal; stays live until then, also while `applied` or `outcome_unknown`; the desktop README says so (L2) | Retries of the same effect need it; a second request cannot reuse it. |
 | D19 | Recipient-set edits | Narrowing applies at once; adding a member or domain, or a delete, ends live grants naming the set (`authority_reduced`) | PLAN 7: expansion needs owner acceptance at grant level. Open: Q6. |
-| D20 | Profile changes | Activation ends no grant and stales no card; expansion baseline: previous version, Careful for a new profile. Every `save_profile` commit applies exactly one `ProfileStateSet` with revision + 1; `ProfileVersionAdded` never touches the revision | One rule for the profiles revision. Open: Q5, Q7. |
+| D20 | Profile changes | Activation ends no grant and stales no card; expansion baseline: previous version, Careful for a new profile. Every `save_profile` commit applies exactly one `ProfileStateSet` with revision + 1; `ProfileVersionAdded` never touches the revision. A card keeps the duration it proposed (D40) across a profile change and a restart. After a narrowing its `until_revoked` ceiling is stale: an approval within it is accepted and its lasting grant made; the fresh proof under the new profile then either asks again (the row now asks; the new card proposes `one_request`) or blocks (the row now blocks, the agent was paused, or another block rule fails). A card stored in a run that can carry out a change and decided in a later run that cannot is accepted within its stored ceiling as well; its fresh Permit ends `undecided` (`no_provider`, or `no_prover` without the Isabelle kind). The lasting grant stays in all three ends (Q7's default, no grant ends; c38). It serves nothing under the narrower profile and serves again if the profile is widened back. The commands CD-W05 adds that change what D40 reads (selecting calendars, naming the Agent Drafts calendar, a sync that changes a calendar's access) must raise `revocation_epoch` (5.6), so no proof across them is accepted and no card is opened from older facts | One rule for the profiles revision. Open: Q5, Q7. |
 | D21 | Methods implemented | All except `connect_google` (`unknown_method`, CCR-1); `save_preferences`, `disconnect_google` store halves implemented | `connect_google` needs OAuth (CD-W05). |
-| D22 | Edge answers | `selected` non-null `invalid_params` (acceptable only with CCR-7 and before CD-W08); `revoke_grant` on an ended grant `conflict`; `pause_agent all_agents` with no agents `not_found`; `session` duration without a live session `invalid_params` at `/params/duration`; `decide_request` revision mismatch `stale_request` | No false success; the page relies on `stale_request`. |
+| D22 | Edge answers | `selected` non-null `invalid_params` (acceptable only with CCR-7 and before CD-W08); `revoke_grant` on an ended grant `conflict`; `pause_agent all_agents` with no agents `not_found`; `decide_request` with a duration longer than the card's `proposed_duration` `invalid_params` at `/params/duration/kind` ("The duration is not one the broker offers.", the contract's fixture), checked after `selected` and before the session check (D40); `session` duration without a live session `invalid_params` at `/params/duration`, reachable only on an `until_revoked` card; `decide_request` revision mismatch `stale_request` | No false success; the page relies on `stale_request`. |
 | D23 | Command dedup | Success row in the command's transaction; a refusal in its own transaction (`owner.refused`); `store_unavailable`/`internal` never stored; never pruned | Commit-before-answer and durable dedup. |
 | D24 | Access audit | `audit` table: full-detail reads (`request_details_full`), `command_reused`, unknown agents (`unknown_agent`), `not_permitted`; `busy` refusals aggregated to one `agent_busy` row per agent per one-minute window with a count. Audit-only writes go through `Store::write_audit` and append no ledger row | ADR107 D1 keeps audit apart from the ledger; a flooding agent cannot turn the limit into a write amplifier (L2). |
 | D25 | Agent entry | `AgentInput::{Connect, Call(AgentRequest), Disconnect}`; `UNIQUE(agent_id, call_id)`: a repeated call returns its request and writes nothing (another action under the same call id: `invalid_params` at `/params`). Only the transaction that inserts a request carries `agent_call` idempotency. `fabric_request_status` is implemented and writes nothing | PLAN 7 "a retry returns the existing lifecycle"; a repeat must not hit the ledger's UNIQUE key and halt. |
@@ -83,6 +86,7 @@ Abbreviations (paths relative to the repository root):
 | D37 | Error texts | `StoreFault`, `KeyError`, `OpenError` carry only fixed labels, codes, numbers and the data-directory path; no rusqlite or serde error is ever formatted; key statements live in `Zeroizing<String>` | rusqlite's `SqlInputError` prints the SQL, which holds the key; serde quotes values. |
 | D38 | Frame bound | No owner frame is written over 1,048,576 bytes (CR section 1). The owner's own records (recipient sets, profiles, live grants) are kept within a budget of 720 KiB of canonical JSON: a command that would grow them past it is refused `invalid_params` and stores nothing; a command that shrinks them is never refused. An answer that still does not fit becomes `internal` with its id and method; a notice that does not fit becomes one `snapshot_required` change and ends the subscription. The broker runs on | The contract bounds frames; a snapshot must fit in one. The contract has no owner limit code (CCR-18). |
 | D39 | Proof binding | A result's report must name its job's request, purpose and action digest (PLAN 8 step 5). One that does not proves nothing: the request goes `undecided`, nothing is recorded, the relied list is unchanged. This check runs before the grant check of D17 | A report filed under the request it names, not the job's, could fault the store or authorize another request. |
+| D40 | Proposed duration | A card's `proposed_duration` is the longest duration the owner may choose, computed by `service::durations::proposed_duration` when `open_card` opens the card, never by a prover: `until_revoked` only when (1) the action is a `fabric_calendar_propose_create` whose row in the profile in force is `allow` (`create_in_agent_drafts` when any entry of the calendar has `agent_drafts`, as the theory's `drafts`, else `create_in_existing_calendar`); (2) the calendar is a selected calendar of a connected account and writable; (3) the run can carry out a change: the prover's kind is `Isabelle` and a provider is attached, the two facts `accepted()` checks before it authorizes; (4) no lasting grant of the agent has the request as its origin, so a request asked again after a lasting approval never adds another one. Every other case, every fact it cannot read included, proposes `one_request`; `session` is never proposed and is offered below `until_revoked`. Reads, availability, updates, invitations and responses propose `one_request` on purpose (PW K14 names what lifts each); a delete always does. `decide_request` compares the chosen duration with the stored card, never computing it again (D22); a card keeps its proposal (D20) | A lasting approval the next fresh proof would not accept leaves a grant that serves nothing and asks the owner again; the theory still decides every request, the ceiling only keeps the card from offering what the fresh proof cannot honour. With the synthetic classifier or no provider nothing is carried out, so no card opened in such a run offers a lasting grant; a card carried over from an earlier run keeps its ceiling (D20). |
 
 ### 0.2 Package decisions (L1 to L7)
 
@@ -713,7 +717,7 @@ the frames, prints one stderr line, exits 75. The next start runs every check (3
 | Term | Bound to | Valid at use iff | Ends with |
 |---|---|---|---|
 | `one_request` | action digest; origin request | not ended; used only by its origin request, which is not terminal | `consumed` in the commit that makes the origin request terminal; `revoked_by_owner`, `account_disconnected`, `authority_reduced` |
-| `session` | session id | not ended; the session is live in memory for the current run; `now - last_active <= 1_800_000` | `session_disconnected`, `session_idle_timeout`, `app_quit`, `broker_restart`, and the reasons above |
+| `session` | session id | not ended; the session is live in memory for the current run; `now - last_active < 1_800_000` | `session_disconnected`, `session_idle_timeout`, `app_quit`, `broker_restart`, and the reasons above |
 | `until_revoked` | nothing (`expires_at: null`) | not ended | `revoked_by_owner`, `account_disconnected`, `authority_reduced`, `agent_removed` |
 
 - Validity is a predicate checked wherever a grant is used (facts, proof acceptance, dispatch); sweeps only make
@@ -741,6 +745,12 @@ the frames, prints one stderr line, exits 75. The next start runs every check (3
   (`SessionEnded{IdleTimeout}`), its grants, and raises the agent revision. 1 800 000 ms =
   `Limits::CD_G0.session_idle_timeout_seconds`, kept equal by hand to the theory's `session_idle_timeout_ms`
   (THEORY note B).
+- The boundary is the theory's: `session_live` holds while `now < last_active + session_idle_timeout_ms`.
+  `activity::session_live_at` states it once, and the validity predicate, the idle end and its deadline all use
+  it. So at `last_active + 1_799_999` a session decision is accepted and the job carries the session, and at
+  exactly `last_active + 1_800_000` the session has ended `idle_timeout`, its grants `session_idle_timeout`, a
+  session decision is refused at `/params/duration` and a call on the old connection is `not_permitted` (c39).
+  Before the duration rule the core kept a session 1 ms longer than the theory.
 - Grant fields from the approval: `purpose` = the action's `task`; `tools` = `[action.tool()]`; `scope` = the card
   scope; `term`; `origin` = `{request_id, approval_digest}`; `policy` = active profile id and version;
   `revocation_epoch` = counter at creation (CCR-5); `revision` 1; `ended` null. A `session` duration binds the agent's
@@ -826,16 +836,16 @@ Handling a result, in order:
 | received -> validating -> proving_classification | pump. World checks: account known and connected, every calendar known and selected, a window starts before it ends. Zones: CD-W09 |
 | validating -> terminal_failure (`invalid_arguments`) | pump, when a world check fails or the call is `request_result` (no result is held, D33) |
 | proving_classification -> allowed | accepted Permit, prover kind `Isabelle`: `ProofRecorded`, `ReliedGrantSet(authorizing_grants)`, move, one commit (`request.proof`) |
-| proving_classification -> pending_approval / blocked | accepted NeedApproval / Block with a `Ruling`. `pending_approval` opens a 24 h card showing the request's scope with proposed duration `one_request`; a request with no scope cannot show a card and goes `undecided` |
+| proving_classification -> pending_approval / blocked | accepted NeedApproval / Block with a `Ruling`. `pending_approval` opens a 24 h card showing the request's scope with the proposed duration of D40 (`until_revoked` only for a create whose row is `allow` in a run that can carry out a change; `one_request` otherwise); a request with no scope cannot show a card and goes `undecided` |
 | proving_classification -> undecided | no prover attached (at once, no report); watchdog 35 s (late result ignored by job id); an Undecided verdict; a missing report; Block or NeedApproval without a `Ruling`; NeedApproval for a request with no scope; a Permit from a non-Isabelle prover; a report bound to another job; an `authorizing_grants` id outside the job's facts (any verdict); the classification counter exhausted |
-| pending_approval -> approved / denied | `decide_request`; approve: `create_grant`, `ApprovalRecorded` (while still pending), `ReliedGrantSet([grant])`, move, one commit; the pump of the same step then starts the fresh proof |
+| pending_approval -> approved / denied | `decide_request`; a duration longer than the card's proposal is refused first and changes nothing (D22, D40); approve: `create_grant`, `ApprovalRecorded` (while still pending), `ReliedGrantSet([grant])`, move, one commit; the pump of the same step then starts the fresh proof |
 | pending_approval -> expired | pump at `card_expires_at_ms` (opened + 86 400 000) |
 | pending_approval -> stale | `disconnect_google` of its account; W05 for provider changes |
 | approved / allowed -> proving_fresh_permit | pump; the job's `relied` is the stored list |
 | proving_fresh_permit -> queued | accepted Permit, every id in `authorizing_grants` valid now (5.5), prover kind `Isabelle`, provider present, `authorizing_grants` non-empty, agent not paused, the tool changes a calendar: one commit (`request.authorize`) with `ProofRecorded`, `ReliedGrantSet(authorizing_grants)`, `AuthorizationIssued` (60 s; `grant_id` = `authorizing_grants[0]`, `grant_ids` = the whole list; a new attempt number; L7(c)), `EffectReserved` (first time; `provider_event_id` set for creates and only for creates, an `apply` guard), move |
 | proving_fresh_permit -> undecided | Permit with an empty `authorizing_grants` (L7(d)), no provider, a non-Isabelle prover, a paused agent, or a tool that changes no calendar (D17, D33); a report bound to another job; an `authorizing_grants` id outside the job's facts (any verdict); an Undecided verdict; watchdog; a missing report; Block or NeedApproval without a `Ruling` |
 | proving_fresh_permit -> blocked | Block with a `Ruling` (a relied grant that is no longer live ends here: the theory blocks, L6) |
-| proving_fresh_permit -> pending_approval | NeedApproval with a `Ruling`: a new 24 h card. The open-card limit is not checked here; a re-ask may exceed five open cards (5.9, R18) |
+| proving_fresh_permit -> pending_approval | NeedApproval with a `Ruling`: a new 24 h card, whose proposed duration D40 computes again (`one_request` once a lasting grant has this request as its origin); the earlier approval stays in the store and the details carry none while the request waits (6.1). The open-card limit is not checked here; a re-ask may exceed five open cards (5.9, R18) |
 | proving_fresh_permit -> stale | the fresh-permit counter exhausted |
 | queued -> dispatching | pump: one commit (`request.dispatch`) when every dispatch check of 5.6 holds: `AuthorizationConsumed`, `DispatchIntent` (attempt row, number `attempts_started + 1`), move. Only after commit: `Job::Dispatch` (provider deadline 30 s). The handoff is the linearization point (PLAN 8) |
 | queued -> proving_fresh_permit | a dispatch check failed: `AuthorizationVoided{BrokerRestart, Expired, FenceChanged, GrantInvalid or AgentPaused}` + move, one commit; the fresh-permit counter + 1. The fresh proof then sees the change (a paused agent or an ended grant blocks). A `queued` request with no issued authorization also goes back to a fresh proof |
@@ -952,10 +962,10 @@ synthetic"`. Its reports are stored but `get_proof` answers `not_found` for them
 | `save_profile` | `activate`: unknown id `not_found`; `ProfileStateSet` revision + 1; `revocation_epoch` + 1; no grant ended. `save_custom`: a name that reads as Careful or Flexible `invalid_params` `/params/change/profile/name` (compared after dropping invisible characters, trimming and collapsing whitespace, in any case); unknown id `not_found`; expansion = rows wider (`Mode::is_wider_than`) than the previous version, or Careful for a new profile; non-empty and `acknowledged_expansion != expansion_digest` -> `expansion_not_acknowledged{expansion, expansion_digest}`; past the budget (D38) `invalid_params` `/params/change/profile`; else new immutable version (new id `custom-` + 16 hex), `ProfileVersionAdded`, then `ProfileStateSet` (the active id and version after the command, revision + 1), `revocation_epoch` + 1 if active |
 | `save_preferences` | revision check; store; `invalid_params` at `/params/settings/warning_calendars/<index>` when an entry names no stored calendar; zones by pattern only (CD-W09) |
 | `save_group` | create: id null and `expected_revision` 0, new id, source local; update: `not_found`/`conflict`, new version; delete: `not_found`/`conflict`, `recipient_set_deleted`, result `null`; past the budget `invalid_params` `/params/change/definition`; grants per 5.6; `revocation_epoch` + 1 |
-| `decide_request` | `not_found`; state not `pending_approval`, revision or `request_digest` mismatch -> `stale_request`; `selected` non-null -> `invalid_params` `/params/selected` (acceptable for W04 only with CCR-7 and before CD-W08); `session` duration with no live session of the request's agent -> `invalid_params` `/params/duration`; an approval past the budget `invalid_params` `/params/decision`. Approve: `Approval::Approve` (`approval_digest(request_id, request_digest, Decision::Approve{scope, duration})`, `effective_request_digest` = request digest), grant (5.5; a `session` grant binds the agent's current live session), `ReliedGrantSet([grant])`, grant notice, request -> `approved`. Deny: `Approval::Deny`, -> `denied` |
+| `decide_request` | `not_found`; state not `pending_approval`, revision or `request_digest` mismatch -> `stale_request`; `selected` non-null -> `invalid_params` `/params/selected` (acceptable for W04 only with CCR-7 and before CD-W08); a duration longer than the stored card's `proposed_duration` -> `invalid_params` `/params/duration/kind` ("The duration is not one the broker offers."), compared with the stored card, never computed again, before `create_grant` (D40); `session` duration with no live session of the request's agent -> `invalid_params` `/params/duration` (only an `until_revoked` card reaches it); an approval past the budget `invalid_params` `/params/decision`. Approve: `Approval::Approve` (`approval_digest(request_id, request_digest, Decision::Approve{scope, duration})`, `effective_request_digest` = request digest), grant (5.5; a `session` grant binds the agent's current live session), `ReliedGrantSet([grant])`, grant notice, request -> `approved`. Deny: `Approval::Deny`, -> `denied` |
 | `pause_agent` | one agent: `not_found`/`conflict`; all agents: every agent, none -> `not_found`; each targeted agent gets its own `AgentPut` (paused, revision + 1) and a notice even when unchanged; pause raises `pause_epoch`. Activity never raises an agent revision (5.4) |
 | `revoke_grant` | `not_found`; revision mismatch or already ended -> `conflict{current_revision}`; else ended `revoked_by_owner`, revision + 1, `revocation_epoch` + 1; committed before the answer; never waits for a proof. A call already handed off stays `dispatching` with its open attempt visible (W08 says it may still reach Google) |
-| `get_request_details` | request, card, approval, `proof_ids` (distinct ids of the request's Isabelle reports, newest first, at most 200), latest authorization, attempts (at most 20), provider event (null); `full` adds `private{action, before: null, warnings: []}` after its audit row commits; `not_found` |
+| `get_request_details` | request, card, approval (null while the request is `pending_approval` and once it is `expired`: a request asked again keeps its earlier approval in the store, which is not a decision on the card now shown; a `stale` request shows the stored approval, the last one the owner gave, if any, since the contract gives a stale request no meaning of waiting; c39), `proof_ids` (distinct ids of the request's Isabelle reports, newest first, at most 200), latest authorization, attempts (at most 20), provider event (null); `full` adds `private{action, before: null, warnings: []}` after its audit row commits; `not_found` |
 | `get_proof` | the newest `proof_reports` row with that id; `not_found` when there is none or when its `prover_kind` is `synthetic` (CC `owner.rs`: a proof report is one live Isabelle check; L2; CCR-10) |
 | `subscribe` | 5.4 |
 | `disconnect_google` | `not_found`/`conflict`; its live grants end `account_disconnected` (grant notices); its `pending_approval` requests -> `stale` (request notices); account -> `disconnected`, revision + 1, account notice last (`commit_sequence`); `revocation_epoch` + 1; `ended_grant_ids`. An already disconnected account still succeeds (revision + 1). `revoke_provider_token: true` revokes nothing (no token exists before CD-W05) |
@@ -1194,19 +1204,26 @@ Each name states what the test proves.
   `disconnect_google_sends_the_account_notice_last_and_answers_with_its_sequence`,
   `pausing_all_agents_raises_each_revision_and_the_pause_epoch`, `a_revoked_grant_ends_and_a_second_revoke_is_conflict`,
   `a_warning_calendar_must_name_a_stored_calendar`.
-- `service/activity.rs` (D35): `a_session_with_no_call_idles_1800000_ms_after_its_connect`,
-  `a_call_moves_the_idle_deadline_and_records_the_last_tool_call`, `an_ended_session_has_no_deadline`.
+- `service/activity.rs` (D35, 5.5): `a_session_with_no_call_idles_1800000_ms_after_its_connect`,
+  `a_call_moves_the_idle_deadline_and_records_the_last_tool_call`, `an_ended_session_has_no_deadline`,
+  `a_session_is_idle_at_exactly_the_idle_limit` (c39).
 - `service/clock.rs` (D34): `a_clock_starts_at_the_wall_clock_when_it_is_ahead`,
   `a_clock_starts_at_the_last_commit_when_the_wall_clock_is_behind`, `a_backward_step_keeps_now_and_grows_the_offset`,
   `a_forward_step_moves_now_forward_and_keeps_the_offset`, `now_never_decreases`.
+- `service/durations.rs` (D40; c37):
+  `the_table_proposes_until_revoked_only_for_an_allowed_create_in_a_writable_calendar`,
+  `a_custom_profile_chooses_the_row_by_the_calendar`, `a_duplicated_calendar_entry_reads_as_the_theory_reads_it`,
+  `a_calendar_missing_from_the_facts_fails_closed`, `a_run_that_cannot_carry_out_a_change_proposes_one_request`,
+  `a_request_that_is_the_origin_of_a_lasting_grant_proposes_one_request`, `the_function_never_proposes_a_session`,
+  `a_duration_is_longer_only_above_the_ceiling`.
 - `service/epochs.rs` (5.6): `a_fence_holds_only_while_every_version_is_unchanged`.
 - `service/facts.rs` (10.3): `a_one_request_grant_is_offered_only_to_its_origin_request`,
   `a_classification_is_offered_no_ended_grant`, `a_fresh_proof_is_offered_every_relied_grant_even_ended`,
   `a_pending_effect_names_its_calendar_and_its_target_event`.
 - `service/grants.rs` (5.5): `an_ended_grant_of_any_term_is_never_valid`,
   `a_one_request_grant_is_valid_only_while_its_origin_is_open`, `an_until_revoked_grant_is_valid_until_it_ends`,
-  `a_session_grant_needs_its_session_live_in_this_run`, `a_session_grant_idles_after_1800000_ms_of_activity`,
-  `a_session_with_no_call_idles_1800000_ms_after_its_connect`, `a_grant_names_its_sets_and_its_accounts`.
+  `a_session_grant_needs_its_session_live_in_this_run`, `a_session_grant_is_live_until_just_before_the_idle_limit`
+  (c39), `a_session_with_no_call_idles_1800000_ms_after_its_connect`, `a_grant_names_its_sets_and_its_accounts`.
 - `service/limits.rs` (5.9, D24): `each_limit_refuses_at_its_maximum_and_not_below`, `the_total_is_checked_first`,
   `the_rate_waits_until_the_oldest_call_leaves_the_window`, `a_busy_window_is_one_row_per_agent_with_its_count`,
   `quit_flushes_every_open_window`.
@@ -1229,7 +1246,7 @@ Each name states what the test proves.
   `a_repeated_call_returns_its_request_and_writes_nothing`, `a_call_past_a_limit_is_busy_and_counted_in_the_agents_window`,
   `a_connect_that_replaces_a_session_raises_the_revision_once_and_closes_the_old_connection`,
   `a_call_on_a_connection_without_a_session_is_not_permitted`, `quit_ends_live_sessions_and_their_grants_with_app_quit`,
-  `an_idle_session_ends_with_its_grants_after_1800000_ms`,
+  `an_idle_session_ends_with_its_grants_at_1800000_ms` (c39),
   `a_discarded_classification_is_proved_again_until_its_counter_is_spent`,
   `a_backward_clock_step_is_reported_once_and_never_lowers_now`,
   `an_authorization_issued_before_a_clock_step_expires_60_s_later_on_the_floored_clock` (the authorization half of
@@ -1317,15 +1334,15 @@ true }` where needed and feed `ProofDone` / `AttemptDone`. The shared harness is
 | c03 | `grants.rs` | `until_revoked_survives_restart_and_revoked_stays_revoked` | 5.5, 5.8 |
 | c04 | `grants.rs` | `a_one_request_grant_ends_consumed_with_its_request_and_serves_no_other` | D18 |
 | c05 | `dispatch.rs` | `an_authorization_from_before_a_restart_is_never_handed_off` | DEF-4: consumed stays consumed; issued is voided `broker_restart`; within 60 s |
-| c06 | `sessions.rs` | `an_idle_session_ends_at_1800_s_with_session_idle_timeout` | 5.5 |
-| c06 | `sessions.rs` | `a_status_poll_keeps_a_session_alive` | D35, R20 |
-| c06 | `sessions.rs` | `a_session_with_no_call_has_last_active_at_its_start_and_idles_1800_s_after_connect` | D35; `last_tool_call_at` null |
+| c06 | `sessions.rs` | `an_idle_session_ends_at_1800_s_with_session_idle_timeout` | 5.5; changed with c39: it ends at the last call + 1 800 000 ms, no longer 1 ms later |
+| c06 | `sessions.rs` | `a_status_poll_keeps_a_session_alive` | D35, R20; ends at the poll + 1 800 000 ms (c39) |
+| c06 | `sessions.rs` | `a_session_with_no_call_has_last_active_at_its_start_and_idles_1800_s_after_connect` | D35; `last_tool_call_at` null; ends at the connect + 1 800 000 ms (c39) |
 | c07 | `races.rs` | `revoke_while_a_proof_runs_is_acknowledged_first_and_the_permit_is_discarded` | 5.1, 5.6: the permit is discarded and the re-proof blocks |
 | c08 | `races.rs` | `pause_while_queued_refuses_the_handoff` | a pause before the handoff: no dispatch, no consumed authorization, the fresh proof sees the pause. The `queued` setting has no public entry (5.1 pumps after every input); its void reasons are unit tests (9.1) |
 | c09 | `races.rs` | `revoke_before_a_retry_refuses_the_retry` | the retry's fresh proof sees the relied grant ended; Block ends `blocked` |
 | c10 | `races.rs` | `a_revoke_after_handoff_leaves_the_attempt_visible` | 6.1 `revoke_grant` |
 | c11 | `grants.rs` | `an_approval_binds_the_digest_and_the_order_names_one_action` | 6.1 `decide_request`, 5.5 |
-| c11 | `grants.rs` | `a_session_grant_binds_the_current_live_session` | 5.5, D22 |
+| c11 | `grants.rs` | `a_session_grant_binds_the_current_live_session` | 5.5, D22: on an `until_revoked` card in Agent Drafts (D40), with `create_grant`'s message |
 | c12 | `faults.rs` | `a_failed_authorize_or_dispatch_write_hands_off_nothing_and_halts` | triggers on `request.authorize`, `request.dispatch`, `agent.call`, `owner.revoke_grant`, `owner.decide_request` |
 | c13 | `faults.rs` | `a_busy_store_answers_store_unavailable_and_halts` | 5.2, 7.2 |
 | c14 | `faults.rs` | `a_halted_output_carries_no_job_and_a_committed_dispatch_restarts_as_outcome_unknown` | D7 |
@@ -1339,7 +1356,7 @@ true }` where needed and feed `ProofDone` / `AttemptDone`. The shared harness is
 | c18 | `proofs.rs` | `no_prover_ends_every_request_undecided_with_no_report` | D14 |
 | c18 | `proofs.rs` | `a_synthetic_permit_is_never_accepted` | D13; its report is never shown as a proof |
 | c18 | `proofs.rs` | `a_proof_past_35_s_is_undecided_and_a_late_result_is_ignored` | D16 watchdog |
-| c18 | `proofs.rs` | `permit_without_a_provider_is_undecided` | D17 |
+| c18 | `proofs.rs` | `permit_without_a_provider_is_undecided` | D17; approved for one request, because without a provider every card proposes `one_request` (D40) |
 | c18 | `proofs.rs` | `a_fresh_permit_with_no_authorizing_grant_is_undecided` | L7(d), D17 |
 | c18 | `proofs.rs` | `a_result_naming_a_grant_outside_its_facts_is_undecided_and_never_halts` | D17: recorded, relied list unchanged, `undecided`, no halt, a restart repeats nothing |
 | c18 | `proofs.rs` | `a_report_bound_to_another_job_neither_authorizes_nor_halts` | D39: request, purpose or action digest of another job; nothing recorded under either request |
@@ -1348,9 +1365,9 @@ true }` where needed and feed `ProofDone` / `AttemptDone`. The shared harness is
 | c20 | `limits.rs` | `busy_limits_create_no_request` | 5.9: the four limits |
 | c20 | `limits.rs` | `busy_refusals_are_audited_once_per_agent_per_minute` | D24 |
 | c20 | `limits.rs` | `the_open_card_limit_is_checked_only_at_creation` | 5.9, R18 |
-| — | `limits.rs` | `the_owner_records_are_bounded_so_a_snapshot_fits_in_one_frame` | D38: the budget for sets, profiles and approvals; refusals store nothing; deny still works |
+| — | `limits.rs` | `the_owner_records_are_bounded_so_a_snapshot_fits_in_one_frame` | D38: the budget for sets, profiles and approvals; refusals store nothing; deny still works. Its until-revoked approval is on an Agent Drafts card, so the budget is reached before the ceiling of D40 |
 | — | `limits.rs` | `an_answer_over_the_frame_bound_is_refused_and_the_broker_runs_on` | D38: `internal` with id and method, no halt |
-| c21 | `grants.rs` | `grants_and_calendars_are_namespaced_by_account` | 3.5, 11.3 W2: every connected account and every selected calendar, each named with its account; a disconnect ends that account's grants only |
+| c21 | `grants.rs` | `grants_and_calendars_are_namespaced_by_account` | 3.5, 11.3 W2: every connected account and every selected calendar, each named with its account; a disconnect ends that account's grants only. Flexible is activated first, so its creates in plain calendars propose `until_revoked` (D40) |
 | c22 | `sessions.rs` | `an_unknown_agent_gets_no_session_and_no_request` | 5.5, section 4 access audit |
 | c23 | `grants.rs` | `widening_or_deleting_a_recipient_set_ends_the_grants_that_name_it` | 5.6, D19 |
 | c24 | `load.rs` | `one_writer_under_load_every_record_verifies` | PLAN 5 R09 and the DEF-1 sequences: 500 agent calls interleaved with owner commands through one in-process writer (a second writer is ruled out by s06, p02) |
@@ -1388,6 +1405,33 @@ true }` where needed and feed `ProofDone` / `AttemptDone`. The shared harness is
 | c35 | `proofs.rs` | `the_state_check_in_read_details_matters` | 5.7: a forged cause on a request that is not `undecided` reads null |
 | c35 | `proofs.rs` | `an_old_move_without_a_cause_reads_null` | 5.7: a move as earlier builds wrote it, and an unknown text, read null |
 | c36 | `proofs.rs` | `a_restart_keeps_the_cause_and_restates_starting` | 5.7, 5.8: a stored cause survives a restart; a job proved again while Isabelle starts reads `prover_unavailable`; health reads `starting` |
+| c37 | `src/service/durations.rs` (unit) | the eight tests of 9.1 | D40: the whole table (every tool, Careful, Flexible and profiles that set every row to allow, ask and block, on Agent Drafts, plain, read-only and missing calendars); a duplicated entry reads as the theory reads it; a missing calendar, a run that cannot carry out a change and a request that is the origin of a lasting grant propose `one_request`; never `session`; `longer` over all nine pairs |
+| c37 | `durations.rs` | `careful_create_in_agent_drafts_proposes_until_revoked` | D40: `until_revoked`, a session bound to the current live session and `one_request` are all accepted |
+| c37 | `durations.rs` | `flexible_create_in_an_existing_calendar_proposes_until_revoked` | D40: the profile in force decides; under Careful the same create proposes `one_request` |
+| c37 | `durations.rs` | `a_custom_profile_in_force_sets_the_ceiling` | D40 through the real `open_card`: `create_in_existing_calendar` allow gives `until_revoked` on a plain calendar; `create_in_agent_drafts` ask gives `one_request` on Agent Drafts |
+| c37 | `durations.rs` | `a_run_that_cannot_carry_out_a_change_proposes_one_request` | D40 (3): an Agent Drafts create proposes `one_request` with the synthetic classifier and with Isabelle but no provider |
+| c37 | `durations.rs` | `reads_and_availability_propose_one_request` | D40: the under-proposal of reads under Careful and Flexible; `until_revoked` refused |
+| c37 | `durations.rs` | `updates_invitations_responses_and_deletes_propose_one_request` | D40: on Agent Drafts and plain calendars, under Careful, Flexible and a custom profile that allows every row it can |
+| c37 | `durations.rs` | `a_reask_after_a_lasting_approval_proposes_one_request` | D40 (4): asked again after an `until_revoked` approval, the new card proposes `one_request` although the row still allows; it can be decided and the request goes on |
+| c37 | `durations.rs` | `a_request_with_a_lasting_grant_never_proposes_until_revoked_again` | D40 (4), three cards: the guard is the stored lasting grant, not the latest approval; a `one_request` approval alone adds no guard |
+| c37 | `durations.rs` | `a_reask_after_a_session_approval_proposes_one_request` | D40 (4): a session approval is a lasting one; asked again after it, the card proposes `one_request` and refuses `until_revoked` and `session` |
+| c37 | `durations.rs` | `a_reask_after_the_lasting_grant_is_revoked_proposes_one_request` | D40 (4): an ended lasting grant still counts; asked again after it was revoked, the card proposes `one_request` |
+| c37 | `durations.rs` | `a_create_on_a_calendar_without_write_access_proposes_one_request` | D40 (2), through the real `facts::selected_calendars`: under Flexible a create on a `reader` and on a `free_busy_reader` calendar proposes `one_request`, the proof's facts call the calendar not writable and `until_revoked` is refused; the `owner` calendar of the same account proposes `until_revoked` |
+| c38 | `durations.rs` | `careful_create_in_an_existing_calendar_proposes_one_request_and_refuses_longer` | D22, D40 (pull requests 24 and 28): `until_revoked` and `session` refused at `/params/duration/kind` with the fixture's message, `retryable` false; no notice, no job, no grant, the same revision; then `one_request` is approved |
+| c38 | `durations.rs` | `the_ceiling_comes_before_the_session_check` | D22: with the agent disconnected, a session on a `one_request` card is refused at `/params/duration/kind`; on an `until_revoked` card at `/params/duration` with `create_grant`'s message, while `one_request` and `until_revoked` are accepted |
+| c38 | `durations.rs` | `selected_is_checked_before_the_ceiling` | D22: `/params/selected` first |
+| c38 | `durations.rs` | `deny_is_not_checked` | D22: a denial carries no duration |
+| c38 | `durations.rs` | `a_stored_one_request_card_refuses_longer_after_a_widening` | D20, D40: the stored card is compared, never computed again |
+| c38 | `durations.rs` | `a_stale_until_revoked_ceiling_is_accepted_and_asked_again` | D20: the stale ceiling ends asked again; the new card proposes `one_request` and can be decided, the details carry no approval, the lasting grant stays live, and the request goes on to a dispatch |
+| c38 | `durations.rs` | `a_stale_until_revoked_ceiling_can_end_blocked` | D20: the stale ceiling ends blocked (the row now blocks) and the lasting grant stays live |
+| c38 | `durations.rs` | `a_stale_until_revoked_ceiling_ends_blocked_when_the_agent_is_paused` | D20: a pause leaves the ceiling alone; the `until_revoked` approval is accepted, the fresh proof blocks on `agent_not_paused` (a Permit is `undecided`, `agent_paused`), the lasting grant stays live and, after a resume, serves the agent's next create in that calendar |
+| c38 | `durations.rs` | `a_stored_until_revoked_card_decided_in_a_run_that_cannot_change_ends_undecided` | D20: the card keeps its `until_revoked` proposal across a restart into a run without a provider or without the Isabelle kind; the approval is accepted, the fresh Permit ends `undecided` (`no_provider`, `no_prover`) and the lasting grant stays live |
+| c38 | `durations.rs` | `a_refused_duration_replays` | D23: the same command id and params get the same bytes and write nothing; another duration under the id is `command_reused` |
+| c39 | `durations.rs` | `details_carry_the_approval_outside_pending_approval` | 6.1: after an approval and after a denial the details carry it |
+| c39 | `durations.rs` | `an_expired_reask_shows_no_approval_and_keeps_the_lasting_grant` | 6.1: after the re-asked card expires the approval is null and the lasting grant is listed |
+| c39 | `durations.rs` | `a_stale_reask_shows_the_stored_approval` | 6.1: a request that went stale while asked again shows the stored, earlier approval |
+| c39 | `durations.rs` | `a_session_decision_follows_the_idle_limit_to_the_millisecond` | 5.5: at the limit - 1 ms a session decision is accepted with the job's session fact and the grant not ended; at the limit a session decision is refused at `/params/duration`, the earlier session grant ends `session_idle_timeout`, a one-request job carries no session fact and a call on the old connection is `not_permitted` |
+| c39 | unit (9.1) | `activity.rs`, `grants.rs` and `service/tests.rs` tests marked c39 | 5.5: live at the limit - 1 ms, idle and invalid at the limit, the deadline at the limit |
 | — | `fitness.rs` | `forbidden_dependencies_are_absent` | the table of section 2 |
 | — | `fitness.rs` | `the_manifest_scan_reads_every_dependency_form` | the scan itself |
 
@@ -1403,7 +1447,15 @@ directory and `FABRIC_BROKER_KEY_SOURCE=test`. After a kill it waits up to 2 s f
   `end_of_input_before_anything_exits_zero`, `a_write_error_ends_the_broker`.
 - Changed: `hello_reports_the_limits_of_the_contract` (name, build), `the_first_run_snapshot` (`store: ready`, cursor
   0), `connect_google_is_not_available_until_cd_w05`, and with the synthetic agent after subscribing:
-  `an_approval_of_a_synthetic_request_creates_a_grant_and_ends_undecided`, `refused_decisions_and_a_denial`.
+  `an_approval_of_a_synthetic_request_creates_a_grant_and_ends_undecided` (its card proposes `one_request`, D40),
+  `refused_decisions_and_a_denial` (also `until_revoked` and `session` refused at `/params/duration/kind` with the
+  fixture's message while the request stays pending, D22).
+- The synthetic classifier cannot carry out a change, so every synthetic card proposes `one_request` (D40) and no
+  process test with the synthetic agent can approve for a session or until revoked. p04, p06 and p07 assert the
+  proposal and the refusal of a longer duration instead; what they asserted of lasting grants is covered by the
+  in-process core tests with an Isabelle prover and a provider: made and used, c37 and c05; ended at a restart, c01
+  and c27; kept across a restart, c03; at quit, c02; at an idle end, c06 and c39. A card keeping an `until_revoked`
+  proposal across a restart is c38.
 - New:
 
 | Id | Test | Proves |
@@ -1411,17 +1463,21 @@ directory and `FABRIC_BROKER_KEY_SOURCE=test`. After a kill it waits up to 2 s f
 | p01 | `configuration_errors_exit_78_before_any_frame` | each refused setting exits 78 with one stderr line, before any frame; never a macOS broker with `keychain` |
 | p02 | `a_second_broker_on_the_same_directory_answers_store_unavailable` | the lock keeps a second broker out; it answers `hello` |
 | p03 | `a_newer_schema_store_is_refused_but_hello_answers` | the store is left alone; stdout holds frames only |
-| p04 | `state_survives_sigkill_and_restart` | a pending request and an until-revoked grant survive; a session grant ends `broker_restart`; sequences continue. The store-survival check of the packaged run (L1) |
+| p04 | `state_survives_sigkill_and_restart` | a pending request and its card survive; sequences continue; a session and until revoked are refused in both runs and one request is approved (D40; the lasting grants are c01, c03 and c27; an `until_revoked` proposal kept across a restart is c38). The store-survival check of the packaged run (L1) |
 | p05 | `a_duplicate_command_after_restart_gets_the_same_bytes` | the command table is durable |
-| p06 | `end_of_input_ends_sessions_and_exits_within_the_bound` | quit in one commit within the stop bound |
-| p07 | `the_synthetic_agent_waits_for_subscribe_asks_and_an_approval_ends_undecided` | 5.10 |
+| p06 | `end_of_input_ends_sessions_and_exits_within_the_bound` | quit in one commit within the stop bound; the session ends; a session duration is refused (D40; the `app_quit` grant end is c02) |
+| p07 | `the_synthetic_agent_waits_for_subscribe_asks_and_an_approval_ends_undecided` | 5.10; the card proposes `one_request`, until revoked is refused, and the one-request grant ends `consumed` with its request, so no grant is left (D18, D40) |
 | p08 | `stdout_and_stderr_carry_no_event_content` | PLAN 5 R13: no event content outside a full-detail read; no key on stderr |
+| p09 | `lasting_grant.rs`: `a_lasting_grant_for_a_create_in_agent_drafts_maps_to_the_create_on_that_calendar`, `a_lasting_grant_for_a_create_in_a_plain_calendar_maps_to_the_create_on_that_calendar` | D40: the real core (`tests/support`, Isabelle kind and a provider) through proposal, card and an approval until revoked; the fresh-permit job mapped by the adapter's `context_of` gives the create tool alone, the request's calendar alone, no window, fields, recipients or notice choice, `relied` = the grant, the profile and the calendar's Agent Drafts mark, for both cells that propose `until_revoked` (Careful in Agent Drafts, Flexible in a plain calendar); a session approval maps to the job's session |
+| p10 | `live.rs` (ignored, live): `the_proposed_duration_agrees_with_the_rule_theory` | D40 against the rule theory: for each cell of the table, the proposal of the real core, and Isabelle's outcome with only the real grant in the context, under `until_revoked` and the live session (compared with the worked cases of "What a lasting approval is worth" in `isabelle/Fabric_Broker_Examples/Broker_Examples.thy`) and under one request (the real one-request grant unchanged where the card proposes `one_request`; read from `exact` and `No_strangers` in `isabelle/Fabric_Broker/Fabric_Broker.thy`); it prints the table. A cell proposing `until_revoked` must be permitted on that grant |
 
 `apps/fabric-broker/tests/relay_round_trip.rs`: `start_at` builds its environment without any `FABRIC_BROKER_*`
 name, then the three variables (own directory, test key, synthetic). Tests: `echo_through_the_relay`,
 `notices_are_pushed_over_time`, `approval_then_denial`, `a_duplicate_command_is_answered_once` (the synthetic agent
-after subscribing; ids read from notices; sequences rise by one, no fixed list), `a_refused_frame_never_reaches_the_broker`,
-`the_death_of_the_broker_ends_the_session`, `quit_stops_the_broker_without_a_kill`, `a_broker_in_a_directory_with_spaces`.
+after subscribing; ids read from notices; sequences rise by one, no fixed list; a session is refused over the relay
+at `/params/duration/kind` and the duplicate approval is for one request, D40),
+`a_refused_frame_never_reaches_the_broker`, `the_death_of_the_broker_ends_the_session`,
+`quit_stops_the_broker_without_a_kill`, `a_broker_in_a_directory_with_spaces`.
 
 Relay unit tests: `allowlist_names_the_broker_variables`, `broker_variables_are_named_by_the_prefix`. Host tests: the
 existing `Host::start` tests pass a per-test directory and the test key, and the real-broker round trip also restarts

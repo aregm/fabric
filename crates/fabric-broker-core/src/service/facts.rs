@@ -103,27 +103,13 @@ fn named_sets(r: &ReadTx<'_>, grants: &[GrantFact]) -> Result<Vec<RecipientSet>,
     Ok(sets)
 }
 
-/// The proof job of `request` for `purpose`, its facts read in one transaction (`r`). The job id
-/// is 0; the core numbers the job when it hands it out, after commit.
-pub(crate) fn proof_job(
+/// The connected accounts and every selected calendar of a connected account, with its
+/// writable and Agent Drafts marks (decision L6, reading 11.3 W2). A proof's facts and a card's
+/// proposed duration (`durations::proposed_duration`) both read them here, so the card is
+/// computed from the calendars the proof saw.
+pub(crate) fn selected_calendars(
     r: &ReadTx<'_>,
-    activity: &Activity,
-    now_ms: i64,
-    request: &RequestRecord,
-    purpose: ProofPurpose,
-) -> Result<ProofJob, StoreFault> {
-    let agent_id = &request.row.request.agent_id;
-    let request_id = &request.row.request.request_id;
-    let agent = r
-        .agent(agent_id)?
-        .ok_or(crate::service::invariant("the agent exists"))?;
-    let relied = match purpose {
-        ProofPurpose::Classification => Vec::new(),
-        ProofPurpose::FreshPermit => request.relied_grant_ids.clone(),
-    };
-    let offered = offered_grants(r.grants_of_agent(agent_id)?, request_id, &relied);
-    let grants = grant_facts(r, activity, now_ms, offered)?;
-    let recipient_sets = named_sets(r, &grants)?;
+) -> Result<(Vec<Id>, Vec<CalendarFact>), StoreFault> {
     let mut connected = Vec::new();
     let mut calendars = Vec::new();
     for account in r.accounts()? {
@@ -145,6 +131,31 @@ pub(crate) fn proof_job(
         }
         connected.push(account.account_id);
     }
+    Ok((connected, calendars))
+}
+
+/// The proof job of `request` for `purpose`, its facts read in one transaction (`r`). The job id
+/// is 0; the core numbers the job when it hands it out, after commit.
+pub(crate) fn proof_job(
+    r: &ReadTx<'_>,
+    activity: &Activity,
+    now_ms: i64,
+    request: &RequestRecord,
+    purpose: ProofPurpose,
+) -> Result<ProofJob, StoreFault> {
+    let agent_id = &request.row.request.agent_id;
+    let request_id = &request.row.request.request_id;
+    let agent = r
+        .agent(agent_id)?
+        .ok_or(crate::service::invariant("the agent exists"))?;
+    let relied = match purpose {
+        ProofPurpose::Classification => Vec::new(),
+        ProofPurpose::FreshPermit => request.relied_grant_ids.clone(),
+    };
+    let offered = offered_grants(r.grants_of_agent(agent_id)?, request_id, &relied);
+    let grants = grant_facts(r, activity, now_ms, offered)?;
+    let recipient_sets = named_sets(r, &grants)?;
+    let (connected, calendars) = selected_calendars(r)?;
     let counters = r.counters()?;
     let facts = TrustedFacts {
         actor: FactActor::Agent(agent_id.clone()),

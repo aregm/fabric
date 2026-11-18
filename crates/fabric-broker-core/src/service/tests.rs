@@ -752,16 +752,18 @@ fn quit_ends_live_sessions_and_their_grants_with_app_quit() {
 }
 
 #[test]
-fn an_idle_session_ends_with_its_grants_after_1800000_ms() {
+fn an_idle_session_ends_with_its_grants_at_1800000_ms() {
+    // c39: the session is live while now < last activity + the limit (5.5), so it ends
+    // at the limit itself, with its grant.
     let mut run = Run::new();
     run.setup();
     let request_id = run.pending();
     let (grant, _) = run.approve(&request_id, DurationKind::Session);
     let last_call = run.now;
-    run.now = last_call + 1_800_000;
+    run.now = last_call + 1_799_999;
     let _ = run.tick();
     assert_eq!(run.core().read(|r| r.live_sessions()).unwrap().len(), 1);
-    run.now = last_call + 1_800_001;
+    run.now = last_call + 1_800_000;
     let _ = run.tick();
     let (ended, sessions) = run
         .core()

@@ -28,8 +28,8 @@ use std::time::{Duration, Instant};
 use fabric_desktop_contracts::common::UndecidedReason;
 use fabric_desktop_contracts::error::{ErrorCode, Fault};
 use fabric_desktop_contracts::owner::{
-    Approval, Change, Grant, GrantEndReason, GrantTerm, OwnerNotice, OwnerResponse, OwnerResult,
-    ProverHealth, Request,
+    Approval, Change, DurationKind, Grant, GrantEndReason, GrantTerm, OwnerNotice, OwnerResponse,
+    OwnerResult, ProverHealth, Request,
 };
 use fabric_desktop_contracts::{
     Entry, Frame, MAX_FRAME_BYTES, RequestState, canonical, decode, first_invalid, parse_strict,
@@ -554,6 +554,52 @@ fn assert_consecutive(notices: &[OwnerNotice]) {
     assert_eq!(sequences, expected, "the notices do not rise by one");
 }
 
+/// The duration the card of `request_id` proposes, from its details.
+fn proposed(broker: &mut Broker, request_id: &str) -> DurationKind {
+    let details = request(
+        "details-duration",
+        "get_request_details",
+        json!({"request_id": request_id, "redaction": "redacted"}),
+    );
+    let OwnerResult::GetRequestDetails(details) = broker.result(&details) else {
+        panic!("not request details")
+    };
+    details
+        .card
+        .expect("a pending request has a card")
+        .proposed_duration
+        .kind
+}
+
+/// Asserts that `response` refuses a duration longer than the card proposes: `invalid_params`
+/// at `/params/duration/kind` with the message of the contract's fixture (D22, D40).
+fn assert_longer_refused(response: &OwnerResponse) {
+    let fixture: Value = serde_json::from_slice(
+        &std::fs::read(
+            contract_dir()
+                .join("fixtures/messages/accept-owner-response-error-invalid-params.json"),
+        )
+        .expect("the fixture reads"),
+    )
+    .expect("the fixture is JSON");
+    let (code, _, method, detail) = error_of(response);
+    assert_eq!(
+        (code, method.as_deref(), detail),
+        (
+            ErrorCode::InvalidParams,
+            Some("decide_request"),
+            json!({"pointer": "/params/duration/kind"})
+        )
+    );
+    let OwnerResponse::Error { error, .. } = response else {
+        unreachable!()
+    };
+    assert_eq!(
+        json!(error.message.as_str()),
+        fixture["value"]["error"]["message"]
+    );
+}
+
 #[test]
 fn hello_reports_the_limits_of_the_contract() {
     let mut broker = Broker::start();
@@ -680,6 +726,9 @@ fn an_approval_of_a_synthetic_request_creates_a_grant_and_ends_undecided() {
     };
     let card = details.card.expect("a pending request has a card");
     assert_eq!(card.insufficiency.rule.as_str(), "synthetic_no_rule_theory");
+    // The synthetic classifier cannot carry out a change, so the card proposes one request
+    // (D40).
+    assert_eq!(card.proposed_duration.kind, DurationKind::OneRequest);
     let action = details.private.expect("full details").action;
     assert_eq!(action.tool().as_str(), "fabric_calendar_propose_create");
 
@@ -815,6 +864,14 @@ fn refused_decisions_and_a_denial() {
                 detail
             )
         );
+    }
+
+    // The synthetic card proposes one request (D40), so a longer duration is refused and the
+    // request stays as it was (D22).
+    assert_eq!(proposed(&mut broker, &request_id), DurationKind::OneRequest);
+    for (suffix, kind) in [("longer", "until_revoked"), ("session", "session")] {
+        let longer = decide(&pending, suffix, "approve", json!({"kind": kind}));
+        assert_longer_refused(&broker.ask(&longer));
     }
 
     let OwnerResult::DecideRequest(decided) = broker.result(&deny) else {
@@ -1389,28 +1446,50 @@ fn a_newer_schema_store_is_refused_but_hello_answers() {
     );
 }
 
-/// p04: a kill loses nothing committed. A pending request survives, a session grant ends with
-/// `broker_restart` at the next start, an until-revoked grant survives, and the notice sequences
-/// continue across runs.
+/// p04: a kill loses nothing committed. A pending request and its card survive and the notice
+/// sequences continue across runs. The synthetic cards propose one request (D40), so a session
+/// or until revoked is refused in both runs; a recomputed card would propose the same, so a card
+/// keeping an `until_revoked` proposal across a restart is the core's c38
+/// (`a_stored_until_revoked_card_decided_in_a_run_that_cannot_change_ends_undecided`). A
+/// session grant ending with `broker_restart` and an until-revoked grant surviving a restart
+/// are covered by the core's c01 (`restart_ends_session_grants_with_broker_restart`), c03
+/// (`until_revoked_survives_restart_and_revoked_stays_revoked`) and c27
+/// (`a_reopen_after_in_use_runs_recovery`), with an Isabelle prover and a provider attached.
 #[test]
 fn state_survives_sigkill_and_restart() {
     let dir = TempDir::new("survive");
 
-    // Run 1: a session grant on the first request; the second request stays pending.
+    // Run 1: a session is refused on the first request, which is approved for one request; the
+    // second request stays pending.
     let mut run = Broker::on(&dir.data(), true);
     run.result(&subscribe(0));
     let first = run.pending(&[]);
     let first_id = first.request_id.as_str().to_owned();
-    let OwnerResult::DecideRequest(decided) =
-        run.result(&decide(&first, "1", "approve", json!({"kind": "session"})))
-    else {
+    assert_eq!(proposed(&mut run, &first_id), DurationKind::OneRequest);
+    assert_longer_refused(&run.ask(&decide(
+        &first,
+        "session",
+        "approve",
+        json!({"kind": "session"}),
+    )));
+    let OwnerResult::DecideRequest(decided) = run.result(&decide(
+        &first,
+        "1",
+        "approve",
+        json!({"kind": "one_request"}),
+    )) else {
         panic!()
     };
     let Approval::Approve(approval) = &decided.approval else {
         panic!()
     };
-    let session_grant = approval.grant_id.as_str().to_owned();
+    let consumed = approval.grant_id.as_str().to_owned();
     run.request_in(&first_id, RequestState::Undecided);
+    let ended = run.grant(&consumed, |g| g.ended.is_some());
+    assert_eq!(
+        ended.ended.map(|e| e.reason),
+        Some(GrantEndReason::Consumed)
+    );
     let second = run.pending(&[&first_id]);
     let second_id = second.request_id.as_str().to_owned();
     let cursor = run.snapshot()["cursor"].as_u64().unwrap();
@@ -1424,26 +1503,20 @@ fn state_survives_sigkill_and_restart() {
     assert_consecutive(&run.notices);
     run.kill();
 
-    // Run 2, without the synthetic agent: the pending request is there, the session grant ended
-    // at the start, and the notices continue from the last one.
+    // Run 2, without the synthetic agent: the pending request is there with its card, and the
+    // notices continue from the last one.
     let mut run = Broker::after_kill(&dir.data(), false);
     let OwnerResult::Subscribe(subscribed) = run.result(&subscribe(cursor)) else {
         panic!()
     };
     assert_eq!(subscribed.cursor.get(), cursor);
-    let ended = run.grant(&session_grant, |g| g.ended.is_some());
-    assert_eq!(
-        ended.ended.map(|e| e.reason),
-        Some(GrantEndReason::BrokerRestart)
-    );
-    assert_eq!(run.notices[0].sequence.get(), cursor + 1);
-    assert_consecutive(&run.notices);
     let snapshot = run.snapshot();
     let requests = snapshot["requests"].as_array().unwrap();
     assert_eq!(requests.len(), 1, "{requests:?}");
     assert_eq!(requests[0]["request_id"], json!(second_id));
     assert_eq!(requests[0]["status"]["state"], "pending_approval");
     assert_eq!(snapshot["grants"], json!([]));
+    assert_eq!(proposed(&mut run, &second_id), DurationKind::OneRequest);
     let details = request(
         "details-2",
         "get_request_details",
@@ -1452,34 +1525,36 @@ fn state_survives_sigkill_and_restart() {
     let OwnerResult::GetRequestDetails(details) = run.result(&details) else {
         panic!()
     };
+    assert_longer_refused(&run.ask(&decide(
+        &details.request,
+        "until-revoked",
+        "approve",
+        json!({"kind": "until_revoked"}),
+    )));
     let OwnerResult::DecideRequest(decided) = run.result(&decide(
         &details.request,
         "2",
         "approve",
-        json!({"kind": "until_revoked"}),
+        json!({"kind": "one_request"}),
     )) else {
         panic!()
     };
     let Approval::Approve(approval) = &decided.approval else {
         panic!()
     };
-    let kept_grant = approval.grant_id.as_str().to_owned();
+    let consumed = approval.grant_id.as_str().to_owned();
     run.request_in(&second_id, RequestState::Undecided);
+    run.grant(&consumed, |g| g.ended.is_some());
+    assert_eq!(run.notices[0].sequence.get(), cursor + 1);
+    assert_consecutive(&run.notices);
     let cursor = run.snapshot()["cursor"].as_u64().unwrap();
     run.kill();
 
-    // Run 3: the until-revoked grant is still live; nothing is open.
+    // Run 3: no grant is live and nothing is open.
     let mut run = Broker::after_kill(&dir.data(), false);
     let snapshot = run.snapshot();
     assert!(snapshot["cursor"].as_u64().unwrap() >= cursor);
-    let grants: Vec<&Value> = snapshot["grants"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .map(|g| &g["grant_id"])
-        .collect();
-    assert_eq!(grants, [&json!(kept_grant)]);
-    assert_eq!(snapshot["grants"][0]["term"]["kind"], "until_revoked");
+    assert_eq!(snapshot["grants"], json!([]));
     assert_eq!(snapshot["requests"], json!([]));
     assert_eq!(snapshot["health"]["store"], "ready");
 }
@@ -1511,8 +1586,11 @@ fn a_duplicate_command_after_restart_gets_the_same_bytes() {
     assert_eq!(run.snapshot()["cursor"].as_u64().unwrap(), cursor);
 }
 
-/// p06: end of input ends the live sessions and their grants (`app_quit`) in one commit and the
-/// broker exits within the bound; the next run starts with none.
+/// p06: end of input ends the live sessions (`app_quit`) in one commit and the broker exits
+/// within the bound; the next run starts with none. The synthetic card proposes one request
+/// (D40), so a session is refused; a session grant ending with `app_quit` is covered by the
+/// core's c02 (`quit_ends_session_grants_with_app_quit`), with an Isabelle prover and a
+/// provider attached.
 #[test]
 fn end_of_input_ends_sessions_and_exits_within_the_bound() {
     let dir = TempDir::new("quit");
@@ -1520,11 +1598,17 @@ fn end_of_input_ends_sessions_and_exits_within_the_bound() {
     run.result(&subscribe(0));
     run.notice(|n| matches!(&n.change, Change::Agent(a) if a.session.is_some()));
     let pending = run.pending(&[]);
+    assert_longer_refused(&run.ask(&decide(
+        &pending,
+        "session",
+        "approve",
+        json!({"kind": "session"}),
+    )));
     let OwnerResult::DecideRequest(decided) = run.result(&decide(
         &pending,
         "1",
         "approve",
-        json!({"kind": "session"}),
+        json!({"kind": "one_request"}),
     )) else {
         panic!()
     };
@@ -1533,17 +1617,10 @@ fn end_of_input_ends_sessions_and_exits_within_the_bound() {
     };
     let grant_id = approval.grant_id.as_str().to_owned();
     run.request_in(pending.request_id.as_str(), RequestState::Undecided);
+    run.grant(&grant_id, |g| g.ended.is_some());
     let (status, took, rest) = run.finish();
     assert_eq!(status.code(), Some(0));
     assert!(took < STOP_BOUND, "stopping took {took:?}");
-    let ended = rest.iter().find_map(|w| match &w.frame {
-        Frame::OwnerNotice(n) => match &n.change {
-            Change::Grant(g) if g.grant_id.as_str() == grant_id => g.ended.clone(),
-            _ => None,
-        },
-        _ => None,
-    });
-    assert_eq!(ended.map(|e| e.reason), Some(GrantEndReason::AppQuit));
     assert!(rest.iter().any(|w| matches!(&w.frame,
         Frame::OwnerNotice(n) if matches!(&n.change, Change::Agent(a) if a.session.is_none()))));
 
@@ -1555,7 +1632,11 @@ fn end_of_input_ends_sessions_and_exits_within_the_bound() {
 
 /// p07: the synthetic agent does nothing before the page subscribes; then it enrolls, asks,
 /// and an approval ends `undecided`, because the synthetic classifier never permits. Its proof
-/// reports are not shown as proofs. A second request follows.
+/// reports are not shown as proofs. Its card proposes one request (D40), so until revoked is
+/// refused, and the one-request grant ends with its request. A second request follows. An
+/// until-revoked grant made and used is covered by the core's c37
+/// (`careful_create_in_agent_drafts_proposes_until_revoked`) and c05
+/// (`an_authorization_from_before_a_restart_is_never_handed_off`).
 #[test]
 fn the_synthetic_agent_waits_for_subscribe_asks_and_an_approval_ends_undecided() {
     let mut broker = Broker::synthetic();
@@ -1621,7 +1702,14 @@ fn the_synthetic_agent_waits_for_subscribe_asks_and_an_approval_ends_undecided()
     );
     assert_eq!(error_of(&broker.ask(&proof)).0, ErrorCode::NotFound);
 
-    let approve = decide(&pending, "1", "approve", json!({"kind": "until_revoked"}));
+    assert_eq!(card.proposed_duration.kind, DurationKind::OneRequest);
+    assert_longer_refused(&broker.ask(&decide(
+        &pending,
+        "until-revoked",
+        "approve",
+        json!({"kind": "until_revoked"}),
+    )));
+    let approve = decide(&pending, "1", "approve", json!({"kind": "one_request"}));
     let OwnerResult::DecideRequest(decided) = broker.result(&approve) else {
         panic!()
     };
@@ -1644,17 +1732,15 @@ fn the_synthetic_agent_waits_for_subscribe_asks_and_an_approval_ends_undecided()
             RequestState::Undecided
         ]
     );
+    let ended = broker.grant(&grant_id, |g| g.ended.is_some());
+    assert_eq!(
+        ended.ended.map(|e| e.reason),
+        Some(GrantEndReason::Consumed)
+    );
     let second = broker.pending(&[&request_id]);
     assert_ne!(second.request_id.as_str(), request_id);
     assert_consecutive(&broker.notices);
-    let snapshot = broker.snapshot();
-    let grants: Vec<&Value> = snapshot["grants"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .map(|g| &g["grant_id"])
-        .collect();
-    assert_eq!(grants, [&json!(grant_id)]);
+    assert_eq!(broker.snapshot()["grants"], json!([]));
 }
 
 /// p08: stdout holds frames only and no event content outside a full-detail read; stderr holds

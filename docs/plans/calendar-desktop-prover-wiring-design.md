@@ -30,13 +30,16 @@ part of contract schema version 2 (branch `claude/cd-broker-prover-reasons`): th
 unavailable (`health.prover_problem`, 2.2), every move to `undecided` stores its cause, which `get_request_details`
 gives as `undecided_reason` (2.4, X12), the adapter times its own check limit (2.3), and the shell answers at once every
 job it cannot hand over and every job a lost worker held (2.2); the tests u17 to u19, w35 to w40, sh07 to sh11 and
-p46 to p48.
+p46 to p48; updated 2026-11-17 by the duration rule of contract schema version 2 (branch
+`claude/cd-broker-duration-rule`): the answer of 2026-11-16 on rows that ask is built, so a card proposes the longest
+duration the owner may choose and a longer one is refused (K14; W4D D40 and D22), and the process tests p42 and p47
+assert what a synthetic card proposes.
 
 Abbreviations (paths relative to the repository root):
 
 | Short | Means |
 |---|---|
-| W4D | `docs/plans/calendar-desktop-w04-design.md` (the CD-W04 design; its decisions are D1 to D39 and L1 to L7) |
+| W4D | `docs/plans/calendar-desktop-w04-design.md` (the CD-W04 design; its decisions are D1 to D40 and L1 to L7) |
 | PLAN | `docs/plans/calendar-desktop-plan.md` (section 5 holds the requirements R01 to R14 and the quality targets, section 14 the required scenarios) |
 | RM | `docs/roadmap.md` |
 | CR | `contracts/desktop/v1/README.md` (the contract) |
@@ -880,12 +883,12 @@ Extended in this step: `allowlist_names_the_broker_variables` and `broker_variab
 |---|---|---|---|
 | p40 | rows of `configuration_errors_exit_78_before_any_frame` | each refusal of 3.1 before any frame (the execute-bit row under `cfg(unix)`) | DEF-2 |
 | p41 | `an_isabelle_that_cannot_start_leaves_the_prover_unavailable_and_proposes_nothing` (`cfg(unix)`) | with `bin/isabelle` a script exiting 1, the repository's `isabelle/` and a temporary user home, the broker reports `prover: unavailable` (snapshot or notice), the first such snapshot with `prover_problem: failed_will_retry`, the practice agent proposes nothing, and after quit no `<data_dir>/prover` is left | S1 |
-| p42 | `the_synthetic_agent_waits_for_subscribe_asks_and_an_approval_ends_undecided` (W4D p07, unchanged) | a classifier run without Isabelle is unchanged | - |
+| p42 | `the_synthetic_agent_waits_for_subscribe_asks_and_an_approval_ends_undecided` (W4D p07, changed by the duration rule) | a classifier run without Isabelle is unchanged, except that its card proposes `one_request` (W4D D40), until revoked is refused and the one-request grant ends `consumed` with its request | - |
 | p43 | `the_relay_passes_the_three_isabelle_names` (`tests/relay_round_trip.rs`) | through the relay, the broker reads all three (its build label says `synthetic practice`) | - |
 | p44 | `a_second_broker_on_a_locked_directory_leaves_the_first_brokers_prover_alone` (`cfg(unix)`) | P1 c across processes: only after the first broker reports `prover: unavailable` does the test put a marker in `<data_dir>/prover`; a second broker answers `store_unavailable`; the marker is still there. It concludes only within the first restart wait less a second and fails with "too slow to conclude" otherwise, because the first broker's next start would remove the marker | - |
 | p45 | `a_start_without_isabelle_removes_a_check_theory_a_killed_broker_left` | X10 across processes | R13 |
 | p46 | `the_first_run_snapshot` (W4D, changed) | 3.3: a run with no prover reads `unavailable` with `not_configured`, the health of the contract's fixture `accept-owner-notice-health-prover-not-configured.json` | - |
-| p47 | `an_approval_of_a_synthetic_request_creates_a_grant_and_ends_undecided` (W4D, extended) | 3.3: the classifier's permit is not acted on; the redacted details of the `undecided` request read `prover_unavailable`, with `private` null and no proof id | R06 |
+| p47 | `an_approval_of_a_synthetic_request_creates_a_grant_and_ends_undecided` (W4D, extended) | 3.3: the classifier's permit is not acted on; the redacted details of the `undecided` request read `prover_unavailable`, with `private` null and no proof id; its card proposes `one_request` (W4D D40) | R06 |
 | p48 | `decode_line`, on every owner line of every test in the file | CR 7: a health names a problem only while the prover is unavailable, and request details name a reason only while the request is `undecided` | - |
 
 ### 7.3 Live (real Isabelle; never in CI; P6)
@@ -1084,15 +1087,38 @@ crate-private gate seam needs `--document-private-items`), and `-p fabric-deskto
   `ISABELLE_TMP_PREFIX="$ISABELLE_HOME_USER/tmp"` once to `<user_home>/.isabelle/<identifier>/etc/settings`, makes that
   `tmp` with mode 0700, and does not start unless Isabelle names it as its prefix. A server found running under the
   name since before keeps its old prefix until it restarts; Windows keeps Isabelle's default.
-- K14 Under the Careful profile a grant until revoked does not serve a create (the theory's `standing_serves`), so
-  approving a create with "Until I take it back" sends the request back to `pending_approval`; the page offers that
-  duration. The theory's owner answered on 2026-11-16 that the rule is deliberate, as that owner reads the frozen matrix
-  (the product owner had not confirmed the reading then): under a row that asks, a standing grant serves only reading
-  event details (CD-M02) and editing a Fabric-created event in Agent Drafts (CD-M05). For every other row that asks, the
-  card should offer only "this request only"; the contract has no field for the durations a card may offer. The policy
-  crate's owner reports that the product owner confirmed this reading on 2026-11-16 ('Yes, as it is'): under a row that
-  asks, only an approval of exactly one request takes effect, except reading event details (CD-M02) and editing a
-  Fabric-created event in Agent Drafts (CD-M05).
+- K14 Under the Careful profile a grant until revoked does not serve a create in an existing calendar (the theory's
+  `standing_serves`), so approving such a create with "Until I take it back" sent the request back to
+  `pending_approval`, and the page offered that duration. The theory's owner answered on 2026-11-16 that the rule is
+  deliberate, and the policy crate's owner reports that the product owner confirmed the reading the same day ('Yes,
+  as it is'): under a row that asks, only an approval of exactly one request takes effect, except reading event
+  details (CD-M02) and editing a Fabric-created event in Agent Drafts (CD-M05). That answer is now built (W4D D40).
+  When a card opens, the core computes its `proposed_duration` from stored facts and two facts of the run, never from
+  a prover: `until_revoked` only for a create whose row in the profile in force is allow (`create_in_agent_drafts` in
+  Agent Drafts, so under Careful too; `create_in_existing_calendar` elsewhere, so under Flexible), in a selected,
+  writable calendar of a connected account, in a run with the Isabelle prover and a provider, and only while no
+  lasting grant of the agent has the request as its origin; `one_request` everywhere else, and never `session`, which
+  is offered below `until_revoked`. `decide_request` refuses a longer duration with `invalid_params` at
+  `/params/duration/kind` (W4D D22). The deliberate under-proposals, each proposing `one_request` where the theory
+  would let a lasting grant serve, and what lifts each:
+  - availability under allow, and reading event details under allow and under ask (CD-M02): a fresh permit of a read
+    ends `undecided` in this build, so a lasting grant would outlive a request that is never done. Lifted when a
+    read's result is held and released (CD-W05, CD-W06);
+  - updates of an event with no attendees (CD-M05, CD-M06) and responses under allow: the core holds no observed
+    event, so it cannot tell the rows apart nor see the attendees. Lifted when CD-W05 puts the observed event in the
+    core's facts and the theory states when a lasting grant serves, so that the core asks it instead of growing its
+    own table;
+  - invitations under allow: as for updates, and also until the contract session says whether a grant that names
+    exact addresses counts as an approved recipient set.
+
+  A delete always proposes `one_request`: no lasting grant covers one. The page must offer only the durations up to
+  the proposal and select the shortest first (the owner's decision of 2026-11-17); that change belongs to the screens
+  session, and the broker's pull request stays a draft until it is merged. The risk that remains: the table copies a
+  reading of the theory and CI never runs Isabelle (K16), so a theory edit could make a lasting grant stop serving
+  while CI stays green. The fresh proof still decides every request, and a request asked again after a lasting
+  approval proposes `one_request`, so at most one such grant is left per request. The live test W4D p10
+  (`the_proposed_duration_agrees_with_the_rule_theory`) is the oracle: it checks every cell of the table against
+  Isabelle and prints the table, and W4D p09 checks the shape of the real lasting grant in CI.
 - K15 The gate's stop is bounded at 1.2 s (`GATE_STOP_BOUND`) and the gate kills the server after it, so an idle stop is
   acknowledged within about 1.3 s (the bound and the kill) against `QUIT_BOUND` of 1.5 s; a quit whose stop takes longer
   than the bound now ends in a kill, where before it ran on. With the gate before pull request 26, whose stop had no

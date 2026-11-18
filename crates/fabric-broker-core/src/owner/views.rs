@@ -151,6 +151,15 @@ fn read_details(
     } else {
         None
     };
+    // Null while the request waits for a decision, and once it expired waiting (6.1, c39): a
+    // request asked again after an approval keeps that earlier approval in the store, and the
+    // page would read it as the decision on the card now shown. Every other state shows the
+    // stored approval, a stale request included: the contract gives a stale request no meaning
+    // of waiting, so it shows the last approval the owner gave, if any. Nothing written changes.
+    let approval = match record.row.request.status.state() {
+        RequestState::PendingApproval | RequestState::Expired => None,
+        _ => record.approval,
+    };
     Ok(Some(RequestDetails {
         request: record.row.request,
         redaction: p.redaction,
@@ -161,7 +170,7 @@ fn read_details(
             warnings: List::new(Vec::new()).map_err(|_| invariant("no warnings"))?,
         }),
         card: record.card,
-        approval: record.approval,
+        approval,
         proof_ids: List::new(proof_ids).map_err(|_| invariant("distinct proof ids"))?,
         authorization,
         attempts: List::new(attempts).map_err(|_| invariant("at most 20 attempts"))?,

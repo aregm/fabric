@@ -46,6 +46,9 @@ pub const OTHER: &str = "agent-b";
 pub const ACCOUNT: &str = "acct-1";
 /// Its selected calendar.
 pub const CALENDAR: &str = "cal-primary";
+/// Its Agent Drafts calendar, seeded by `setup`. Under Careful a create there proposes
+/// `until_revoked` (D40).
+pub const DRAFTS: &str = "cal-drafts";
 /// The agent tool of every proposal the tests make.
 pub const CREATE: &str = "fabric_calendar_propose_create";
 
@@ -195,6 +198,24 @@ pub fn account(account_id: &str, calendars: &[&str]) -> Account {
         "email": "owner@example.com",
         "calendars": calendars
     }))
+}
+
+/// A connected account whose calendars are all selected: `calendars` as plain calendars and
+/// `drafts` as its Agent Drafts calendar.
+#[must_use]
+pub fn account_with_drafts(account_id: &str, calendars: &[&str], drafts: &str) -> Account {
+    let mut value = serde_json::to_value(account(account_id, calendars)).expect("an account");
+    value["calendars"]
+        .as_array_mut()
+        .expect("calendars")
+        .push(json!({
+            "calendar_id": drafts,
+            "name": "Agent Drafts",
+            "access": "owner",
+            "selected": true,
+            "agent_drafts": true
+        }));
+    record(&value)
 }
 
 /// The arguments of a `propose_create` on `account` and `calendar`.
@@ -637,9 +658,13 @@ impl Harness {
         self.broker_mut().seed(&seed, now)
     }
 
-    /// Seeds `AGENT` and `ACCOUNT` with `CALENDAR`, and connects `AGENT` on connection 1.
+    /// Seeds `AGENT` and `ACCOUNT` with `CALENDAR` and the Agent Drafts calendar `DRAFTS`, and
+    /// connects `AGENT` on connection 1.
     pub fn setup(&mut self) {
-        let _ = self.seed(&[AGENT], vec![account(ACCOUNT, &[CALENDAR])]);
+        let _ = self.seed(
+            &[AGENT],
+            vec![account_with_drafts(ACCOUNT, &[CALENDAR], DRAFTS)],
+        );
         let _ = self.connect(1, AGENT);
     }
 
@@ -765,6 +790,18 @@ impl Harness {
     pub fn change_fence(&mut self) {
         let name = self.next("Group");
         let _ = self.create_group(&name, &[]);
+    }
+
+    /// Activates the profile `profile_id` at the profiles revision of the snapshot.
+    pub fn activate(&mut self, profile_id: &str) -> Value {
+        let revision = self.snapshot()["profiles"]["revision"].clone();
+        self.ok(
+            "save_profile",
+            json!({
+                "expected_revision": revision,
+                "change": {"kind": "activate", "profile_id": profile_id}
+            }),
+        )
     }
 
     /// Decides a pending request at its current revision and digest.
@@ -915,6 +952,12 @@ impl Harness {
         self.pending_on(connection, call_id, ACCOUNT, CALENDAR)
     }
 
+    /// A pending create on the Agent Drafts calendar, whose card proposes `until_revoked` under
+    /// Careful in a run with an Isabelle prover and a provider.
+    pub fn pending_lasting(&mut self, connection: u64, call_id: &str) -> String {
+        self.pending_on(connection, call_id, ACCOUNT, DRAFTS)
+    }
+
     /// Approves a pending request for `duration`; returns the new grant and the fresh-permit
     /// job the approval started.
     pub fn approve(&mut self, request_id: &str, duration: &str) -> (String, ProofJob) {
@@ -941,13 +984,21 @@ impl Harness {
         (request_id, grant, job)
     }
 
+    /// A proposal asked and approved for `duration`. A lasting duration (`session`,
+    /// `until_revoked`) is approved on the Agent Drafts calendar, the only one whose card
+    /// proposes it under Careful; `one_request` on `CALENDAR`.
     pub fn approved(
         &mut self,
         connection: u64,
         call_id: &str,
         duration: &str,
     ) -> (String, String, ProofJob) {
-        self.approved_on(connection, call_id, ACCOUNT, CALENDAR, duration)
+        let calendar = if duration == "one_request" {
+            CALENDAR
+        } else {
+            DRAFTS
+        };
+        self.approved_on(connection, call_id, ACCOUNT, calendar, duration)
     }
 
     /// Feeds a fresh Permit naming `grants`; returns the one dispatch order that follows.

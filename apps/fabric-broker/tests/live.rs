@@ -24,9 +24,15 @@
 //!
 //! The test ids PW L1 to PW L22 are those of section 7.3 of the prover wiring's design,
 //! `docs/plans/calendar-desktop-prover-wiring-design.md`, not the CD-W04 design's package decisions
-//! L1 to L7; a bare DEF-n cites the CD-W04 design (`docs/plans/calendar-desktop-w04-design.md`).
+//! L1 to L7; a bare DEF-n, D40 or p10 cites the CD-W04 design
+//! (`docs/plans/calendar-desktop-w04-design.md`).
+//!
+//! One test, p10, drives the authority core in process through `tests/support` and asks the
+//! gate itself, with no shell: the duration a card proposes against the rule theory.
 
 #![cfg(all(unix, debug_assertions))]
+
+mod support;
 
 use std::ffi::OsString;
 use std::io::{BufRead, BufReader, Write};
@@ -42,14 +48,19 @@ use fabric_broker::config::{
     Config, ISABELLE_HOME, ISABELLE_USER_HOME, IsabelleSettings, KeySource, RULES_DIR,
 };
 use fabric_broker::practice::{FOREIGN_EVENT_ID, FOREIGN_TITLE, Faults, PracticeCalendar};
-use fabric_broker::prover::{ProverOptions, QUIT_BOUND, built_theory_sha256, server_name};
+use fabric_broker::prover::map::context_of;
+use fabric_broker::prover::{
+    ProverOptions, QUIT_BOUND, built_theory_sha256, gate_config, server_name,
+};
 use fabric_broker::shell::{self, Event, Plan, ProverChoice, QUEUED_EVENTS, Shell, now_ms};
 use fabric_broker::synthetic::{ACCOUNT_ID, AGENT_ID, CALENDAR_ID, SyntheticAgent, TITLE};
+use fabric_broker_core::ports::{ObservedEvent, ProofJob};
 use fabric_broker_core::{Broker, Input, Settings};
-use fabric_broker_policy::GateConfig;
+use fabric_broker_policy::{BrokerGate, GateConfig, Outcome};
+use fabric_desktop_contracts::common::CalendarRef;
 use fabric_desktop_contracts::owner::{
-    Change, Health, LifecycleStatus, OwnerNotice, OwnerResponse, OwnerResult, ProverHealth,
-    ProverProblem, Request,
+    Change, GrantTerm, Health, LifecycleStatus, OwnerNotice, OwnerResponse, OwnerResult,
+    ProfileRows, ProverHealth, ProverProblem, Request,
 };
 use fabric_desktop_contracts::{Entry, Frame, RequestState, canonical, decode};
 use fabric_desktop_relay::{BrokerConfig, ENVIRONMENT_ALLOWLIST};
@@ -2006,4 +2017,274 @@ fn checks_are_timed() {
         mean <= 1_500,
         "the mean check took {mean} ms, over 1.5 s: W03 reopens the proof timeout (PLAN 5)"
     );
+}
+
+/// What the action of a cell names: no event, or the event the broker would observe.
+#[derive(Clone, Copy, Debug)]
+enum Observed {
+    /// A create, a read or an availability request names no event.
+    Nothing,
+    /// An event Fabric created, with no attendees.
+    Own,
+    /// An event Fabric did not create, with no attendees.
+    Foreign,
+    /// An event Fabric created, with one attendee in no recipient set.
+    OwnWithAttendee,
+    /// An invitation the owner received.
+    Invitation,
+}
+
+/// One cell of the duration table (p10 of the CD-W04 design, D40): a tool, the profile in
+/// force (a built-in one, or Careful's rows with `changes` saved as a custom profile), the
+/// calendar and the event the action names; the duration the core proposes; and what the
+/// theory proves with only the real lasting grant in the context (for `until_revoked` and for
+/// the live session alike) and with only the one-request grant. The expected outcomes of the
+/// lasting columns are the worked cases of `isabelle/Fabric_Broker_Examples/Broker_Examples.thy`,
+/// "What a lasting approval is worth". That section has no one-request grant: the one-request
+/// column is read from `exact` and `No_strangers` in `isabelle/Fabric_Broker/Fabric_Broker.thy`.
+struct Cell {
+    name: &'static str,
+    tool: &'static str,
+    profile: &'static str,
+    changes: &'static [(&'static str, &'static str)],
+    calendar: &'static str,
+    observed: Observed,
+    proposed: &'static str,
+    lasting: Outcome,
+    one_request: Outcome,
+}
+
+const AVAILABILITY: &str = "fabric_calendar_availability";
+const READ: &str = "fabric_calendar_read";
+const CREATE: &str = "fabric_calendar_propose_create";
+const UPDATE: &str = "fabric_calendar_propose_update";
+const INVITATION: &str = "fabric_calendar_propose_invitation";
+const RESPONSE: &str = "fabric_calendar_propose_response";
+const DELETE: &str = "fabric_calendar_propose_delete";
+
+/// The table. Each cell that proposes `one_request` where the lasting grant would be permitted
+/// is a deliberate under-proposal (D40; PW K14 names the condition that lifts each).
+#[rustfmt::skip]
+const CELLS: &[Cell] = &[
+    Cell { name: "availability, allow", tool: AVAILABILITY, profile: "careful", changes: &[], calendar: support::CALENDAR, observed: Observed::Nothing, proposed: "one_request", lasting: Outcome::Permit, one_request: Outcome::Permit },
+    Cell { name: "availability, ask", tool: AVAILABILITY, profile: "careful", changes: &[("list_and_availability", "ask")], calendar: support::CALENDAR, observed: Observed::Nothing, proposed: "one_request", lasting: Outcome::NeedApproval, one_request: Outcome::Permit },
+    Cell { name: "read, allow", tool: READ, profile: "flexible", changes: &[], calendar: support::CALENDAR, observed: Observed::Nothing, proposed: "one_request", lasting: Outcome::Permit, one_request: Outcome::Permit },
+    Cell { name: "read, ask (CD-M02)", tool: READ, profile: "careful", changes: &[], calendar: support::CALENDAR, observed: Observed::Nothing, proposed: "one_request", lasting: Outcome::Permit, one_request: Outcome::Permit },
+    Cell { name: "create in Agent Drafts, allow", tool: CREATE, profile: "careful", changes: &[], calendar: support::DRAFTS, observed: Observed::Nothing, proposed: "until_revoked", lasting: Outcome::Permit, one_request: Outcome::Permit },
+    Cell { name: "create in Agent Drafts, ask", tool: CREATE, profile: "careful", changes: &[("create_in_agent_drafts", "ask")], calendar: support::DRAFTS, observed: Observed::Nothing, proposed: "one_request", lasting: Outcome::NeedApproval, one_request: Outcome::Permit },
+    Cell { name: "create in a plain calendar, allow", tool: CREATE, profile: "flexible", changes: &[], calendar: support::CALENDAR, observed: Observed::Nothing, proposed: "until_revoked", lasting: Outcome::Permit, one_request: Outcome::Permit },
+    Cell { name: "create in a plain calendar, ask", tool: CREATE, profile: "careful", changes: &[], calendar: support::CALENDAR, observed: Observed::Nothing, proposed: "one_request", lasting: Outcome::NeedApproval, one_request: Outcome::Permit },
+    Cell { name: "edit own event in Agent Drafts, allow", tool: UPDATE, profile: "flexible", changes: &[], calendar: support::DRAFTS, observed: Observed::Own, proposed: "one_request", lasting: Outcome::Permit, one_request: Outcome::Permit },
+    Cell { name: "edit own event in Agent Drafts, ask (CD-M05)", tool: UPDATE, profile: "careful", changes: &[], calendar: support::DRAFTS, observed: Observed::Own, proposed: "one_request", lasting: Outcome::Permit, one_request: Outcome::Permit },
+    Cell { name: "edit own event elsewhere, allow", tool: UPDATE, profile: "flexible", changes: &[], calendar: support::CALENDAR, observed: Observed::Own, proposed: "one_request", lasting: Outcome::Permit, one_request: Outcome::Permit },
+    Cell { name: "edit own event elsewhere, ask", tool: UPDATE, profile: "careful", changes: &[], calendar: support::CALENDAR, observed: Observed::Own, proposed: "one_request", lasting: Outcome::NeedApproval, one_request: Outcome::Permit },
+    Cell { name: "edit an event Fabric did not create, allow", tool: UPDATE, profile: "careful", changes: &[("edit_preexisting_event", "allow")], calendar: support::CALENDAR, observed: Observed::Foreign, proposed: "one_request", lasting: Outcome::Permit, one_request: Outcome::Permit },
+    Cell { name: "edit an event Fabric did not create, ask", tool: UPDATE, profile: "careful", changes: &[], calendar: support::CALENDAR, observed: Observed::Foreign, proposed: "one_request", lasting: Outcome::NeedApproval, one_request: Outcome::Permit },
+    Cell { name: "edit an event with attendees, allow", tool: UPDATE, profile: "flexible", changes: &[], calendar: support::CALENDAR, observed: Observed::OwnWithAttendee, proposed: "one_request", lasting: Outcome::NeedApproval, one_request: Outcome::NeedApproval },
+    Cell { name: "edit an event with attendees, ask", tool: UPDATE, profile: "careful", changes: &[], calendar: support::CALENDAR, observed: Observed::OwnWithAttendee, proposed: "one_request", lasting: Outcome::NeedApproval, one_request: Outcome::NeedApproval },
+    Cell { name: "invitation, allow", tool: INVITATION, profile: "flexible", changes: &[], calendar: support::CALENDAR, observed: Observed::Own, proposed: "one_request", lasting: Outcome::Permit, one_request: Outcome::Permit },
+    Cell { name: "invitation, ask", tool: INVITATION, profile: "careful", changes: &[], calendar: support::CALENDAR, observed: Observed::Own, proposed: "one_request", lasting: Outcome::NeedApproval, one_request: Outcome::Permit },
+    Cell { name: "response, allow", tool: RESPONSE, profile: "careful", changes: &[("respond_to_invitation", "allow")], calendar: support::CALENDAR, observed: Observed::Invitation, proposed: "one_request", lasting: Outcome::Permit, one_request: Outcome::Permit },
+    Cell { name: "response, ask", tool: RESPONSE, profile: "careful", changes: &[], calendar: support::CALENDAR, observed: Observed::Invitation, proposed: "one_request", lasting: Outcome::NeedApproval, one_request: Outcome::Permit },
+    Cell { name: "delete under Careful", tool: DELETE, profile: "careful", changes: &[], calendar: support::CALENDAR, observed: Observed::Own, proposed: "one_request", lasting: Outcome::NeedApproval, one_request: Outcome::Permit },
+    Cell { name: "delete under Flexible", tool: DELETE, profile: "flexible", changes: &[], calendar: support::CALENDAR, observed: Observed::Own, proposed: "one_request", lasting: Outcome::NeedApproval, one_request: Outcome::Permit },
+];
+
+/// The event every action of a cell names.
+const EVENT_ID: &str = "evt-fabric-0042";
+const EVENT_REVISION: &str = "3181161799000000";
+
+/// The arguments of the cell's call.
+fn arguments(cell: &Cell) -> Value {
+    let account = support::ACCOUNT;
+    let calendar = cell.calendar;
+    let window = json!({"start": "2026-11-27T06:00:00.000Z", "end": "2026-11-28T06:00:00.000Z"});
+    let event = json!({"event_id": EVENT_ID, "revision": EVENT_REVISION});
+    match cell.tool {
+        AVAILABILITY => json!({"account_id": account, "calendar_ids": [calendar],
+                               "window": window, "task": "Find a free hour."}),
+        READ => json!({"account_id": account, "calendar_ids": [calendar], "window": window,
+                       "fields": ["time", "title"], "task": "See what is on Friday."}),
+        CREATE => support::create_params(calendar),
+        UPDATE => json!({"account_id": account, "calendar_id": calendar, "event": event,
+                         "changes": {"title": "Design review", "start": null, "end": null,
+                                     "description": null, "location": null},
+                         "send_updates": "all", "task": "Rename the event."}),
+        INVITATION => json!({"account_id": account, "calendar_id": calendar, "event": event,
+                             "attendees": ["ally@example.net"], "send_updates": "all",
+                             "task": "Invite Ally."}),
+        RESPONSE => json!({"account_id": account, "calendar_id": calendar,
+                           "target": {"kind": "event", "event": event},
+                           "response": "accepted", "send_updates": "all",
+                           "task": "Answer the invitation."}),
+        DELETE => json!({"account_id": account, "calendar_id": calendar, "event": event,
+                         "send_updates": "all", "task": "Remove the draft I made."}),
+        other => panic!("no arguments for {other}"),
+    }
+}
+
+/// The event the broker would observe for the cell, as CD-W05 will put it in the facts.
+fn observation(cell: &Cell) -> Option<ObservedEvent> {
+    let (fabric_created, invitation, attendees) = match cell.observed {
+        Observed::Nothing => return None,
+        Observed::Own => (true, false, Vec::new()),
+        Observed::Foreign => (false, false, Vec::new()),
+        Observed::OwnWithAttendee => (true, false, vec!["bob@example.net".to_owned()]),
+        Observed::Invitation => (false, true, Vec::new()),
+    };
+    Some(ObservedEvent {
+        calendar: CalendarRef {
+            account_id: support::id(support::ACCOUNT),
+            calendar_id: support::id(cell.calendar),
+        },
+        event_id: EVENT_ID.to_owned(),
+        revision: EVENT_REVISION.to_owned(),
+        fabric_created,
+        recurring: false,
+        default_type: true,
+        timed: true,
+        invitation,
+        attendees,
+        occurrence_start_ms: None,
+    })
+}
+
+/// The fresh-permit job `job` with `grant_id` as its only grant, under `term`, and the request
+/// resting on it alone. Tools and scope are those `create_grant` gave the real grant; they are
+/// the same for every duration, so only the term is changed.
+fn with_term(job: &ProofJob, grant_id: &str, term: GrantTerm) -> ProofJob {
+    let mut job = job.clone();
+    let mut fact = job
+        .facts
+        .grants
+        .iter()
+        .find(|g| g.grant.grant_id.as_str() == grant_id)
+        .cloned()
+        .unwrap_or_else(|| panic!("the job offers no grant {grant_id}"));
+    fact.grant.term = term;
+    fact.used = false;
+    fact.ended = false;
+    job.facts.grants = vec![fact];
+    job.facts.relied = vec![support::id(grant_id)];
+    job
+}
+
+/// The gate's answer for `job`: its outcome, or `None` when undecided, and whether the grant
+/// authorizes it.
+fn gate_answer(gate: &mut BrokerGate, job: &ProofJob, grant_id: &str) -> (Option<Outcome>, bool) {
+    let (context, action) = context_of(job).expect("the job maps");
+    let check = gate.check(&context, &action).expect("the gate checks");
+    let authorizes = check.authorizing_grants.iter().any(|g| g == grant_id);
+    (check.verdict.outcome(), authorizes)
+}
+
+/// p10 of the CD-W04 design (D40): the duration the real core proposes for each cell of the
+/// table agrees with the rule theory. For each cell a core in its own data directory proposes
+/// the cell's call under the cell's profile; the classification is scripted to ask, so the real
+/// `open_card` opens the card. The owner approves the proposed duration (`one_request` where the
+/// card proposes no more); the fresh-permit job the core hands out carries the real grant, with
+/// the observed event set where the cell names one. Isabelle then checks that job with the
+/// grant as its only grant, under `until_revoked`, under the live session and under one
+/// request. Where the card proposes `one_request` the one-request column checks the real grant,
+/// its term unchanged; only the `until_revoked` cells have their term swapped for one request.
+/// A cell that proposes `until_revoked` must be permitted on that grant, and every outcome must
+/// be the cell's. The table it found is printed.
+#[test]
+#[ignore = "live: needs Isabelle; run sh scripts/verify-desktop.sh --live-proofs"]
+fn the_proposed_duration_agrees_with_the_rule_theory() {
+    let _live = live_lock();
+    let dir = TempDir::new("durations");
+    std::fs::create_dir_all(dir.data()).expect("the data directory");
+    let mut gate =
+        BrokerGate::start(gate_config(&isabelle(), &dir.data())).expect("the gate starts");
+    let mut rows = Vec::new();
+    let mut wrong = Vec::new();
+    for cell in CELLS {
+        let mut core = support::Core::start("p10");
+        if !cell.changes.is_empty() {
+            let mut changed = serde_json::to_value(ProfileRows::CAREFUL).expect("rows");
+            for (row, mode) in cell.changes {
+                changed[*row] = json!(mode);
+            }
+            core.activate_custom("Careful with one row changed", &changed);
+        } else if cell.profile != "careful" {
+            core.activate(cell.profile);
+        }
+        let request_id = core.pending(cell.tool, arguments(cell));
+        let proposed = core.proposed(&request_id);
+        let duration = if proposed == "until_revoked" {
+            "until_revoked"
+        } else {
+            "one_request"
+        };
+        let (grant_id, mut job) = core.approve(&request_id, duration);
+        job.facts.event = observation(cell);
+        let session = job
+            .facts
+            .session
+            .as_ref()
+            .expect("the agent's live session is a fact")
+            .session_id
+            .clone();
+        let real = job
+            .facts
+            .grants
+            .iter()
+            .find(|g| g.grant.grant_id.as_str() == grant_id)
+            .map(|g| g.grant.term.clone())
+            .expect("the job offers the real grant");
+        let one_term = if duration == "one_request" {
+            assert!(
+                matches!(real, GrantTerm::OneRequest { .. }),
+                "{}: the real grant is not a one-request grant",
+                cell.name
+            );
+            real
+        } else {
+            GrantTerm::OneRequest {
+                action_digest: job.action_digest.clone(),
+            }
+        };
+        let (until, until_authorizes) = gate_answer(
+            &mut gate,
+            &with_term(&job, &grant_id, GrantTerm::UntilRevoked),
+            &grant_id,
+        );
+        let (session, _) = gate_answer(
+            &mut gate,
+            &with_term(
+                &job,
+                &grant_id,
+                GrantTerm::Session {
+                    session_id: session,
+                },
+            ),
+            &grant_id,
+        );
+        let (one, _) = gate_answer(&mut gate, &with_term(&job, &grant_id, one_term), &grant_id);
+        let row = format!(
+            "{:<48} proposed {:<13} until_revoked {:<14} session {:<14} one_request {:?}",
+            cell.name,
+            proposed,
+            format!("{until:?}"),
+            format!("{session:?}"),
+            one
+        );
+        if proposed != cell.proposed
+            || until != Some(cell.lasting)
+            || session != Some(cell.lasting)
+            || one != Some(cell.one_request)
+            || (proposed == "until_revoked" && !until_authorizes)
+        {
+            wrong.push(row.clone());
+        }
+        rows.push(row);
+    }
+    println!("LIVE the duration table against the rule theory:");
+    for row in &rows {
+        println!("LIVE   {row}");
+    }
+    gate.stop_within(Duration::from_secs(20))
+        .expect("the gate stops");
+    assert!(wrong.is_empty(), "cells that disagree: {wrong:#?}");
 }

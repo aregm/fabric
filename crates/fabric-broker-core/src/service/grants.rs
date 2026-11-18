@@ -8,7 +8,7 @@ use fabric_desktop_contracts::owner::{
 use fabric_desktop_contracts::scalar::{Count, Digest, Id, List, PositiveCount, Text};
 use fabric_storage::{Counter, Mutation, RequestRecord, StoreFault, TxError, WriteTx};
 
-use crate::broker::SESSION_IDLE_MS;
+use crate::service::activity::session_live_at;
 use crate::service::requests::task_of;
 use crate::service::{Cx, LiveSession, OwnerRefusal, epochs, invariant, timestamp};
 
@@ -190,8 +190,7 @@ pub(crate) fn grant_is_valid(
     match &grant.term {
         GrantTerm::OneRequest { .. } => origin_open,
         GrantTerm::Session { session_id } => session.is_some_and(|live| {
-            &live.session_id == session_id
-                && now_ms.saturating_sub(live.last_active_ms) <= SESSION_IDLE_MS
+            &live.session_id == session_id && session_live_at(live.last_active_ms, now_ms)
         }),
         GrantTerm::UntilRevoked => true,
     }
@@ -203,6 +202,7 @@ mod tests {
     use serde_json::json;
 
     use super::*;
+    use crate::broker::SESSION_IDLE_MS;
 
     const T0: i64 = 1_795_190_400_000;
 
@@ -304,7 +304,8 @@ mod tests {
     }
 
     #[test]
-    fn a_session_grant_idles_after_1800000_ms_of_activity() {
+    fn a_session_grant_is_live_until_just_before_the_idle_limit() {
+        // c39: the theory's `session_live` is `now < active + the limit` (5.5).
         let g = grant(session_term("session-1"), None);
         let last_call = T0 + 5_000;
         let session = live("session-1", last_call);
@@ -312,13 +313,13 @@ mod tests {
             &g,
             Some(&session),
             true,
-            last_call + 1_800_000
+            last_call + 1_799_999
         ));
         assert!(!grant_is_valid(
             &g,
             Some(&session),
             true,
-            last_call + 1_800_001
+            last_call + 1_800_000
         ));
     }
 
@@ -327,8 +328,8 @@ mod tests {
         let g = grant(session_term("session-1"), None);
         // `last_active_ms` starts at the connect.
         let session = live("session-1", T0);
-        assert!(grant_is_valid(&g, Some(&session), true, T0 + 1_800_000));
-        assert!(!grant_is_valid(&g, Some(&session), true, T0 + 1_800_001));
+        assert!(grant_is_valid(&g, Some(&session), true, T0 + 1_799_999));
+        assert!(!grant_is_valid(&g, Some(&session), true, T0 + 1_800_000));
     }
 
     #[test]

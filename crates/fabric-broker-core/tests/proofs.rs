@@ -169,7 +169,8 @@ fn a_proof_past_35_s_is_undecided_and_a_late_result_is_ignored() {
 fn permit_without_a_provider_is_undecided() {
     let mut h = Harness::new("c18d", isabelle_without_provider());
     h.setup();
-    let (request_id, grant, fresh) = h.approved(1, "call-1", "until_revoked");
+    // Without a provider every card proposes one_request (D40).
+    let (request_id, grant, fresh) = h.approved(1, "call-1", "one_request");
     let output = h.prove(&fresh, Outcome::Permit, &[&grant]);
     assert!(output.halt.is_none());
     assert!(dispatches(&output).is_empty());
@@ -209,7 +210,10 @@ fn a_fresh_permit_with_no_authorizing_grant_is_undecided() {
 #[test]
 fn a_result_naming_a_grant_outside_its_facts_is_undecided_and_never_halts() {
     let mut h = Harness::new("c18f", isabelle());
-    let _ = h.seed(&[AGENT, OTHER], vec![account(ACCOUNT, &[CALENDAR])]);
+    let _ = h.seed(
+        &[AGENT, OTHER],
+        vec![account_with_drafts(ACCOUNT, &[CALENDAR], DRAFTS)],
+    );
     let _ = h.connect(1, AGENT);
     let _ = h.connect(2, OTHER);
     let (_, others_grant, _) = h.approved(2, "other-1", "until_revoked");
@@ -450,7 +454,7 @@ fn an_approved_request_rests_on_the_approval_grant() {
 fn the_authorization_names_the_first_authorizing_grant_and_the_store_keeps_the_list() {
     let mut h = Harness::new("c28c", isabelle());
     h.setup();
-    let first = h.pending(1, "call-1");
+    let first = h.pending_lasting(1, "call-1");
     let (_, second_grant, _) = h.approved(1, "call-2", "until_revoked");
     let (grant, fresh) = h.approve(&first, "until_revoked");
 
@@ -475,7 +479,7 @@ fn the_authorization_names_the_first_authorizing_grant_and_the_store_keeps_the_l
 fn each_accepted_fresh_proof_replaces_the_relied_list() {
     let mut h = Harness::new("c28d", isabelle());
     h.setup();
-    let first = h.pending(1, "call-1");
+    let first = h.pending_lasting(1, "call-1");
     let (_, other, _) = h.approved(1, "call-2", "until_revoked");
     let (grant, fresh) = h.approve(&first, "until_revoked");
 
@@ -503,7 +507,7 @@ fn each_accepted_fresh_proof_replaces_the_relied_list() {
 fn a_discarded_fresh_result_leaves_the_relied_list_unchanged() {
     let mut h = Harness::new("c28e", isabelle());
     h.setup();
-    let first = h.pending(1, "call-1");
+    let first = h.pending_lasting(1, "call-1");
     let (_, other, _) = h.approved(1, "call-2", "until_revoked");
     let (grant, fresh) = h.approve(&first, "until_revoked");
 
@@ -550,8 +554,9 @@ fn the_reproof_counter_is_per_purpose_and_survives_a_retry() {
     let mut h = Harness::new("c31", isabelle());
     h.setup();
 
-    // A classification discarded twice, then asked.
-    let (request_id, output) = h.propose(1, "call-1");
+    // A classification discarded twice, then asked, on the Agent Drafts calendar so that the
+    // card offers the until_revoked approval below.
+    let (request_id, output) = h.propose_on(1, "call-1", ACCOUNT, DRAFTS);
     let mut job = job_for(&output, &request_id, ProofPurpose::Classification);
     for _ in 0..2 {
         h.change_fence();

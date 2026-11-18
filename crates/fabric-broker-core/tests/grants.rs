@@ -271,7 +271,8 @@ fn an_approval_binds_the_digest_and_the_order_names_one_action() {
 fn a_session_grant_binds_the_current_live_session() {
     let mut h = Harness::new("c11b", isabelle());
     h.setup();
-    let request_id = h.pending(1, "call-1");
+    // On the Agent Drafts calendar, whose card proposes until_revoked, so a session is offered.
+    let request_id = h.pending_lasting(1, "call-1");
     let first = session_of(&mut h, AGENT);
     let _ = h.connect(2, AGENT);
     let current = session_of(&mut h, AGENT);
@@ -293,12 +294,20 @@ fn a_session_grant_binds_the_current_live_session() {
         }
     );
 
-    let second = h.pending(2, "call-2");
+    let second = h.pending_lasting(2, "call-2");
     let _ = h.disconnect(2);
     let (response, _) = h.decide(&second, "approve", json!({"kind": "session"}));
     let refusal = error(&response);
     assert_eq!(refusal["code"], json!("invalid_params"));
     assert_eq!(refusal["detail"]["pointer"], json!("/params/duration"));
+    // Reachable only on an until_revoked card, so its advice names durations it offers.
+    assert_eq!(
+        refusal["message"],
+        json!(
+            "The agent has no live session, so a session grant cannot be bound to one. \
+             Approve it for one request or until revoked."
+        )
+    );
     assert_eq!(h.state(&second), "pending_approval");
     h.verify();
 }
@@ -360,6 +369,8 @@ fn grants_and_calendars_are_namespaced_by_account() {
     );
     let _ = h.prove(&job, Outcome::NeedApproval, &[]);
 
+    // Under Flexible a create in an existing calendar proposes until_revoked.
+    let _ = h.activate("flexible");
     let (_, grant_a, _) = h.approved_on(1, "call-a1", "acct-a", CALENDAR, "until_revoked");
     let (_, grant_b, _) = h.approved_on(1, "call-b2", "acct-b", CALENDAR, "until_revoked");
     let pending_a = h.pending_on(1, "call-a2", "acct-a", CALENDAR);
