@@ -102,7 +102,7 @@ No file of the core, the store, the broker binary, the contract, the rule theory
 | Lead | Store: the agent's public key and enrollment state. Core: enrollment, removal, the handshake's decisions, the list permission, held answers and results. Binary: the socket listener, a practice mode for a real agent | 7.1, 7.2 |
 | Contract session | Schema version 3 in the contract and its crate: the handshake, the enrollment commands, the visible pending agent, the list permission | 7.3 |
 | Screens session | The Agents screen S07 | 7.4 |
-| This session | The Keychain key store, the bridge's switch to the contract crate's handshake types, the tests against the real broker, the bundle | 5.4, 7.5 |
+| This session | The Keychain key store, the bridge's switch to the contract crate's handshake types, the wording changes of section 13, the tests against the real broker, a review of the bundle (the lead builds it) | 5.4, 7.5, 13 |
 
 Order: the contract's handshake (V3-1) is merged before the lead's listener and core work, which read its types.
 
@@ -994,6 +994,8 @@ None of this is checked by phase 1 or phase 2:
 - R11 Under CD-W05's design a read also ends `reconciled` (the lead's notice of 2026-11-17). The wording of 3.7
   for `applied` and `reconciled` speaks of a change and must then tell a read from a change. Not changed here; it
   follows the lead's design for phase 2.
+- R14 A call that the client cancels still gets its result released by the broker, into an answer the bridge
+  drops (section 13). A cancel message in the contract would close it.
 - R13 The bridge does not compile against a contract crate that has a request state its table lacks (3.7), and
   schema version 3 adds three. Whichever of the two pull requests reaches `main` second must add the three lines
   and their wording to `apps/fabric-mcp-bridge/src/mcp/render.rs` and to test r01. This session does it as soon
@@ -1039,6 +1041,40 @@ and the clients' documentation, one for security, one against the repository. Wh
   end reason for removal, and the store's constraint on a grant's origin; one request that already exists was cut
   down (LR-C6).
 - `outcome_unknown` is no longer shown as final (3.7).
+
+---------------------------------------------------------------------------------------------------------------------
+
+## 13. The lead's design for phase 2 and what the bridge does about it
+
+The lead answered section 7 in `docs/plans/calendar-desktop-phase2-design.md` (pull request 43, Proposed, not
+merged on 2026-11-17): its section F has a verdict for every `LR-n`, and its section H.3 asks nine things of this
+session (W6-1 to W6-9). Nothing below is built in phase 1. It is the bridge's part of phase 2, after schema
+version 3 is on `main`.
+
+| Request | What the bridge does |
+|---|---|
+| W6-1 | A connection closed with no answer during the handshake is already `broker_not_running` for that call, and the next call connects again. The wording for `not_permitted` at the handshake changes: the broker also answers it when an agent connected more than six times in a minute or changed its key within a minute, so the sentence must say "or wait a minute and call again" beside "the owner can look". `config_text` stays public, without platform code, with its present signature |
+| W6-2 | The answer to `agent_prove` gains `practice`. While it is true, the first block of every tool result of that connection begins with the fixed sentence "Practice run: changes go to a practice calendar in memory; nothing real changes." |
+| W6-3 | `completed` with a result is the result row. A status call can also show `completed` without a result (a status never carries one); its sentence is "The request is complete." (3.7) |
+| W6-4 | A read ends `reconciled` and its result comes only through `fabric_request_result`. On a status call the bridge does not know which tool made the request (A12), so `applied` and `reconciled` get one sentence that fits a change and a read: Fabric Calendar has carried out the request; call `fabric_request_result` with this `request_id` for its result. This settles R11 |
+| W6-5 | Unchanged: `prover_unavailable` is relayed and not retried |
+| W6-6 | The lead puts the bridge into the debug application in its step; this session reviews it (7.5) |
+| W6-7 | The bridge never sends a tool frame before an approved handshake, so the close after `not_permitted` needs nothing new. The bridge's own `handshake.rs` gives way to the contract crate's types |
+| W6-8 | Accepted: the debug key directory `<data_dir>/bridge-keys` (0700, made by the broker, the same user) and `--socket <data_dir>/run/agent.sock` in the debug configuration text. The key store's checks of 5.4 hold for that directory as they are |
+| W6-9 | The broker binary depends on the bridge's library for `config_text`. Accepted as it is; a smaller crate only if the weight ever matters |
+
+Three things this design said that the lead's design changes:
+
+- While the store cannot be opened there is no listener, so the bridge answers `broker_not_running`; the handshake
+  answers `internal` only for a fault (4.4 expected `internal` for a locked store).
+- A pending agent's key may be replaced by a newly proven one at most once a minute and twenty times (5.1 set no
+  limit).
+- The broker binds the socket by its full name and checks the length, so R7 stays for a user name over 18 bytes.
+
+One point the lead's design does not cover, recorded here as R14: when a client cancels a call (3.9), the broker
+is not told, because the contract has no cancel message. The broker still holds the answer and releases the
+result into an answer that the bridge drops. For a result given under a permission for one request, that
+permission is then used up and the agent must ask again.
 
 ---------------------------------------------------------------------------------------------------------------------
 
