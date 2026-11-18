@@ -14,6 +14,7 @@
           "kind": "cloud",
           "processor": "OpenAI"
         },
+        "client": "codex_desktop",
         "enrollment": "removed",
         "pairing_code": "D559-F078-3B34",
         "added_at": "2026-11-18T09:00:00.000Z",
@@ -28,7 +29,7 @@
   },
   "expect": {
     "verdict": "accept",
-    "canonical": "{\"change\":{\"agent\":{\"added_at\":\"2026-11-18T09:00:00.000Z\",\"agent_id\":\"agent-codex-desktop\",\"approved_at\":\"2026-11-18T09:04:40.000Z\",\"destination\":{\"kind\":\"cloud\",\"processor\":\"OpenAI\"},\"enrollment\":\"removed\",\"key_proven_at\":\"2026-11-18T09:02:13.000Z\",\"last_tool_call_at\":null,\"pairing_code\":\"D559-F078-3B34\",\"paused\":true,\"registered_name\":\"Codex Desktop\",\"removed_at\":\"2026-11-20T15:58:02.000Z\",\"revision\":3,\"session\":null},\"kind\":\"agent\"},\"protocol\":\"fabric-desktop/1\",\"sequence\":1303}",
+    "canonical": "{\"change\":{\"agent\":{\"added_at\":\"2026-11-18T09:00:00.000Z\",\"agent_id\":\"agent-codex-desktop\",\"approved_at\":\"2026-11-18T09:04:40.000Z\",\"client\":\"codex_desktop\",\"destination\":{\"kind\":\"cloud\",\"processor\":\"OpenAI\"},\"enrollment\":\"removed\",\"key_proven_at\":\"2026-11-18T09:02:13.000Z\",\"last_tool_call_at\":null,\"pairing_code\":\"D559-F078-3B34\",\"paused\":true,\"registered_name\":\"Codex Desktop\",\"removed_at\":\"2026-11-20T15:58:02.000Z\",\"revision\":3,\"session\":null},\"kind\":\"agent\"},\"protocol\":\"fabric-desktop/1\",\"sequence\":1303}",
     "command_digest": null,
     "action_digest": null
   }

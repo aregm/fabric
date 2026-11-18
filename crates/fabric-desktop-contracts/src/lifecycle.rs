@@ -129,8 +129,8 @@ impl RequestState {
         )
     }
 
-    /// Whether `self → next` is one of the 42 listed transitions: the 24 of plan section 11
-    /// and the 18 this contract adds (README section 9).
+    /// Whether `self → next` is one of the 43 listed transitions: the 24 of plan section 11
+    /// and the 19 this contract adds (README section 9).
     #[must_use]
     pub const fn can_transition_to(self, next: RequestState) -> bool {
         matches!(
@@ -188,6 +188,9 @@ impl RequestState {
                 )
                 // added: a request the broker completes itself, with no call to Google (plan 9.2)
                 | (S::ProvingFreshPermit, S::Completed)
+                // added: Google applied the change and returned content that differs from the
+                // approval
+                | (S::Dispatching, S::NeedsOwnerResolution)
         )
     }
 

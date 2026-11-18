@@ -32,7 +32,7 @@ export const DIGEST_B = `sha256:${"b".repeat(64)}` as const;
 
 export const AGENT: Agent = {
   agent_id: "spike-agent", revision: 1, registered_name: "Synthetic agent (spike)",
-  destination: { kind: "local", endpoint: "inside the broker spike" }, enrollment: "approved", pairing_code: null,
+  destination: { kind: "local", endpoint: "inside the broker spike" }, client: null, enrollment: "approved", pairing_code: null,
   added_at: RECEIVED_AT, key_proven_at: null, approved_at: RECEIVED_AT, removed_at: null, paused: false,
   session: { session_id: "spike-session", started_at: RECEIVED_AT, last_active_at: RECEIVED_AT }, last_tool_call_at: null,
 };
@@ -64,7 +64,7 @@ export function details(r: Request): RequestDetails {
           task: "Block time to plan next week.",
         },
       },
-      before: null, warnings: [],
+      before: null, after: null, warnings: [],
     },
     card: {
       scope: { calendars: [{ account_id: "spike-account", calendar_id: "spike-calendar" }], window: null, fields: null, recipients: null, send_updates: null },
@@ -73,7 +73,7 @@ export function details(r: Request): RequestDetails {
       expires_at: "2026-11-21T16:00:00.000Z",
     },
     approval: null, proof_ids: [], authorization: null, attempts: [], provider_event: null, undecided_reason: null,
-    notification: null, system_proofs: [], releases: [],
+    owner_resolution_reason: null, notification: null, system_proofs: [], releases: [],
   };
 }
 

@@ -960,5 +960,35 @@
     ],
     "valid": false,
     "first_invalid": 3
+  },
+  {
+    "name": "applied-differs-then-resolved-as-applied",
+    "states": [
+      "received",
+      "validating",
+      "proving_classification",
+      "allowed",
+      "proving_fresh_permit",
+      "queued",
+      "dispatching",
+      "needs_owner_resolution",
+      "resolved_as_applied"
+    ],
+    "valid": true,
+    "first_invalid": null
+  },
+  {
+    "name": "queued-then-needs-owner",
+    "states": [
+      "received",
+      "validating",
+      "proving_classification",
+      "allowed",
+      "proving_fresh_permit",
+      "queued",
+      "needs_owner_resolution"
+    ],
+    "valid": false,
+    "first_invalid": 6
   }
 ]

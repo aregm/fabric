@@ -141,7 +141,7 @@ pub(crate) fn agent_view(
     });
     // Contract schema version 3: an agent the store holds is approved; the store keeps no key,
     // so it has no pairing code, and its enrollment time stands for when it was added and
-    // approved.
+    // approved. The store keeps no kind of client, so `client` is null.
     let enrolled_at = timestamp(row.enrolled_at_ms);
     Ok(Some(Agent {
         agent_id: row.agent_id,
@@ -149,6 +149,7 @@ pub(crate) fn agent_view(
             .map_err(|_| invariant("an agent revision is positive"))?,
         registered_name: row.registered_name,
         destination: row.destination,
+        client: None,
         enrollment: AgentEnrollment::Approved,
         pairing_code: None,
         added_at: Some(enrolled_at.clone()),

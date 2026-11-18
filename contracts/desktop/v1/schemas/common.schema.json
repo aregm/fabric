@@ -322,6 +322,10 @@
       "description": "Why no proof decided a request. The meaning of each value is in README section 7.",
       "enum": ["prover_unavailable", "out_of_time", "failed", "provider_unreachable"]
     },
+    "owner_resolution_reason": {
+      "description": "Why the broker handed a request to the owner to resolve. The meaning of each value is in README section 7.",
+      "enum": ["applied_differs", "event_changed", "event_gone", "reads_failed", "account_disconnected"]
+    },
     "busy_limit": {
       "description": "The limit a busy answer names.",
       "enum": [

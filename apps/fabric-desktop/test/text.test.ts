@@ -2,13 +2,17 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
-import { ACCOUNT_STATES, CALENDAR_ACCESS, GRANT_END_REASONS, PROVER_PROBLEMS, UNDECIDED_REASONS } from "../../../contracts/desktop/v1/typescript/src/contract.ts";
+import {
+  ACCOUNT_STATES, AGENT_CHANNEL_PROBLEMS, AGENT_CHANNEL_STATES, AGENT_CLIENTS, CALENDAR_ACCESS, CONNECT_PROBLEMS, GRANT_END_REASONS, NOTIFICATIONS,
+  OWNER_RESOLUTION_REASONS, PROVER_PROBLEMS, REVOCATIONS, SYSTEM_ACTION_KINDS, UNDECIDED_REASONS,
+} from "../../../contracts/desktop/v1/typescript/src/contract.ts";
 import type { Action, Grant, ProofReport, RecipientSet, RequestDetails, SendUpdates, Snapshot } from "../../../contracts/desktop/v1/typescript/src/contract.ts";
 import { CONTRACT_ROOT } from "../../../contracts/desktop/v1/typescript/src/judge.ts";
 import {
-  ACCESS_TEXT, ACCOUNT_TEXT, ALLOWED_TEXT, ATTEMPT_TEXT, DURATION_TEXT, GRANT_END_TEXT, OWNER_CAN_DO, PROOF_OUTCOME, PROOF_PURPOSE, PROVER_PROBLEM,
-  PROVER_PROBLEM_UNKNOWN, PROVER_TEXT, STATE_TEXT, STORE_TEXT, UNDECIDED_REASON, UNDECIDED_REASON_UNKNOWN, VERDICT_TEXT, bannerText, cardFacts,
-  formatInstant, proofFacts, scopeFacts, termText,
+  ACCESS_TEXT, ACCOUNT_TEXT, AGENT_CHANNEL_PROBLEM, AGENT_CHANNEL_TEXT, AGENT_CLIENT_TEXT, ALLOWED_TEXT, ATTEMPT_TEXT, CONNECT_PROBLEM_TEXT,
+  DURATION_TEXT, GRANT_END_TEXT, NOTIFICATION_TEXT, OWNER_CAN_DO, OWNER_RESOLUTION_REASON, PROOF_OUTCOME, PROOF_PURPOSE, PROVER_PROBLEM,
+  PROVER_PROBLEM_UNKNOWN, PROVER_TEXT, REVOCATION_TEXT, STATE_TEXT, STORE_TEXT, SYSTEM_ACTION_TEXT, UNDECIDED_REASON, UNDECIDED_REASON_UNKNOWN,
+  VERDICT_TEXT, bannerText, cardFacts, formatInstant, proofFacts, scopeFacts, termText,
 } from "../ui/src/text.ts";
 import { assertValid, details, request } from "./support.ts";
 
@@ -35,6 +39,9 @@ test("every account state, calendar access, health value, rule checker cause and
     [ACCOUNT_TEXT, ACCOUNT_STATES], [ACCESS_TEXT, CALENDAR_ACCESS],
     [PROVER_TEXT, ["ready", "starting", "unavailable"]], [STORE_TEXT, ["ready", "locked", "keychain_refused"]],
     [PROVER_PROBLEM, PROVER_PROBLEMS], [UNDECIDED_REASON, UNDECIDED_REASONS],
+    [SYSTEM_ACTION_TEXT, SYSTEM_ACTION_KINDS], [CONNECT_PROBLEM_TEXT, CONNECT_PROBLEMS], [REVOCATION_TEXT, REVOCATIONS],
+    [NOTIFICATION_TEXT, NOTIFICATIONS], [AGENT_CHANNEL_TEXT, AGENT_CHANNEL_STATES], [AGENT_CHANNEL_PROBLEM, AGENT_CHANNEL_PROBLEMS],
+    [OWNER_RESOLUTION_REASON, OWNER_RESOLUTION_REASONS], [AGENT_CLIENT_TEXT, AGENT_CLIENTS],
   ];
   for (const [words, values] of all) {
     assert.deepEqual(Object.keys(words).sort(), [...values].sort());
@@ -121,7 +128,7 @@ const NO_CHANGES = { title: null, start: null, end: null, description: null, loc
 // Waiting details of this action, with `before` null; checked against the contract.
 function waiting(action: Action): RequestDetails {
   const base = details({ ...request("pending_approval", 4), tool: action.tool });
-  const d: RequestDetails = { ...base, private: { action, before: null, warnings: [] } };
+  const d: RequestDetails = { ...base, private: { action, before: null, after: null, warnings: [] } };
   assertValid("owner_response", { protocol: "fabric-desktop/1", id: "details-1", method: "get_request_details", result: d });
   return d;
 }
@@ -198,7 +205,8 @@ test("no text that a practice run can show names Google", () => {
   const texts: string[] = [
     ...[
       STATE_TEXT, ALLOWED_TEXT, DURATION_TEXT, OWNER_CAN_DO, PROOF_PURPOSE, PROOF_OUTCOME, VERDICT_TEXT, ATTEMPT_TEXT, PROVER_TEXT, STORE_TEXT, ends,
-      PROVER_PROBLEM, UNDECIDED_REASON,
+      PROVER_PROBLEM, UNDECIDED_REASON, ACCESS_TEXT, SYSTEM_ACTION_TEXT, NOTIFICATION_TEXT, AGENT_CHANNEL_TEXT, AGENT_CHANNEL_PROBLEM,
+      OWNER_RESOLUTION_REASON, AGENT_CLIENT_TEXT,
     ].flatMap((words) => Object.values(words)),
     PROVER_PROBLEM_UNKNOWN, UNDECIDED_REASON_UNKNOWN,
   ];

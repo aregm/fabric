@@ -136,13 +136,15 @@ fn every_stored_command_answer_of_version_2_except_pause_agent_reads_back_unchan
 }
 
 /// A version 2 agent record with the members version 3 added: `enrollment` `approved`, and
-/// null for the other five.
+/// null for the other six (`client`, `pairing_code`, `added_at`, `key_proven_at`,
+/// `approved_at` and `removed_at`).
 fn upgraded_agent(agent: &Value) -> Value {
     let mut agent = agent.clone();
     let record = agent.as_object_mut().unwrap();
     assert!(!record.contains_key("enrollment"));
     record.insert("enrollment".into(), "approved".into());
     for member in [
+        "client",
         "pairing_code",
         "added_at",
         "key_proven_at",
@@ -266,6 +268,7 @@ fn an_agent_with_enrollment_but_without_another_member_is_refused_by_the_stored_
     let answer: Value = serde_json::from_str(&current_pause_agent_answers()[0]).unwrap();
     let agent = &answer["result"]["agents"][0];
     for member in [
+        "client",
         "pairing_code",
         "added_at",
         "key_proven_at",

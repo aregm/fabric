@@ -9,6 +9,7 @@
       "kind": "cloud",
       "processor": "Anthropic"
     },
+    "client": "claude_code",
     "enrollment": "pending",
     "added_at": "2026-11-20T16:00:00.000Z",
     "key_proven_at": null,

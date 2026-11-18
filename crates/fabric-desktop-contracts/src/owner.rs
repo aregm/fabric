@@ -8,8 +8,8 @@ use serde_json::{Map, Value, json};
 use crate::agent::{Action, EventView};
 use crate::common::{
     AUTHORIZATION_LIFETIME_SECONDS, Addresses, CalendarAccess, CalendarRef, EventFields, EventRef,
-    FailureCode, Limits, PROTOCOL, Protocol, SendUpdates, ToolName, UndecidedReason, Weekdays,
-    Window,
+    FailureCode, Limits, OwnerResolutionReason, PROTOCOL, Protocol, SendUpdates, ToolName,
+    UndecidedReason, Weekdays, Window,
 };
 use crate::digest::to_value;
 use crate::error::OwnerError;
@@ -712,7 +712,9 @@ pub enum AgentEnrollment {
 
 /// `owner#/$defs/agent`: an agent the owner added. `pairing_code` is the code of the key the
 /// agent proved, and `None` until it has proved one. `added_at` is `None` only in an answer
-/// that a broker stored under schema version 2 and gives again ([`crate::stored`]).
+/// that a broker stored under schema version 2 and gives again ([`crate::stored`]). `client`
+/// is the kind of client the owner named in `add_agent`; it is `None` only for an agent the
+/// owner did not add.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Agent {
@@ -720,6 +722,8 @@ pub struct Agent {
     pub revision: PositiveCount,
     pub registered_name: Label,
     pub destination: Destination,
+    #[serde(deserialize_with = "nullable")]
+    pub client: Option<AgentClient>,
     pub enrollment: AgentEnrollment,
     #[serde(deserialize_with = "nullable")]
     pub pairing_code: Option<PairingCode>,
@@ -1394,6 +1398,10 @@ pub struct PrivateDetails {
     pub action: Action,
     #[serde(deserialize_with = "nullable")]
     pub before: Option<EventView>,
+    /// The event as Google returned it after the change, for a request whose applied change
+    /// differs from what was approved.
+    #[serde(deserialize_with = "nullable")]
+    pub after: Option<EventView>,
     pub warnings: List<Warning, 0, 50, false>,
 }
 
@@ -1419,6 +1427,9 @@ pub struct RequestDetails {
     /// when the broker did not record why.
     #[serde(deserialize_with = "nullable")]
     pub undecided_reason: Option<UndecidedReason>,
+    /// Why the broker handed the request to the owner to resolve.
+    #[serde(deserialize_with = "nullable")]
+    pub owner_resolution_reason: Option<OwnerResolutionReason>,
     #[serde(deserialize_with = "nullable")]
     pub notification: Option<Notification>,
     pub system_proofs: List<SystemProofReport, 0, 200, false>,
@@ -2060,7 +2071,7 @@ pub struct ResolveOutcomeResult {
     pub request: Request,
 }
 
-/// The kind of client an added agent is (`owner#/$defs/params_add_agent.client`).
+/// `owner#/$defs/agent_client`: the kind of client the owner named when adding an agent.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum AgentClient {
@@ -2132,22 +2143,14 @@ pub struct GetAgentConfigurationParams {
     pub agent_id: Id,
 }
 
-/// The texts that start an agent's bridge, one for each kind of client.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct AgentConfiguration {
-    pub claude_desktop: ConfigurationText,
-    pub claude_code: ConfigurationText,
-    pub codex_desktop: ConfigurationText,
-}
-
-/// `owner#/$defs/result_get_agent_configuration`: `configuration` is `None` when the broker
-/// cannot name an installed bridge.
+/// `owner#/$defs/result_get_agent_configuration`: the text that starts this agent's bridge in
+/// the client the owner named. `configuration` is `None` when the broker cannot name an
+/// installed bridge.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct GetAgentConfigurationResult {
     #[serde(deserialize_with = "nullable")]
-    pub configuration: Option<AgentConfiguration>,
+    pub configuration: Option<ConfigurationText>,
 }
 
 /// `owner#/$defs/params_list_ended_requests`: requests that have ended, newest first.

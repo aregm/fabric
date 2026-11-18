@@ -63,6 +63,7 @@ test("vocabularies equal the schema enums", () => {
     ["failure_code", c.FAILURE_CODES, common.failure_code.enum],
     ["busy_limit", c.BUSY_LIMITS, common.busy_limit.enum],
     ["undecided_reason", c.UNDECIDED_REASONS, common.undecided_reason.enum],
+    ["owner_resolution_reason", c.OWNER_RESOLUTION_REASONS, common.owner_resolution_reason.enum],
     ["prover_problem", c.PROVER_PROBLEMS, owner.prover_problem.enum],
     ["mode", c.MODES, owner.mode.enum],
     ["policy_row", c.POLICY_ROWS, owner.policy_row.enum],
@@ -77,6 +78,9 @@ test("vocabularies equal the schema enums", () => {
     ],
     ["provider_account revocation", c.REVOCATIONS, owner.provider_account.properties.revocation.enum],
     ["health agent_channel_problem", c.AGENT_CHANNEL_PROBLEMS, owner.health.properties.agent_channel_problem.oneOf[1].enum],
+    ["health agent_channel", c.AGENT_CHANNEL_STATES, owner.health.properties.agent_channel.enum],
+    ["system_proof_report action kind", c.SYSTEM_ACTION_KINDS, owner.system_proof_report.properties.action.properties.kind.enum],
+    ["request_details notification", c.NOTIFICATIONS, owner.request_details.properties.notification.oneOf[1].enum],
     ["release_record kind", c.RELEASE_KINDS, owner.release_record.properties.kind.enum],
     ["response_status", c.RESPONSE_STATUSES, agent.response_status.enum],
     ["owner_request methods", c.OWNER_METHODS, owner.owner_request.oneOf.map((b: any) => b.properties.method.const)],
@@ -91,7 +95,7 @@ test("vocabularies equal the schema enums", () => {
       agent.agent_response.oneOf.map((b: any) => b.properties.method.const).filter((x: unknown) => x !== undefined),
     ],
     ["agent enrollment", c.AGENT_ENROLLMENTS, owner.agent.properties.enrollment.enum],
-    ["add_agent client", c.AGENT_CLIENTS, owner.params_add_agent.properties.client.enum],
+    ["agent_client", c.AGENT_CLIENTS, owner.agent_client.enum],
     ["action tools", c.ACTION_TOOLS, agent.action.oneOf.map((b: any) => b.properties.tool.const)],
     ["limits", Object.keys(c.LIMITS), Object.keys(common.limits.properties)],
   ];
@@ -169,7 +173,7 @@ test("the built-in profiles", () => {
 
 test("the agent clients", () => {
   const clients = data("agent-clients.json").clients;
-  assert.deepEqual(clients.map((e: any) => e.client), owner.params_add_agent.properties.client.enum);
+  assert.deepEqual(clients.map((e: any) => e.client), owner.agent_client.enum);
   assert.deepEqual(clients.map((e: any) => e.client), [...c.AGENT_CLIENTS]);
   const validate = createValidator(files);
   for (const e of clients) {

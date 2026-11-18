@@ -43,6 +43,7 @@
           }
         },
         "before": null,
+        "after": null,
         "warnings": []
       },
       "card": {
@@ -130,6 +131,7 @@
         "revision": "3181162000000000"
       },
       "undecided_reason": null,
+      "owner_resolution_reason": null,
       "system_proofs": [],
       "releases": []
     }

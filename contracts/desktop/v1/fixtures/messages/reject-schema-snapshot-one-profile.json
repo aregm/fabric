@@ -108,6 +108,7 @@
             "kind": "cloud",
             "processor": "Anthropic"
           },
+          "client": "claude_desktop",
           "enrollment": "approved",
           "pairing_code": "100D-25BE-C78D",
           "added_at": "2026-11-18T09:00:00.000Z",
@@ -126,6 +127,7 @@
             "kind": "cloud",
             "processor": "Anthropic"
           },
+          "client": "claude_code",
           "enrollment": "approved",
           "pairing_code": "991B-797A-B0EB",
           "added_at": "2026-11-18T09:00:00.000Z",
@@ -148,6 +150,7 @@
             "kind": "cloud",
             "processor": "OpenAI"
           },
+          "client": "codex_desktop",
           "enrollment": "approved",
           "pairing_code": "D559-F078-3B34",
           "added_at": "2026-11-18T09:00:00.000Z",
@@ -166,6 +169,7 @@
             "kind": "local",
             "endpoint": "Embedded Ollama runtime on this Mac"
           },
+          "client": null,
           "enrollment": "approved",
           "pairing_code": "1C2E-22D3-7429",
           "added_at": "2026-11-18T09:00:00.000Z",

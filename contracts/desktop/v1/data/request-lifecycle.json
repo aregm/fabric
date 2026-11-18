@@ -72,6 +72,7 @@
     { "from": "retry_wait", "to": "proving_fresh_permit", "basis": "added", "reason": "plan 5 and 7: a fresh proof per retry" },
     { "from": "needs_owner_resolution", "to": "resolved_as_applied", "basis": "added", "reason": "plan S05: an explicit manual resolution path for an unknown outcome" },
     { "from": "needs_owner_resolution", "to": "resolved_as_absent", "basis": "added", "reason": "plan S05: an explicit manual resolution path for an unknown outcome" },
-    { "from": "proving_fresh_permit", "to": "completed", "basis": "added", "reason": "plan 9.2: Allow returns the proven result; a calendar list and the release of a result have no call to Google" }
+    { "from": "proving_fresh_permit", "to": "completed", "basis": "added", "reason": "plan 9.2: Allow returns the proven result; a calendar list and the release of a result have no call to Google" },
+    { "from": "dispatching", "to": "needs_owner_resolution", "basis": "added", "reason": "Google applied the change and returned content that differs from the approval" }
   ]
 }

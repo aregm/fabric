@@ -249,6 +249,29 @@ pub enum UndecidedReason {
     ProviderUnreachable,
 }
 
+/// `common#/$defs/owner_resolution_reason`: why the broker handed a request to the owner to
+/// resolve (README section 7).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum OwnerResolutionReason {
+    AppliedDiffers,
+    EventChanged,
+    EventGone,
+    ReadsFailed,
+    AccountDisconnected,
+}
+
+impl OwnerResolutionReason {
+    /// Every reason, in the order of the schema's `enum`.
+    pub const ALL: [OwnerResolutionReason; 5] = [
+        OwnerResolutionReason::AppliedDiffers,
+        OwnerResolutionReason::EventChanged,
+        OwnerResolutionReason::EventGone,
+        OwnerResolutionReason::ReadsFailed,
+        OwnerResolutionReason::AccountDisconnected,
+    ];
+}
+
 /// `common#/$defs/limits`: the numbers the broker enforces and reports in `hello`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]

@@ -27,6 +27,7 @@
       "authorization": null,
       "attempts": [],
       "provider_event": null,
+      "owner_resolution_reason": null,
       "notification": null,
       "system_proofs": [],
       "releases": []

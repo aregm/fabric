@@ -2,7 +2,7 @@
 //! the answer of a command it gives again when the command id returns
 //! (`crates/fabric-broker-core/src/owner/dedup.rs`).
 //!
-//! Schema version 3 added six required members to the agent record. A broker that stored an
+//! Schema version 3 added seven required members to the agent record. A broker that stored an
 //! answer to `pause_agent` under schema version 2 holds agent records without them. These
 //! readers add the members to such a record, and to nothing else, then read the value with the
 //! strict decoders. The decoders of the channels, [`decode`] and [`decode_record`], stay
@@ -16,7 +16,7 @@ use crate::json::{canonical, parse_strict};
 use crate::owner::Agent;
 
 /// Gives a version 2 agent record, an object without `enrollment`, the members schema
-/// version 3 added: `enrollment` `approved` and null for the other five. Any other value is
+/// version 3 added: `enrollment` `approved` and null for the other six. Any other value is
 /// left as it is.
 fn upgrade_agent(value: &mut Value) {
     let Value::Object(record) = value else {
@@ -30,6 +30,7 @@ fn upgrade_agent(value: &mut Value) {
         Value::String("approved".to_owned()),
     );
     for member in [
+        "client",
         "pairing_code",
         "added_at",
         "key_proven_at",
@@ -75,8 +76,8 @@ fn upgrade_pause_agent(value: &mut Value) -> bool {
 /// Decodes the answer frame of an owner command that a broker stored, possibly under schema
 /// version 2. It reads strict JSON as [`decode`] does; in an answer to `pause_agent`, every
 /// agent record without `enrollment` gets the members version 3 added (`enrollment`
-/// `approved`, and null for `pairing_code`, `added_at`, `key_proven_at`, `approved_at` and
-/// `removed_at`), and the value is then decoded as [`decode`] decodes its canonical text
+/// `approved`, and null for `client`, `pairing_code`, `added_at`, `key_proven_at`,
+/// `approved_at` and `removed_at`), and the value is then decoded as [`decode`] decodes its canonical text
 /// against [`Entry::OwnerResponse`]. It accepts nothing more than the strict decoder except
 /// those records. Not for the channel: frames that arrive are read with [`decode`].
 ///

@@ -122,6 +122,11 @@ export type BusyLimit = (typeof BUSY_LIMITS)[number];
 export const UNDECIDED_REASONS = ["prover_unavailable", "out_of_time", "failed", "provider_unreachable"] as const;
 export type UndecidedReason = (typeof UNDECIDED_REASONS)[number];
 
+export const OWNER_RESOLUTION_REASONS = [
+  "applied_differs", "event_changed", "event_gone", "reads_failed", "account_disconnected",
+] as const;
+export type OwnerResolutionReason = (typeof OWNER_RESOLUTION_REASONS)[number];
+
 export const ERROR_CODES = [
   "malformed_frame", "unsupported_protocol", "unsupported_schema_version", "unknown_method", "invalid_params",
   "not_found", "internal", "conflict", "command_reused", "stale_request", "expansion_not_acknowledged",
@@ -415,6 +420,7 @@ export interface Agent {
   readonly revision: PositiveCount;
   readonly registered_name: Label;
   readonly destination: Destination;
+  readonly client: AgentClient | null; // null only for an agent the owner did not add
   readonly enrollment: AgentEnrollment;
   readonly pairing_code: PairingCode | null;
   readonly added_at: Timestamp | null;
@@ -462,13 +468,15 @@ export const AGENT_CHANNEL_PROBLEMS = [
   "path_too_long", "run_dir_unsafe", "run_dir_owner", "stale_not_socket", "socket_mode", "bind_failed",
 ] as const;
 export type AgentChannelProblem = (typeof AGENT_CHANNEL_PROBLEMS)[number];
+export const AGENT_CHANNEL_STATES = ["listening", "not_listening"] as const;
+export type AgentChannelState = (typeof AGENT_CHANNEL_STATES)[number];
 // `prover_problem` is null while the prover is ready or starting. `agent_channel_problem` is
 // null while the agent channel is listening.
 export interface Health {
   readonly prover: "ready" | "starting" | "unavailable";
   readonly prover_problem: ProverProblem | null;
   readonly store: "ready" | "locked" | "keychain_refused";
-  readonly agent_channel: "listening" | "not_listening";
+  readonly agent_channel: AgentChannelState;
   readonly agent_channel_problem: AgentChannelProblem | null;
 }
 export interface TimeRange {
@@ -577,11 +585,13 @@ export interface ProofReport {
   readonly started_at: Timestamp;
   readonly elapsed_ms: Count;
 }
+export const SYSTEM_ACTION_KINDS = ["refresh", "reconcile", "list_calendars"] as const;
+export type SystemActionKind = (typeof SYSTEM_ACTION_KINDS)[number];
 // A proof of an action the broker took itself for a request. It holds no calendar content.
 export interface SystemProofReport {
   readonly proof_id: Id;
   readonly action: {
-    readonly kind: "refresh" | "reconcile" | "list_calendars";
+    readonly kind: SystemActionKind;
     readonly account_id: Id;
     readonly calendar_id: Id | null;
     readonly event_id: ProviderRef | null;
@@ -616,6 +626,8 @@ export interface Warning {
   readonly explanation: Explanation;
   readonly observed_at: Timestamp | null;
 }
+export const NOTIFICATIONS = ["sent", "not_requested", "unknown"] as const;
+export type Notification = (typeof NOTIFICATIONS)[number];
 // `private` is null when the retrieval was redacted.
 export interface RequestDetails {
   readonly request: Request;
@@ -623,6 +635,7 @@ export interface RequestDetails {
   readonly private: {
     readonly action: Action;
     readonly before: EventView | null;
+    readonly after: EventView | null; // as Google returned it, when the applied change differs from the approval
     readonly warnings: readonly Warning[];
   } | null;
   readonly card: ApprovalCard | null;
@@ -632,7 +645,8 @@ export interface RequestDetails {
   readonly attempts: readonly Attempt[];
   readonly provider_event: EventRef | null;
   readonly undecided_reason: UndecidedReason | null; // null unless the request is undecided
-  readonly notification: "sent" | "not_requested" | "unknown" | null;
+  readonly owner_resolution_reason: OwnerResolutionReason | null; // why the owner is asked to resolve
+  readonly notification: Notification | null;
   readonly system_proofs: readonly SystemProofReport[]; // 0..=200
   readonly releases: readonly ReleaseRecord[]; // 0..=200
 }
@@ -846,9 +860,10 @@ export interface ResultRemoveAgent {
 export interface ParamsGetAgentConfiguration {
   readonly agent_id: Id;
 }
-// `configuration` is null when the broker cannot name an installed bridge.
+// The text that starts this agent's bridge in the client the owner named. `configuration` is
+// null when the broker cannot name an installed bridge.
 export interface ResultGetAgentConfiguration {
-  readonly configuration: { readonly [C in AgentClient]: ConfigurationText } | null;
+  readonly configuration: ConfigurationText | null;
 }
 // `before` is null for the first page, or the id of the last request of the page before.
 export interface ParamsListEndedRequests {

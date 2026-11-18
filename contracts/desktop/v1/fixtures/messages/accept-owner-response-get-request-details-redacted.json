@@ -59,6 +59,7 @@
       "attempts": [],
       "provider_event": null,
       "undecided_reason": null,
+      "owner_resolution_reason": null,
       "notification": null,
       "system_proofs": [],
       "releases": []
@@ -66,7 +67,7 @@
   },
   "expect": {
     "verdict": "accept",
-    "canonical": "{\"id\":\"details-1\",\"method\":\"get_request_details\",\"protocol\":\"fabric-desktop/1\",\"result\":{\"approval\":null,\"attempts\":[],\"authorization\":null,\"card\":{\"expires_at\":\"2026-11-21T15:40:00.000Z\",\"insufficiency\":{\"explanation\":\"stranger@example.org is outside every approved recipient set, so the owner must decide.\",\"proof_id\":\"proof-21-classification\",\"rule\":\"strangers_always_ask\"},\"proposed_duration\":{\"kind\":\"one_request\"},\"scope\":{\"calendars\":[{\"account_id\":\"acct-1\",\"calendar_id\":\"cal-team-shared\"}],\"fields\":null,\"recipients\":{\"addresses\":[\"ally@example.net\",\"stranger@example.org\"],\"kind\":\"exact\"},\"send_updates\":\"all\",\"window\":null}},\"notification\":null,\"private\":null,\"proof_ids\":[\"proof-21-classification\"],\"provider_event\":null,\"redaction\":\"redacted\",\"releases\":[],\"request\":{\"account_id\":\"acct-1\",\"agent_id\":\"agent-claude-desktop\",\"received_at\":\"2026-11-20T15:40:00.000Z\",\"request_digest\":\"sha256:9911dcca0cc270f88cbd3b82afc1ffe5c0dc4f41b2c3efc9398967d0c6740a56\",\"request_id\":\"request-21\",\"revision\":2,\"status\":{\"approval_expires_at\":\"2026-11-21T15:40:00.000Z\",\"state\":\"pending_approval\"},\"tool\":\"fabric_calendar_propose_invitation\",\"updated_at\":\"2026-11-20T15:40:00.820Z\"},\"system_proofs\":[],\"undecided_reason\":null}}",
+    "canonical": "{\"id\":\"details-1\",\"method\":\"get_request_details\",\"protocol\":\"fabric-desktop/1\",\"result\":{\"approval\":null,\"attempts\":[],\"authorization\":null,\"card\":{\"expires_at\":\"2026-11-21T15:40:00.000Z\",\"insufficiency\":{\"explanation\":\"stranger@example.org is outside every approved recipient set, so the owner must decide.\",\"proof_id\":\"proof-21-classification\",\"rule\":\"strangers_always_ask\"},\"proposed_duration\":{\"kind\":\"one_request\"},\"scope\":{\"calendars\":[{\"account_id\":\"acct-1\",\"calendar_id\":\"cal-team-shared\"}],\"fields\":null,\"recipients\":{\"addresses\":[\"ally@example.net\",\"stranger@example.org\"],\"kind\":\"exact\"},\"send_updates\":\"all\",\"window\":null}},\"notification\":null,\"owner_resolution_reason\":null,\"private\":null,\"proof_ids\":[\"proof-21-classification\"],\"provider_event\":null,\"redaction\":\"redacted\",\"releases\":[],\"request\":{\"account_id\":\"acct-1\",\"agent_id\":\"agent-claude-desktop\",\"received_at\":\"2026-11-20T15:40:00.000Z\",\"request_digest\":\"sha256:9911dcca0cc270f88cbd3b82afc1ffe5c0dc4f41b2c3efc9398967d0c6740a56\",\"request_id\":\"request-21\",\"revision\":2,\"status\":{\"approval_expires_at\":\"2026-11-21T15:40:00.000Z\",\"state\":\"pending_approval\"},\"tool\":\"fabric_calendar_propose_invitation\",\"updated_at\":\"2026-11-20T15:40:00.820Z\"},\"system_proofs\":[],\"undecided_reason\":null}}",
     "command_digest": null,
     "action_digest": null
   }

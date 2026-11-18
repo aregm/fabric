@@ -15,6 +15,7 @@
           "kind": "cloud",
           "processor": "Anthropic"
         },
+        "client": "claude_code",
         "enrollment": "approved",
         "pairing_code": "4E7A-9852-EC06",
         "added_at": "2026-11-20T16:00:00.000Z",

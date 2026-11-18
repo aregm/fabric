@@ -439,13 +439,14 @@
       "additionalProperties": false
     },
     "agent": {
-      "description": "An agent the owner added. `enrollment` says whether it waits for the owner's approval, is approved, or was removed. `pairing_code` is the code of the key the agent proved, and null until it has proved one. `added_at` is null only in an answer that a broker stored under schema version 2 and gives again.",
+      "description": "An agent the owner added. `enrollment` says whether it waits for the owner's approval, is approved, or was removed. `pairing_code` is the code of the key the agent proved, and null until it has proved one. `added_at` is null only in an answer that a broker stored under schema version 2 and gives again. `client` is the kind of client the owner named in add_agent; it is null only for an agent the owner did not add.",
       "type": "object",
       "properties": {
         "agent_id": { "$ref": "common.schema.json#/$defs/id" },
         "revision": { "$ref": "common.schema.json#/$defs/positive_count" },
         "registered_name": { "$ref": "common.schema.json#/$defs/label" },
         "destination": { "$ref": "#/$defs/destination" },
+        "client": { "oneOf": [{ "type": "null" }, { "$ref": "#/$defs/agent_client" }] },
         "enrollment": { "enum": ["pending", "approved", "removed"] },
         "pairing_code": { "oneOf": [{ "type": "null" }, { "$ref": "common.schema.json#/$defs/pairing_code" }] },
         "added_at": { "$ref": "common.schema.json#/$defs/nullable_timestamp" },
@@ -461,6 +462,7 @@
         "revision",
         "registered_name",
         "destination",
+        "client",
         "enrollment",
         "pairing_code",
         "added_at",
@@ -973,9 +975,13 @@
                   "description": "The event as it was when the request was written, for a change to an existing event.",
                   "oneOf": [{ "type": "null" }, { "$ref": "agent-channel.schema.json#/$defs/event_view" }]
                 },
+                "after": {
+                  "description": "The event as Google returned it after the change, for a request whose applied change differs from what was approved.",
+                  "oneOf": [{ "type": "null" }, { "$ref": "agent-channel.schema.json#/$defs/event_view" }]
+                },
                 "warnings": { "type": "array", "items": { "$ref": "#/$defs/warning" }, "maxItems": 50 }
               },
-              "required": ["action", "before", "warnings"],
+              "required": ["action", "before", "after", "warnings"],
               "additionalProperties": false
             }
           ]
@@ -995,6 +1001,9 @@
           "description": "Why no proof decided the request. Null unless the request is undecided, and null there when the broker did not record why.",
           "oneOf": [{ "type": "null" }, { "$ref": "common.schema.json#/$defs/undecided_reason" }]
         },
+        "owner_resolution_reason": {
+          "oneOf": [{ "type": "null" }, { "$ref": "common.schema.json#/$defs/owner_resolution_reason" }]
+        },
         "notification": { "oneOf": [{ "type": "null" }, { "enum": ["sent", "not_requested", "unknown"] }] },
         "system_proofs": { "type": "array", "items": { "$ref": "#/$defs/system_proof_report" }, "maxItems": 200 },
         "releases": { "type": "array", "items": { "$ref": "#/$defs/release_record" }, "maxItems": 200 }
@@ -1010,6 +1019,7 @@
         "attempts",
         "provider_event",
         "undecided_reason",
+        "owner_resolution_reason",
         "notification",
         "system_proofs",
         "releases"
@@ -1520,12 +1530,16 @@
       "required": ["commit_sequence", "request"],
       "additionalProperties": false
     },
+    "agent_client": {
+      "description": "The kind of client the owner named when adding an agent.",
+      "enum": ["claude_desktop", "claude_code", "codex_desktop"]
+    },
     "params_add_agent": {
       "description": "Adds an agent that waits for approval. The broker gives it an id and, from the kind of client, where its data goes.",
       "type": "object",
       "properties": {
         "registered_name": { "$ref": "common.schema.json#/$defs/label" },
-        "client": { "enum": ["claude_desktop", "claude_code", "codex_desktop"] }
+        "client": { "$ref": "#/$defs/agent_client" }
       },
       "required": ["registered_name", "client"],
       "additionalProperties": false
@@ -1594,24 +1608,10 @@
       "additionalProperties": false
     },
     "result_get_agent_configuration": {
-      "description": "The texts that start this agent's bridge from each kind of client. `configuration` is null when the broker cannot name an installed bridge.",
+      "description": "The text that starts this agent's bridge in the client the owner named. `configuration` is null when the broker cannot name an installed bridge.",
       "type": "object",
       "properties": {
-        "configuration": {
-          "oneOf": [
-            { "type": "null" },
-            {
-              "type": "object",
-              "properties": {
-                "claude_desktop": { "$ref": "common.schema.json#/$defs/configuration_text" },
-                "claude_code": { "$ref": "common.schema.json#/$defs/configuration_text" },
-                "codex_desktop": { "$ref": "common.schema.json#/$defs/configuration_text" }
-              },
-              "required": ["claude_desktop", "claude_code", "codex_desktop"],
-              "additionalProperties": false
-            }
-          ]
-        }
+        "configuration": { "oneOf": [{ "type": "null" }, { "$ref": "common.schema.json#/$defs/configuration_text" }] }
       },
       "required": ["configuration"],
       "additionalProperties": false

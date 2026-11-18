@@ -1,13 +1,14 @@
 // The words on the page: request states, operations, the facts of an approval card,
 // activity lines and dates. Pure functions; nothing here touches the page.
 import type {
-  Account, AccountState, Action, Agent, Approval, Attempt, Authorization, CalendarAccess, CalendarRef, Change, DurationKind,
-  EventField, EventTime, EventView, Grant, GrantEndReason, GrantTerm, Health, ProofReport, ProverProblem, RecipientSet, RequestDetails,
-  RequestState, ResponseStatus, Scope, SendUpdates, ToolName, UndecidedReason, Window as TimeWindow,
+  Account, AccountState, Action, Agent, AgentChannelProblem, AgentChannelState, AgentClient, Approval, Attempt, Authorization,
+  CalendarAccess, CalendarRef, Change, ConnectProblem, DurationKind, EventField, EventTime, EventView, Grant, GrantEndReason, GrantTerm,
+  Health, Notification, OwnerResolutionReason, ProofReport, ProverProblem, RecipientSet, RequestDetails, RequestState, ResponseStatus,
+  Revocation, Scope, SendUpdates, SystemActionKind, ToolName, UndecidedReason, Window as TimeWindow,
 } from "../../../../contracts/desktop/v1/typescript/src/contract.ts";
 import type { HostState } from "./host.ts";
 
-// Every one of the 25 states has a text; the Record type makes the compiler check that.
+// Every state has a text; the Record type makes the compiler check that.
 export const STATE_TEXT: Record<RequestState, string> = {
   received: "Received, checking",
   validating: "Received, checking",
@@ -32,8 +33,8 @@ export const STATE_TEXT: Record<RequestState, string> = {
   reconciling: "Fabric is asking the calendar whether it was done",
   absence_confirmed: "Not done: the calendar confirms that nothing changed",
   needs_owner_resolution: "Fabric cannot tell what happened and needs you to check",
-  resolved_as_applied: "Resolved by you: the change is in the calendar",
-  resolved_as_absent: "Resolved by you: the change is not in the calendar",
+  resolved_as_applied: "You told Fabric that this was done",
+  resolved_as_absent: "You told Fabric that this was not done",
   completed: "Done",
 };
 
@@ -140,9 +141,78 @@ export const UNDECIDED_REASON: Record<UndecidedReason, string> = {
   prover_unavailable: "The rule checker was starting or not running.",
   out_of_time: "The rule checker did not finish within its time limit.",
   failed: "The rule checker ran and did not decide the request, or its report could not be used.",
-  provider_unreachable: "The calendar could not be reached to look at the event.",
+  provider_unreachable: "Fabric could not read the event from the calendar to check the request.",
 };
 export const UNDECIDED_REASON_UNKNOWN = "The broker did not record why.";
+
+// What the broker did itself for a request, by a system proof's action (not shown yet).
+export const SYSTEM_ACTION_TEXT: Record<SystemActionKind, string> = {
+  refresh: "Fabric's own read of the event, to check the request against it",
+  reconcile: "Fabric's own read of the event, to learn whether the change was made",
+  list_calendars: "Fabric's own read of the account's list of calendars",
+};
+
+// Why the last attempt to connect an account did not finish (not shown yet).
+export const CONNECT_PROBLEM_TEXT: Record<ConnectProblem, string> = {
+  timed_out: "The sign-in was not finished in the browser in time.",
+  superseded: "A newer sign-in replaced this one, or Fabric Calendar quit before it ended.",
+  browser_not_opened: "Fabric could not open your browser for Google's sign-in.",
+  google_error: "Google's sign-in ended with an error.",
+  client_rejected: "Google does not accept Fabric Calendar as an app that may sign you in. Signing in again will not help until that is repaired.",
+  network: "Google could not be reached to finish the sign-in. Check the connection to the internet.",
+  identity_check_failed: "Fabric could not make sure which Google account signed in, so it kept nothing from this sign-in.",
+  unexpected_scope: "Google gave Fabric more access than it asked for, so Fabric kept nothing from this sign-in.",
+  no_refresh_token: "Google gave Fabric no way to stay connected, so Fabric kept nothing from this sign-in.",
+  token_store: "Fabric could not keep the access in the Keychain, so it kept nothing from this sign-in.",
+  already_an_account: "This Google account is connected already.",
+};
+
+// Whether Fabric's access to an account was taken back at Google (not shown yet).
+export const REVOCATION_TEXT: Record<Revocation, string> = {
+  not_requested: "Google was not asked to end Fabric's access to this account.",
+  pending: "Fabric is asking Google to end its access to this account.",
+  revoked: "Google confirmed that Fabric's access to this account has ended.",
+  not_confirmed: "Google did not confirm that Fabric's access to this account has ended. You can remove Fabric Calendar's access yourself in your Google account.",
+};
+
+// Whether the attendees were notified of a change (not shown yet).
+export const NOTIFICATION_TEXT: Record<Notification, string> = {
+  sent: "The calendar accepted the change and was asked to send the emails with it.",
+  not_requested: "No email was asked for with this change.",
+  unknown: "Fabric does not know whether the calendar sent the emails about this change.",
+};
+
+// The state of the agent channel in health (not shown yet).
+export const AGENT_CHANNEL_TEXT: Record<AgentChannelState, string> = {
+  listening: "Agents can connect",
+  not_listening: "Agents cannot connect",
+};
+
+// Why the agent channel is not listening (not shown yet).
+export const AGENT_CHANNEL_PROBLEM: Record<AgentChannelProblem, string> = {
+  path_too_long: "The path of the file agents connect through is too long.",
+  run_dir_unsafe: "The place for the file agents connect through is not a folder that only you can use, so Fabric Calendar does not use it.",
+  run_dir_owner: "The folder of the file agents connect through belongs to another user of this computer.",
+  stale_not_socket: "Something else is where the file agents connect through should be, and Fabric Calendar does not remove it.",
+  socket_mode: "The file agents connect through could not be made private to you.",
+  bind_failed: "The system did not let Fabric Calendar make the file agents connect through.",
+};
+
+// Why the broker handed a request to the owner to resolve (contract README, section 7; not shown yet).
+export const OWNER_RESOLUTION_REASON: Record<OwnerResolutionReason, string> = {
+  applied_differs: "The calendar made the change, but the event it sent back differed from what you allowed.",
+  event_changed: "When Fabric checked, the event had changed since you allowed this and did not match it.",
+  event_gone: "When Fabric checked, the calendar showed the event as deleted or did not find it.",
+  reads_failed: "Fabric tried to check with the calendar whether the change was made, and could not.",
+  account_disconnected: "The account was disconnected before Fabric could check whether the change was made.",
+};
+
+// The kind of client the owner named when adding an agent (not shown yet).
+export const AGENT_CLIENT_TEXT: Record<AgentClient, string> = {
+  claude_desktop: "Claude Desktop",
+  claude_code: "Claude Code",
+  codex_desktop: "Codex desktop",
+};
 
 export const STORE_TEXT: Record<Health["store"], string> = {
   ready: "Open",
@@ -372,7 +442,7 @@ export const GRANT_END_TEXT: Record<GrantEndReason, string> = {
   session_idle_timeout: "The agent's session ended after a long time without activity.",
   app_quit: "The agent's session ended because the app was quit.",
   broker_restart: "The agent's session ended because the broker restarted.",
-  result_expired: "The result was not collected in time.",
+  result_expired: "The result it was given for was not handed to the agent in time.",
 };
 
 export function termText(term: GrantTerm, agent: string): string {
@@ -513,7 +583,7 @@ export function agentFacts(a: Agent, zone: string): Fact[] {
 export function changeText(change: Change, names: Names): string {
   switch (change.kind) {
     case "account": return `Account ${change.account.email ?? change.account.account_id}: ${ACCOUNT_TEXT[change.account.state]}`;
-    case "provider_account": return `Account ${change.provider_account.account_id}: what the broker knows of its connection changed`;
+    case "provider_account": return `Account ${accountName(names, change.provider_account.account_id)}: details of its connection changed`;
     case "agent": return `Agent ${change.agent.registered_name}${change.agent.paused ? " (paused)" : ""}`;
     case "profiles": return "Your permission profiles changed";
     case "recipient_set": return `Group ${change.recipient_set.definition.name} changed`;

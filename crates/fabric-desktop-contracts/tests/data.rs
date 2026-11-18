@@ -5,7 +5,7 @@ use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 
 use fabric_desktop_contracts::agent::{AgentCall, NON_TOOL_METHODS};
-use fabric_desktop_contracts::common::ToolName;
+use fabric_desktop_contracts::common::{OwnerResolutionReason, ToolName};
 use fabric_desktop_contracts::error::ErrorCode;
 use fabric_desktop_contracts::handshake::HANDSHAKE_METHODS;
 use fabric_desktop_contracts::owner::{
@@ -146,8 +146,7 @@ fn agent_enrollments_and_clients_match_the_schema() {
     .map(|e| encode(e).trim_matches('"').to_owned())
     .collect();
     assert_eq!(rust, names(&enrollment["enum"]));
-    let client =
-        schema_def("owner-channel.schema.json#/$defs/params_add_agent/properties/client").unwrap();
+    let client = schema_def("owner-channel.schema.json#/$defs/agent_client").unwrap();
     let rust: Vec<String> = [
         AgentClient::ClaudeDesktop,
         AgentClient::ClaudeCode,
@@ -163,8 +162,7 @@ fn agent_enrollments_and_clients_match_the_schema() {
 fn agent_clients_are_the_add_agent_clients_with_valid_destinations() {
     let file = data("agent-clients.json");
     let clients = file["clients"].as_array().unwrap();
-    let schema =
-        schema_def("owner-channel.schema.json#/$defs/params_add_agent/properties/client").unwrap();
+    let schema = schema_def("owner-channel.schema.json#/$defs/agent_client").unwrap();
     let named: Vec<Value> = clients.iter().map(|e| e["client"].clone()).collect();
     assert_eq!(&named, schema["enum"].as_array().unwrap());
     for entry in clients {
@@ -319,7 +317,17 @@ fn lifecycle_transitions_match_exactly() {
         }
     }
     assert_eq!(rust, listed);
-    assert_eq!(rust.len(), 42);
+    assert_eq!(rust.len(), 43);
+}
+
+#[test]
+fn owner_resolution_reason_enum_matches_the_schema() {
+    let schema = schema_def("common.schema.json#/$defs/owner_resolution_reason").unwrap();
+    let rust: Vec<String> = OwnerResolutionReason::ALL
+        .iter()
+        .map(|r| encode(r).trim_matches('"').to_owned())
+        .collect();
+    assert_eq!(rust, names(&schema["enum"]));
 }
 
 #[test]
