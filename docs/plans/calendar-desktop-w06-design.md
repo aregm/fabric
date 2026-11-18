@@ -522,8 +522,10 @@ four with its own code, written from this section, and every other frame with th
   again and gets a new session.
 - A session is the life of one connection of one client process. It is not a conversation: MCP says a stdio
   process is not one ("Statelessness"), and Claude Desktop serves all its chats from one server process. A grant
-  "for this session" therefore covers every chat of that client until the session ends. The Agents screen and the
-  approval card should say "until this client disconnects" (SR-3).
+  "for this session" therefore covers every chat of that client until the session ends. This design recommended
+  the words "until this client disconnects" for the Agents screen and the approval card (SR-3). The lead ruled
+  otherwise: the screen keeps "until this agent's current session ends" and adds a fixed note that lists the ends
+  above (13).
 - One agent has one live session (the store's `sessions_one_live`). Two bridge processes with the same id, such
   as two Claude Code windows in the same folder, replace each other's session at every call, and a grant "for
   this session" ends each time (R6).
@@ -791,7 +793,8 @@ Binary:
 - V3-3 A pending agent the owner can see: the agent record carries its enrollment state, its pairing code (null
   until a key is proven) and the times of LR-S1, in the snapshot and in notices. A removed agent stays readable.
 - V3-4 The list permission of 5.5, in the form the lead's store design accepts (LR-S3).
-- V3-5 An owner method that returns the three configuration texts for an agent.
+- V3-5 An owner method that returns the three configuration texts for an agent. The lead ruled later that it
+  returns one text, for the client stored with the agent (13).
 - V3-6 README section 8: when the answer to an action comes (LR-C4), that answers on one connection may come in
   any order and are matched by id, and that an adapter connects again after its connection was closed.
 - V3-7 README section 15: the handshake is covered; `broker_not_running` is made by the adapter, never sent by
@@ -806,7 +809,7 @@ Binary:
   `fabric-mcp-bridge code --enrollment <id>`.
 - SR-3 An approved agent: its name, where its data goes (the destination notice, PLAN R14), connected or not,
   the last tool call, Pause and Resume, Remove, and its permissions with the list permission among them. "For
-  this session" is worded "until this client disconnects" (4.5).
+  this session" is worded "until this client disconnects" (4.5). The lead ruled other words (13).
 - SR-4 That Google's credentials stay with Fabric Calendar (PLAN S07).
 
 ### 7.5 The bundle and the checks (later, with the lead)
@@ -1101,6 +1104,23 @@ The contract draft at bf9e6db already carries what the bridge's phase 2 will use
   sentence as a call's.
 - Only the answer to `fabric_calendar_list` and the answer to `fabric_request_result` ever carry a result; a
   read's own answer never does. The first row of 3.7 already says "a result is present", whatever the tool.
+
+Two later rulings of the lead touch the edges of this design (the phase 2 design at b443c1f). Neither changes the
+bridge.
+
+- One configuration text, not three. The client the owner names at `add_agent` is stored with the enrollment, and
+  `get_agent_configuration` answers the text for that client only (request P2-35 of the phase 2 design, its
+  section C.10). This replaces V3-5. The broker calls `config_text` once with the stored client. The function
+  already takes one client and returns one text, and its four errors come from the paths and the build, never
+  from the client, so its signature stays. The contract's names for the clients (`claude_desktop`, `claude_code`,
+  `codex_desktop`) are not the bridge's command line names (`claude-desktop`, `claude-code`, `codex`), so the
+  broker maps the three values with a `match` and does not go through `Client::from_name`. The bridge's `config`
+  command still prints the text for any of the three.
+- The words for a session permission. The screen keeps "until this agent's current session ends" and adds a fixed
+  note that lists the ends of a session: the client closes or quits, 30 minutes pass without a call, Fabric
+  Calendar quits or restarts, another copy of the client connects with the same agent, or the owner removes the
+  agent. This replaces the recommendation "until this client disconnects" of 4.5 and SR-3. The facts of 4.5 stand
+  and are the ones the note uses.
 
 ---------------------------------------------------------------------------------------------------------------------
 
