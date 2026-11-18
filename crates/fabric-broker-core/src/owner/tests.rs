@@ -5,7 +5,7 @@
 use fabric_desktop_contracts::agent::AgentRequest;
 use fabric_desktop_contracts::error::{ErrorCode, Fault};
 use fabric_desktop_contracts::owner::{
-    Account, Mode, OwnerResponse, ProfileRows, ProofReport, Ruling,
+    Account, Mode, OwnerResponse, ProfileRows, ProofReport, ProverProblem, Ruling,
 };
 use fabric_desktop_contracts::scalar::{Id, Label};
 use fabric_desktop_contracts::{
@@ -16,7 +16,10 @@ use serde_json::{Value, json};
 
 use super::profiles::expansion;
 use crate::broker::{Attachments, Broker, Input, Job, Output, Seed, SeedAgent, Settings};
-use crate::ports::{AgentInput, ConnectionId, ProofDone, ProofJob, ProverIdentity};
+use crate::ports::{
+    AgentInput, AttemptDone, AttemptReport, ConnectionId, ProofDone, ProofJob, ProverIdentity,
+    ProverStatus,
+};
 use crate::service::core::testing::{self, T0, TempDir};
 
 const AGENT: &str = "agent-a";
@@ -46,7 +49,7 @@ fn synthetic() -> Attachments {
     Attachments {
         prover: Some(ProverIdentity {
             kind: ProverKind::Synthetic,
-            health: fabric_desktop_contracts::owner::ProverHealth::Unavailable,
+            health: ProverStatus::Unavailable(Some(ProverProblem::NotConfigured)),
         }),
         provider_present: false,
     }
@@ -155,6 +158,7 @@ fn done(job: &ProofJob, outcome: &str, proof_id: &str) -> ProofDone {
         authorizing_grants: Vec::new(),
         undecided_reason: None,
         check_theory_text: None,
+        cause: None,
     }
 }
 
@@ -279,9 +283,14 @@ impl Run {
 
     /// A `propose_create`; its request id and the output.
     fn propose(&mut self, call_id: &str) -> (String, Output) {
+        self.propose_on(call_id, CALENDAR)
+    }
+
+    /// A `propose_create` on `calendar` of the account; its request id and the output.
+    fn propose_on(&mut self, call_id: &str, calendar: &str) -> (String, Output) {
         let line = canonical(&json!({"protocol": "fabric-desktop/1", "id": call_id,
             "method": "fabric_calendar_propose_create",
-            "params": {"account_id": ACCOUNT, "calendar_id": CALENDAR,
+            "params": {"account_id": ACCOUNT, "calendar_id": calendar,
                 "event": {"title": "Plan",
                     "start": {"date_time": "2026-11-27T10:00:00+01:00", "zone": "Europe/Berlin"},
                     "end": {"date_time": "2026-11-27T11:00:00+01:00", "zone": "Europe/Berlin"},
@@ -1008,4 +1017,100 @@ fn a_warning_calendar_must_name_a_stored_calendar() {
         json!({"expected_revision": 0, "settings": settings(CALENDAR)}),
     );
     assert_eq!(answer["preferences"]["revision"], json!(1));
+}
+
+/// c35. README section 7: `undecided_reason` is null unless the request is `undecided`, in full
+/// and redacted answers alike, and an undecided request's redacted answer carries its reason. Each
+/// answer decodes as a contract frame and has the members of the contract's fixture.
+#[test]
+fn details_carry_a_reason_only_when_undecided() {
+    let mut run = Run::new(testing::isabelle());
+    run.seed();
+    let fixture: Value = serde_json::from_str(
+        &std::fs::read_to_string(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../contracts/desktop/v1/fixtures/messages/",
+            "accept-owner-response-get-request-details-undecided-failed.json"
+        ))
+        .unwrap(),
+    )
+    .unwrap();
+    let members = |result: &Value| -> Vec<String> {
+        let mut keys: Vec<String> = result.as_object().unwrap().keys().cloned().collect();
+        keys.sort();
+        keys
+    };
+    let expected = members(&fixture["value"]["result"]);
+    let answer = |run: &mut Run, request_id: &str, redaction: &str| -> Value {
+        let (_, output) = run.owner(
+            "get_request_details",
+            json!({"request_id": request_id, "redaction": redaction}),
+        );
+        let line = response_line(&output);
+        let frame = decode(Entry::OwnerResponse, &line.as_bytes()[..line.len() - 1])
+            .unwrap_or_else(|r| panic!("{r}: {line}"));
+        let details = result(&frame.to_value());
+        assert_eq!(members(&details), expected, "{request_id} {redaction}");
+        details
+    };
+
+    let (blocked, output) = run.propose("call-1");
+    let _ = run.prove(&jobs(&output).pop().unwrap(), "block", "proof-1");
+    let pending = run.pending("call-2", "proof-2");
+    let applied = run.pending("call-3", "proof-3");
+    let output = run.approve(&applied, "until_revoked");
+    let grant = result(&response(&output))["approval"]["grant_id"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let fresh = jobs(&output).pop().unwrap();
+    let permit = ProofDone {
+        authorizing_grants: vec![id(&grant)],
+        ..done(&fresh, "permit", "proof-4")
+    };
+    let output = run.handle(Input::ProofDone(permit));
+    let order = output
+        .jobs
+        .iter()
+        .find_map(|j| match j {
+            Job::Dispatch(order) => Some(order.clone()),
+            Job::Prove(_) => None,
+        })
+        .expect("a dispatch order");
+    let now = run.now;
+    let _ = run.handle(Input::Attempt(AttemptDone {
+        request_id: order.request_id,
+        effect_id: order.effect_id,
+        attempt: order.attempt,
+        report: AttemptReport::Applied { event: None },
+        finished_at_ms: now,
+    }));
+    let (failed, _) = run.propose_on("call-5", "cal-unknown");
+    let (undecided, output) = run.propose("call-6");
+    let _ = run.prove(&jobs(&output).pop().unwrap(), "undecided", "proof-6");
+
+    let rows = [
+        (&blocked, "blocked", "redacted"),
+        (&pending, "pending_approval", "redacted"),
+        (&pending, "pending_approval", "full"),
+        (&applied, "applied", "redacted"),
+        (&failed, "terminal_failure", "redacted"),
+    ];
+    for (request_id, state, redaction) in rows {
+        let details = answer(&mut run, request_id, redaction);
+        assert_eq!(details["request"]["status"]["state"], json!(state));
+        assert_eq!(
+            details["undecided_reason"],
+            Value::Null,
+            "{state} {redaction}"
+        );
+    }
+    let details = answer(&mut run, &undecided, "redacted");
+    assert_eq!(details["request"]["status"]["state"], json!("undecided"));
+    assert_eq!(details["private"], Value::Null);
+    assert_eq!(details["undecided_reason"], json!("failed"));
+    let details = answer(&mut run, &undecided, "full");
+    assert_eq!(details["request"]["status"]["state"], json!("undecided"));
+    assert_ne!(details["private"], Value::Null, "{details}");
+    assert_eq!(details["undecided_reason"], json!("failed"));
 }

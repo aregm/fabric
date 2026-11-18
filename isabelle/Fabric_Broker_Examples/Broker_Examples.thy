@@ -528,6 +528,252 @@ lemma the_brokers_own_reads:
   "first_failing system (Create_event ''acct-1'' ''team'') = Some Actor"
   by (simp_all add: broker_simps example_defs system_def first_failing_def)
 
+subsection \<open>What a lasting approval is worth (contract README, section 10)\<close>
+
+text \<open>
+  When the owner approves a request for a session or until revoked, the broker makes a grant
+  shaped like the request: its one tool, its calendar, its window and fields for a read, who is
+  notified for a change, and the recipients for an invitation. Each case below is the broker's
+  fresh proof right after such an approval: that grant is the only grant of the context, and
+  the request rests on it. Where the outcome is Permit, a lasting approval serves a request of
+  that kind. Where the request asks again, only an approval of this one request serves it.
+  Every case is stated for a grant until revoked and for a grant of the live session.
+
+  Two profiles stand for the two modes a row can have besides Blocks. In widest, every row a
+  profile may set is Allows; in asking, every one is Asks.
+\<close>
+
+definition asking :: profile where
+  "asking = \<lparr>p_list = Asks, p_read = Asks, p_drafts = Asks, p_existing = Asks,
+     p_edit_fabric = Asks, p_edit_other = Asks, p_invite = Asks, p_respond = Asks,
+     p_delete = Asks, p_sharing = Blocks\<rparr>"
+
+definition lasting :: "tool \<Rightarrow> string \<Rightarrow> grant" where
+  "lasting t cal = standing_grant\<lparr>g_id := ''g-lasting'', g_tools := [t],
+     g_calendars := [(''acct-1'', cal)]\<rparr>"
+
+definition for_session :: "grant \<Rightarrow> grant" where
+  "for_session g = g\<lparr>g_duration := Session ''session-1''\<rparr>"
+
+definition after_approval :: "profile \<Rightarrow> grant \<Rightarrow> broker_context" where
+  "after_approval p g = base\<lparr>ctx_profile := p, ctx_grants := [g], ctx_relied := [''g-lasting'']\<rparr>"
+
+definition lasting_availability :: grant where
+  "lasting_availability = (lasting Tool_availability ''primary'')\<lparr>g_window := Some (0, 100)\<rparr>"
+
+definition lasting_read :: grant where
+  "lasting_read = (lasting Tool_read ''primary'')
+     \<lparr>g_window := Some (0, 100), g_fields := [Field_time, Field_title]\<rparr>"
+
+definition lasting_edit :: "string \<Rightarrow> send_updates \<Rightarrow> grant" where
+  "lasting_edit cal su = (lasting Tool_update cal)\<lparr>g_send_updates := Some su\<rparr>"
+
+definition lasting_invitation :: grant where
+  "lasting_invitation = (lasting Tool_invite ''team'')
+     \<lparr>g_recipients := Some (Exact [[1], [3]]), g_send_updates := Some Notify_all\<rparr>"
+
+definition lasting_response :: grant where
+  "lasting_response = (lasting Tool_respond ''primary'')\<lparr>g_send_updates := Some Notify_all\<rparr>"
+
+definition lasting_delete :: grant where
+  "lasting_delete = (lasting Tool_delete ''team'')\<lparr>g_send_updates := Some Notify_all\<rparr>"
+
+lemmas lasting_defs =
+  asking_def lasting_def for_session_def after_approval_def lasting_availability_def
+  lasting_read_def lasting_edit_def lasting_invitation_def lasting_response_def
+  lasting_delete_def edit_own_def delete_own_def invite_def invitation_def
+
+text \<open>Availability (CD-M01).\<close>
+
+lemma a_lasting_approval_of_availability_serves_under_allow:
+  "outcome (after_approval widest lasting_availability)
+     (Read_availability ''acct-1'' [''primary''] 0 100) = Permit"
+  "outcome (after_approval widest (for_session lasting_availability))
+     (Read_availability ''acct-1'' [''primary''] 0 100) = Permit"
+  by (simp_all add: broker_simps example_defs lasting_defs)
+
+lemma a_lasting_approval_of_availability_does_not_serve_under_ask:
+  "outcome (after_approval asking lasting_availability)
+     (Read_availability ''acct-1'' [''primary''] 0 100) = Need_approval"
+  "first_failing (after_approval asking lasting_availability)
+     (Read_availability ''acct-1'' [''primary''] 0 100) = Some Authority"
+  "outcome (after_approval asking (for_session lasting_availability))
+     (Read_availability ''acct-1'' [''primary''] 0 100) = Need_approval"
+  by (simp_all add: broker_simps example_defs lasting_defs first_failing_def)
+
+text \<open>Event details (CD-M02): under Asks too, reads run inside the approved grant.\<close>
+
+lemma a_lasting_approval_of_a_read_serves_under_allow:
+  "outcome (after_approval widest lasting_read)
+     (Read_events ''acct-1'' [''primary''] 0 100 [Field_time, Field_title]) = Permit"
+  "outcome (after_approval widest (for_session lasting_read))
+     (Read_events ''acct-1'' [''primary''] 0 100 [Field_time, Field_title]) = Permit"
+  by (simp_all add: broker_simps example_defs lasting_defs)
+
+lemma a_lasting_approval_of_a_read_serves_under_ask:
+  "outcome (after_approval asking lasting_read)
+     (Read_events ''acct-1'' [''primary''] 0 100 [Field_time, Field_title]) = Permit"
+  "outcome (after_approval asking (for_session lasting_read))
+     (Read_events ''acct-1'' [''primary''] 0 100 [Field_time, Field_title]) = Permit"
+  by (simp_all add: broker_simps example_defs lasting_defs)
+
+text \<open>Creating (CD-M03, CD-M04).\<close>
+
+lemma a_lasting_approval_of_a_create_in_agent_drafts_serves_under_allow:
+  "outcome (after_approval widest (lasting Tool_create ''drafts''))
+     (Create_event ''acct-1'' ''drafts'') = Permit"
+  "outcome (after_approval widest (for_session (lasting Tool_create ''drafts'')))
+     (Create_event ''acct-1'' ''drafts'') = Permit"
+  by (simp_all add: broker_simps example_defs lasting_defs)
+
+lemma a_lasting_approval_of_a_create_in_agent_drafts_does_not_serve_under_ask:
+  "outcome (after_approval asking (lasting Tool_create ''drafts''))
+     (Create_event ''acct-1'' ''drafts'') = Need_approval"
+  "first_failing (after_approval asking (lasting Tool_create ''drafts''))
+     (Create_event ''acct-1'' ''drafts'') = Some Authority"
+  "outcome (after_approval asking (for_session (lasting Tool_create ''drafts'')))
+     (Create_event ''acct-1'' ''drafts'') = Need_approval"
+  by (simp_all add: broker_simps example_defs lasting_defs first_failing_def)
+
+lemma a_lasting_approval_of_a_create_in_another_calendar_serves_under_allow:
+  "outcome (after_approval widest (lasting Tool_create ''team''))
+     (Create_event ''acct-1'' ''team'') = Permit"
+  "outcome (after_approval widest (for_session (lasting Tool_create ''team'')))
+     (Create_event ''acct-1'' ''team'') = Permit"
+  by (simp_all add: broker_simps example_defs lasting_defs)
+
+lemma a_lasting_approval_of_a_create_in_another_calendar_does_not_serve_under_ask:
+  "outcome (after_approval asking (lasting Tool_create ''team''))
+     (Create_event ''acct-1'' ''team'') = Need_approval"
+  "first_failing (after_approval asking (lasting Tool_create ''team''))
+     (Create_event ''acct-1'' ''team'') = Some Authority"
+  "outcome (after_approval asking (for_session (lasting Tool_create ''team'')))
+     (Create_event ''acct-1'' ''team'') = Need_approval"
+  by (simp_all add: broker_simps example_defs lasting_defs first_failing_def)
+
+text \<open>Editing an event Fabric created that has no attendees (CD-M05): under Asks a lasting
+  approval serves in Agent Drafts and nowhere else.\<close>
+
+lemma a_lasting_approval_of_an_edit_in_agent_drafts_serves_under_allow:
+  "outcome ((after_approval widest (lasting_edit ''drafts'' Notify_none))\<lparr>ctx_event := Some own_event\<rparr>)
+     (Update_event ''acct-1'' ''drafts'' [100] [7] Notify_none) = Permit"
+  "outcome ((after_approval widest (for_session (lasting_edit ''drafts'' Notify_none)))\<lparr>ctx_event := Some own_event\<rparr>)
+     (Update_event ''acct-1'' ''drafts'' [100] [7] Notify_none) = Permit"
+  by (simp_all add: broker_simps example_defs lasting_defs)
+
+lemma a_lasting_approval_of_an_edit_in_agent_drafts_serves_under_ask:
+  "outcome ((after_approval asking (lasting_edit ''drafts'' Notify_none))\<lparr>ctx_event := Some own_event\<rparr>)
+     (Update_event ''acct-1'' ''drafts'' [100] [7] Notify_none) = Permit"
+  "outcome ((after_approval asking (for_session (lasting_edit ''drafts'' Notify_none)))\<lparr>ctx_event := Some own_event\<rparr>)
+     (Update_event ''acct-1'' ''drafts'' [100] [7] Notify_none) = Permit"
+  by (simp_all add: broker_simps example_defs lasting_defs)
+
+lemma a_lasting_approval_of_an_edit_outside_agent_drafts_serves_under_allow:
+  "outcome ((after_approval widest (lasting_edit ''team'' Notify_all))\<lparr>ctx_event := Some own_event\<rparr>)
+     edit_own = Permit"
+  "outcome ((after_approval widest (for_session (lasting_edit ''team'' Notify_all)))\<lparr>ctx_event := Some own_event\<rparr>)
+     edit_own = Permit"
+  by (simp_all add: broker_simps example_defs lasting_defs)
+
+lemma a_lasting_approval_of_an_edit_outside_agent_drafts_does_not_serve_under_ask:
+  "outcome ((after_approval asking (lasting_edit ''team'' Notify_all))\<lparr>ctx_event := Some own_event\<rparr>)
+     edit_own = Need_approval"
+  "first_failing ((after_approval asking (lasting_edit ''team'' Notify_all))\<lparr>ctx_event := Some own_event\<rparr>)
+     edit_own = Some Authority"
+  "outcome ((after_approval asking (for_session (lasting_edit ''team'' Notify_all)))\<lparr>ctx_event := Some own_event\<rparr>)
+     edit_own = Need_approval"
+  by (simp_all add: broker_simps example_defs lasting_defs first_failing_def)
+
+text \<open>Editing an event Fabric did not create (CD-M06).\<close>
+
+lemma a_lasting_approval_of_an_edit_of_a_pre_existing_event_serves_under_allow:
+  "outcome ((after_approval widest (lasting_edit ''team'' Notify_all))\<lparr>ctx_event := Some (own_event\<lparr>ev_fabric_created := False\<rparr>)\<rparr>)
+     edit_own = Permit"
+  "outcome ((after_approval widest (for_session (lasting_edit ''team'' Notify_all)))\<lparr>ctx_event := Some (own_event\<lparr>ev_fabric_created := False\<rparr>)\<rparr>)
+     edit_own = Permit"
+  by (simp_all add: broker_simps example_defs lasting_defs)
+
+lemma a_lasting_approval_of_an_edit_of_a_pre_existing_event_does_not_serve_under_ask:
+  "outcome ((after_approval asking (lasting_edit ''team'' Notify_all))\<lparr>ctx_event := Some (own_event\<lparr>ev_fabric_created := False\<rparr>)\<rparr>)
+     edit_own = Need_approval"
+  "first_failing ((after_approval asking (lasting_edit ''team'' Notify_all))\<lparr>ctx_event := Some (own_event\<lparr>ev_fabric_created := False\<rparr>)\<rparr>)
+     edit_own = Some Authority"
+  "outcome ((after_approval asking (for_session (lasting_edit ''team'' Notify_all)))\<lparr>ctx_event := Some (own_event\<lparr>ev_fabric_created := False\<rparr>)\<rparr>)
+     edit_own = Need_approval"
+  by (simp_all add: broker_simps example_defs lasting_defs first_failing_def)
+
+text \<open>
+  An edit of an event that has attendees reaches them, so it falls under the row for
+  invitations too (CD-M07). The grant of an approved edit names neither the invitation tool nor
+  any recipient, so it never serves the next such edit, whatever the two rows say.
+\<close>
+
+lemma a_lasting_approval_of_an_edit_that_reaches_attendees_never_serves:
+  "outcome ((after_approval widest (lasting_edit ''team'' Notify_all))\<lparr>ctx_event := Some (own_event\<lparr>ev_attendees := [bob]\<rparr>)\<rparr>)
+     edit_own = Need_approval"
+  "first_failing ((after_approval widest (lasting_edit ''team'' Notify_all))\<lparr>ctx_event := Some (own_event\<lparr>ev_attendees := [bob]\<rparr>)\<rparr>)
+     edit_own = Some No_strangers"
+  "outcome ((after_approval widest (for_session (lasting_edit ''team'' Notify_all)))\<lparr>ctx_event := Some (own_event\<lparr>ev_attendees := [bob]\<rparr>)\<rparr>)
+     edit_own = Need_approval"
+  "outcome ((after_approval (widest\<lparr>p_invite := Asks\<rparr>) (lasting_edit ''team'' Notify_all))\<lparr>ctx_event := Some (own_event\<lparr>ev_attendees := [bob]\<rparr>)\<rparr>)
+     edit_own = Need_approval"
+  "outcome ((after_approval (asking\<lparr>p_invite := Allows\<rparr>) (lasting_edit ''team'' Notify_all))\<lparr>ctx_event := Some (own_event\<lparr>ev_attendees := [bob]\<rparr>)\<rparr>)
+     edit_own = Need_approval"
+  "outcome ((after_approval asking (lasting_edit ''team'' Notify_all))\<lparr>ctx_event := Some (own_event\<lparr>ev_attendees := [bob]\<rparr>)\<rparr>)
+     edit_own = Need_approval"
+  by (simp_all add: broker_simps example_defs lasting_defs first_failing_def)
+
+text \<open>Invitations (CD-M07). The grant carries the approved attendees as exact addresses. Under
+  Allows it serves a later invitation of the same people on that calendar; under Asks every
+  invitation asks.\<close>
+
+lemma a_lasting_approval_of_an_invitation_serves_under_allow:
+  "outcome ((after_approval widest lasting_invitation)\<lparr>ctx_event := Some own_event\<rparr>)
+     (invite [bob, dan]) = Permit"
+  "outcome ((after_approval widest (for_session lasting_invitation))\<lparr>ctx_event := Some own_event\<rparr>)
+     (invite [bob, dan]) = Permit"
+  by (simp_all add: broker_simps example_defs lasting_defs)
+
+lemma a_lasting_approval_of_an_invitation_does_not_serve_under_ask:
+  "outcome ((after_approval asking lasting_invitation)\<lparr>ctx_event := Some own_event\<rparr>)
+     (invite [bob, dan]) = Need_approval"
+  "first_failing ((after_approval asking lasting_invitation)\<lparr>ctx_event := Some own_event\<rparr>)
+     (invite [bob, dan]) = Some Invitation_authority"
+  "outcome ((after_approval asking (for_session lasting_invitation))\<lparr>ctx_event := Some own_event\<rparr>)
+     (invite [bob, dan]) = Need_approval"
+  by (simp_all add: broker_simps example_defs lasting_defs first_failing_def)
+
+text \<open>Responding (CD-M08).\<close>
+
+lemma a_lasting_approval_of_a_response_serves_under_allow:
+  "outcome ((after_approval widest lasting_response)\<lparr>ctx_event := Some invitation\<rparr>)
+     (Respond ''acct-1'' ''primary'' (Whole_event [200] [7]) Accepted Notify_all) = Permit"
+  "outcome ((after_approval widest (for_session lasting_response))\<lparr>ctx_event := Some invitation\<rparr>)
+     (Respond ''acct-1'' ''primary'' (Whole_event [200] [7]) Accepted Notify_all) = Permit"
+  by (simp_all add: broker_simps example_defs lasting_defs)
+
+lemma a_lasting_approval_of_a_response_does_not_serve_under_ask:
+  "outcome ((after_approval asking lasting_response)\<lparr>ctx_event := Some invitation\<rparr>)
+     (Respond ''acct-1'' ''primary'' (Whole_event [200] [7]) Accepted Notify_all) = Need_approval"
+  "first_failing ((after_approval asking lasting_response)\<lparr>ctx_event := Some invitation\<rparr>)
+     (Respond ''acct-1'' ''primary'' (Whole_event [200] [7]) Accepted Notify_all) = Some Authority"
+  "outcome ((after_approval asking (for_session lasting_response))\<lparr>ctx_event := Some invitation\<rparr>)
+     (Respond ''acct-1'' ''primary'' (Whole_event [200] [7]) Accepted Notify_all) = Need_approval"
+  by (simp_all add: broker_simps example_defs lasting_defs first_failing_def)
+
+text \<open>Deleting always asks (CD-Q05a): no lasting approval serves it, in any profile.\<close>
+
+lemma a_lasting_approval_of_a_delete_never_serves:
+  "outcome ((after_approval asking lasting_delete)\<lparr>ctx_event := Some own_event\<rparr>)
+     delete_own = Need_approval"
+  "first_failing ((after_approval asking lasting_delete)\<lparr>ctx_event := Some own_event\<rparr>)
+     delete_own = Some Authority"
+  "outcome ((after_approval asking (for_session lasting_delete))\<lparr>ctx_event := Some own_event\<rparr>)
+     delete_own = Need_approval"
+  "outcome ((after_approval widest lasting_delete)\<lparr>ctx_event := Some own_event\<rparr>)
+     delete_own = Need_approval"
+  by (simp_all add: broker_simps example_defs lasting_defs first_failing_def)
+
 subsection \<open>Which grants a permitted action rests on\<close>
 
 text \<open>

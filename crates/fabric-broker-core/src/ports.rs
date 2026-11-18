@@ -7,19 +7,75 @@ use fabric_desktop_contracts::Frame;
 use fabric_desktop_contracts::agent::{Action, AgentRequest};
 use fabric_desktop_contracts::common::{CalendarRef, EventRef, FailureCode};
 use fabric_desktop_contracts::owner::{
-    Authorization, Grant, ProfileRows, ProofPurpose, ProofReport, ProverHealth, RecipientSet,
-    Ruling,
+    Authorization, Grant, ProfileRows, ProofPurpose, ProofReport, ProverHealth, ProverProblem,
+    RecipientSet, Ruling,
 };
 use fabric_desktop_contracts::scalar::{Digest, Explanation, Id};
-pub use fabric_storage::{Fence, ProverKind};
+pub use fabric_storage::{Fence, ProverKind, UndecidedCause};
 
 /// Fixed at start; the core takes the kind of every result from here (D13).
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ProverIdentity {
     /// The kind of prover.
     pub kind: ProverKind,
-    /// Its health as the owner sees it.
-    pub health: ProverHealth,
+    /// Its status at start, which the owner sees as health.
+    pub health: ProverStatus,
+}
+
+/// The prover's status: its health and, while it is unavailable, the problem when known. A
+/// problem together with `Starting` or `Ready` cannot be built.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ProverStatus {
+    /// The prover is starting.
+    Starting,
+    /// The prover is ready.
+    Ready,
+    /// The prover is unavailable; `None` when the cause is not known.
+    Unavailable(Option<ProverProblem>),
+}
+
+impl ProverStatus {
+    /// The contract's `prover` health.
+    #[must_use]
+    pub const fn health(self) -> ProverHealth {
+        match self {
+            ProverStatus::Starting => ProverHealth::Starting,
+            ProverStatus::Ready => ProverHealth::Ready,
+            ProverStatus::Unavailable(_) => ProverHealth::Unavailable,
+        }
+    }
+
+    /// The contract's `prover_problem`: `Some` only while unavailable with a known cause.
+    #[must_use]
+    pub const fn problem(self) -> Option<ProverProblem> {
+        match self {
+            ProverStatus::Unavailable(problem) => problem,
+            ProverStatus::Starting | ProverStatus::Ready => None,
+        }
+    }
+}
+
+/// Why a prover's result decides nothing: what it states with no report, or with an undecided
+/// verdict. The core stores its own cause for each (`UndecidedCause`), and ignores this for a
+/// prover whose kind is not Isabelle: the kind decides then. A synthetic run stores the same cause
+/// as an Isabelle run on the paths outside the verdict (spent re-proofs, a result outside the
+/// facts, an unbound report, the watchdog).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ProverCause {
+    /// The prover was starting.
+    Starting,
+    /// The prover was down, stopping or lost, or the job could not be handed to it.
+    NotRunning,
+    /// The job's deadline passed before the check, or by the time it returned.
+    DeadlinePassed,
+    /// The check reached the time limit the prover gave it.
+    CheckLimitReached,
+    /// A check ran and did not decide, or the gate failed.
+    CheckNotDecided,
+    /// The prover's report could not be used: another theory, unbound or not fit.
+    ReportUnusable,
+    /// The prover refused the job before any check, for a reason that is not its state or time.
+    JobRefused,
 }
 
 /// What is proved. CD-W05/W06 add `Disclose` and system variants.
@@ -190,6 +246,9 @@ pub struct ProofDone {
     pub undecided_reason: Option<String>,
     /// Stored only in the encrypted store.
     pub check_theory_text: Option<String>,
+    /// Why nothing was decided: required with no report and with an undecided verdict, `None`
+    /// otherwise. The core stores `not_stated` for a result with no report and no cause.
+    pub cause: Option<ProverCause>,
 }
 
 /// Runs on a worker thread owned by the composition.
@@ -307,4 +366,32 @@ pub struct AgentReply {
     pub connection: ConnectionId,
     /// The frame.
     pub frame: Frame,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// c32. 10.3: only an unavailable status names a problem, and each status maps to its health.
+    #[test]
+    fn prover_status_has_no_cause_unless_unavailable() {
+        let table = [
+            (ProverStatus::Starting, ProverHealth::Starting, None),
+            (ProverStatus::Ready, ProverHealth::Ready, None),
+            (
+                ProverStatus::Unavailable(None),
+                ProverHealth::Unavailable,
+                None,
+            ),
+            (
+                ProverStatus::Unavailable(Some(ProverProblem::WrongRules)),
+                ProverHealth::Unavailable,
+                Some(ProverProblem::WrongRules),
+            ),
+        ];
+        for (status, health, problem) in table {
+            assert_eq!(status.health(), health, "{status:?}");
+            assert_eq!(status.problem(), problem, "{status:?}");
+        }
+    }
 }

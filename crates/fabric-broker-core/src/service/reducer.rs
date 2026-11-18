@@ -79,6 +79,13 @@ impl Event {
     ];
 }
 
+/// True for the event whose move states its cause (`undecided`): only `pipeline::undecide`
+/// makes that move, and `pipeline::advance` refuses it.
+#[must_use]
+pub(crate) const fn states_a_cause(event: Event) -> bool {
+    matches!(event, Event::Undecide)
+}
+
 /// The state `event` moves a request in `from` to, or `None` when it does not apply.
 #[must_use]
 pub(crate) fn next(from: RequestState, event: Event) -> Option<RequestState> {

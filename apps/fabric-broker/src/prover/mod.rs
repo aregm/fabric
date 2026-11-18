@@ -16,28 +16,30 @@
 
 use std::fs;
 use std::io::{self, Write as _};
+use std::panic::{self, AssertUnwindSafe};
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
-use std::thread;
+use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
 
-use fabric_broker_core::ports::{ProofDone, ProofJob, ProverIdentity, ProverKind};
+use fabric_broker_core::ports::{ProofDone, ProofJob, ProverIdentity, ProverKind, ProverStatus};
 use fabric_broker_policy::report::sha256_hex;
 use fabric_broker_policy::theory::SESSION_ROOT;
 use fabric_broker_policy::{
     Action, BrokerGate, Check, Context, GateConfig, KillHandle, PolicyError,
 };
-use fabric_desktop_contracts::owner::ProverHealth;
+use fabric_desktop_contracts::owner::ProverProblem;
 
-use self::map::{GateFate, JobRefused};
+use self::map::{GateFate, JobRefused, Lateness, Refusal};
 // The wall clock in Unix milliseconds, as the core's clock reads it before its offset.
 use crate::shell::now_ms;
 
 pub mod map;
 
-/// The longest limit of one check (plan section 5). Each check gets the time left before its
-/// job's deadline; the gate takes the smaller.
+/// The longest limit of one check (plan section 5). The adapter passes each check the smaller of
+/// the time left before its job's deadline and the gate configuration's `check_timeout` (this
+/// value), so the gate's own cap at the same value changes nothing (PW 2.3).
 pub const CHECK_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
 
 /// The waits after the first and the second consecutive failure; after a third the prover
@@ -161,8 +163,8 @@ impl ProverOptions {
 pub enum ProverEvent {
     /// The result of one job, boxed so health events do not carry its size.
     Done(Box<ProofDone>),
-    /// The prover's health changed.
-    Health(ProverHealth),
+    /// The prover's status changed: its health and, while unavailable, why.
+    Health(ProverStatus),
 }
 
 /// Returns false when the receiver is gone; the worker then stops.
@@ -173,6 +175,9 @@ const STOP_SLICE: std::time::Duration = std::time::Duration::from_millis(20);
 
 /// The stderr line when the rule theory is not the one this broker was built with.
 const OTHER_THEORY_LINE: &str = "fabric-broker: the rule theory or its session files in FABRIC_BROKER_RULES_DIR are not the ones this broker was built with; the rule prover does not run in this run";
+
+/// The error of a gate start that panicked; never written anywhere, its category is `I/O`.
+const START_PANICKED: &str = "the gate's start panicked";
 
 /// What reaches the worker thread.
 enum Msg {
@@ -190,8 +195,8 @@ enum Msg {
 /// hung gate is reported at the job's deadline, the gate does not bound its theory file's write
 /// and removal, and a step of the wall clock can move the deadline.
 struct Shared {
-    /// The health last sent to the main loop, by the worker or through [`IsabelleProver::poll`].
-    health: ProverHealth,
+    /// The status last sent to the main loop, by the worker or through [`IsabelleProver::poll`].
+    health: ProverStatus,
     /// The deadline of the check now running. `check_job` sets it only while no stop was sent,
     /// in the same critical section that reads `stop_by`, so once the stop's instant has passed
     /// it is set if and only if a check that began before the stop still runs (PW 2.5).
@@ -219,6 +224,8 @@ pub struct IsabelleProver {
     shared: Arc<Mutex<Shared>>,
     /// `<data_dir>/prover`, removed at every stop.
     work_dir: PathBuf,
+    /// The worker thread; `None` when it could not be spawned (PW 2.2).
+    worker: Option<JoinHandle<()>>,
 }
 
 impl IsabelleProver {
@@ -227,7 +234,7 @@ impl IsabelleProver {
     pub fn identity() -> ProverIdentity {
         ProverIdentity {
             kind: ProverKind::Isabelle,
-            health: ProverHealth::Starting,
+            health: ProverStatus::Starting,
         }
     }
 
@@ -240,7 +247,7 @@ impl IsabelleProver {
     pub fn spawn(options: ProverOptions, emit: Emit) -> IsabelleProver {
         let (sender, messages) = mpsc::channel();
         let shared = Arc::new(Mutex::new(Shared {
-            health: ProverHealth::Starting,
+            health: ProverStatus::Starting,
             running: None,
             overrun: false,
             stop_by: None,
@@ -257,14 +264,25 @@ impl IsabelleProver {
             gone: false,
         };
         // A failed spawn drops the worker and its receiver: every send then fails.
-        let _ = thread::Builder::new()
+        let worker = thread::Builder::new()
             .name("fabric-prover".to_owned())
-            .spawn(move || worker.run(&messages));
+            .spawn(move || worker.run(&messages))
+            .ok();
         IsabelleProver {
             sender,
             shared,
             work_dir,
+            worker,
         }
+    }
+
+    /// True when the worker is lost: its thread could not be spawned, or it has ended although
+    /// no stop was sent, by a panic or because the main loop no longer takes its events. The
+    /// shell asks this each turn (PW 2.2).
+    #[must_use]
+    pub fn lost(&self) -> bool {
+        let ended = self.worker.as_ref().is_none_or(JoinHandle::is_finished);
+        ended && lock(&self.shared).stop_by.is_none()
     }
 
     /// Hands one job to the worker. Never blocks; false when the worker is gone.
@@ -279,14 +297,15 @@ impl IsabelleProver {
         if shared.overrun { None } else { shared.running }
     }
 
-    /// `Some(Unavailable)` once when the running check is at or past its job's deadline.
-    pub fn poll(&self, now_ms: u64) -> Option<ProverHealth> {
+    /// `Some(Unavailable(None))` once when the running check is at or past its job's deadline:
+    /// why is not known while the check still runs (PW 2.3).
+    pub fn poll(&self, now_ms: u64) -> Option<ProverStatus> {
         let mut shared = lock(&self.shared);
         match shared.running {
             Some(deadline) if !shared.overrun && now_ms >= deadline => {
                 shared.overrun = true;
-                shared.health = ProverHealth::Unavailable;
-                Some(ProverHealth::Unavailable)
+                shared.health = ProverStatus::Unavailable(None);
+                Some(ProverStatus::Unavailable(None))
             }
             _ => None,
         }
@@ -418,9 +437,9 @@ struct Checked {
 }
 
 impl Checked {
-    fn refused(job: &ProofJob, reason: &'static str) -> Checked {
+    fn refused(job: &ProofJob, refusal: Refusal) -> Checked {
         Checked {
-            done: map::no_report(job, reason),
+            done: map::no_report(job, refusal),
             fate: GateFate::Keep,
             overrun: false,
             category: "",
@@ -502,16 +521,17 @@ impl Worker {
         }
     }
 
-    /// Sends `health` when it differs from the health last sent.
-    fn set_health(&mut self, health: ProverHealth) {
+    /// Sends `status` when it differs from the status last sent. The whole status is compared,
+    /// so a change of cause alone is sent too.
+    fn set_health(&mut self, status: ProverStatus) {
         {
             let mut shared = lock(&self.shared);
-            if shared.health == health {
+            if shared.health == status {
                 return;
             }
-            shared.health = health;
+            shared.health = status;
         }
-        self.send(ProverEvent::Health(health));
+        self.send(ProverEvent::Health(status));
     }
 
     /// Enters `Starting`: a fresh private work directory, the pin of PW 2.1, then a starter
@@ -522,7 +542,7 @@ impl Worker {
             return;
         }
         self.state = State::Starting;
-        self.set_health(ProverHealth::Starting);
+        self.set_health(ProverStatus::Starting);
         if prepare_work_dir(&self.options.gate.work_dir).is_err() {
             self.fail(Failure::Start, "I/O");
             return;
@@ -561,9 +581,12 @@ impl Worker {
                 // ended, and the start returns an error. A gate it still returns is stopped here
                 // within `stop_bound`, which with the killed handle returns at once and sends
                 // `shutdown` to a server found already running. What is left: if the process ends
-                // before the start returns, a found server outlives it.
+                // before the start returns, a found server outlives it. A start that panics is a
+                // failed start, so the worker goes through `fail` (PW 2.2).
+                let started = panic::catch_unwind(AssertUnwindSafe(|| starter(&config, &kill)))
+                    .unwrap_or_else(|_| Err(PolicyError::Io(io::Error::other(START_PANICKED))));
                 if let Err(mpsc::SendError(Msg::Started(Ok(mut gate)))) =
-                    sender.send(Msg::Started(starter(&config, &kill)))
+                    sender.send(Msg::Started(started))
                 {
                     let _ = gate.stop_within(stop_bound(&shared));
                 }
@@ -588,7 +611,7 @@ impl Worker {
             Ok(gate) => {
                 self.state = State::Ready(gate);
                 self.failures = 0;
-                self.set_health(ProverHealth::Ready);
+                self.set_health(ProverStatus::Ready);
             }
             Err(error) => self.fail(Failure::Start, category(&error)),
         }
@@ -602,7 +625,12 @@ impl Worker {
             State::Down { .. } => Checked::refused(job, map::NOT_RUNNING),
             // A job still queued at a stop is not checked.
             State::Ready(_) if stop_sent => Checked::refused(job, map::NOT_RUNNING),
-            State::Ready(gate) => check_job(gate.as_mut(), &self.shared, job),
+            State::Ready(gate) => check_job(
+                gate.as_mut(),
+                &self.shared,
+                self.options.gate.check_timeout,
+                job,
+            ),
         };
         self.send(ProverEvent::Done(Box::new(checked.done)));
         match checked.fate {
@@ -613,13 +641,17 @@ impl Worker {
                     stop_gate(gate, &self.shared);
                 }
             }
-            GateFate::Keep if checked.overrun => self.set_health(ProverHealth::Ready),
+            GateFate::Keep if checked.overrun => self.set_health(ProverStatus::Ready),
             GateFate::Keep => {}
         }
     }
 
     /// The failure rule: wait the n-th wait after the n-th consecutive failure, and after
     /// the last wait stay down for the run. No error text, path or calendar value is written.
+    ///
+    /// The status says whether a retry comes: `failed_will_retry` while one is scheduled and no
+    /// stop was sent; `failed` after the last wait or once a stop was sent, since no retry starts
+    /// then (PW 2.2).
     fn fail(&mut self, failure: Failure, category: &str) {
         self.failures += 1;
         let wait = self
@@ -648,14 +680,20 @@ impl Worker {
             }
         };
         stderr_line(&line);
-        self.set_health(ProverHealth::Unavailable);
+        let will_retry = matches!(self.state, State::Down { retry_at: Some(_) })
+            && lock(&self.shared).stop_by.is_none();
+        self.set_health(ProverStatus::Unavailable(Some(if will_retry {
+            ProverProblem::FailedWillRetry
+        } else {
+            ProverProblem::Failed
+        })));
     }
 
     /// The rule theory is not the built one: down for the run, nothing is proved.
     fn other_theory(&mut self) {
         self.state = State::Down { retry_at: None };
         stderr_line(OTHER_THEORY_LINE);
-        self.set_health(ProverHealth::Unavailable);
+        self.set_health(ProverStatus::Unavailable(Some(ProverProblem::WrongRules)));
     }
 
     /// At a stop, or when the channel is closed or the main loop is gone: stops a ready gate
@@ -708,13 +746,25 @@ fn stop_gate(mut gate: Box<dyn Gate>, shared: &Mutex<Shared>) {
 }
 
 /// One job in `Ready`: refused without a check once a stop was sent, past its deadline, or when
-/// it cannot be mapped; otherwise checked within the time left before its deadline (PW 2.3).
-fn check_job(gate: &mut dyn Gate, shared: &Mutex<Shared>, job: &ProofJob) -> Checked {
+/// it cannot be mapped; otherwise checked within the time left before its deadline, at most
+/// `check_timeout` (PW 2.3).
+///
+/// The adapter owns the limit it passes and times the call itself (PW 2.3): an error or an
+/// undecided verdict states `DeadlinePassed` when the clock is then at or past the job's
+/// deadline, else `CheckLimitReached` when the call took at least that limit. No text of the
+/// gate is read for this.
+fn check_job(
+    gate: &mut dyn Gate,
+    shared: &Mutex<Shared>,
+    check_timeout: Duration,
+    job: &ProofJob,
+) -> Checked {
     // One clock read for the refusal and the limit: the time left before the job's deadline.
     let left = job.deadline_ms.saturating_sub(now_ms());
     if left == 0 {
         return Checked::refused(job, map::PAST_DEADLINE);
     }
+    let limit = Duration::from_millis(left).min(check_timeout);
     let (context, action) = match map::context_of(job) {
         Ok(checkable) => checkable,
         Err(JobRefused(reason)) => return Checked::refused(job, reason),
@@ -731,7 +781,16 @@ fn check_job(gate: &mut dyn Gate, shared: &Mutex<Shared>, job: &ProofJob) -> Che
         shared.running = Some(job.deadline_ms);
         shared.overrun = false;
     }
-    let result = gate.check_within(&context, &action, Duration::from_millis(left));
+    let began = Instant::now();
+    let result = gate.check_within(&context, &action, limit);
+    let took = began.elapsed();
+    let lateness = if now_ms() >= job.deadline_ms {
+        Lateness::PastDeadline
+    } else if took >= limit {
+        Lateness::AtLimit
+    } else {
+        Lateness::InTime
+    };
     // A broken gate is restarted whatever the result; an `Ok` check's result stands.
     let broken = gate.is_broken();
     let overrun = {
@@ -745,7 +804,7 @@ fn check_job(gate: &mut dyn Gate, shared: &Mutex<Shared>, job: &ProofJob) -> Che
         Ok(_) if broken => "connection",
         Ok(_) => "Isabelle",
     };
-    let (done, fate) = map::done_of(job, &context, built_theory_sha256(), result);
+    let (done, fate) = map::done_of(job, &context, built_theory_sha256(), result, lateness);
     let fate = if broken { GateFate::Restart } else { fate };
     Checked {
         done,
@@ -1031,9 +1090,9 @@ mod tests {
         (IsabelleProver::spawn(options, emit), events)
     }
 
-    fn health(events: &Receiver<ProverEvent>) -> ProverHealth {
+    fn status(events: &Receiver<ProverEvent>) -> ProverStatus {
         match events.recv_timeout(PATIENCE).expect("a health event") {
-            ProverEvent::Health(health) => health,
+            ProverEvent::Health(status) => status,
             ProverEvent::Done(done) => panic!("a result, not health: {done:?}"),
         }
     }
@@ -1061,10 +1120,18 @@ mod tests {
         job
     }
 
-    fn reason(done: &ProofDone) -> &str {
+    /// The fixed refusal of a result with no report, found by its text; its cause must be the
+    /// refusal's.
+    fn refusal(done: &ProofDone) -> Refusal {
         assert!(done.report.is_none() && done.ruling.is_none());
         assert!(done.authorizing_grants.is_empty() && done.check_theory_text.is_none());
-        done.undecided_reason.as_deref().unwrap()
+        let text = done.undecided_reason.as_deref().unwrap();
+        let refusal = *map::tests::REFUSALS
+            .iter()
+            .find(|refusal| refusal.text == text)
+            .unwrap_or_else(|| panic!("not a fixed text: {text}"));
+        assert_eq!(done.cause, Some(refusal.cause), "{text}");
+        refusal
     }
 
     fn ready(gate: Double) -> Starter {
@@ -1094,13 +1161,13 @@ mod tests {
             Ok(Box::new(gate.clone()) as Box<dyn Gate>)
         });
         let (prover, events) = spawn(options(data.path(), &[], starter));
-        assert_eq!(IsabelleProver::identity().health, ProverHealth::Starting);
+        assert_eq!(IsabelleProver::identity().health, ProverStatus::Starting);
         assert_eq!(IsabelleProver::identity().kind, ProverKind::Isabelle);
         quiet(&events);
         assert!(prover.prove(job()));
-        assert_eq!(reason(&done(&events)), map::STARTING);
+        assert_eq!(refusal(&done(&events)), map::STARTING);
         latch.open();
-        assert_eq!(health(&events), ProverHealth::Ready);
+        assert_eq!(status(&events), ProverStatus::Ready);
         assert!(stop(prover));
     }
 
@@ -1117,13 +1184,13 @@ mod tests {
         let waits = [Duration::from_millis(100), Duration::from_millis(300)];
         let (prover, events) = spawn(options(data.path(), &waits, starter));
         for expected in [
-            ProverHealth::Unavailable,
-            ProverHealth::Starting,
-            ProverHealth::Unavailable,
-            ProverHealth::Starting,
-            ProverHealth::Unavailable,
+            ProverStatus::Unavailable(Some(ProverProblem::FailedWillRetry)),
+            ProverStatus::Starting,
+            ProverStatus::Unavailable(Some(ProverProblem::FailedWillRetry)),
+            ProverStatus::Starting,
+            ProverStatus::Unavailable(Some(ProverProblem::Failed)),
         ] {
-            assert_eq!(health(&events), expected);
+            assert_eq!(status(&events), expected);
         }
         thread::sleep(Duration::from_millis(500));
         quiet(&events);
@@ -1132,7 +1199,7 @@ mod tests {
         assert!(times[1] - times[0] >= waits[0]);
         assert!(times[2] - times[1] >= waits[1]);
         assert!(prover.prove(job()));
-        assert_eq!(reason(&done(&events)), map::NOT_RUNNING);
+        assert_eq!(refusal(&done(&events)), map::NOT_RUNNING);
         assert!(stop(prover));
     }
 
@@ -1147,15 +1214,18 @@ mod tests {
         });
         let (prover, events) = spawn(options(data.path(), &[], starter));
         assert!(prover.prove(job()));
-        assert_eq!(reason(&done(&events)), map::STARTING);
+        assert_eq!(refusal(&done(&events)), map::STARTING);
         latch.open();
-        assert_eq!(health(&events), ProverHealth::Unavailable);
+        assert_eq!(
+            status(&events),
+            ProverStatus::Unavailable(Some(ProverProblem::Failed))
+        );
         let mut second = job();
         second.job_id = 8;
         assert!(prover.prove(second));
         let done = done(&events);
         assert_eq!(done.job_id, 8);
-        assert_eq!(reason(&done), map::NOT_RUNNING);
+        assert_eq!(refusal(&done), map::NOT_RUNNING);
         assert!(stop(prover));
     }
 
@@ -1165,11 +1235,11 @@ mod tests {
         let gate = Double::new(io);
         let checks = Arc::clone(&gate.checks);
         let (prover, events) = spawn(options(data.path(), &[], ready(gate)));
-        assert_eq!(health(&events), ProverHealth::Ready);
+        assert_eq!(status(&events), ProverStatus::Ready);
         let mut late = job();
         late.deadline_ms = now_ms();
         assert!(prover.prove(late));
-        assert_eq!(reason(&done(&events)), map::PAST_DEADLINE);
+        assert_eq!(refusal(&done(&events)), map::PAST_DEADLINE);
         quiet(&events);
         assert_eq!(checks.load(Ordering::SeqCst), 0);
         assert!(stop(prover));
@@ -1187,15 +1257,15 @@ mod tests {
         });
         let waits = [Duration::from_millis(50)];
         let (prover, events) = spawn(options(data.path(), &waits, starter));
-        assert_eq!(health(&events), ProverHealth::Ready);
+        assert_eq!(status(&events), ProverStatus::Ready);
         assert!(prover.prove(job()));
-        assert_eq!(reason(&done(&events)), map::FAILED);
+        assert_eq!(refusal(&done(&events)), map::FAILED);
         for expected in [
-            ProverHealth::Unavailable,
-            ProverHealth::Starting,
-            ProverHealth::Ready,
+            ProverStatus::Unavailable(Some(ProverProblem::FailedWillRetry)),
+            ProverStatus::Starting,
+            ProverStatus::Ready,
         ] {
-            assert_eq!(health(&events), expected);
+            assert_eq!(status(&events), expected);
         }
         assert_eq!(calls.load(Ordering::SeqCst), 2);
         assert_eq!(stops.load(Ordering::SeqCst), 1);
@@ -1214,10 +1284,10 @@ mod tests {
             Ok(Box::new(gate.clone()) as Box<dyn Gate>)
         });
         let (prover, events) = spawn(options(data.path(), &[], starter));
-        assert_eq!(health(&events), ProverHealth::Ready);
+        assert_eq!(status(&events), ProverStatus::Ready);
         for _ in 0..2 {
             assert!(prover.prove(job()));
-            assert_eq!(reason(&done(&events)), map::RENDER);
+            assert_eq!(refusal(&done(&events)), map::RENDER);
         }
         quiet(&events);
         assert_eq!(checks.load(Ordering::SeqCst), 2);
@@ -1249,7 +1319,7 @@ mod tests {
         gate.check_latch = Some(latch.clone());
         let checks = Arc::clone(&gate.checks);
         let (prover, events) = spawn(options(data.path(), &[], ready(gate)));
-        assert_eq!(health(&events), ProverHealth::Ready);
+        assert_eq!(status(&events), ProverStatus::Ready);
         assert!(prover.prove(job()));
         wait_until("the check", || checks.load(Ordering::SeqCst) == 1);
         let drains = AtomicUsize::new(0);
@@ -1285,7 +1355,7 @@ mod tests {
         let gate = Double::new(io);
         let stops = Arc::clone(&gate.stops);
         let (prover, events) = spawn(options(data.path(), &[], ready(gate)));
-        assert_eq!(health(&events), ProverHealth::Ready);
+        assert_eq!(status(&events), ProverStatus::Ready);
         let work_dir = data.path().join("prover");
         assert!(work_dir.is_dir());
         assert!(stop(prover));
@@ -1296,7 +1366,10 @@ mod tests {
         let data = TempDir::new("w08-down");
         let starter: Starter = Arc::new(|_: &GateConfig, _: &KillHandle| Err(isabelle()));
         let (prover, events) = spawn(options(data.path(), &[], starter));
-        assert_eq!(health(&events), ProverHealth::Unavailable);
+        assert_eq!(
+            status(&events),
+            ProverStatus::Unavailable(Some(ProverProblem::Failed))
+        );
         let work_dir = data.path().join("prover");
         assert!(work_dir.is_dir());
         assert!(stop(prover));
@@ -1344,9 +1417,12 @@ mod tests {
         let mut options = ProverOptions::new(&settings, data.path());
         options.restart_waits = Vec::new();
         let (prover, events) = spawn(options);
-        assert_eq!(health(&events), ProverHealth::Unavailable);
+        assert_eq!(
+            status(&events),
+            ProverStatus::Unavailable(Some(ProverProblem::Failed))
+        );
         assert!(prover.prove(job()));
-        assert_eq!(reason(&done(&events)), map::NOT_RUNNING);
+        assert_eq!(refusal(&done(&events)), map::NOT_RUNNING);
         assert!(stop(prover));
         assert!(!data.path().join("prover").exists());
     }
@@ -1367,11 +1443,14 @@ mod tests {
         let mut options = options(data.path(), &[Duration::from_millis(10)], starter);
         options.gate.rules_dir = rules;
         let (prover, events) = spawn(options);
-        assert_eq!(health(&events), ProverHealth::Unavailable);
+        assert_eq!(
+            status(&events),
+            ProverStatus::Unavailable(Some(ProverProblem::WrongRules))
+        );
         quiet(&events);
         assert_eq!(calls.load(Ordering::SeqCst), 0);
         assert!(prover.prove(job()));
-        assert_eq!(reason(&done(&events)), map::NOT_RUNNING);
+        assert_eq!(refusal(&done(&events)), map::NOT_RUNNING);
         assert!(stop(prover));
     }
 
@@ -1418,11 +1497,15 @@ mod tests {
             let mut options = options(data.path(), &[Duration::from_millis(10)], starter);
             options.gate.rules_dir = rules;
             let (prover, events) = spawn(options);
-            assert_eq!(health(&events), ProverHealth::Unavailable, "{file}");
+            assert_eq!(
+                status(&events),
+                ProverStatus::Unavailable(Some(ProverProblem::WrongRules)),
+                "{file}"
+            );
             quiet(&events);
             assert_eq!(calls.load(Ordering::SeqCst), 0, "{file}");
             assert!(prover.prove(job()));
-            assert_eq!(reason(&done(&events)), map::NOT_RUNNING);
+            assert_eq!(refusal(&done(&events)), map::NOT_RUNNING);
             assert!(stop(prover));
         }
     }
@@ -1449,7 +1532,11 @@ mod tests {
             let mut options = options(data.path(), &[], starter);
             options.gate.rules_dir = rules;
             let (prover, events) = spawn(options);
-            assert_eq!(health(&events), ProverHealth::Unavailable, "{with_roots}");
+            assert_eq!(
+                status(&events),
+                ProverStatus::Unavailable(Some(ProverProblem::Failed)),
+                "{with_roots}"
+            );
             assert_eq!(calls.load(Ordering::SeqCst), 1, "{with_roots}");
             assert!(stop(prover));
         }
@@ -1467,9 +1554,12 @@ mod tests {
             Ok(Box::new(gate.clone()) as Box<dyn Gate>)
         });
         let (prover, events) = spawn(options(data.path(), &[Duration::from_millis(10)], starter));
-        assert_eq!(health(&events), ProverHealth::Unavailable);
+        assert_eq!(
+            status(&events),
+            ProverStatus::Unavailable(Some(ProverProblem::WrongRules))
+        );
         assert!(prover.prove(job()));
-        assert_eq!(reason(&done(&events)), map::NOT_RUNNING);
+        assert_eq!(refusal(&done(&events)), map::NOT_RUNNING);
         quiet(&events);
         wait_until("the stop", || stops.load(Ordering::SeqCst) == 1);
         assert_eq!(checks.load(Ordering::SeqCst), 0);
@@ -1489,7 +1579,7 @@ mod tests {
         let stops = Arc::clone(&gate.stops);
         let stop_bounds = Arc::clone(&gate.stop_bounds);
         let (prover, events) = spawn(options(data.path(), &[], ready(gate)));
-        assert_eq!(health(&events), ProverHealth::Ready);
+        assert_eq!(status(&events), ProverStatus::Ready);
         assert!(prover.prove(job()));
         wait_until("the check file", || check_file.is_file());
         assert!(!prover.stop(Duration::from_millis(100), &mut || {}));
@@ -1518,15 +1608,18 @@ mod tests {
             Ok(Box::new(gate) as Box<dyn Gate>)
         });
         let (prover, events) = spawn(options(data.path(), &[Duration::from_millis(10)], starter));
-        assert_eq!(health(&events), ProverHealth::Ready);
+        assert_eq!(status(&events), ProverStatus::Ready);
         assert!(prover.prove(job()));
-        assert_eq!(reason(&done(&events)), map::FAILED);
-        assert_eq!(health(&events), ProverHealth::Unavailable);
+        assert_eq!(refusal(&done(&events)), map::FAILED);
+        assert_eq!(
+            status(&events),
+            ProverStatus::Unavailable(Some(ProverProblem::FailedWillRetry))
+        );
         quiet(&events);
         assert_eq!(calls.load(Ordering::SeqCst), 1);
         stop_latch.open();
-        assert_eq!(health(&events), ProverHealth::Starting);
-        assert_eq!(health(&events), ProverHealth::Ready);
+        assert_eq!(status(&events), ProverStatus::Starting);
+        assert_eq!(status(&events), ProverStatus::Ready);
         assert_eq!(calls.load(Ordering::SeqCst), 2);
         assert!(stop(prover));
     }
@@ -1538,7 +1631,7 @@ mod tests {
         let mut gate = Double::new(render);
         gate.check_latch = Some(latch.clone());
         let (prover, events) = spawn(options(data.path(), &[], ready(gate)));
-        assert_eq!(health(&events), ProverHealth::Ready);
+        assert_eq!(status(&events), ProverStatus::Ready);
         assert_eq!(prover.next_due_ms(), None);
         assert_eq!(prover.poll(u64::MAX), None);
         let job = job();
@@ -1548,12 +1641,12 @@ mod tests {
             prover.next_due_ms() == Some(deadline)
         });
         assert_eq!(prover.poll(deadline - 1), None);
-        assert_eq!(prover.poll(deadline), Some(ProverHealth::Unavailable));
+        assert_eq!(prover.poll(deadline), Some(ProverStatus::Unavailable(None)));
         assert_eq!(prover.poll(deadline + 1), None);
         assert_eq!(prover.next_due_ms(), None);
         latch.open();
-        assert_eq!(reason(&done(&events)), map::RENDER);
-        assert_eq!(health(&events), ProverHealth::Ready);
+        assert_eq!(refusal(&done(&events)), map::RENDER);
+        assert_eq!(status(&events), ProverStatus::Ready);
         assert_eq!(prover.next_due_ms(), None);
         assert!(stop(prover));
     }
@@ -1582,11 +1675,11 @@ mod tests {
         let waits = [Duration::from_millis(10)];
         let (prover, events) = spawn(options(data.path(), &waits, starter));
         for expected in [
-            ProverHealth::Unavailable,
-            ProverHealth::Starting,
-            ProverHealth::Unavailable,
+            ProverStatus::Unavailable(Some(ProverProblem::FailedWillRetry)),
+            ProverStatus::Starting,
+            ProverStatus::Unavailable(Some(ProverProblem::Failed)),
         ] {
-            assert_eq!(health(&events), expected);
+            assert_eq!(status(&events), expected);
         }
         assert_eq!(*seen.lock().unwrap(), [(0, 0o700), (0, 0o700)]);
         assert!(stop(prover));
@@ -1609,7 +1702,7 @@ mod tests {
         let gate = Double::new(io);
         let stops = Arc::clone(&gate.stops);
         let (prover, events) = spawn(options(data.path(), &[], ready(gate)));
-        assert_eq!(health(&events), ProverHealth::Ready);
+        assert_eq!(status(&events), ProverStatus::Ready);
         drop(prover);
         wait_until("the stop", || stops.load(Ordering::SeqCst) == 1);
         wait_until("the removal", || !data.path().join("prover").exists());
@@ -1621,7 +1714,7 @@ mod tests {
         let gate = Double::new(io);
         let stops = Arc::clone(&gate.stops);
         let (prover, events) = spawn(options(data.path(), &[], ready(gate)));
-        assert_eq!(health(&events), ProverHealth::Ready);
+        assert_eq!(status(&events), ProverStatus::Ready);
         drop(events);
         assert!(prover.prove(job()));
         wait_until("the stop", || stops.load(Ordering::SeqCst) == 1);
@@ -1647,15 +1740,15 @@ mod tests {
             Ok(Box::new(gate) as Box<dyn Gate>)
         });
         let (prover, events) = spawn(options(data.path(), &[Duration::from_millis(50)], starter));
-        assert_eq!(health(&events), ProverHealth::Ready);
+        assert_eq!(status(&events), ProverStatus::Ready);
         assert!(prover.prove(job()));
-        assert_eq!(reason(&done(&events)), map::RENDER);
+        assert_eq!(refusal(&done(&events)), map::RENDER);
         for expected in [
-            ProverHealth::Unavailable,
-            ProverHealth::Starting,
-            ProverHealth::Ready,
+            ProverStatus::Unavailable(Some(ProverProblem::FailedWillRetry)),
+            ProverStatus::Starting,
+            ProverStatus::Ready,
         ] {
-            assert_eq!(health(&events), expected);
+            assert_eq!(status(&events), expected);
         }
         assert_eq!(calls.load(Ordering::SeqCst), 2);
         assert_eq!(stops.load(Ordering::SeqCst), 1);
@@ -1669,11 +1762,11 @@ mod tests {
         let gate = Double::new(render);
         let limits = Arc::clone(&gate.limits);
         let (prover, events) = spawn(options(data.path(), &[], ready(gate)));
-        assert_eq!(health(&events), ProverHealth::Ready);
+        assert_eq!(status(&events), ProverStatus::Ready);
         let mut due = job();
         due.deadline_ms = now_ms() + 20_000;
         assert!(prover.prove(due));
-        assert_eq!(reason(&done(&events)), map::RENDER);
+        assert_eq!(refusal(&done(&events)), map::RENDER);
         let limits = limits.lock().unwrap().clone();
         assert_eq!(limits.len(), 1);
         assert!(
@@ -1692,7 +1785,7 @@ mod tests {
         let gate = Double::new(render);
         let stop_bounds = Arc::clone(&gate.stop_bounds);
         let (prover, events) = spawn(options(data.path(), &[], ready(gate)));
-        assert_eq!(health(&events), ProverHealth::Ready);
+        assert_eq!(status(&events), ProverStatus::Ready);
         assert!(prover.stop(QUIT_BOUND, &mut || {}));
         let bounds = stop_bounds.lock().unwrap().clone();
         assert_eq!(bounds.len(), 1);
@@ -1706,7 +1799,7 @@ mod tests {
         let checks = Arc::clone(&gate.checks);
         let stop_bounds = Arc::clone(&gate.stop_bounds);
         let (prover, events) = spawn(options(data.path(), &[], ready(gate)));
-        assert_eq!(health(&events), ProverHealth::Ready);
+        assert_eq!(status(&events), ProverStatus::Ready);
         assert!(prover.prove(job()));
         wait_until("the check", || checks.load(Ordering::SeqCst) == 1);
         let mut first_drain: Option<Instant> = None;
@@ -1729,7 +1822,7 @@ mod tests {
         let stops = Arc::clone(&gate.stops);
         let stop_bounds = Arc::clone(&gate.stop_bounds);
         let (prover, events) = spawn(options(data.path(), &[], ready(gate)));
-        assert_eq!(health(&events), ProverHealth::Ready);
+        assert_eq!(status(&events), ProverStatus::Ready);
         let _ = prover.stop(KILL_ALLOWANCE, &mut || {});
         wait_until("the stop", || stops.load(Ordering::SeqCst) == 1);
         assert_eq!(*stop_bounds.lock().unwrap(), [Duration::ZERO]);
@@ -1745,7 +1838,7 @@ mod tests {
             gate.check_latch = Some(latch.clone());
             let checks = Arc::clone(&gate.checks);
             let (prover, events) = spawn(options(data.path(), &[], ready(gate)));
-            assert_eq!(health(&events), ProverHealth::Ready);
+            assert_eq!(status(&events), ProverStatus::Ready);
             assert!(prover.prove(job()));
             wait_until("the check", || checks.load(Ordering::SeqCst) == 1);
             assert!(prover.prove(job()));
@@ -1757,7 +1850,7 @@ mod tests {
                 assert!(prover.stop(PATIENCE, &mut || latch.open()));
             }
             let reasons = (0..3)
-                .map(|_| reason(&done(&events)).to_owned())
+                .map(|_| refusal(&done(&events)).to_owned())
                 .collect::<Vec<_>>();
             assert_eq!(
                 reasons,
@@ -1825,7 +1918,7 @@ mod tests {
         let release = held.clone();
         let (sender, events) = mpsc::channel();
         let emit: Emit = Box::new(move |event| {
-            let unavailable = matches!(event, ProverEvent::Health(ProverHealth::Unavailable));
+            let unavailable = matches!(event, ProverEvent::Health(ProverStatus::Unavailable(_)));
             let sent = sender.send(event).is_ok();
             if unavailable {
                 release.wait();
@@ -1833,7 +1926,10 @@ mod tests {
             sent
         });
         let prover = IsabelleProver::spawn(options(data.path(), &[Duration::ZERO], starter), emit);
-        assert_eq!(health(&events), ProverHealth::Unavailable);
+        assert_eq!(
+            status(&events),
+            ProverStatus::Unavailable(Some(ProverProblem::FailedWillRetry))
+        );
         assert!(prover.stop(PATIENCE, &mut || held.open()));
         // A start would have sent `Starting` before the acknowledgement.
         assert!(events.try_iter().next().is_none());
@@ -1862,7 +1958,7 @@ mod tests {
             options: options(data, &[], starter),
             emit: Box::new(|_| true),
             shared: Arc::new(Mutex::new(Shared {
-                health: ProverHealth::Starting,
+                health: ProverStatus::Starting,
                 running: None,
                 overrun: false,
                 stop_by,
@@ -1941,8 +2037,11 @@ mod tests {
         let checks = Arc::clone(&gate.checks);
         let stops = Arc::clone(&gate.stops);
         let handles = Arc::new(Mutex::new(Vec::new()));
-        let (prover, events) = spawn(options(data.path(), &[], handing_on(gate, &handles)));
-        assert_eq!(health(&events), ProverHealth::Ready);
+        // A long wait is left, so a failure that ignored the stop would read
+        // `failed_will_retry`.
+        let waits = [Duration::from_secs(600)];
+        let (prover, events) = spawn(options(data.path(), &waits, handing_on(gate, &handles)));
+        assert_eq!(status(&events), ProverStatus::Ready);
         assert!(prover.prove(job()));
         wait_until("the check", || checks.load(Ordering::SeqCst) == 1);
         let started = Instant::now();
@@ -1954,6 +2053,18 @@ mod tests {
         );
         assert!(handles.lock().unwrap()[0].is_killed());
         assert_eq!(stops.load(Ordering::SeqCst), 1);
+        // The worker sent all it sends before it acknowledged.
+        let statuses = events
+            .try_iter()
+            .filter_map(|event| match event {
+                ProverEvent::Health(status) => Some(status),
+                ProverEvent::Done(_) => None,
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(
+            statuses,
+            [ProverStatus::Unavailable(Some(ProverProblem::Failed))]
+        );
     }
 
     /// PW w32 (PW 2.5): a stop whose gate is idle kills nothing through the handle, even when
@@ -1965,7 +2076,7 @@ mod tests {
         gate.stop_overrun = Some(Duration::from_millis(200));
         let handles = Arc::new(Mutex::new(Vec::new()));
         let (prover, events) = spawn(options(data.path(), &[], handing_on(gate, &handles)));
-        assert_eq!(health(&events), ProverHealth::Ready);
+        assert_eq!(status(&events), ProverStatus::Ready);
         let started = Instant::now();
         assert!(prover.stop(PATIENCE, &mut || {}));
         let elapsed = started.elapsed();
@@ -1991,11 +2102,11 @@ mod tests {
         });
         let (prover, events) = spawn(options(data.path(), &[Duration::from_millis(10)], starter));
         for expected in [
-            ProverHealth::Unavailable,
-            ProverHealth::Starting,
-            ProverHealth::Unavailable,
+            ProverStatus::Unavailable(Some(ProverProblem::FailedWillRetry)),
+            ProverStatus::Starting,
+            ProverStatus::Unavailable(Some(ProverProblem::Failed)),
         ] {
-            assert_eq!(health(&events), expected);
+            assert_eq!(status(&events), expected);
         }
         assert_eq!(calls.load(Ordering::SeqCst), 2);
         assert_eq!(*retried.lock().unwrap(), Some(false));
@@ -2018,9 +2129,185 @@ mod tests {
         let State::Ready(gate) = &mut worker.state else {
             unreachable!("the worker was built ready");
         };
-        let checked = check_job(gate.as_mut(), &worker.shared, &job());
-        assert_eq!(reason(&checked.done), map::NOT_RUNNING);
+        let checked = check_job(gate.as_mut(), &worker.shared, CHECK_TIMEOUT, &job());
+        assert_eq!(refusal(&checked.done), map::NOT_RUNNING);
         assert_eq!(checks.load(Ordering::SeqCst), 0);
         assert!(lock(&worker.shared).running.is_none());
+    }
+
+    /// PW w35 (PW 2.3): a check held until the clock is past its job's deadline, which then fails,
+    /// is late; the same failure in time is the gate's.
+    #[test]
+    fn a_check_that_returns_after_its_deadline_is_late() {
+        let data = TempDir::new("w35-late");
+        let latch = Latch::default();
+        let mut gate = Double::new(isabelle);
+        gate.check_latch = Some(latch.clone());
+        let checks = Arc::clone(&gate.checks);
+        let (prover, events) = spawn(options(data.path(), &[], ready(gate)));
+        assert_eq!(status(&events), ProverStatus::Ready);
+        let mut late = job();
+        // Far enough for the job to reach its check before its deadline.
+        late.deadline_ms = now_ms() + 1_000;
+        let deadline = late.deadline_ms;
+        assert!(prover.prove(late));
+        wait_until("the check", || checks.load(Ordering::SeqCst) == 1);
+        wait_until("the deadline", || now_ms() >= deadline);
+        latch.open();
+        assert_eq!(refusal(&done(&events)), map::CHECK_LATE);
+        assert!(stop(prover));
+
+        let data = TempDir::new("w35-in-time");
+        let (prover, events) = spawn(options(data.path(), &[], ready(Double::new(isabelle))));
+        assert_eq!(status(&events), ProverStatus::Ready);
+        assert!(prover.prove(job()));
+        assert_eq!(refusal(&done(&events)), map::FAILED);
+        assert!(stop(prover));
+    }
+
+    /// PW w36 (PW 2.3): the adapter passes the smaller of the time left and its own check limit,
+    /// and a check that fails after taking at least that limit, before the deadline, reached it.
+    #[test]
+    fn a_check_that_takes_its_whole_limit_reached_it() {
+        let data = TempDir::new("w36");
+        let limit = Duration::from_millis(50);
+        let latch = Latch::default();
+        let mut gate = Double::new(render);
+        gate.check_latch = Some(latch.clone());
+        let checks = Arc::clone(&gate.checks);
+        let limits = Arc::clone(&gate.limits);
+        let mut options = options(data.path(), &[], ready(gate));
+        options.gate.check_timeout = limit;
+        let (prover, events) = spawn(options);
+        assert_eq!(status(&events), ProverStatus::Ready);
+        assert!(prover.prove(job()));
+        wait_until("the check", || checks.load(Ordering::SeqCst) == 1);
+        // The check began before this instant, so it has taken the limit once this has passed.
+        let seen = Instant::now();
+        wait_until("the limit", || seen.elapsed() >= limit);
+        latch.open();
+        assert_eq!(refusal(&done(&events)), map::CHECK_LIMIT);
+        assert_eq!(*limits.lock().unwrap(), [limit]);
+        assert!(stop(prover));
+    }
+
+    /// PW w37 (PW 2.2): a pin that cannot read its files is a failed start, so it will retry while
+    /// a wait is left; it is not another theory.
+    #[test]
+    fn a_pin_that_cannot_read_its_files_will_retry() {
+        let data = TempDir::new("w37");
+        let rules = data.path().join("rules");
+        fs::create_dir_all(rules.join("Fabric_Broker")).unwrap();
+        fs::write(rules.join("Fabric_Broker").join("ROOT"), SESSION_ROOT).unwrap();
+        let calls = Arc::new(AtomicUsize::new(0));
+        let starter = counting(&calls, |_, _| Err(isabelle()));
+        let mut options = options(data.path(), &[Duration::from_secs(600)], starter);
+        options.gate.rules_dir = rules;
+        let (prover, events) = spawn(options);
+        assert_eq!(
+            status(&events),
+            ProverStatus::Unavailable(Some(ProverProblem::FailedWillRetry))
+        );
+        quiet(&events);
+        assert_eq!(calls.load(Ordering::SeqCst), 0);
+        assert!(prover.prove(job()));
+        assert_eq!(refusal(&done(&events)), map::NOT_RUNNING);
+        assert!(stop(prover));
+    }
+
+    /// PW w38 (PW 2.3): the overrun poll says the prover is unavailable without a cause; when the
+    /// check then breaks the gate, the worker says why, although the health is the same.
+    #[test]
+    fn overrun_then_a_broken_gate_says_why() {
+        let data = TempDir::new("w38");
+        let latch = Latch::default();
+        let mut gate = Double::new(io);
+        gate.check_latch = Some(latch.clone());
+        let (prover, events) = spawn(options(
+            data.path(),
+            &[Duration::from_secs(600)],
+            ready(gate),
+        ));
+        assert_eq!(status(&events), ProverStatus::Ready);
+        let job = job();
+        let deadline = job.deadline_ms;
+        assert!(prover.prove(job));
+        wait_until("the running check", || {
+            prover.next_due_ms() == Some(deadline)
+        });
+        assert_eq!(prover.poll(deadline), Some(ProverStatus::Unavailable(None)));
+        latch.open();
+        assert_eq!(refusal(&done(&events)), map::FAILED);
+        assert_eq!(
+            status(&events),
+            ProverStatus::Unavailable(Some(ProverProblem::FailedWillRetry))
+        );
+        assert!(stop(prover));
+    }
+
+    /// PW w39 (PW 2.2): a gate start that panics is a failed start, so the worker goes through its
+    /// failure rule and keeps answering jobs.
+    #[test]
+    fn a_start_that_panics_is_a_failed_start() {
+        let data = TempDir::new("w39");
+        let starter: Starter = Arc::new(
+            |_: &GateConfig, _: &KillHandle| -> Result<Box<dyn Gate>, PolicyError> {
+                panic!("the test starter panics")
+            },
+        );
+        let (prover, events) = spawn(options(data.path(), &[], starter));
+        assert_eq!(
+            status(&events),
+            ProverStatus::Unavailable(Some(ProverProblem::Failed))
+        );
+        assert!(!prover.lost());
+        assert!(prover.prove(job()));
+        assert_eq!(refusal(&done(&events)), map::NOT_RUNNING);
+        assert!(stop(prover));
+    }
+
+    /// PW w40 (PW 2.2): a worker is lost when its thread could not be spawned, or ended with no
+    /// stop sent; a running worker, and one that ended at a stop, are not.
+    #[test]
+    fn a_worker_is_lost_only_when_it_ended_without_a_stop() {
+        // Ended because the main loop takes no more events.
+        let data = TempDir::new("w40-gone");
+        let starter: Starter = Arc::new(|_: &GateConfig, _: &KillHandle| Err(isabelle()));
+        // An emit that always fails: the main loop is gone before the worker's first event.
+        let prover = IsabelleProver::spawn(options(data.path(), &[], starter), Box::new(|_| false));
+        wait_until("the worker's end", || prover.lost());
+        drop(prover);
+
+        // Running, then ended at a stop.
+        let data = TempDir::new("w40-stopped");
+        let (prover, events) = spawn(options(data.path(), &[], ready(Double::new(render))));
+        assert_eq!(status(&events), ProverStatus::Ready);
+        assert!(!prover.lost());
+        lock(&prover.shared).stop_by = Some(Instant::now() + GATE_STOP_BOUND);
+        let (ack, acknowledged) = mpsc::channel();
+        prover.sender.send(Msg::Stop(ack)).unwrap();
+        assert_eq!(acknowledged.recv_timeout(PATIENCE), Ok(()));
+        wait_until("the worker's end", || {
+            prover.worker.as_ref().is_some_and(JoinHandle::is_finished)
+        });
+        assert!(!prover.lost());
+        drop(prover);
+
+        // Never spawned.
+        let data = TempDir::new("w40-never");
+        let (sender, _messages) = mpsc::channel();
+        let never = IsabelleProver {
+            sender,
+            shared: Arc::new(Mutex::new(Shared {
+                health: ProverStatus::Starting,
+                running: None,
+                overrun: false,
+                stop_by: None,
+                kill: None,
+            })),
+            work_dir: data.path().join("prover"),
+            worker: None,
+        };
+        assert!(never.lost());
     }
 }

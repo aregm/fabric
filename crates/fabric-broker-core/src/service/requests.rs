@@ -7,7 +7,7 @@ use fabric_desktop_contracts::owner::{
 };
 use fabric_desktop_contracts::scalar::{Digest, Id, List, PositiveCount, Task};
 use fabric_desktop_contracts::{Domain, RequestState};
-use fabric_storage::{Mutation, RequestRecord, StoreFault, WriteTx};
+use fabric_storage::{Mutation, RequestRecord, StoreFault, UndecidedCause, WriteTx};
 
 use crate::service::reducer::{Event, next};
 use crate::service::{Cx, grants, invariant};
@@ -19,11 +19,8 @@ pub(crate) fn record_of(tx: &WriteTx<'_>, request_id: &Id) -> Result<RequestReco
         .ok_or(invariant("the request exists"))
 }
 
-/// Moves the request to `to`; returns the request notice's sequence.
-///
-/// A move to a terminal state clears the request's due time and, in the same commit, ends every
-/// live one-request grant whose origin is the request with `consumed` (D18); the grant notices
-/// come before the request notice.
+/// Moves the request to `to`, which is never `undecided`; returns the request notice's sequence.
+/// A move to `undecided` goes through `pipeline::undecide`, which states its cause.
 pub(crate) fn move_request(
     tx: &mut WriteTx<'_>,
     cx: &mut Cx<'_>,
@@ -31,11 +28,34 @@ pub(crate) fn move_request(
     to: LifecycleStatus,
     due_at_ms: Option<i64>,
 ) -> Result<PositiveCount, StoreFault> {
+    move_request_with(tx, cx, request_id, to, due_at_ms, None)
+}
+
+/// Moves the request to `to` with the cause of a move to `undecided`; returns the request
+/// notice's sequence. A move to `undecided` names its cause and no other move does; the cause
+/// is stored on the move, in the same commit (5.7).
+///
+/// A move to a terminal state clears the request's due time and, in the same commit, ends every
+/// live one-request grant whose origin is the request with `consumed` (D18); the grant notices
+/// come before the request notice.
+pub(crate) fn move_request_with(
+    tx: &mut WriteTx<'_>,
+    cx: &mut Cx<'_>,
+    request_id: &Id,
+    to: LifecycleStatus,
+    due_at_ms: Option<i64>,
+    cause: Option<UndecidedCause>,
+) -> Result<PositiveCount, StoreFault> {
     let record = record_of(tx, request_id)?;
     let from = record.row.request.status.state();
     let target = to.state();
     if !from.can_transition_to(target) {
         return Err(invariant("a request moves only along the lifecycle"));
+    }
+    match (target == RequestState::Undecided, cause.is_some()) {
+        (true, false) => return Err(invariant("a move to undecided names its cause")),
+        (false, true) => return Err(invariant("only a move to undecided names its cause")),
+        _ => {}
     }
     let terminal = target.is_terminal();
     if terminal {
@@ -60,6 +80,7 @@ pub(crate) fn move_request(
         status: to,
         at_ms: cx.now_ms,
         due_at_ms: if terminal { None } else { due_at_ms },
+        undecided_cause: cause,
     })?;
     let request = record_of(tx, request_id)?.row.request;
     tx.notify(Change::Request(request))

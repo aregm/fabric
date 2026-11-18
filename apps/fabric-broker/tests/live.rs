@@ -48,7 +48,8 @@ use fabric_broker::synthetic::{ACCOUNT_ID, AGENT_ID, CALENDAR_ID, SyntheticAgent
 use fabric_broker_core::{Broker, Input, Settings};
 use fabric_broker_policy::GateConfig;
 use fabric_desktop_contracts::owner::{
-    Change, LifecycleStatus, OwnerNotice, ProverHealth, Request,
+    Change, Health, LifecycleStatus, OwnerNotice, OwnerResponse, OwnerResult, ProverHealth,
+    ProverProblem, Request,
 };
 use fabric_desktop_contracts::{Entry, Frame, RequestState, canonical, decode};
 use fabric_desktop_relay::{BrokerConfig, ENVIRONMENT_ALLOWLIST};
@@ -258,7 +259,42 @@ fn decode_line(bytes: &[u8]) -> (Frame, Value) {
     };
     let frame = decode(entry, bytes)
         .unwrap_or_else(|r| panic!("not a frame ({r}): {}", String::from_utf8_lossy(bytes)));
+    assert_cross_member_rules(&frame, &value);
     (frame, value)
+}
+
+/// The two rules between members of contract schema version 2 (README section 7), as in
+/// the process tests (PW p48): a health names a problem only while the prover is unavailable, and
+/// request details name an `undecided_reason` only while the request is `undecided`.
+fn assert_cross_member_rules(frame: &Frame, value: &Value) {
+    let health = match frame {
+        Frame::OwnerResponse(OwnerResponse::Result {
+            result: OwnerResult::GetSnapshot(snapshot),
+            ..
+        }) => Some(&snapshot.health),
+        Frame::OwnerNotice(OwnerNotice {
+            change: Change::Health(health),
+            ..
+        }) => Some(health),
+        Frame::OwnerResponse(OwnerResponse::Result {
+            result: OwnerResult::GetRequestDetails(details),
+            ..
+        }) => {
+            assert!(
+                details.request.status.state() == RequestState::Undecided
+                    || details.undecided_reason.is_none(),
+                "a reason on a request that is not undecided: {value}"
+            );
+            None
+        }
+        _ => None,
+    };
+    if let Some(health) = health {
+        assert!(
+            health.prover == ProverHealth::Unavailable || health.prover_problem.is_none(),
+            "a problem while the prover is not unavailable: {value}"
+        );
+    }
 }
 
 /// The in-process broker of one live test: a practice run with the real Isabelle.
@@ -275,8 +311,9 @@ struct Live {
     notices: Vec<OwnerNotice>,
     /// Every response, as JSON, in order.
     responses: Vec<Value>,
-    /// The prover's health as the owner was told it, in order.
-    healths: Vec<ProverHealth>,
+    /// The health the owner was told in notices, in order: the prover's and, while it is
+    /// unavailable, why.
+    healths: Vec<Health>,
     next_id: u64,
     began: Instant,
     began_at: SystemTime,
@@ -414,7 +451,7 @@ impl Live {
             match decode_line(line) {
                 (Frame::OwnerNotice(notice), _) => {
                     if let Change::Health(health) = &notice.change {
-                        self.healths.push(health.prover);
+                        self.healths.push(*health);
                     }
                     self.notices.push(notice);
                 }
@@ -469,9 +506,14 @@ impl Live {
     fn health_becomes(&mut self, health: ProverHealth, bound: Duration) -> Duration {
         let seen = self.healths.len();
         self.until(&format!("prover health {health:?}"), bound, |live| {
-            live.healths[seen..].contains(&health).then_some(())
+            live.provers(seen).contains(&health).then_some(())
         });
         self.began.elapsed()
+    }
+
+    /// The prover's health in the notices from the `from`-th on.
+    fn provers(&self, from: usize) -> Vec<ProverHealth> {
+        self.healths[from..].iter().map(|h| h.prover).collect()
     }
 
     /// The last notice of request `request_id`, if any.
@@ -967,11 +1009,25 @@ fn assert_pinned_out(label: &str, rules: &Path) {
     live.health_becomes(ProverHealth::Unavailable, STEP);
     live.run_for(Duration::from_millis(2500));
     assert!(
-        !live.healths.contains(&ProverHealth::Ready),
+        !live.provers(0).contains(&ProverHealth::Ready),
         "{label}: {:?}",
         live.healths
     );
-    assert_eq!(live.snapshot()["requests"], json!([]), "{label}");
+    // The owner is told why: the rules are not the built ones (PW 2.2).
+    assert!(
+        live.healths
+            .iter()
+            .filter(|h| h.prover == ProverHealth::Unavailable)
+            .all(|h| h.prover_problem == Some(ProverProblem::WrongRules)),
+        "{label}: {:?}",
+        live.healths
+    );
+    let snapshot = live.snapshot();
+    assert_eq!(
+        snapshot["health"]["prover_problem"], "wrong_rules",
+        "{label}"
+    );
+    assert_eq!(snapshot["requests"], json!([]), "{label}");
     assert!(
         servers(&live.server).is_empty(),
         "{label}: an Isabelle server was started"
@@ -1034,8 +1090,8 @@ fn the_theory_pin_refuses_session_files_that_load_another_theory() {
 }
 
 /// PW L16: an Isabelle server killed while a request is open ends that request `undecided` with
-/// nothing dispatched; the owner sees the prover unavailable, then starting and ready again,
-/// and the next request is decided.
+/// nothing dispatched and the reason `failed`; the owner sees the prover unavailable with
+/// `failed_will_retry`, then starting and ready again, and the next request is decided.
 #[test]
 #[ignore = "live: needs Isabelle; run sh scripts/verify-desktop.sh --live-proofs"]
 fn killing_isabelle_ends_the_open_request_undecided_then_ready_again() {
@@ -1066,18 +1122,18 @@ fn killing_isabelle_ends_the_open_request_undecided_then_ready_again() {
     live.approve(&a, json!({"kind": "one_request"}));
     live.request_in(&a_id, RequestState::Undecided, STEP);
     assert_eq!(live.calendar.dispatches(), 0);
-    assert!(live.details(&a_id)["authorization"].is_null());
+    let details = live.details(&a_id);
+    assert!(details["authorization"].is_null(), "{details}");
+    // The check on the killed server fails before its deadline: `FAILED` (PW 2.4).
+    assert_eq!(details["undecided_reason"], "failed", "{details}");
     live.until("the owner told unavailable", STEP, |live| {
-        live.healths[seen..]
+        live.provers(seen)
             .contains(&ProverHealth::Unavailable)
             .then_some(())
     });
     let back = live.health_becomes(ProverHealth::Ready, START);
     println!("LIVE prover ready again after {} ms", back.as_millis());
-    let order: Vec<ProverHealth> = live.healths[seen..].to_vec();
-    let unavailable = order.iter().position(|h| *h == ProverHealth::Unavailable);
-    let ready = order.iter().rposition(|h| *h == ProverHealth::Ready);
-    assert!(unavailable < ready, "{order:?}");
+    assert_restarted(&live.healths[seen..]);
     // The script goes on with B, which the restarted prover decides.
     let b = live.request_where("a blocked request", &[&a_id], STEP, |r| {
         r.status.state() == RequestState::Blocked
@@ -1087,6 +1143,33 @@ fn killing_isabelle_ends_the_open_request_undecided_then_ready_again() {
     live.stop_within_bound();
     assert!(!live.work_dir().exists());
     assert!(servers_gone(&live.server, DRAIN));
+}
+
+/// The health the owner was told after a server was killed (PW 2.2): unavailable with
+/// `failed_will_retry`, since a restart wait is left, then starting and ready with no problem.
+fn assert_restarted(order: &[Health]) {
+    let unavailable = order
+        .iter()
+        .position(|h| h.prover == ProverHealth::Unavailable)
+        .unwrap_or_else(|| panic!("never unavailable: {order:?}"));
+    assert_eq!(
+        order[unavailable].prover_problem,
+        Some(ProverProblem::FailedWillRetry),
+        "{order:?}"
+    );
+    let starting = order[unavailable..]
+        .iter()
+        .position(|h| h.prover == ProverHealth::Starting)
+        .map(|i| unavailable + i)
+        .unwrap_or_else(|| panic!("never starting again: {order:?}"));
+    let ready = order[starting..]
+        .iter()
+        .position(|h| h.prover == ProverHealth::Ready)
+        .map(|i| starting + i)
+        .unwrap_or_else(|| panic!("never ready again: {order:?}"));
+    for at in [starting, ready] {
+        assert_eq!(order[at].prover_problem, None, "{order:?}");
+    }
 }
 
 /// The check theories in `dir`.
@@ -1101,9 +1184,10 @@ fn check_files(dir: &Path) -> Vec<PathBuf> {
 }
 
 /// PW L2: an Isabelle server killed while it proves an approved request's
-/// fresh permit, its check theory on disk, ends that request `undecided` with nothing dispatched
-/// and no authorization; no check theory is left; the owner sees the prover unavailable, then
-/// ready again, and the next request is decided.
+/// fresh permit, its check theory on disk, ends that request `undecided` with nothing dispatched,
+/// no authorization and the reason `failed`; no check theory is left; the owner sees the prover
+/// unavailable with `failed_will_retry`, then starting and ready again, and the next request is
+/// decided.
 #[test]
 #[ignore = "live: needs Isabelle; run sh scripts/verify-desktop.sh --live-proofs"]
 fn killing_isabelle_mid_check_is_undecided_then_ready_again() {
@@ -1150,19 +1234,19 @@ fn killing_isabelle_mid_check_is_undecided_then_ready_again() {
     assert_eq!(ended.status.state(), RequestState::Undecided, "{ended:?}");
     assert_eq!(live.calendar.dispatches(), 0);
     assert!(live.calendar.event_of_request(&a.request_id).is_none());
-    assert!(live.details(&a_id)["authorization"].is_null());
+    let details = live.details(&a_id);
+    assert!(details["authorization"].is_null(), "{details}");
+    // The check breaks before its deadline when its server is killed: `FAILED` (PW 2.4).
+    assert_eq!(details["undecided_reason"], "failed", "{details}");
     assert_eq!(check_files(&live.work_dir()), Vec::<PathBuf>::new());
     live.until("the owner told unavailable", STEP, |live| {
-        live.healths[seen..]
+        live.provers(seen)
             .contains(&ProverHealth::Unavailable)
             .then_some(())
     });
     let back = live.health_becomes(ProverHealth::Ready, START);
     println!("LIVE prover ready again after {} ms", back.as_millis());
-    let order: Vec<ProverHealth> = live.healths[seen..].to_vec();
-    let unavailable = order.iter().position(|h| *h == ProverHealth::Unavailable);
-    let ready = order.iter().rposition(|h| *h == ProverHealth::Ready);
-    assert!(unavailable < ready, "{order:?}");
+    assert_restarted(&live.healths[seen..]);
     let b = live.request_where("a blocked request", &[&a_id], STEP, |r| {
         r.status.state() == RequestState::Blocked
     });
@@ -1501,8 +1585,9 @@ fn quit_stops_isabelle_within_the_relay_drain() {
 
 /// PW L3: a check over its budget is undecided. With a check limit of 1 ms every check runs
 /// past it, so Isabelle's report comes back with the outcome `undecided`, no failing rule and no
-/// authorizing grant; the request ends `undecided` with no authorization, nothing is dispatched,
-/// and the gate is kept (the prover stays ready). Isabelle ends the check at its first look, so
+/// authorizing grant; the request ends `undecided` with no authorization and the reason
+/// `out_of_time` (the check took its whole limit), nothing is dispatched, and the gate is kept
+/// (the prover stays ready). Isabelle ends the check at its first look, so
 /// the whole check takes under 500 ms (a full check takes about a second), not only its idle
 /// time.
 #[test]
@@ -1522,6 +1607,8 @@ fn a_check_over_budget_is_undecided() {
     assert_eq!(a.tool.as_str(), "fabric_calendar_propose_create");
     let details = live.details(&a_id);
     assert!(details["authorization"].is_null(), "{details}");
+    // The check took at least the 1 ms limit the adapter gave it (PW 2.3).
+    assert_eq!(details["undecided_reason"], "out_of_time", "{details}");
     let reports = live.proofs_of(&a_id);
     assert_eq!(reports.len(), 1, "{reports:?}");
     let report = &reports[0];
@@ -1550,9 +1637,10 @@ fn a_check_over_budget_is_undecided() {
             Some(RequestState::Undecided),
             "{id}"
         );
+        assert_eq!(live.details(&id)["undecided_reason"], "out_of_time", "{id}");
     }
     assert!(
-        !live.healths[seen..].contains(&ProverHealth::Unavailable),
+        !live.provers(seen).contains(&ProverHealth::Unavailable),
         "{:?}",
         live.healths
     );
@@ -1717,6 +1805,7 @@ fn quit_during_a_gate_start_leaves_no_server() {
                 "a process names the server, but the prover is not starting: {}",
                 snapshot["health"]
             );
+            assert!(snapshot["health"]["prover_problem"].is_null(), "{snapshot}");
             break;
         }
         assert!(

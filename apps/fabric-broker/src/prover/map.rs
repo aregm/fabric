@@ -1,12 +1,13 @@
 //! The pure mapping between the core's proof jobs and the rule gate: a job's
 //! facts into the gate's context and action, and a gate's result into the core's proof result.
 //!
-//! Every failure is one of the fixed texts below, never a panic. The texts are never stored or
-//! shown.
+//! Every failure is one of the fixed refusals below, never a panic. A refusal is a fixed text and
+//! its cause: the text is never stored or shown; the cause is, on the request's move to
+//! `undecided` (PW X12, PW 2.4).
 
 use fabric_broker_core::format_timestamp;
 use fabric_broker_core::ports::{
-    FactActor, GrantFact, ObservedEvent, ProofAction, ProofDone, ProofJob,
+    FactActor, GrantFact, ObservedEvent, ProofAction, ProofDone, ProofJob, ProverCause,
 };
 use fabric_broker_policy::{
     Action, ActiveSession, Actor, Calendar, CalendarKey, Check, Context, Duration, Event,
@@ -14,41 +15,135 @@ use fabric_broker_policy::{
     RecipientSet, Tool, Verdict, Window,
 };
 use fabric_desktop_contracts::common::{CalendarRef, ToolName};
-use fabric_desktop_contracts::owner::{self, GrantTerm};
+use fabric_desktop_contracts::owner::{self, GrantTerm, ProofPurpose};
 use fabric_desktop_contracts::scalar::{Email, Id, ScalarError};
 
-/// Why a job cannot be checked: one of the fixed texts of this module.
+/// Why a result has no report: a fixed text, never stored or shown, and the cause the core
+/// stores.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct JobRefused(pub &'static str);
+pub struct Refusal {
+    /// The fixed text, the result's `undecided_reason`.
+    pub text: &'static str,
+    /// What the prover states, so the core can store why the request is `undecided`.
+    pub cause: ProverCause,
+}
+
+/// Why a job cannot be checked: one of the fixed refusals of this module.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct JobRefused(pub Refusal);
 
 /// The gate is still starting.
-pub const STARTING: &str = "the rule prover is starting";
-/// The gate is down.
-pub const NOT_RUNNING: &str = "the rule prover is not running";
+pub const STARTING: Refusal = Refusal {
+    text: "the rule prover is starting",
+    cause: ProverCause::Starting,
+};
+/// The gate is down, a stop was sent, or the job could not be handed to the prover.
+pub const NOT_RUNNING: Refusal = Refusal {
+    text: "the rule prover is not running",
+    cause: ProverCause::NotRunning,
+};
 /// The job's deadline passed while it waited.
-pub const PAST_DEADLINE: &str = "the proof's deadline passed before its check started";
+pub const PAST_DEADLINE: Refusal = Refusal {
+    text: "the proof's deadline passed before its check started",
+    cause: ProverCause::DeadlinePassed,
+};
 /// The observed event is on another calendar than the action's.
-pub const OTHER_CALENDAR: &str = "the observation names another calendar";
+pub const OTHER_CALENDAR: Refusal = Refusal {
+    text: "the observation names another calendar",
+    cause: ProverCause::JobRefused,
+};
 /// An observed attendee is not an email address.
-pub const BAD_ATTENDEE: &str = "an observed attendee is not an address";
+pub const BAD_ATTENDEE: Refusal = Refusal {
+    text: "an observed attendee is not an address",
+    cause: ProverCause::JobRefused,
+};
 /// The action digest is not `sha256:` and 64 lowercase hex characters.
-pub const BAD_DIGEST: &str = "the action digest is not sha256";
+pub const BAD_DIGEST: Refusal = Refusal {
+    text: "the action digest is not sha256",
+    cause: ProverCause::JobRefused,
+};
 /// A grant's window is not a time.
-pub const BAD_WINDOW: &str = "a grant window is not a time";
+pub const BAD_WINDOW: Refusal = Refusal {
+    text: "a grant window is not a time",
+    cause: ProverCause::JobRefused,
+};
 /// The tool call has no broker action.
-pub const NO_ACTION: &str = "no broker action for this tool call";
+pub const NO_ACTION: Refusal = Refusal {
+    text: "no broker action for this tool call",
+    cause: ProverCause::JobRefused,
+};
 /// The job's action is of a kind this adapter does not know.
-pub const UNKNOWN_ACTION: &str = "this adapter does not know the action";
+pub const UNKNOWN_ACTION: Refusal = Refusal {
+    text: "this adapter does not know the action",
+    cause: ProverCause::JobRefused,
+};
 /// The check ran on another rule theory than the one this broker was built with.
-pub const OTHER_THEORY: &str = "the check ran on another rule theory";
+pub const OTHER_THEORY: Refusal = Refusal {
+    text: "the check ran on another rule theory",
+    cause: ProverCause::ReportUnusable,
+};
 /// The check names another action or context than the job's.
-pub const UNBOUND: &str = "the check is bound to another action or context";
+pub const UNBOUND: Refusal = Refusal {
+    text: "the check is bound to another action or context",
+    cause: ProverCause::ReportUnusable,
+};
 /// The check's result does not fit the contract.
-pub const NOT_FIT: &str = "the proof did not fit the contract";
+pub const NOT_FIT: Refusal = Refusal {
+    text: "the proof did not fit the contract",
+    cause: ProverCause::ReportUnusable,
+};
 /// A fact could not be rendered for Isabelle.
-pub const RENDER: &str = "a fact could not be written for Isabelle";
+pub const RENDER: Refusal = Refusal {
+    text: "a fact could not be written for Isabelle",
+    cause: ProverCause::JobRefused,
+};
 /// The gate failed.
-pub const FAILED: &str = "the rule prover failed";
+pub const FAILED: Refusal = Refusal {
+    text: "the rule prover failed",
+    cause: ProverCause::CheckNotDecided,
+};
+/// The check failed and returned at or after its job's deadline (PW 2.3).
+pub const CHECK_LATE: Refusal = Refusal {
+    text: "the check returned after the proof's deadline",
+    cause: ProverCause::DeadlinePassed,
+};
+/// The check failed and took at least the limit it was given (PW 2.3).
+pub const CHECK_LIMIT: Refusal = Refusal {
+    text: "the check reached its time limit",
+    cause: ProverCause::CheckLimitReached,
+};
+
+/// When a check returned, by the adapter's own clock (PW 2.3). It changes the cause of an
+/// error or an undecided verdict only; a report's integrity is judged the same either way.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Lateness {
+    /// Before the job's deadline and under the limit the check was given.
+    InTime,
+    /// Before the job's deadline, but at or over the limit the check was given.
+    AtLimit,
+    /// At or after the job's deadline.
+    PastDeadline,
+}
+
+impl Lateness {
+    /// The refusal of a failed check: `in_time` unless the check was late.
+    const fn refusal(self, in_time: Refusal) -> Refusal {
+        match self {
+            Lateness::InTime => in_time,
+            Lateness::AtLimit => CHECK_LIMIT,
+            Lateness::PastDeadline => CHECK_LATE,
+        }
+    }
+
+    /// The cause of an undecided verdict.
+    const fn undecided_cause(self) -> ProverCause {
+        match self {
+            Lateness::InTime => ProverCause::CheckNotDecided,
+            Lateness::AtLimit => ProverCause::CheckLimitReached,
+            Lateness::PastDeadline => ProverCause::DeadlinePassed,
+        }
+    }
+}
 
 /// The context and the action of a job, or the fixed reason it cannot be checked.
 ///
@@ -131,19 +226,24 @@ pub enum GateFate {
 /// context digests and fits the contract; every other result is [`no_report`]. Only a request's
 /// fault (`Fault::Request`) and a check keep the gate; a gate's fault restarts it, and a check on
 /// another theory means the gate must meet the pin again.
+///
+/// `lateness` decides the cause of an error and of an undecided verdict (PW 2.4): past the
+/// deadline it is `DeadlinePassed`, at the limit `CheckLimitReached`. Another theory, an unbound
+/// check and a report that does not fit keep their cause whatever the lateness.
 #[must_use]
 pub fn done_of(
     job: &ProofJob,
     context: &Context,
     expected_theory: &str,
     result: Result<Check, PolicyError>,
+    lateness: Lateness,
 ) -> (ProofDone, GateFate) {
     let check = match result {
         Ok(check) => check,
         Err(error) => {
             return match Fault::of(&error) {
-                Fault::Request => (no_report(job, RENDER), GateFate::Keep),
-                Fault::Gate => (no_report(job, FAILED), GateFate::Restart),
+                Fault::Request => (no_report(job, lateness.refusal(RENDER)), GateFate::Keep),
+                Fault::Gate => (no_report(job, lateness.refusal(FAILED)), GateFate::Restart),
             };
         }
     };
@@ -155,30 +255,39 @@ pub fn done_of(
     {
         return (no_report(job, UNBOUND), GateFate::Keep);
     }
-    match report_of(job, check) {
+    match report_of(job, check, lateness) {
         Ok(done) => (done, GateFate::Keep),
         Err(_) => (no_report(job, NOT_FIT), GateFate::Keep),
     }
 }
 
-/// A result with no report, so the core ends the job `undecided`; `reason` is one of the fixed
-/// texts.
+/// A result with no report, so the core ends the job `undecided`; `refusal` is one of the fixed
+/// refusals, whose text is the result's reason and whose cause the core stores.
 #[must_use]
-pub fn no_report(job: &ProofJob, reason: &'static str) -> ProofDone {
+pub fn no_report(job: &ProofJob, refusal: Refusal) -> ProofDone {
+    answer(job.job_id, &job.request_id, job.purpose, refusal)
+}
+
+/// [`no_report`] for a job known only by its id, request and purpose: the shell answers so a
+/// job it handed to a worker that was lost (PW 2.2).
+#[must_use]
+pub fn answer(job_id: u64, request_id: &Id, purpose: ProofPurpose, refusal: Refusal) -> ProofDone {
     ProofDone {
-        job_id: job.job_id,
-        request_id: job.request_id.clone(),
-        purpose: job.purpose,
+        job_id,
+        request_id: request_id.clone(),
+        purpose,
         report: None,
         ruling: None,
         authorizing_grants: Vec::new(),
-        undecided_reason: Some(reason.to_owned()),
+        undecided_reason: Some(refusal.text.to_owned()),
         check_theory_text: None,
+        cause: Some(refusal.cause),
     }
 }
 
-/// The result of a check that ran on the built theory for exactly this job.
-fn report_of(job: &ProofJob, check: Check) -> Result<ProofDone, ScalarError> {
+/// The result of a check that ran on the built theory for exactly this job. An undecided verdict
+/// states its cause by `lateness`; a decided one states none.
+fn report_of(job: &ProofJob, check: Check, lateness: Lateness) -> Result<ProofDone, ScalarError> {
     let report = fabric_broker_policy::proof_report(
         &check,
         &job.request_id,
@@ -191,9 +300,9 @@ fn report_of(job: &ProofJob, check: Check) -> Result<ProofDone, ScalarError> {
         .iter()
         .map(|id| Id::new(id.as_str()))
         .collect::<Result<Vec<_>, _>>()?;
-    let undecided_reason = match check.verdict {
-        Verdict::Undecided { reason } => Some(reason),
-        Verdict::Decided { .. } => None,
+    let (undecided_reason, cause) = match check.verdict {
+        Verdict::Undecided { reason } => (Some(reason), Some(lateness.undecided_cause())),
+        Verdict::Decided { .. } => (None, None),
     };
     Ok(ProofDone {
         job_id: job.job_id,
@@ -204,6 +313,7 @@ fn report_of(job: &ProofJob, check: Check) -> Result<ProofDone, ScalarError> {
         authorizing_grants,
         undecided_reason,
         check_theory_text: Some(check.theory_text),
+        cause,
     })
 }
 
@@ -382,6 +492,26 @@ pub(crate) mod tests {
 
     use super::*;
     use crate::prover::built_theory_sha256;
+
+    /// Every fixed refusal of this module.
+    pub(crate) const REFUSALS: [Refusal; 16] = [
+        STARTING,
+        NOT_RUNNING,
+        PAST_DEADLINE,
+        OTHER_CALENDAR,
+        BAD_ATTENDEE,
+        BAD_DIGEST,
+        BAD_WINDOW,
+        NO_ACTION,
+        UNKNOWN_ACTION,
+        OTHER_THEORY,
+        UNBOUND,
+        NOT_FIT,
+        RENDER,
+        FAILED,
+        CHECK_LATE,
+        CHECK_LIMIT,
+    ];
 
     const ACCOUNT: &str = "practice-account";
     const CALENDAR: &str = "practice-calendar";
@@ -672,7 +802,13 @@ pub(crate) mod tests {
             Some(Rule::Authority),
             &[],
         );
-        let (done, _) = done_of(&job, &context, built_theory_sha256(), Ok(check));
+        let (done, _) = done_of(
+            &job,
+            &context,
+            built_theory_sha256(),
+            Ok(check),
+            Lateness::InTime,
+        );
         let report = done.report.unwrap();
         assert_eq!(report.action_digest, job.action_digest);
         assert_eq!(report.request_id, job.request_id);
@@ -798,7 +934,13 @@ pub(crate) mod tests {
             &[],
         );
         let proof = check.proof_id.clone();
-        let (done, fate) = done_of(&job, &context, built_theory_sha256(), Ok(check));
+        let (done, fate) = done_of(
+            &job,
+            &context,
+            built_theory_sha256(),
+            Ok(check),
+            Lateness::InTime,
+        );
         assert_eq!(fate, GateFate::Keep);
         assert_eq!((done.job_id, &done.request_id), (7, &job.request_id));
         let report = done.report.unwrap();
@@ -821,6 +963,7 @@ pub(crate) mod tests {
         );
         assert!(done.authorizing_grants.is_empty());
         assert_eq!(done.undecided_reason, None);
+        assert_eq!(done.cause, None);
         assert!(
             done.check_theory_text
                 .unwrap()
@@ -839,7 +982,13 @@ pub(crate) mod tests {
             None,
             &["grant-1", "grant-0"],
         );
-        let (done, fate) = done_of(&job, &context, built_theory_sha256(), Ok(check));
+        let (done, fate) = done_of(
+            &job,
+            &context,
+            built_theory_sha256(),
+            Ok(check),
+            Lateness::InTime,
+        );
         assert_eq!(fate, GateFate::Keep);
         assert_eq!(done.authorizing_grants, [id("grant-1"), id("grant-0")]);
         assert_eq!(done.ruling, None);
@@ -862,12 +1011,19 @@ pub(crate) mod tests {
             None,
             &[],
         );
-        let (done, fate) = done_of(&job, &context, built_theory_sha256(), Ok(check));
+        let (done, fate) = done_of(
+            &job,
+            &context,
+            built_theory_sha256(),
+            Ok(check),
+            Lateness::InTime,
+        );
         assert_eq!(fate, GateFate::Keep);
         assert_eq!(done.report.unwrap().outcome, ProofOutcome::Undecided);
         assert_eq!(done.ruling, None);
         assert!(done.authorizing_grants.is_empty());
         assert_eq!(done.undecided_reason, Some(reason));
+        assert_eq!(done.cause, Some(ProverCause::CheckNotDecided));
     }
 
     #[test]
@@ -882,7 +1038,13 @@ pub(crate) mod tests {
         let mut bad_grant = fits();
         bad_grant.authorizing_grants = vec!["grant 1".to_owned()];
         for check in [bad_proof_id, bad_version, bad_grant] {
-            let (done, fate) = done_of(&job, &context, built_theory_sha256(), Ok(check));
+            let (done, fate) = done_of(
+                &job,
+                &context,
+                built_theory_sha256(),
+                Ok(check),
+                Lateness::InTime,
+            );
             assert_eq!(fate, GateFate::Keep);
             assert_eq!(done, no_report(&job, NOT_FIT));
         }
@@ -905,7 +1067,15 @@ pub(crate) mod tests {
         let faults = errors("x").iter().map(Fault::of).collect::<Vec<_>>();
         let fates = errors("x")
             .into_iter()
-            .map(|error| done_of(&job, &context, built_theory_sha256(), Err(error)))
+            .map(|error| {
+                done_of(
+                    &job,
+                    &context,
+                    built_theory_sha256(),
+                    Err(error),
+                    Lateness::InTime,
+                )
+            })
             .collect::<Vec<_>>();
         for (fault, (_, fate)) in faults.iter().zip(&fates) {
             assert_eq!(*fate == GateFate::Restart, *fault == Fault::Gate);
@@ -927,9 +1097,18 @@ pub(crate) mod tests {
         let job = job_of(create());
         let context = checked(&job);
         for error in errors("marker 5f1c Planning") {
-            let (done, _) = done_of(&job, &context, built_theory_sha256(), Err(error));
+            let (done, _) = done_of(
+                &job,
+                &context,
+                built_theory_sha256(),
+                Err(error),
+                Lateness::InTime,
+            );
             let reason = done.undecided_reason.unwrap();
-            assert!([RENDER, FAILED].contains(&reason.as_str()), "{reason}");
+            assert!(
+                [RENDER.text, FAILED.text].contains(&reason.as_str()),
+                "{reason}"
+            );
             assert!(done.report.is_none() && done.check_theory_text.is_none());
         }
     }
@@ -940,7 +1119,13 @@ pub(crate) mod tests {
         let context = checked(&job);
         let mut check = check_of(&context, decided(Outcome::Permit), None, &["grant-1"]);
         check.theory_sha256 = "0".repeat(64);
-        let (done, fate) = done_of(&job, &context, built_theory_sha256(), Ok(check));
+        let (done, fate) = done_of(
+            &job,
+            &context,
+            built_theory_sha256(),
+            Ok(check),
+            Lateness::InTime,
+        );
         assert_eq!(
             (done, fate),
             (no_report(&job, OTHER_THEORY), GateFate::Restart)
@@ -957,11 +1142,19 @@ pub(crate) mod tests {
         other_context.pause_epoch += 1;
         let other_context = check_of(&other_context, decided(Outcome::Permit), None, &["grant-1"]);
         for check in [other_action, other_context] {
-            let (done, fate) = done_of(&job, &context, built_theory_sha256(), Ok(check));
+            let (done, fate) = done_of(
+                &job,
+                &context,
+                built_theory_sha256(),
+                Ok(check),
+                Lateness::InTime,
+            );
             assert_eq!((done, fate), (no_report(&job, UNBOUND), GateFate::Keep));
         }
     }
 
+    /// PW u17: `no_report`, and `answer` for a job known by its id, copy the job, the text and the
+    /// cause.
     #[test]
     fn no_report_copies_the_job_and_names_the_reason() {
         let job = job_of(create());
@@ -975,9 +1168,126 @@ pub(crate) mod tests {
                 report: None,
                 ruling: None,
                 authorizing_grants: Vec::new(),
-                undecided_reason: Some(STARTING.to_owned()),
+                undecided_reason: Some(STARTING.text.to_owned()),
                 check_theory_text: None,
+                cause: Some(ProverCause::Starting),
             }
         );
+        assert_eq!(
+            answer(job.job_id, &job.request_id, job.purpose, STARTING),
+            done
+        );
+    }
+
+    /// PW u18: every fixed refusal names its cause, and no two share a text.
+    #[test]
+    fn every_refusal_names_its_cause() {
+        let table = [
+            (STARTING, ProverCause::Starting),
+            (NOT_RUNNING, ProverCause::NotRunning),
+            (PAST_DEADLINE, ProverCause::DeadlinePassed),
+            (OTHER_CALENDAR, ProverCause::JobRefused),
+            (BAD_ATTENDEE, ProverCause::JobRefused),
+            (BAD_DIGEST, ProverCause::JobRefused),
+            (BAD_WINDOW, ProverCause::JobRefused),
+            (NO_ACTION, ProverCause::JobRefused),
+            (UNKNOWN_ACTION, ProverCause::JobRefused),
+            (OTHER_THEORY, ProverCause::ReportUnusable),
+            (UNBOUND, ProverCause::ReportUnusable),
+            (NOT_FIT, ProverCause::ReportUnusable),
+            (RENDER, ProverCause::JobRefused),
+            (FAILED, ProverCause::CheckNotDecided),
+            (CHECK_LATE, ProverCause::DeadlinePassed),
+            (CHECK_LIMIT, ProverCause::CheckLimitReached),
+        ];
+        let job = job_of(create());
+        for (refusal, cause) in table {
+            assert_eq!(refusal.cause, cause, "{}", refusal.text);
+            let done = no_report(&job, refusal);
+            assert_eq!(done.undecided_reason.as_deref(), Some(refusal.text));
+            assert_eq!(done.cause, Some(cause), "{}", refusal.text);
+        }
+        assert_eq!(table.map(|(refusal, _)| refusal), REFUSALS);
+        let texts = table
+            .iter()
+            .map(|(refusal, _)| refusal.text)
+            .collect::<std::collections::BTreeSet<_>>();
+        assert_eq!(texts.len(), table.len(), "every text is its own");
+    }
+
+    /// PW u19 (PW 2.4): lateness decides the cause of an error and of an undecided verdict, never
+    /// the fate of the gate, and never the cause of a report that cannot be used.
+    #[test]
+    fn done_of_states_the_cause_and_lateness() {
+        let job = job_of(create());
+        let context = checked(&job);
+        let all = [Lateness::InTime, Lateness::AtLimit, Lateness::PastDeadline];
+        let theory = built_theory_sha256();
+        for lateness in all {
+            let late = |in_time: Refusal| match lateness {
+                Lateness::InTime => in_time,
+                Lateness::AtLimit => CHECK_LIMIT,
+                Lateness::PastDeadline => CHECK_LATE,
+            };
+            let render = done_of(&job, &context, theory, Err(errors("x").remove(0)), lateness);
+            assert_eq!(
+                render,
+                (no_report(&job, late(RENDER)), GateFate::Keep),
+                "{lateness:?}"
+            );
+            let gate = done_of(&job, &context, theory, Err(errors("x").remove(3)), lateness);
+            assert_eq!(
+                gate,
+                (no_report(&job, late(FAILED)), GateFate::Restart),
+                "{lateness:?}"
+            );
+
+            let mut other_theory = check_of(&context, decided(Outcome::Permit), None, &[]);
+            other_theory.theory_sha256 = "0".repeat(64);
+            let mut unbound = check_of(&context, decided(Outcome::Permit), None, &[]);
+            unbound.action_digest = "cd".repeat(32);
+            let mut not_fit = check_of(&context, decided(Outcome::Permit), None, &[]);
+            not_fit.proof_id = "not an id!".to_owned();
+            let unusable = [
+                (other_theory, OTHER_THEORY, GateFate::Restart),
+                (unbound, UNBOUND, GateFate::Keep),
+                (not_fit, NOT_FIT, GateFate::Keep),
+            ];
+            for (check, refusal, fate) in unusable {
+                assert_eq!(
+                    done_of(&job, &context, theory, Ok(check), lateness),
+                    (no_report(&job, refusal), fate),
+                    "{lateness:?} {}",
+                    refusal.text
+                );
+            }
+
+            let undecided = check_of(
+                &context,
+                Verdict::Undecided {
+                    reason: "Isabelle did not finish the check".to_owned(),
+                },
+                None,
+                &[],
+            );
+            let (done, fate) = done_of(&job, &context, theory, Ok(undecided), lateness);
+            assert_eq!(fate, GateFate::Keep);
+            assert!(done.report.is_some());
+            assert_eq!(
+                done.undecided_reason.as_deref(),
+                Some("Isabelle did not finish the check")
+            );
+            let expected = match lateness {
+                Lateness::InTime => ProverCause::CheckNotDecided,
+                Lateness::AtLimit => ProverCause::CheckLimitReached,
+                Lateness::PastDeadline => ProverCause::DeadlinePassed,
+            };
+            assert_eq!(done.cause, Some(expected), "{lateness:?}");
+
+            let permit = check_of(&context, decided(Outcome::Permit), None, &[]);
+            let (done, _) = done_of(&job, &context, theory, Ok(permit), lateness);
+            assert!(done.report.is_some());
+            assert_eq!(done.cause, None, "{lateness:?}");
+        }
     }
 }
