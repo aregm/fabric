@@ -16,6 +16,7 @@ use fabric_storage::{Counter, Mutation, StoreFault, TxError, WriteTx};
 
 use super::frames::invalid_params;
 use super::views::{OWNER_STATE_BUDGET_BYTES, owner_state_bytes};
+use crate::service::durations;
 use crate::service::grants::{create_grant, end_grant, end_grants_of_account};
 use crate::service::relied::set_relied;
 use crate::service::requests::{decided, move_request, record_of};
@@ -66,12 +67,18 @@ pub(crate) fn within_budget(
     Ok(())
 }
 
+/// The answer to a duration longer than the card proposes (contract fixture
+/// `accept-owner-response-error-invalid-params.json`).
+pub(crate) const DURATION_NOT_OFFERED: &str = "The duration is not one the broker offers.";
+
 /// The revision a record has after one more change.
 pub(crate) fn next_revision(revision: u64) -> Result<PositiveCount, StoreFault> {
     PositiveCount::new(revision + 1).map_err(|_| invariant("a revision is a safe integer"))
 }
 
-/// `decide_request` (6.1; D22): approve with a grant the pump then proves afresh, or deny.
+/// `decide_request` (6.1; D22): approve with a grant the pump then proves afresh, or deny. An
+/// approval for longer than the card's proposed duration is refused at
+/// `/params/duration/kind`.
 pub(crate) fn decide_request(
     tx: &mut WriteTx<'_>,
     cx: &mut Cx<'_>,
@@ -107,12 +114,20 @@ pub(crate) fn decide_request(
             selected: None,
             duration,
         } => {
-            let scope = record
+            let card = record
                 .card
                 .as_ref()
-                .ok_or(invariant("a pending request has a card"))?
-                .scope
-                .clone();
+                .ok_or(invariant("a pending request has a card"))?;
+            // The stored card's proposed duration is the longest the owner may choose; it is
+            // compared, never computed again (D22, D40). It comes after the check of selected
+            // and before the grant, whose session check keeps its pointer.
+            if durations::longer(duration.kind, card.proposed_duration.kind) {
+                return refused(
+                    invalid_params("/params/duration/kind"),
+                    DURATION_NOT_OFFERED,
+                );
+            }
+            let scope = card.scope.clone();
             let approval_digest = approval_digest(
                 &p.request_id,
                 &request_digest,

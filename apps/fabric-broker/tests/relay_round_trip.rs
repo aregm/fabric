@@ -19,9 +19,10 @@ use std::sync::mpsc::{self, Receiver, RecvTimeoutError};
 use std::sync::{Mutex, MutexGuard, PoisonError};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
-use fabric_desktop_contracts::error::ErrorCode;
+use fabric_desktop_contracts::error::{ErrorCode, Fault};
 use fabric_desktop_contracts::owner::{
-    Approval, Change, OwnerNotice, OwnerResponse, OwnerResult, Request, RequestDetails,
+    Approval, Change, DurationKind, OwnerNotice, OwnerResponse, OwnerResult, Request,
+    RequestDetails,
 };
 use fabric_desktop_contracts::{
     Frame, Layer, Limits, RequestState, SCHEMA_VERSION, canonical, first_invalid,
@@ -405,13 +406,37 @@ fn approval_then_denial() {
     relay.assert_consecutive();
 }
 
+/// A duplicate command is answered once. The synthetic card proposes one request, because the
+/// synthetic classifier cannot carry out a change (D40 of
+/// `docs/plans/calendar-desktop-w04-design.md`), so a session is first refused over the relay
+/// at `/params/duration/kind` and changes nothing; the approval that is sent twice is for one
+/// request.
 #[test]
 fn a_duplicate_command_is_answered_once() {
     let mut relay = Relay::start();
     relay.result(&subscribe(0));
     let pending = relay.pending(&[]);
     let request_id = pending.request_id.as_str().to_owned();
-    let approve = decide("decide-1", &pending, "approve", json!({"kind": "session"}));
+    let read = details(&mut relay, &request_id);
+    let card = read.card.expect("a pending request has a card");
+    assert_eq!(card.proposed_duration.kind, DurationKind::OneRequest);
+    let session = decide("decide-0", &pending, "approve", json!({"kind": "session"}));
+    match relay.ask(&session) {
+        OwnerResponse::Error { error, .. } => {
+            assert_eq!(error.code(), ErrorCode::InvalidParams);
+            assert_eq!(
+                error.fault.detail(),
+                json!({"pointer": "/params/duration/kind"})
+            );
+        }
+        other => panic!("{other:?}"),
+    }
+    let approve = decide(
+        "decide-1",
+        &pending,
+        "approve",
+        json!({"kind": "one_request"}),
+    );
     relay.send(&approve);
     relay.send(&approve);
     let first = relay.response();
@@ -425,10 +450,11 @@ fn a_duplicate_command_is_answered_once() {
         .filter(|(_, n)| is_request_in(n, &request_id, RequestState::Approved))
         .count();
     assert_eq!(approvals, 1);
+    // One grant was made; its end with the request is a second notice of the same grant.
     let grants = relay
         .notices
         .iter()
-        .filter(|(_, n)| n.change.kind() == "grant")
+        .filter(|(_, n)| matches!(&n.change, Change::Grant(g) if g.ended.is_none()))
         .count();
     assert_eq!(grants, 1);
 

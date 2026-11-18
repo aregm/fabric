@@ -6,7 +6,7 @@
 
 use fabric_desktop_contracts::common::FailureCode;
 use fabric_desktop_contracts::owner::{
-    ApprovalCard, Attempt, AttemptOutcome, Authorization, Duration, DurationKind, Failure,
+    ApprovalCard, Attempt, AttemptOutcome, Authorization, Duration, Failure, GrantTerm,
     LifecycleStatus, LifetimeSeconds, ProofOutcome, ProofPurpose, ProofReport, Ruling,
 };
 use fabric_desktop_contracts::scalar::{Explanation, Fixed, Id, PositiveCount};
@@ -23,7 +23,7 @@ use crate::service::grants::grant_is_valid;
 use crate::service::reducer::{Event, next, states_a_cause};
 use crate::service::relied::set_relied;
 use crate::service::requests::{calendars_of, is_change, move_request_with, record_of};
-use crate::service::{Activity, Cx, epochs, facts, invariant, plain, timestamp};
+use crate::service::{Activity, Cx, durations, epochs, facts, invariant, plain, timestamp};
 
 /// The `undecided_reason` of a result naming a grant outside its job's facts (D17).
 const OUTSIDE_THE_FACTS: &str = "authorizing grant outside the facts";
@@ -745,8 +745,14 @@ impl Core {
             Some(&job.request_id),
             causation,
         );
+        // The two facts `accepted` checks before it authorizes: whether this run can carry out a
+        // change, which a card's proposed duration needs too (D40).
+        let card = CardTerms {
+            lifetime_ms: card_ms,
+            can_change: kind == ProverKind::Isabelle && provider_present,
+        };
         self.commit(meta, |tx, cx| {
-            settle(tx, cx, &job, done, kind, judgement, card_ms)
+            settle(tx, cx, &job, done, kind, judgement, card)
         })
     }
 
@@ -788,6 +794,15 @@ impl Core {
     }
 }
 
+/// What a card opened by a proof result needs of this run.
+#[derive(Clone, Copy, Debug)]
+struct CardTerms {
+    /// The card's lifetime.
+    lifetime_ms: i64,
+    /// This run can carry out a change: an Isabelle prover and a provider (D40).
+    can_change: bool,
+}
+
 /// Applies a judgement in the commit that handles the result (5.7, D36).
 fn settle(
     tx: &mut WriteTx<'_>,
@@ -796,7 +811,7 @@ fn settle(
     done: ProofDone,
     kind: ProverKind,
     judgement: Judgement,
-    card_ms: i64,
+    card: CardTerms,
 ) -> Result<(), StoreFault> {
     let request_id = &job.request_id;
     let record_proof =
@@ -846,7 +861,7 @@ fn settle(
                     advance(tx, cx, request_id, Event::Allow, None, Some(now))
                 }
                 Accepted::Authorize => authorize(tx, cx, job, &done),
-                Accepted::Ask(ruling) => open_card(tx, cx, request_id, ruling, card_ms),
+                Accepted::Ask(ruling) => open_card(tx, cx, request_id, ruling, card),
                 Accepted::Block(ruling) => advance(
                     tx,
                     cx,
@@ -940,28 +955,47 @@ fn authorize(
     advance(tx, cx, request_id, Event::Authorize, None, Some(now))
 }
 
-/// `-> pending_approval`: a 24 h card with the request's scope and the ruling (5.7). The
-/// open-card limit is not checked here (5.9, R18).
+/// `-> pending_approval`: a 24 h card with the request's scope, the ruling and the duration
+/// `durations::proposed_duration` proposes (5.7, D40). The facts it reads are this
+/// transaction's: the profile in force and the selected calendars, as the proof read them, and
+/// whether a lasting grant of the agent already has the request as its origin. The open-card
+/// limit is not checked here (5.9, R18).
 fn open_card(
     tx: &mut WriteTx<'_>,
     cx: &mut Cx<'_>,
     request_id: &Id,
     ruling: Ruling,
-    card_ms: i64,
+    card: CardTerms,
 ) -> Result<(), StoreFault> {
-    let scope = record_of(tx, request_id)?
-        .row
-        .scope
-        .ok_or(invariant("a card shows a scope"))?;
-    let expires_ms = cx.now_ms + card_ms;
+    let record = record_of(tx, request_id)?;
+    let (profile, calendars, lasting_origin) = {
+        let r = tx.read();
+        let profile = r.active_profile()?.2;
+        let (_, calendars) = facts::selected_calendars(&r)?;
+        let lasting_origin = r
+            .grants_of_agent(&record.row.request.agent_id)?
+            .iter()
+            .any(|g| {
+                &g.origin.request_id == request_id
+                    && matches!(g.term, GrantTerm::Session { .. } | GrantTerm::UntilRevoked)
+            });
+        (profile, calendars, lasting_origin)
+    };
+    let kind = durations::proposed_duration(
+        &record.row.action,
+        &profile,
+        &calendars,
+        card.can_change,
+        lasting_origin,
+    );
+    let scope = record.row.scope.ok_or(invariant("a card shows a scope"))?;
+    let expires_ms = cx.now_ms + card.lifetime_ms;
     let expires_at = timestamp(expires_ms);
     tx.apply(Mutation::CardOpened {
         request_id: request_id.clone(),
         card: ApprovalCard {
             scope,
-            proposed_duration: Duration {
-                kind: DurationKind::OneRequest,
-            },
+            proposed_duration: Duration { kind },
             insufficiency: ruling,
             expires_at: expires_at.clone(),
         },

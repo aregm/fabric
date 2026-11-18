@@ -18,8 +18,10 @@ fn session_of(h: &mut Harness, agent_id: &str) -> Value {
     h.agent_view(agent_id)["session"].clone()
 }
 
-/// c06. Design 5.5: a session idle for more than 1 800 000 ms after its last call ends with
+/// c06. Design 5.5: a session idle for 1 800 000 ms after its last call ends with
 /// `idle_timeout`, its session grants end `session_idle_timeout`, and the agent revision rises.
+/// It is live until 1 ms before the limit and ends at the limit itself, as the theory's
+/// `session_live` reads it (c39).
 #[test]
 fn an_idle_session_ends_at_1800_s_with_session_idle_timeout() {
     let mut h = Harness::new("c06a", isabelle());
@@ -44,7 +46,7 @@ fn an_idle_session_ends_at_1800_s_with_session_idle_timeout() {
     );
     assert!(h.live_grants().contains(&grant));
 
-    h.now = last_call + IDLE + 1;
+    h.now = last_call + IDLE;
     let output = h.tick();
     assert!(output.halt.is_none());
     assert_eq!(
@@ -89,7 +91,7 @@ fn a_status_poll_keeps_a_session_alive() {
     assert_ne!(session, Value::Null, "a polling agent lost its session");
     assert_eq!(session["last_active_at"], timestamp(polled));
 
-    h.now = polled + IDLE + 1;
+    h.now = polled + IDLE;
     let _ = h.tick();
     assert_eq!(session_of(&mut h, AGENT), Value::Null);
     h.verify();
@@ -111,7 +113,7 @@ fn a_session_with_no_call_has_last_active_at_its_start_and_idles_1800_s_after_co
     let _ = h.tick();
     assert_ne!(session_of(&mut h, AGENT), Value::Null);
 
-    h.now = T0 + IDLE + 1;
+    h.now = T0 + IDLE;
     let _ = h.tick();
     assert_eq!(session_of(&mut h, AGENT), Value::Null);
     h.verify();

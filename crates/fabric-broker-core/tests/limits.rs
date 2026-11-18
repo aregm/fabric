@@ -97,7 +97,11 @@ fn busy_limits_create_no_request() {
     // Open requests per agent (25) and in total (100).
     let mut h = Harness::new("c20a-open", isabelle());
     let agents = ["agent-0", "agent-1", "agent-2", "agent-3", "agent-4"];
-    let _ = h.seed(&agents, vec![account(ACCOUNT, &[CALENDAR])]);
+    // `fill_agent` approves until_revoked, which only the Agent Drafts calendar's card offers.
+    let _ = h.seed(
+        &agents,
+        vec![account_with_drafts(ACCOUNT, &[CALENDAR], DRAFTS)],
+    );
     for (n, agent) in agents.iter().enumerate() {
         let _ = h.connect(n as u64 + 1, agent);
     }
@@ -270,7 +274,8 @@ fn assert_over_budget(response: &Value, pointer: &str) {
 fn the_owner_records_are_bounded_so_a_snapshot_fits_in_one_frame() {
     let mut h = Harness::new("frame-budget", isabelle());
     h.setup();
-    let pending = h.pending(1, "call-1");
+    // On the Agent Drafts calendar, so the until_revoked decision below reaches the budget.
+    let pending = h.pending_lasting(1, "call-1");
     let _ = h.subscribe();
 
     // The schema's largest recipient set fits; a second one does not.

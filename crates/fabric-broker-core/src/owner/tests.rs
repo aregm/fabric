@@ -493,7 +493,7 @@ fn a_duplicate_command_gets_the_same_bytes_and_changes_nothing() {
     let mut run = Run::new(testing::isabelle());
     run.seed();
     let request_id = run.pending("call-1", "proof-1");
-    let params = run.decide_params(&request_id, "approve", json!({"kind": "until_revoked"}));
+    let params = run.decide_params(&request_id, "approve", json!({"kind": "one_request"}));
     let first = run.send("cmd-1", "decide_request", params.clone());
     assert!(result(&response(&first))["approval"].is_object());
     let before = run.snapshot();
@@ -893,7 +893,7 @@ fn disconnect_google_sends_the_account_notice_last_and_answers_with_its_sequence
     let mut run = Run::new(testing::isabelle());
     run.seed();
     let approved = run.pending("call-1", "proof-1");
-    let output = run.approve(&approved, "until_revoked");
+    let output = run.approve(&approved, "one_request");
     let grant_id = result(&response(&output))["approval"]["grant_id"].clone();
     let waiting = run.pending("call-2", "proof-2");
     // Reading the counters restarts the broker, so subscribe after it.
@@ -970,7 +970,7 @@ fn a_revoked_grant_ends_and_a_second_revoke_is_conflict() {
     let mut run = Run::new(testing::isabelle());
     run.seed();
     let request_id = run.pending("call-1", "proof-1");
-    let output = run.approve(&request_id, "until_revoked");
+    let output = run.approve(&request_id, "one_request");
     let grant_id = result(&response(&output))["approval"]["grant_id"].clone();
     let answer = run.ok(
         "revoke_grant",
@@ -1058,7 +1058,7 @@ fn details_carry_a_reason_only_when_undecided() {
     let _ = run.prove(&jobs(&output).pop().unwrap(), "block", "proof-1");
     let pending = run.pending("call-2", "proof-2");
     let applied = run.pending("call-3", "proof-3");
-    let output = run.approve(&applied, "until_revoked");
+    let output = run.approve(&applied, "one_request");
     let grant = result(&response(&output))["approval"]["grant_id"]
         .as_str()
         .unwrap()
