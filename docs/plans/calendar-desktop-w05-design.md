@@ -820,8 +820,8 @@ so a second send could not be applied. Test g41 holds every such request to it.
 `differs(action, event) -> Option<Differs>` names the first member in which the event Google holds is not what
 was approved, as a fixed label with no content: `title`, `start`, `end`, `zone`, `description`, `location`,
 `attendees`, `own_response`, `other_attendee`, `original_start`, and for an answer `status` (the event came back
-cancelled) and `event` (the event or its revision could not be read). `matches` is "no member differs". Used in 6.6,
-6.7 and section 7:
+cancelled, with a revision that can be held) and `event` (the event or its revision could not be read).
+`matches` is "no member differs". Used in 6.6, 6.7 and section 7:
 
 - Create: `summary` equals the title; `start` and `end` are the approved instants; the zone, when Google returns
   the event's own `timeZone`, is the approved one; `description` and `location` equal the approved ones (absent
@@ -836,6 +836,12 @@ For the answer to the adapter's own request (18.7 point 2): a 200 whose body is 
 when no member differs, and for a response when every other attendee entry is also as it was read; otherwise the
 outcome carries the member that differed. When the revision cannot be read the outcome names no event. A 200
 whose body is not an object, has no id, or has another id stays NoAnswer.
+
+One invariant, which the core checks (18.7 point 2): for a create, an update, an invitation and a response, an
+applied outcome names no event only when no revision could be held, and then `confirmed` is false and the label
+is `event`. So a cancelled event whose revision cannot be held is labelled `event`, not `status`. The core
+treats any other applied non-delete without an event as a provider mismatch. A delete names no event and
+carries no label.
 
 Google may store a member in another form than it was sent. The comparison has one place where a normalisation
 is applied to both sides, and a closed, named list of them, `NORMALISATIONS`, which is **empty**: an entry is
@@ -1377,7 +1383,10 @@ decision. Merging the pull request that carries them is the owner's acceptance.
   macOS product and Windows only runs its tests. On every platform a local program can also hold the listener's
   eight places and delay a sign-in until its 300 s end (3.3).
 - RK23 Every supersede waits while a flow writes the token store. With the Keychain store of phase 2 a write
-  may wait for the person, and a quit that supersedes then waits too.
+  may wait for the person, and a quit that supersedes then waits too. The lead takes this on in the core: no
+  supersede runs on the broker's main loop; each is a job of the worker that runs unlink; at quit the shell
+  waits a short bound and exits, and a token written after that is removed at the next start by the unlink
+  that recovery runs for every account that is not connected. Nothing changes in this crate for it.
 - RK22 The read after a delete counts a 404 as "gone" (18.7 point 1). A 404 can also mean that the calendar
   became unreadable between the DELETE and the read; the delete itself was answered with a plain yes, so the
   confirmation is then right about the delete and for the wrong reason.
@@ -1519,8 +1528,11 @@ sections 3.3, 6.2, 6.4, 6.8 and 6.12 describe them. Point 3 (returning the raw e
    it is a precondition of the live run, not of this crate's code. Decided later by the lead: for such a 200 the
    port's applied answer carries one optional member, the event as Google returned it (the raw text, under the
    4 MiB bound) with the fixed labels of the members that differed; its shape is the phase 2 design's (D.2).
-   The crate today names the first member that differed only (6.12), so the mapping of phase 2 makes the
-   comparison return every label.
+   The crate names the first member that differed only (6.12) until phase 2. Ruled: in phase 2 the comparison
+   returns every member that differed, because the audit row and LV18 should show every member Google
+   rewrote, and a first-only label hides a second rewrite behind the first. Also ruled later: an applied create or change that names no event is
+   accepted. The core handles it as applied with another content, waits for the owner, writes the label `event`
+   in the audit row and records no revision; it checks the invariant of 6.12.
 3. **The evidence of one observation may be 1 048 576 bytes**, its before-image 393 216 (384 KiB) or less. Past
    either the core stores no observation and ends the request with a fixed sentence for the owner: a stated
    limit of version 1, his to confirm. The adapter keeps its 4 MiB bound on what it reads, returns the event as
