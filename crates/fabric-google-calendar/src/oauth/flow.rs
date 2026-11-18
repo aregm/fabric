@@ -490,13 +490,14 @@ impl Flow {
         })
     }
 
-    /// Supersedes the latest flow this `Flow` (or a clone) started, if it has not ended: for
-    /// a new connect and for the broker quitting (18.7 point 5(a)). It takes the lock under
-    /// which a flow makes its last "was I superseded" check and writes the token store, so
-    /// once it has returned `true` that flow never writes the token store or the access cache
-    /// and ends `Cancelled(Superseded)`. `false` when there is nothing to supersede: no flow
-    /// was started, or the latest one had already ended (written or not) or was superseded
-    /// before.
+    /// Supersedes the latest flow this `Flow` (or a clone) started, if it has not ended. The
+    /// broker does not call it: for a new connect and for a quit it supersedes by generation
+    /// ([`Flow::supersede`]; 18.7 point 5(a)). This stays for a caller that runs one flow at a
+    /// time, and for the tests. It takes the lock under which a flow makes its last "was I
+    /// superseded" check and writes the token store, so once it has returned `true` that flow
+    /// never writes the token store or the access cache and ends `Cancelled(Superseded)`.
+    /// `false` when there is nothing to supersede: no flow was started, or the latest one had
+    /// already ended (written or not) or was superseded before.
     pub fn supersede_latest(&self) -> bool {
         let mut turn = lock(&self.turn);
         let latest = turn.current;

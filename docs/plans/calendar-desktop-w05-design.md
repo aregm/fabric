@@ -250,8 +250,10 @@ and wiped are held by nobody and age out at Google.
 - Lives at most 300 s from `Flow::start`, on the adapter's clock and on a clock that cannot be set back,
   whichever ends first, or until the flow is superseded (a flag it reads at least every 250 ms). Starting a flow
   supersedes the one before it (PD5), and a superseded flow never deletes what a later flow stored.
-- A flow is superseded by a new start, by `Flow::supersede_latest()` (a new connect, a quit) or by
-  `Flow::supersede(generation)`, which names one flow by `PendingFlow::generation()` and never another. Each takes
+- A flow is superseded by a new start, by `Flow::supersede(generation)`, which names one flow by
+  `PendingFlow::generation()` and never another, or by `Flow::supersede_latest()`. The broker uses the first
+  two only: a new connect and a quit are supersedes by generation, sent as jobs of its second worker (18.7
+  point 5). `supersede_latest` stays for a caller that runs one flow at a time, and for the tests. Each takes
   the lock under which a flow makes its last check and writes the token store. So once a supersede has answered
   `true`, that flow ends `Cancelled(Superseded)` and writes neither the token store nor the access cache; when the
   flow had already ended, written or not, the answer is `false`. `start` only prepares a flow; `wait` opens the
@@ -542,9 +544,13 @@ calendar there is no own entry: no invitation to answer, no own response to show
 
 ### 6.2 Calendar list
 
-`GET /users/me/calendarList?maxResults=250&minAccessRole=freeBusyReader&showHidden=true[&pageToken=..]`, page
-after page (Google may fill a page with fewer than it was asked for). More than 250 calendars in all, or more than
-20 pages, fails the listing (PD23, ST2); a cut list would look like lost calendars (CO7). Deleted entries are not asked for. Hidden ones are: hiding a calendar in Google's page is a display choice and takes no access away.
+`GET /users/me/calendarList?maxResults=250&minAccessRole=freeBusyReader&showHidden=true[&pageToken=..]`, page after
+page (Google may fill a page with fewer than it was asked for). More than 250 calendars in all, or more than 20
+pages, fails the listing (PD23, ST2); a cut list would look like lost calendars (CO7). Both fail with
+`provider_rejected` and one fixed sentence, "This account has more calendars than Fabric can list.", which names no
+number because the page bound can end a list of fewer than 250. The listing is the core's own order (PO5, CO7), so
+the sentence is the core's to show to the owner; no agent's result carries it (CO13). Deleted entries are not asked
+for. Hidden ones are: hiding a calendar in Google's page is a display choice and takes no access away.
 
 Result per entry: Google's `id` (5.3); the name (`summaryOverride`, else `summary`, cut to 200 characters, "(no
 name)" when empty); `primary`; `timeZone`; the access role:
@@ -670,8 +676,8 @@ keeps Google's default (OQ13 names one of them).
 
 | Answer | Outcome |
 |---|---|
-| 200 with an event whose `id` is the reserved one | Applied, with `(id, etag)` and `confirmed`: whether the returned event equals the approved one (6.12) |
-| 200 with another `id`, or a body that is not an event | NoAnswer |
+| 2xx whose body is an object with the reserved `id` | Applied, with `(id, etag)` when the revision can be held, and `confirmed`: whether the returned event equals the approved one (6.12) |
+| 2xx whose body is not an object, has no string id, or has another id | NoAnswer |
 | 409 | Rejected `provider_rejected` ("an event with this id already exists"). No earlier attempt of this effect can have made it (PD17), so the event is not Fabric's, and it is never recorded as created |
 | 404, 410, 412 | Rejected `provider_rejected` |
 | others | 6.10 |
@@ -709,8 +715,8 @@ revision>` (PD14, PD15). `sendUpdates` is always written: `all`, `externalOnly` 
 
 | Answer | Outcome |
 |---|---|
-| 200 with the event | Applied, with `(id, new etag)`, `confirmed` (6.12) and `notification` (`Sent` when `sendUpdates` is not `none`, else `NotRequested`) |
-| 200 with another `id`, or a body that is not an event | NoAnswer |
+| 2xx whose body is an object with the target's `id` | Applied, with `(id, new etag)` when the revision can be held, `confirmed` (6.12) and `notification` (`Sent` when `sendUpdates` is not `none`, else `NotRequested`) |
+| 2xx whose body is not an object, has no string id, or has another id | NoAnswer |
 | 412 | Rejected `revision_conflict` |
 | 404, 410 | Rejected `revision_conflict` ("the event is gone") |
 | 409 | Transient (G-DOC: a conflict with another request in progress; nothing was applied) |
@@ -831,11 +837,13 @@ cancelled, with a revision that can be held) and `event` (the event or its revis
   approved list names it, equals the approved set (local part exact, domain without regard to case).
 - Response: the own entry has the approved status; for one occurrence, its original start is the approved one.
 
-For the answer to the adapter's own request (18.7 point 2): a 200 whose body is an object with the right id is
-`Applied` whatever else it holds, a cancelled event and one that cannot be read among them. `confirmed` is true
+For the answer to the adapter's own request (18.7 point 2): a 2xx answer whose body is an object with the right
+id is `Applied` whatever else it holds, a cancelled event and one that cannot be read among them. `confirmed` is true
 when no member differs, and for a response when every other attendee entry is also as it was read; otherwise the
-outcome carries the member that differed. When the revision cannot be read the outcome names no event. A 200
-whose body is not an object, has no id, or has another id stays NoAnswer.
+outcome carries the member that differed. When the revision cannot be read the outcome names no event. A 2xx
+answer whose body is not an object, has no string id, or has another id stays NoAnswer. The rulings say 200;
+the code takes every 2xx for a create, an update, an invitation and a response, which the lead accepted. A
+delete is applied on 200 or 204 only (6.8).
 
 One invariant, which the core checks (18.7 point 2): for a create, an update, an invitation and a response, an
 applied outcome names no event only when no revision could be held, and then `confirmed` is false and the label
@@ -1320,7 +1328,9 @@ all fixed before the pull request.
    reconcile orders too.
 7. The live run of 15.3 with the owner, recorded as the evidence of `CD-G2b`, then the independent review.
 
-Nothing of phase 2 is in this pull request.
+Of phase 2, pull request 45 holds only the parts of the rulings of 18.7 that need no type of the port (15.5):
+the read after a delete, the labels, the typed spans, the 20-page bound and the supersede methods. Steps 3 to 7
+above are not in it.
 
 ---------------------------------------------------------------------------------------------------------------------
 
@@ -1548,19 +1558,22 @@ sections 3.3, 6.2, 6.4, 6.8 and 6.12 describe them. Point 3 (returning the raw e
    `AllDay` (Google's two dates exactly), built from the occurrence's own start and end, never from
    `originalStartTime`, with no widening and no zone arithmetic. The core widens an all-day span by 14 hours each
    way for its overlap check only. Exact bounds wait for a zone database, which is CD-W09's (LV17).
-5. **The account link.** (a) The shell keeps a clone of the flow handle. `Flow::supersede_latest()` serves a new
-   connect and a quit, `Flow::supersede(generation)` one flow only, and `PendingFlow::generation()` names it; each
-   takes the lock under which the token is written, so a flow never writes the token store once a supersede has
-   returned, and a connect that was superseded while it waited in the queue answers `Cancelled(Superseded)`
-   without starting. (b) Revoke and forget become one job, `unlink`, on a worker of its own: it drops the cached
-   access token, makes the one revocation attempt with the token still in the store (30 s at most), then forgets
-   at once. A disconnected account's token then lives in the store for that attempt at most, and a broker that
-   dies in between finds the token at the next start and revokes then. Deleting a token that is not there is
-   `Ok` (section 4), so an unlink can be repeated. (c) Asked by the lead after the checkers of the phase 2
-   design, for phase 2: the account link gives two handles, one for the sign-in worker and one for the unlink
-   worker. They share the token store and the cached access token, and each is safe on its own thread. The
-   in-memory store already shares one map under a mutex between its clones; the Keychain store must do the
-   same.
+5. **The account link.** (a) The link keeps a clone of the flow handle. `Flow::supersede(generation)` ends one flow
+   only, and `PendingFlow::generation()` names it; it takes the lock under which the token is written, so a flow
+   never writes the token store once a supersede has returned, and a connect that was superseded while it waited in
+   the queue answers `Cancelled(Superseded)` without starting. Agreed for the build of phase 2: the core names a flow
+   by the order's account and its own generation, and the link maps that pair to `PendingFlow::generation()`. Ruled
+   later: the shell never calls `Flow::supersede_latest()`; a new connect and a quit are supersedes by generation,
+   each a job of the worker that runs unlink (RK23). The method stays in the crate for a caller that runs one flow at
+   a time, and for the tests. (b) Revoke and forget become one job, `unlink`, on a worker of its own: it drops the
+   cached access token, makes the one revocation attempt with the token still in the store (30 s at most), then
+   forgets at once. A disconnected account's token then lives in the store for that attempt at most, and a broker
+   that dies in between finds the token at the next start and revokes then. Deleting a token that is not there is
+   `Ok` (section 4), so an unlink can be repeated. Agreed for the build: `unlink` takes whether to revoke, since a
+   disconnect without `revoke_provider_token` only forgets. (c) Asked by the lead after the checkers of the phase 2
+   design, for phase 2: the account link gives two handles, one for the sign-in worker and one for the unlink worker.
+   They share the token store and the cached access token, and each is safe on its own thread. The in-memory store
+   already shares one map under a mutex between its clones; the Keychain store must do the same.
 
 Also ruled: the missing permissions of a partial grant are stored as a list of named permissions (`address`,
 `calendar_list`, `availability`, `events`); for a new account the core sets "already an account" itself.
