@@ -395,6 +395,18 @@ fn system_refresh(calendar: &str) -> Action {
     }
 }
 
+/// One lemma of the section on lasting approvals: its name, the profile, the grant the
+/// approval made, the action, the event the action names, and the rule that fails first when
+/// the grant does not serve.
+type LastingCell = (
+    &'static str,
+    Profile,
+    Grant,
+    Action,
+    Option<Event>,
+    Option<Rule>,
+);
+
 struct Case {
     name: String,
     context: Context,
@@ -1260,6 +1272,328 @@ fn cases() -> Vec<Case> {
         create("acct-1", "team"),
         None,
         Some(Rule::Actor),
+    );
+
+    // What a lasting approval is worth (contract README, section 10).
+    let asking = || Profile {
+        list: Mode::Asks,
+        read: Mode::Asks,
+        drafts: Mode::Asks,
+        existing: Mode::Asks,
+        edit_fabric: Mode::Asks,
+        edit_other: Mode::Asks,
+        invite: Mode::Asks,
+        respond: Mode::Asks,
+        delete: Mode::Asks,
+        sharing: Mode::Blocks,
+    };
+    // `lasting t cal`.
+    let lasting = |tool: Tool, calendar: &str| Grant {
+        id: s("g-lasting"),
+        tools: vec![tool],
+        calendars: vec![key(calendar)],
+        ..standing_grant()
+    };
+    let for_session = |grant: Grant| Grant {
+        duration: Duration::Session {
+            session_id: s("session-1"),
+        },
+        ..grant
+    };
+    // `after_approval p g`, with the event the case names.
+    let after_approval = |profile: Profile, grant: Grant, event: Option<Event>| {
+        with(base(), |c| {
+            c.profile = profile;
+            c.relied = vec![grant.id.clone()];
+            c.grants = vec![grant];
+            c.event = event;
+        })
+    };
+    let lasting_availability = || Grant {
+        window: Some(Window {
+            start_ms: 0,
+            end_ms: 100,
+        }),
+        ..lasting(Tool::Availability, "primary")
+    };
+    let lasting_read = || Grant {
+        window: Some(Window {
+            start_ms: 0,
+            end_ms: 100,
+        }),
+        fields: vec![EventField::Time, EventField::Title],
+        ..lasting(Tool::Read, "primary")
+    };
+    let lasting_edit = |calendar: &str, send_updates: SendUpdates| Grant {
+        send_updates: Some(send_updates),
+        ..lasting(Tool::Update, calendar)
+    };
+    let lasting_invitation = || Grant {
+        recipients: Some(RecipientRule::Exact(vec![c(&[1]), c(&[3])])),
+        send_updates: Some(SendUpdates::NotifyAll),
+        ..lasting(Tool::Invite, "team")
+    };
+    let lasting_response = || Grant {
+        send_updates: Some(SendUpdates::NotifyAll),
+        ..lasting(Tool::Respond, "primary")
+    };
+    let lasting_delete = || Grant {
+        send_updates: Some(SendUpdates::NotifyAll),
+        ..lasting(Tool::Delete, "team")
+    };
+    let read_asked = || read(0, 100, &[EventField::Time, EventField::Title]);
+    let edit_in_drafts = || update("drafts", SendUpdates::NotifyNone);
+    let accept = || respond(whole(200, 7), Response::Accepted);
+    let pre_existing = || Event {
+        fabric_created: false,
+        ..own_event()
+    };
+    let with_bob = || Event {
+        attendees: vec![bob()],
+        ..own_event()
+    };
+    // One row per lemma of the section that has the common shape. With no rule, the lemma
+    // states Permit until revoked (1) and for the session (2). With a rule, it states
+    // Need_approval and that rule until revoked (1, 2), and Need_approval for the session (3).
+    let cells: Vec<LastingCell> = vec![
+        (
+            "a_lasting_approval_of_availability_serves_under_allow",
+            widest(),
+            lasting_availability(),
+            availability(&["primary"], 0, 100),
+            None,
+            None,
+        ),
+        (
+            "a_lasting_approval_of_availability_does_not_serve_under_ask",
+            asking(),
+            lasting_availability(),
+            availability(&["primary"], 0, 100),
+            None,
+            Some(Rule::Authority),
+        ),
+        (
+            "a_lasting_approval_of_a_read_serves_under_allow",
+            widest(),
+            lasting_read(),
+            read_asked(),
+            None,
+            None,
+        ),
+        (
+            "a_lasting_approval_of_a_read_serves_under_ask",
+            asking(),
+            lasting_read(),
+            read_asked(),
+            None,
+            None,
+        ),
+        (
+            "a_lasting_approval_of_a_create_in_agent_drafts_serves_under_allow",
+            widest(),
+            lasting(Tool::Create, "drafts"),
+            create("acct-1", "drafts"),
+            None,
+            None,
+        ),
+        (
+            "a_lasting_approval_of_a_create_in_agent_drafts_does_not_serve_under_ask",
+            asking(),
+            lasting(Tool::Create, "drafts"),
+            create("acct-1", "drafts"),
+            None,
+            Some(Rule::Authority),
+        ),
+        (
+            "a_lasting_approval_of_a_create_in_another_calendar_serves_under_allow",
+            widest(),
+            lasting(Tool::Create, "team"),
+            create("acct-1", "team"),
+            None,
+            None,
+        ),
+        (
+            "a_lasting_approval_of_a_create_in_another_calendar_does_not_serve_under_ask",
+            asking(),
+            lasting(Tool::Create, "team"),
+            create("acct-1", "team"),
+            None,
+            Some(Rule::Authority),
+        ),
+        (
+            "a_lasting_approval_of_an_edit_in_agent_drafts_serves_under_allow",
+            widest(),
+            lasting_edit("drafts", SendUpdates::NotifyNone),
+            edit_in_drafts(),
+            Some(own_event()),
+            None,
+        ),
+        (
+            "a_lasting_approval_of_an_edit_in_agent_drafts_serves_under_ask",
+            asking(),
+            lasting_edit("drafts", SendUpdates::NotifyNone),
+            edit_in_drafts(),
+            Some(own_event()),
+            None,
+        ),
+        (
+            "a_lasting_approval_of_an_edit_outside_agent_drafts_serves_under_allow",
+            widest(),
+            lasting_edit("team", SendUpdates::NotifyAll),
+            edit_own(),
+            Some(own_event()),
+            None,
+        ),
+        (
+            "a_lasting_approval_of_an_edit_outside_agent_drafts_does_not_serve_under_ask",
+            asking(),
+            lasting_edit("team", SendUpdates::NotifyAll),
+            edit_own(),
+            Some(own_event()),
+            Some(Rule::Authority),
+        ),
+        (
+            "a_lasting_approval_of_an_edit_of_a_pre_existing_event_serves_under_allow",
+            widest(),
+            lasting_edit("team", SendUpdates::NotifyAll),
+            edit_own(),
+            Some(pre_existing()),
+            None,
+        ),
+        (
+            "a_lasting_approval_of_an_edit_of_a_pre_existing_event_does_not_serve_under_ask",
+            asking(),
+            lasting_edit("team", SendUpdates::NotifyAll),
+            edit_own(),
+            Some(pre_existing()),
+            Some(Rule::Authority),
+        ),
+        (
+            "a_lasting_approval_of_an_invitation_serves_under_allow",
+            widest(),
+            lasting_invitation(),
+            invite(vec![bob(), dan()]),
+            Some(own_event()),
+            None,
+        ),
+        (
+            "a_lasting_approval_of_an_invitation_does_not_serve_under_ask",
+            asking(),
+            lasting_invitation(),
+            invite(vec![bob(), dan()]),
+            Some(own_event()),
+            Some(Rule::InvitationAuthority),
+        ),
+        (
+            "a_lasting_approval_of_a_response_serves_under_allow",
+            widest(),
+            lasting_response(),
+            accept(),
+            Some(invitation()),
+            None,
+        ),
+        (
+            "a_lasting_approval_of_a_response_does_not_serve_under_ask",
+            asking(),
+            lasting_response(),
+            accept(),
+            Some(invitation()),
+            Some(Rule::Authority),
+        ),
+    ];
+    for (lemma, profile, grant, action, event, rule) in cells {
+        let session = after_approval(profile, for_session(grant.clone()), event.clone());
+        let revoked = after_approval(profile, grant, event);
+        if rule.is_some() {
+            add(
+                &format!("{lemma} (1, 2)"),
+                revoked,
+                action.clone(),
+                Some(Ask),
+                rule,
+            );
+            add(&format!("{lemma} (3)"), session, action, Some(Ask), None);
+        } else {
+            add(
+                &format!("{lemma} (1)"),
+                revoked,
+                action.clone(),
+                Some(Permit),
+                None,
+            );
+            add(&format!("{lemma} (2)"), session, action, Some(Permit), None);
+        }
+    }
+    let attended_edit = || lasting_edit("team", SendUpdates::NotifyAll);
+    add(
+        "a_lasting_approval_of_an_edit_that_reaches_attendees_never_serves (1, 2)",
+        after_approval(widest(), attended_edit(), Some(with_bob())),
+        edit_own(),
+        Some(Ask),
+        Some(Rule::NoStrangers),
+    );
+    add(
+        "a_lasting_approval_of_an_edit_that_reaches_attendees_never_serves (3)",
+        after_approval(widest(), for_session(attended_edit()), Some(with_bob())),
+        edit_own(),
+        Some(Ask),
+        None,
+    );
+    add(
+        "a_lasting_approval_of_an_edit_that_reaches_attendees_never_serves (4)",
+        after_approval(
+            Profile {
+                invite: Mode::Asks,
+                ..widest()
+            },
+            attended_edit(),
+            Some(with_bob()),
+        ),
+        edit_own(),
+        Some(Ask),
+        None,
+    );
+    add(
+        "a_lasting_approval_of_an_edit_that_reaches_attendees_never_serves (5)",
+        after_approval(
+            Profile {
+                invite: Mode::Allows,
+                ..asking()
+            },
+            attended_edit(),
+            Some(with_bob()),
+        ),
+        edit_own(),
+        Some(Ask),
+        None,
+    );
+    add(
+        "a_lasting_approval_of_an_edit_that_reaches_attendees_never_serves (6)",
+        after_approval(asking(), attended_edit(), Some(with_bob())),
+        edit_own(),
+        Some(Ask),
+        None,
+    );
+    add(
+        "a_lasting_approval_of_a_delete_never_serves (1, 2)",
+        after_approval(asking(), lasting_delete(), Some(own_event())),
+        delete_own(),
+        Some(Ask),
+        Some(Rule::Authority),
+    );
+    add(
+        "a_lasting_approval_of_a_delete_never_serves (3)",
+        after_approval(asking(), for_session(lasting_delete()), Some(own_event())),
+        delete_own(),
+        Some(Ask),
+        None,
+    );
+    add(
+        "a_lasting_approval_of_a_delete_never_serves (4)",
+        after_approval(widest(), lasting_delete(), Some(own_event())),
+        delete_own(),
+        Some(Ask),
+        None,
     );
 
     // Which grants a permitted action rests on.
