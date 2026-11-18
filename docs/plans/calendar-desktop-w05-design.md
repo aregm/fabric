@@ -1002,7 +1002,7 @@ lives in ST1, beside the contract's `Account` record, not inside it.
 |---|---|---|
 | ST1 | The Google side of an account | `provider_accounts(account_id PK, provider 'google', subject UNIQUE, granted_scopes JSON, token_ref, connected_at_ms, refresh_token_ends_at_ms, calendars_listed_at_ms, last_connect_problem, revocation_state)`. No token. One record per subject, for good |
 | ST2 | The calendar map | `provider_calendars(account_id, calendar_id, provider_calendar_id, access_role, is_primary, time_zone, listed, first_seen_ms, last_seen_ms, PRIMARY KEY(account_id, calendar_id), UNIQUE(account_id, provider_calendar_id))`. At most 250 per account (6.2) |
-| ST3 | Observations | Per request and proof: the facts (`revision`, the flags of 6.5, the attendee addresses, `observed_at_ms`) as a projection row; the before-image and the event as Google returned it (PLAN 10.3 "raw encrypted evidence", at most 256 KiB) in a table outside the ledger's payload, named in the ledger by digest. Kept with the request; never purged by a disconnect (CD-Q11h) |
+| ST3 | Observations | Per request and proof: the facts (`revision`, the flags of 6.5, the attendee addresses, `observed_at_ms`) as a projection row; the before-image and the event as Google returned it (PLAN 10.3 "raw encrypted evidence"; at most 1 048 576 bytes for one observation and 393 216 for the before-image, 18.7 point 3) in a table outside the ledger's payload, named in the ledger by digest. Kept with the request; never purged by a disconnect (CD-Q11h) |
 | ST4 | Held read results | A projection row per request (`request_id, kind, digest, bytes, observed_at_ms, stored_at_ms, released_count, purged_at_ms`) and the payload outside the projection and the ledger payload, so that it can be purged. The ledger row names the digest, not the content (W04 R13) |
 | ST5 | Effects | Nullable columns: `revision_before`, `revision_after`, `confirmed`, `notification`, `reconcile_reads`, `next_reconcile_at_ms` |
 | ST6 | "Fabric created this" | A create effect that reached `applied`: by Google's answer to Fabric's own POST, or by a reconcile read that found exactly what was approved. `effects_provider_event` (W04 3.5) already keys it by account, calendar and event id |
@@ -1381,8 +1381,9 @@ decision. Merging the pull request that carries them is the owner's acceptance.
 - RK22 The read after a delete counts a 404 as "gone" (18.7 point 1). A 404 can also mean that the calendar
   became unreadable between the DELETE and the read; the delete itself was answered with a plain yes, so the
   confirmation is then right about the delete and for the wrong reason.
-- RK21 An event whose evidence passes 1 MiB, or whose before-image passes 512 KiB, cannot be observed and so
-  cannot be changed through Fabric (18.7 point 3). An event with some thousands of attendees is such an event.
+- RK21 An event whose evidence passes 1 048 576 bytes, or whose before-image passes 393 216 bytes (384 KiB),
+  cannot be observed and so cannot be changed through Fabric (18.7 point 3). An event with some thousands of
+  attendees is such an event; LV16 shows how near a real event comes to the bound.
 - RK20 The local part of an address is compared exactly. If an agent proposes `bob@x.com` where Google holds
   `Bob@x.com`, the change removes one entry and invites the other; the owner's card shows a removal (CO6).
 - RK19 The two bounds of a read nearly coincide: 2 500 events with ordinary ids already pass 768 KiB, so the byte
@@ -1515,11 +1516,20 @@ sections 3.3, 6.2, 6.4, 6.8 and 6.12 describe them. Point 3 (returning the raw e
    that Google normalised without moving the revision could have ended "absent" after two reads, and a new
    request could then have repeated a change that notifies guests. FAKE gains faults that answer a fitting 200
    with a trimmed description and with a zone alias. The contract must first carry four things for this case, so
-   it is a precondition of the live run, not of this crate's code.
-3. **The evidence of one observation may be 1 048 576 bytes**, its before-image 524 288 or less. Past either the
-   core stores no observation and ends the request with a fixed sentence for the owner: a stated limit of
-   version 1, his to confirm. The adapter keeps its 4 MiB bound on what it reads, returns the event as Google
-   sent it, uncut, and does the same for a reconcile read. ST3's 256 KiB becomes 1 MiB (RK21; LV16).
+   it is a precondition of the live run, not of this crate's code. Decided later by the lead: for such a 200 the
+   port's applied answer carries one optional member, the event as Google returned it (the raw text, under the
+   4 MiB bound) with the fixed labels of the members that differed; its shape is the phase 2 design's (D.2).
+   The crate today names the first member that differed only (6.12), so the mapping of phase 2 makes the
+   comparison return every label.
+3. **The evidence of one observation may be 1 048 576 bytes**, its before-image 393 216 (384 KiB) or less. Past
+   either the core stores no observation and ends the request with a fixed sentence for the owner: a stated
+   limit of version 1, his to confirm. The adapter keeps its 4 MiB bound on what it reads, returns the event as
+   Google sent it, uncut, and does the same for a reconcile read; a read-back past the 4 MiB bound during
+   reconciliation stays a failed read. ST3's 256 KiB becomes these two bounds (RK21; LV16). The before-image
+   bound was first ruled as 524 288 and lowered by the lead after the checkers of the phase 2 design: a request
+   that Google applied with other content shows two views in one answer, the before-image and the event as
+   Google returned it, and two views of 524 288 bytes already fill one frame; 393 216 each leaves the headroom
+   a read result has.
 4. **Spans are typed, and the core widens.** The adapter asks Google for `start(date,dateTime)` and
    `end(date,dateTime)` of every event whatever the grant, and uses them only for the span; a view shows time
    only when `time` is granted. A span is `Timed` (start and end in milliseconds from Google's `dateTime`) or
@@ -1534,7 +1544,11 @@ sections 3.3, 6.2, 6.4, 6.8 and 6.12 describe them. Point 3 (returning the raw e
    access token, makes the one revocation attempt with the token still in the store (30 s at most), then forgets
    at once. A disconnected account's token then lives in the store for that attempt at most, and a broker that
    dies in between finds the token at the next start and revokes then. Deleting a token that is not there is
-   `Ok` (section 4), so an unlink can be repeated.
+   `Ok` (section 4), so an unlink can be repeated. (c) Asked by the lead after the checkers of the phase 2
+   design, for phase 2: the account link gives two handles, one for the sign-in worker and one for the unlink
+   worker. They share the token store and the cached access token, and each is safe on its own thread. The
+   in-memory store already shares one map under a mutex between its clones; the Keychain store must do the
+   same.
 
 Also ruled: the missing permissions of a partial grant are stored as a list of named permissions (`address`,
 `calendar_list`, `availability`, `events`); for a new account the core sets "already an account" itself.
