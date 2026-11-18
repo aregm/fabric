@@ -1085,8 +1085,22 @@ send it on `notifications/cancelled` in its phase 2, once the contract has it. U
 residual of the same kind as a lost answer, which is the owner's to decide. The socket path limit (R7) is
 accepted for version 1 and goes to the owner for CD-W11. Whichever of pull requests 36 and 38 merges second
 carries the bridge's lines for the three new states (R13). This session wrote them as a patch against the
-contract draft at b94b58f and checked it there: the crate's 64 tests pass with the draft's contract crate. The
-patch is in the sessions' shared notes folder, `cd-w06-bridge-for-schema-v3.patch`.
+contract draft and checked it there, last at the draft's head bf9e6db: the crate's 64 tests pass with the draft's
+contract crate. The patch is in the sessions' shared notes folder, `cd-w06-bridge-for-schema-v3.patch`.
+
+The contract draft at bf9e6db already carries what the bridge's phase 2 will use:
+
+- `agent_cancel`, a method that is not a tool: params `{call_id}`, the frame id of a call whose answer the adapter
+  no longer waits for; result `{held}`. The call it names never gets an answer. This is the message R14 waits
+  for. The bridge sends it for a call in flight when the client sends `notifications/cancelled`.
+- `practice` in the answer to `agent_prove`, a required member (W6-2). The phase 1 bridge reads its provisional
+  answer strictly and would refuse the member, so the switch to the contract's types comes before any broker
+  listens.
+- The busy limit `sessions_per_minute_per_agent`, as an answer to `agent_prove`. The bridge writes a limit's
+  name from the contract's value, so it shows this one without a change; the handshake's `busy` gets the same
+  sentence as a call's.
+- Only the answer to `fabric_calendar_list` and the answer to `fabric_request_result` ever carry a result; a
+  read's own answer never does. The first row of 3.7 already says "a result is present", whatever the tool.
 
 ---------------------------------------------------------------------------------------------------------------------
 
