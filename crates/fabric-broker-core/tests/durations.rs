@@ -8,6 +8,7 @@ mod common;
 
 use common::*;
 use fabric_broker_core::SESSION_IDLE_MS;
+use fabric_broker_core::ports::{ProofDone, ProofJob};
 use fabric_desktop_contracts::owner::{GrantEndReason, Mode, ProfileRows, ProofPurpose};
 use serde_json::{Value, json};
 
@@ -511,6 +512,108 @@ fn a_stale_until_revoked_ceiling_can_end_blocked() {
     h.verify();
 }
 
+/// A scripted Block of `job` whose failing rule and ruling name `rule`.
+fn block_on(job: &ProofJob, rule: &str) -> ProofDone {
+    let mut done = proof_done(job, Outcome::Block, &[]);
+    let mut report = serde_json::to_value(done.report.as_ref().expect("a report")).expect("json");
+    report["failing_rule"] = json!(rule);
+    let proof_id = report["proof_id"].clone();
+    done.report = Some(record(&report));
+    done.ruling = Some(record(&json!({
+        "rule": rule,
+        "explanation": "The test prover says so.",
+        "proof_id": proof_id
+    })));
+    done
+}
+
+/// c38 (D20). A stale until_revoked ceiling ends blocked when the agent was paused: the pause
+/// leaves the card's ceiling alone, an until_revoked approval is accepted and its grant made,
+/// the fresh proof blocks on `agent_not_paused` (a scripted Permit would be undecided,
+/// `agent_paused`), and the lasting grant stays live. After a resume it serves the agent's next
+/// create in that calendar.
+#[test]
+fn a_stale_until_revoked_ceiling_ends_blocked_when_the_agent_is_paused() {
+    let mut h = Harness::new("dur-paused", isabelle());
+    h.setup();
+    let blocked = h.pending_lasting(1, "call-1");
+    let undecided = h.pending_lasting(1, "call-2");
+    assert_eq!(proposed(&mut h, &blocked), "until_revoked");
+    let _ = h.pause(AGENT, true);
+    assert_eq!(proposed(&mut h, &blocked), "until_revoked");
+
+    let (lasting, fresh) = h.approve(&blocked, "until_revoked");
+    assert!(fresh.facts.paused, "the fresh proof does not see the pause");
+    let _ = h.prove_with(block_on(&fresh, "agent_not_paused"));
+    let details = h.details(&blocked);
+    assert_eq!(details["request"]["status"]["state"], json!("blocked"));
+    assert_eq!(details["approval"]["grant_id"], json!(lasting));
+    assert!(h.live_grants().contains(&lasting));
+
+    let (other, fresh) = h.approve(&undecided, "until_revoked");
+    let _ = h.prove(&fresh, Outcome::Permit, &[&other]);
+    assert_eq!(h.state(&undecided), "undecided");
+    assert_eq!(h.stored_cause(&undecided).as_deref(), Some("agent_paused"));
+    assert!(h.live_grants().contains(&other));
+
+    let _ = h.pause(AGENT, false);
+    let (request_id, output) = h.propose_on(1, "call-3", ACCOUNT, DRAFTS);
+    let job = job_for(&output, &request_id, ProofPurpose::Classification);
+    assert!(offered_grants(&job).contains(&(lasting.clone(), false)));
+    let output = h.prove(&job, Outcome::Permit, &[&lasting]);
+    let fresh = job_for(&output, &request_id, ProofPurpose::FreshPermit);
+    let _ = h.dispatch(&fresh, &[&lasting]);
+    assert_eq!(h.state(&request_id), "dispatching");
+    h.verify();
+}
+
+/// c38 (D20). A card keeps its stored until_revoked proposal across a restart, also into a
+/// run that cannot carry out a change: the approval is accepted under the stored ceiling and
+/// its lasting grant made, the fresh Permit ends undecided (`no_provider` with Isabelle and no
+/// provider, `no_prover` with the synthetic classifier), and the lasting grant stays live.
+#[test]
+fn a_stored_until_revoked_card_decided_in_a_run_that_cannot_change_ends_undecided() {
+    for (label, later, cause) in [
+        (
+            "dur-later-no-provider",
+            isabelle_without_provider(),
+            "no_provider",
+        ),
+        ("dur-later-synthetic", synthetic(), "no_prover"),
+    ] {
+        let mut h = Harness::new(label, isabelle());
+        h.setup();
+        let request_id = h.pending_lasting(1, "call-1");
+        let card = h.details(&request_id)["card"].clone();
+        assert_eq!(card["proposed_duration"]["kind"], json!("until_revoked"));
+
+        h.kill();
+        h.attachments = later;
+        h.advance(1_000);
+        let _ = h.start();
+        let details = h.details(&request_id);
+        assert_eq!(
+            details["request"]["status"]["state"],
+            json!("pending_approval"),
+            "{label}"
+        );
+        assert_eq!(details["card"], card, "{label}: a restart rewrote the card");
+
+        let (lasting, fresh) = h.approve(&request_id, "until_revoked");
+        assert_eq!(term_of(&mut h, &lasting)["kind"], json!("until_revoked"));
+        let output = h.prove(&fresh, Outcome::Permit, &[&lasting]);
+        assert!(dispatches(&output).is_empty(), "{label}");
+        assert_eq!(h.state(&request_id), "undecided", "{label}");
+        assert_eq!(
+            h.stored_cause(&request_id).as_deref(),
+            Some(cause),
+            "{label}"
+        );
+        assert!(h.live_grants().contains(&lasting), "{label}");
+        h.verify();
+    }
+}
+
 /// c38. A refused duration replays: the same command id and params get the same bytes and
 /// write nothing; the same id with another duration is command_reused.
 #[test]
@@ -605,6 +708,46 @@ fn a_request_with_a_lasting_grant_never_proposes_until_revoked_again() {
     let (_, fresh) = h.approve(&other, "one_request");
     let _ = h.prove(&fresh, Outcome::NeedApproval, &[]);
     assert_eq!(proposed(&mut h, &other), "until_revoked");
+    h.verify();
+}
+
+/// c37 (D40). A session approval is a lasting one too: asked again after it, the request
+/// proposes one_request, and until_revoked and session are refused.
+#[test]
+fn a_reask_after_a_session_approval_proposes_one_request() {
+    let mut h = Harness::new("dur-reask-session", isabelle());
+    h.setup();
+    let request_id = h.pending_lasting(1, "call-1");
+    assert_eq!(proposed(&mut h, &request_id), "until_revoked");
+    let (_, fresh) = h.approve(&request_id, "session");
+    let _ = h.prove(&fresh, Outcome::NeedApproval, &[]);
+    assert_eq!(h.state(&request_id), "pending_approval");
+    assert_eq!(proposed(&mut h, &request_id), "one_request");
+    for duration in ["until_revoked", "session"] {
+        let (response, _) = h.decide(&request_id, "approve", json!({"kind": duration}));
+        assert_longer_refused(&response);
+    }
+    h.verify();
+}
+
+/// c37 (D40). A lasting grant that has ended still counts: asked again after its lasting grant
+/// was revoked, the request proposes one_request.
+#[test]
+fn a_reask_after_the_lasting_grant_is_revoked_proposes_one_request() {
+    let mut h = Harness::new("dur-reask-revoked", isabelle());
+    h.setup();
+    let request_id = h.pending_lasting(1, "call-1");
+    let (lasting, fresh) = h.approve(&request_id, "until_revoked");
+    let _ = h.prove(&fresh, Outcome::NeedApproval, &[]);
+    assert_eq!(h.state(&request_id), "pending_approval");
+    let _ = h.revoke(&lasting);
+    assert!(!h.live_grants().contains(&lasting));
+    let (_, fresh) = h.approve(&request_id, "one_request");
+    let _ = h.prove(&fresh, Outcome::NeedApproval, &[]);
+    assert_eq!(h.state(&request_id), "pending_approval");
+    assert_eq!(proposed(&mut h, &request_id), "one_request");
+    let (response, _) = h.decide(&request_id, "approve", json!({"kind": "until_revoked"}));
+    assert_longer_refused(&response);
     h.verify();
 }
 

@@ -2038,9 +2038,10 @@ enum Observed {
 /// force (a built-in one, or Careful's rows with `changes` saved as a custom profile), the
 /// calendar and the event the action names; the duration the core proposes; and what the
 /// theory proves with only the real lasting grant in the context (for `until_revoked` and for
-/// the live session alike) and with only the one-request grant. The expected outcomes are the
-/// worked cases of `isabelle/Fabric_Broker_Examples/Broker_Examples.thy`, "What a lasting
-/// approval is worth".
+/// the live session alike) and with only the one-request grant. The expected outcomes of the
+/// lasting columns are the worked cases of `isabelle/Fabric_Broker_Examples/Broker_Examples.thy`,
+/// "What a lasting approval is worth". That section has no one-request grant: the one-request
+/// column is read from `exact` and `No_strangers` in `isabelle/Fabric_Broker/Fabric_Broker.thy`.
 struct Cell {
     name: &'static str,
     tool: &'static str,
@@ -2184,8 +2185,10 @@ fn gate_answer(gate: &mut BrokerGate, job: &ProofJob, grant_id: &str) -> (Option
 /// card proposes no more); the fresh-permit job the core hands out carries the real grant, with
 /// the observed event set where the cell names one. Isabelle then checks that job with the
 /// grant as its only grant, under `until_revoked`, under the live session and under one
-/// request. A cell that proposes `until_revoked` must be permitted on that grant, and every
-/// outcome must be the worked case's. The table it found is printed.
+/// request. Where the card proposes `one_request` the one-request column checks the real grant,
+/// its term unchanged; only the `until_revoked` cells have their term swapped for one request.
+/// A cell that proposes `until_revoked` must be permitted on that grant, and every outcome must
+/// be the cell's. The table it found is printed.
 #[test]
 #[ignore = "live: needs Isabelle; run sh scripts/verify-desktop.sh --live-proofs"]
 fn the_proposed_duration_agrees_with_the_rule_theory() {
@@ -2223,7 +2226,25 @@ fn the_proposed_duration_agrees_with_the_rule_theory() {
             .expect("the agent's live session is a fact")
             .session_id
             .clone();
-        let digest = job.action_digest.clone();
+        let real = job
+            .facts
+            .grants
+            .iter()
+            .find(|g| g.grant.grant_id.as_str() == grant_id)
+            .map(|g| g.grant.term.clone())
+            .expect("the job offers the real grant");
+        let one_term = if duration == "one_request" {
+            assert!(
+                matches!(real, GrantTerm::OneRequest { .. }),
+                "{}: the real grant is not a one-request grant",
+                cell.name
+            );
+            real
+        } else {
+            GrantTerm::OneRequest {
+                action_digest: job.action_digest.clone(),
+            }
+        };
         let (until, until_authorizes) = gate_answer(
             &mut gate,
             &with_term(&job, &grant_id, GrantTerm::UntilRevoked),
@@ -2240,17 +2261,7 @@ fn the_proposed_duration_agrees_with_the_rule_theory() {
             ),
             &grant_id,
         );
-        let (one, _) = gate_answer(
-            &mut gate,
-            &with_term(
-                &job,
-                &grant_id,
-                GrantTerm::OneRequest {
-                    action_digest: digest,
-                },
-            ),
-            &grant_id,
-        );
+        let (one, _) = gate_answer(&mut gate, &with_term(&job, &grant_id, one_term), &grant_id);
         let row = format!(
             "{:<48} proposed {:<13} until_revoked {:<14} session {:<14} one_request {:?}",
             cell.name,

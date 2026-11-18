@@ -1446,9 +1446,11 @@ fn a_newer_schema_store_is_refused_but_hello_answers() {
     );
 }
 
-/// p04: a kill loses nothing committed. A pending request survives, the notice sequences
-/// continue across runs, and a card keeps its stored proposal across a restart: the synthetic
-/// cards propose one request (D40), so a session or until revoked is refused in both runs. A
+/// p04: a kill loses nothing committed. A pending request and its card survive and the notice
+/// sequences continue across runs. The synthetic cards propose one request (D40), so a session
+/// or until revoked is refused in both runs; a recomputed card would propose the same, so a card
+/// keeping an `until_revoked` proposal across a restart is the core's c38
+/// (`a_stored_until_revoked_card_decided_in_a_run_that_cannot_change_ends_undecided`). A
 /// session grant ending with `broker_restart` and an until-revoked grant surviving a restart
 /// are covered by the core's c01 (`restart_ends_session_grants_with_broker_restart`), c03
 /// (`until_revoked_survives_restart_and_revoked_stays_revoked`) and c27
