@@ -853,6 +853,10 @@ take over.
 - `absence_confirmed` ends the request. The agent may ask again; that is a new request with a new proof and, for a
   create, a new reserved id. The two reads of PD20 are what stands between that and a change made twice (RK3).
 
+The lead's phase 2 design decides the rest of this section otherwise (18.6): no read follows a change that Google
+plainly confirmed, and a change that was answered but not `confirmed` is treated as an unknown outcome. What was
+proposed first:
+
 `applied -> reconciled`: for an insert or a PATCH the answer itself is Google's statement of the event after the
 change. When it is `confirmed` the core may move on to `reconciled` without another read. For a delete (no body),
 or when the answer is not `confirmed`, the core runs one reconcile read and records what it finds; the request
@@ -953,7 +957,8 @@ practice run stops at `applied` (section 16 step 6).
 ## 11. What the store must keep (request to the lead)
 
 W04 3.6 reserves the next migration for this package; the lead numbers the migrations of CD-W05 and CD-W06 and has
-asked that this document give no number (18.5). Additive only, as W04 3.6 and R22 require: new tables, new
+asked that this document give no number (18.5). The table below is the request as it was sent. The lead's phase 2
+design answers each row; where it differs, it wins (18.6). Additive only, as W04 3.6 and R22 require: new tables, new
 nullable columns. No existing column changes. No
 contract value that the store keeps changes shape (the contract session's rule); what is new about an account
 lives in ST1, beside the contract's `Account` record, not inside it.
@@ -1389,6 +1394,36 @@ document. What it changes here:
   which touches D2. Both need the owner. ST7 changes what the theory calls a pending effect; that goes to the
   contract session.
 - OQ14: see there.
+
+### 18.6 The lead's phase 2 design (pull request 43, 2026-11-17)
+
+`docs/plans/calendar-desktop-phase2-design.md` (Proposed) answers every id of sections 9 to 12; its section F has
+one row per id and its section H.2 the requests to this package (W5-1 to W5-10). It wins over sections 9 to 12 of
+this document. Adopted here:
+
+- No migration is numbered in this document. Observations and the event columns of an effect go with the agent
+  channel and the held results; the provider accounts and calendars follow in their own migration.
+- ST5 shrinks to three columns of an effect: the event after the change, its revision, and `notification`. The
+  number of reconcile reads is read from the stored observations, not from a column.
+- ST4 becomes the lead's `held_results`, `held_result_payloads` and `releases`, with the operation type
+  `request.release`; one design serves this package and CD-W06.
+- ST7 is not built. No read follows a change that Google plainly confirmed: a confirmed `Applied` moves
+  `dispatching -> applied -> reconciled` in one commit. An `Applied` that is not `confirmed` is handled as an
+  unknown outcome and reconciled by reading (section 7's table, owned by the core).
+- The start-before-end check of CO6 is not built in the core: made before the classification it would tell an
+  agent without the `time` field where an event lies. Google's 400 stays `Rejected` `invalid_arguments`.
+- CO3 changes: at a restart an account that was being connected again returns to the state it had before; only an
+  account that never connected is cancelled.
+- The worker's time bound is a monotonic stamp the shell takes (`until`), not a wall-clock time in the order.
+  Phase 2 of this crate takes its deadlines as that stamp; the clock stays for token ends and the identity token.
+- A calendar list fails as a whole past 250 entries or 20 pages. A read answer also carries the start and end of
+  each event, so that the core can check the window itself.
+- `reconcile::decide` stays in this crate as the table's test oracle.
+
+Open between this package and the lead when this was written: how a delete, whose answer has no body, is
+confirmed without passing through "outcome unknown"; what a change is when Google answers yes and returns an
+event that differs from what was approved; the size of the stored evidence against an event with very many
+attendees; the span of an all-day event.
 
 ---------------------------------------------------------------------------------------------------------------------
 
