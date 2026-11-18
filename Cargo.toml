@@ -4,6 +4,7 @@ members = [
     "apps/fabric-cli",
     "apps/fabric-demo",
     "apps/fabric-desktop/relay",
+    "apps/fabric-mcp-bridge",
     "crates/fabric-broker-core",
     "crates/fabric-broker-policy",
     "crates/fabric-core",

@@ -150,4 +150,6 @@ No store with real data exists yet. The only stores are test stores in temporary
 1. [x] The owner accepts this record by merging the `CD-W04` pull request, or asks for changes before the merge. Merged as pull request 23 on 2026-11-16.
 2. [x] `CD-W04` implements D1 to D7 in `crates/fabric-storage`.
 3. [x] On acceptance, mark `RD-14` decided for the broker in the roadmap, and set this record to Accepted.
-4. [ ] `CD-W06` records whether the agent channel signs requests.
+4. [x] `CD-W06` records whether the agent channel signs requests. It signs none in version 1: the bridge proves
+   its enrolled key once per connection, in the handshake
+   ([CD-W06 design](../plans/calendar-desktop-w06-design.md) section 4.4; the owner's decision of 2026-11-17).
