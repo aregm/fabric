@@ -214,6 +214,51 @@ fn flexible_create_in_an_existing_calendar_proposes_until_revoked() {
     h.verify();
 }
 
+/// c37 (D40). Through the real `open_card` and the store's calendar access: under Flexible a
+/// create on a calendar the owner can only read, or see free/busy of, proposes one_request
+/// (the theory's `writable` holds for owner and writer only), and the proof's facts mark it
+/// read-only. The owner calendar of the same account still proposes until_revoked.
+#[test]
+fn a_create_on_a_calendar_without_write_access_proposes_one_request() {
+    let mut h = Harness::new("dur-read-only", isabelle());
+    let mut seeded = serde_json::to_value(account(ACCOUNT, &[CALENDAR])).expect("an account");
+    for (calendar_id, access) in [("cal-shared", "reader"), ("cal-busy", "free_busy_reader")] {
+        let calendar = json!({"calendar_id": calendar_id, "name": "Shared", "access": access,
+                              "selected": true, "agent_drafts": false});
+        seeded["calendars"]
+            .as_array_mut()
+            .expect("calendars")
+            .push(calendar);
+    }
+    let _ = h.seed(&[AGENT], vec![record(&seeded)]);
+    let _ = h.connect(1, AGENT);
+    let _ = h.activate("flexible");
+
+    let owned = h.pending_on(1, "call-1", ACCOUNT, CALENDAR);
+    assert_eq!(proposed(&mut h, &owned), "until_revoked");
+    for (call_id, calendar_id) in [("call-2", "cal-shared"), ("call-3", "cal-busy")] {
+        let (request_id, output) = h.propose_on(1, call_id, ACCOUNT, calendar_id);
+        let job = job_for(&output, &request_id, ProofPurpose::Classification);
+        let fact = job
+            .facts
+            .calendars
+            .iter()
+            .find(|c| c.calendar.calendar_id.as_str() == calendar_id)
+            .expect("the calendar is among the facts");
+        assert!(!fact.writable, "{calendar_id}");
+        let _ = h.prove(&job, Outcome::NeedApproval, &[]);
+        assert_eq!(h.state(&request_id), "pending_approval", "{calendar_id}");
+        assert_eq!(
+            proposed(&mut h, &request_id),
+            "one_request",
+            "{calendar_id}"
+        );
+        let (response, _) = h.decide(&request_id, "approve", json!({"kind": "until_revoked"}));
+        assert_longer_refused(&response);
+    }
+    h.verify();
+}
+
 /// c37. A custom profile in force, through the real `open_card`: create_in_existing_calendar
 /// allow gives until_revoked on a plain calendar, create_in_agent_drafts ask gives one_request
 /// on Agent Drafts.
