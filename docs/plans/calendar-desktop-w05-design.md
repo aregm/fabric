@@ -1211,6 +1211,10 @@ Each is run by the owner at the Mac with the accounts of RUNBOOK, in phase 2.
 | LV12 | The five scopes are enough for every call of section 6 and none is unused: the calendar list with `calendar.calendarlist.readonly`, free/busy with `calendar.freebusy` (it does not accept `calendar.events`), every events call with `calendar.events`. This is the scope freeze of PLAN 10.2 |
 | LV13 | The entry marked `self`: on the primary calendar it is the account (FA15); on a calendar another account shared it is that other account, and Fabric refuses to answer that person's invitation |
 | LV14 | The event ids Google itself gives, for ordinary, imported and recurring events, against 5.3 (FA17) |
+| LV15 | What a GET answers right after a DELETE was answered 204 (the read-back of 18.7 point 1), and whether a deleted event can be restored under its id from Google's trash |
+| LV16 | The bytes of one event with 1 000 and with 2 000 attendees as Google returns it, and whether `prettyPrint=false` makes the answer smaller (the evidence limit of 18.7 point 3) |
+| LV17 | An all-day event next to the window in a calendar at `Pacific/Kiritimati` and in one at `Pacific/Pago_Pago`: what Google returns for the window, against the widening of 18.7 point 4 |
+| LV18 | Which members of an event Google rewrites on an insert or a PATCH (a description stored as HTML, trailing white space, another spelling of a zone): each one found becomes a named entry of the comparison's list, with a test against FAKE (18.7 point 2; FA7) |
 
 ### 15.4 Results as they stand
 
@@ -1315,6 +1319,8 @@ decision. Merging the pull request that carries them is the owner's acceptance.
   redirect; closing that needs a socket option the workspace's no-`unsafe` rule keeps out of reach. The broker is a
   macOS product and Windows only runs its tests. On every platform a local program can also hold the listener's
   eight places and delay a sign-in until its 300 s end (3.3).
+- RK21 An event whose evidence passes 1 MiB, or whose before-image passes 512 KiB, cannot be observed and so
+  cannot be changed through Fabric (18.7 point 3). An event with some thousands of attendees is such an event.
 - RK20 The local part of an address is compared exactly. If an agent proposes `bob@x.com` where Google holds
   `Bob@x.com`, the change removes one entry and invites the other; the owner's card shows a removal (CO6).
 - RK19 The two bounds of a read nearly coincide: 2 500 events with ordinary ids already pass 768 KiB, so the byte
@@ -1420,10 +1426,54 @@ this document. Adopted here:
   each event, so that the core can check the window itself.
 - `reconcile::decide` stays in this crate as the table's test oracle.
 
-Open between this package and the lead when this was written: how a delete, whose answer has no body, is
-confirmed without passing through "outcome unknown"; what a change is when Google answers yes and returns an
-event that differs from what was approved; the size of the stored evidence against an event with very many
-attendees; the span of an all-day event.
+Five points were open between this package and the lead when this was written. The lead ruled on them the same
+day: 18.7.
+
+### 18.7 The lead's rulings on five points (2026-11-17), for phase 2 of this crate
+
+Each point was analysed by a reader of its own against this crate's code and the phase 2 design. None of it is
+built in phase 1; sections 6 and 7 above describe the code as it is.
+
+1. **A delete is confirmed by a read in the same order.** Only after a 200 or 204 to its DELETE, the adapter
+   makes one GET of the same event, with the access token the DELETE used, inside what is left of the order's
+   bound, with no retry. `confirmed` is true only for 404, 410 or an event whose status is cancelled; it is false
+   for a live event, a failed read, an unreadable body, any other status, or no time left. That GET never changes
+   the outcome's class and returns nothing of the event. It runs under the agent's permit of the order. So a
+   delete does not pass through "outcome unknown" when Google did what it said (PLAN 10.3 CD-Q05a), and no read
+   follows an applied change (18.6).
+2. **A yes with another content is applied, never unknown.** A 200 whose event has the right id (the reserved id
+   for an insert, the target's for a PATCH) is `Applied` for a create, an update, an invitation and a response.
+   It is never sent again, never reconciled by reading, and can never end as absent. `confirmed` says whether the
+   event equals the approval after the normalisations of a closed, named list in the adapter. The list is empty
+   today; an entry is added only with a live result and a test against FAKE (LV18). When `confirmed` is false the
+   comparison names the member that differed, as a fixed label with no content, and the core stops the request
+   for the owner, who can only resolve it as applied. Why it matters beyond noise: under the first rule a PATCH
+   that Google normalised without moving the revision could have ended "absent" after two reads, and a new
+   request could then have repeated a change that notifies guests. FAKE gains faults that answer a fitting 200
+   with a trimmed description and with a zone alias. The contract must first carry four things for this case, so
+   it is a precondition of the live run, not of this crate's code.
+3. **The evidence of one observation may be 1 048 576 bytes**, its before-image 524 288 or less. Past either the
+   core stores no observation and ends the request with a fixed sentence for the owner: a stated limit of
+   version 1, his to confirm. The adapter keeps its 4 MiB bound on what it reads, returns the event as Google
+   sent it, uncut, and does the same for a reconcile read. ST3's 256 KiB becomes 1 MiB (RK21; LV16).
+4. **Spans are typed, and the core widens.** The adapter asks Google for `start(date,dateTime)` and
+   `end(date,dateTime)` of every event whatever the grant, and uses them only for the span; a view shows time
+   only when `time` is granted. A span is `Timed` (start and end in milliseconds from Google's `dateTime`) or
+   `AllDay` (Google's two dates exactly), built from the occurrence's own start and end, never from
+   `originalStartTime`, with no widening and no zone arithmetic. The core widens an all-day span by 14 hours each
+   way for its overlap check only. Exact bounds wait for a zone database, which is CD-W09's (LV17).
+5. **The account link.** (a) The shell keeps a clone of the flow handle. `Flow::supersede_latest()` serves a new
+   connect and a quit, `Flow::supersede(generation)` one flow only, and `PendingFlow::generation()` names it; each
+   takes the lock under which the token is written, so a flow never writes the token store once a supersede has
+   returned, and a connect that was superseded while it waited in the queue answers `Cancelled(Superseded)`
+   without starting. (b) Revoke and forget become one job, `unlink`, on a worker of its own: it drops the cached
+   access token, makes the one revocation attempt with the token still in the store (30 s at most), then forgets
+   at once. A disconnected account's token then lives in the store for that attempt at most, and a broker that
+   dies in between finds the token at the next start and revokes then. Deleting a token that is not there is
+   `Ok` (section 4), so an unlink can be repeated.
+
+Also ruled: the missing permissions of a partial grant are stored as a list of named permissions (`address`,
+`calendar_list`, `availability`, `events`); for a new account the core sets "already an account" itself.
 
 ---------------------------------------------------------------------------------------------------------------------
 
