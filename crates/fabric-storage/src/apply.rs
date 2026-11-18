@@ -351,6 +351,8 @@ pub(crate) fn apply(connection: &Connection, mutation: &Mutation) -> Result<(), 
             status,
             at_ms,
             due_at_ms,
+            // The cause lives in the ledger only; `WriteTx::apply` checks it, replay does not.
+            undecided_cause: _,
         } => {
             let mut request = known_request(&read, request_id)?.row.request;
             let from = request.status.state();
@@ -872,6 +874,7 @@ mod tests {
             status: testing::status(state),
             at_ms: T0,
             due_at_ms: Some(T0),
+            undecided_cause: None,
         }
     }
 
@@ -1379,6 +1382,7 @@ mod tests {
             status: pending,
             at_ms: T0,
             due_at_ms: Some(T0 + 86_400_000),
+            undecided_cause: None,
         };
         let path = || {
             vec![

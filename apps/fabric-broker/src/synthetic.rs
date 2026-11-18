@@ -20,13 +20,13 @@
 //!   and a delete (D) of A's event, four proposals at most.
 
 use fabric_broker_core::ports::{
-    AgentInput, ConnectionId, ProofDone, ProofJob, Prover, ProverIdentity, ProverKind,
+    AgentInput, ConnectionId, ProofDone, ProofJob, Prover, ProverIdentity, ProverKind, ProverStatus,
 };
 use fabric_broker_core::{Broker, Input, Output, Seed, SeedAgent, format_timestamp, ids};
 use fabric_desktop_contracts::agent::{AgentRequest, AgentResponse};
 use fabric_desktop_contracts::lifecycle::RequestState;
 use fabric_desktop_contracts::owner::{
-    Account, Destination, ProofPurpose, ProofReport, ProverHealth, Ruling,
+    Account, Destination, ProofPurpose, ProofReport, ProverHealth, ProverProblem, Ruling,
 };
 use fabric_desktop_contracts::scalar::{Id, Label};
 use fabric_desktop_contracts::{Entry, Frame, canonical, decode, decode_record};
@@ -91,11 +91,12 @@ impl SyntheticClassifier {
 }
 
 impl Prover for SyntheticClassifier {
-    /// Kind `synthetic`; the owner sees the prover as unavailable.
+    /// Kind `synthetic`; the owner sees the prover as unavailable and not configured: this run
+    /// has no rule prover (5.10).
     fn identity(&self) -> ProverIdentity {
         ProverIdentity {
             kind: ProverKind::Synthetic,
-            health: ProverHealth::Unavailable,
+            health: ProverStatus::Unavailable(Some(ProverProblem::NotConfigured)),
         }
     }
 
@@ -149,6 +150,9 @@ impl Prover for SyntheticClassifier {
                 SyntheticVerdict::Undecided => Some(UNDECIDED_REASON.to_owned()),
             },
             check_theory_text: None,
+            // States none: the core ignores a synthetic prover's cause, since inside the verdict
+            // its kind decides (`no_prover`, 5.10).
+            cause: None,
         }
     }
 }

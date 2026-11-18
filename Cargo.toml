@@ -9,6 +9,8 @@ members = [
     "crates/fabric-broker-policy",
     "crates/fabric-core",
     "crates/fabric-desktop-contracts",
+    "crates/fabric-google-calendar",
+    "crates/fabric-google-fake",
     "crates/fabric-policy",
     "crates/fabric-storage",
     "crates/fabric-token",

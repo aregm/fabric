@@ -147,6 +147,21 @@ pub(crate) fn append(
     run_id: Option<i64>,
 ) -> Result<u64, StoreFault> {
     check_operation_type(meta.operation_type)?;
+    // The reader finds a stated cause among the rows correlated to the request
+    // (`ReadTx::undecided_cause_of`), so a cause in a row of another correlation would be lost.
+    for mutation in mutations {
+        if let Mutation::RequestMoved {
+            request_id,
+            undecided_cause: Some(_),
+            ..
+        } = mutation
+            && meta.correlation_id.as_ref() != Some(request_id)
+        {
+            return Err(invariant(
+                "a move that names its cause is correlated to its request",
+            ));
+        }
+    }
     let last: Option<i64> = connection
         .query_row(
             "SELECT committed_at_ms FROM ledger ORDER BY seq DESC LIMIT 1",
@@ -324,7 +339,7 @@ pub(crate) fn verify_chain(connection: &Connection) -> Result<u64, StoreFault> {
 }
 
 /// The mutations of a row's payload.
-fn mutations_of(envelope: &Envelope) -> Result<Vec<Mutation>, StoreFault> {
+pub(crate) fn mutations_of(envelope: &Envelope) -> Result<Vec<Mutation>, StoreFault> {
     #[derive(serde::Deserialize)]
     struct Payload {
         mutations: Vec<Mutation>,
@@ -474,6 +489,7 @@ fn replay_differs(table: &str) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::rows::UndecidedCause;
     use crate::testing::{self, T0, TempDir};
 
     const EMPTY_PAYLOAD_HASH: &str =
@@ -676,5 +692,205 @@ mod tests {
                 what: "an unknown operation type"
             })
         );
+    }
+
+    /// One payload of each mutation, two of `request_moved`, as the build of 1eef873 writes them.
+    const OLD_PAYLOADS: [&str; 31] = [
+        r#"{"mutations":[{"created_at_ms":1795190400000,"key_kind":"test","op":"store_created","store_id":"store-1"}]}"#,
+        r#"{"mutations":[{"from":1,"op":"schema_migrated","to":2}]}"#,
+        r#"{"mutations":[{"at_ms":1795190400000,"op":"run_started","run_id":1}]}"#,
+        r#"{"mutations":[{"at_ms":1795190400001,"clean":true,"op":"run_ended","run_id":1}]}"#,
+        r#"{"mutations":[{"counter":"revocation_epoch","op":"counter_raised","to":2}]}"#,
+        r#"{"mutations":[{"agent":{"agent_id":"agent-1","destination":{"endpoint":"in-process","kind":"local"},"enrolled_at_ms":1795190400000,"paused":false,"registered_name":"Test agent","revision":1},"op":"agent_put"}]}"#,
+        r#"{"mutations":[{"op":"session_started","session":{"agent_id":"agent-1","ended":[1795190400005,"replaced"],"run_id":1,"session_id":"session-1","started_at_ms":1795190400000}}]}"#,
+        r#"{"mutations":[{"at_ms":1795190400005,"op":"session_ended","reason":"idle_timeout","session_id":"session-1"}]}"#,
+        r#"{"mutations":[{"at_ms":1795190400000,"op":"profile_version_added","profile":{"name":"Mine","profile_id":"custom-0011223344556677","rows":{"create_in_agent_drafts":"allow","create_in_existing_calendar":"ask","delete_calendar_or_change_sharing":"block","delete_event":"ask","edit_fabric_created_event":"ask","edit_preexisting_event":"ask","list_and_availability":"allow","read_event_details":"ask","respond_to_invitation":"ask","send_or_change_invitations":"ask"},"version":1}}]}"#,
+        r#"{"mutations":[{"active_profile_id":"careful","active_version":1,"op":"profile_state_set","revision":2}]}"#,
+        r#"{"mutations":[{"op":"preferences_put","preferences":{"revision":1,"settings":{"buffer":null,"protected_times":[],"uninterrupted":null,"warning_calendars":[],"workday":null,"zone":null}}}]}"#,
+        r#"{"mutations":[{"at_ms":1795190400000,"op":"recipient_set_version_added","set":{"definition":{"domains":["example.com"],"members":[],"name":"Team"},"recipient_set_id":"set-1","revision":1,"source":{"kind":"local"}}}]}"#,
+        r#"{"mutations":[{"at_ms":1795190400000,"op":"recipient_set_deleted","recipient_set_id":"set-1"}]}"#,
+        r#"{"mutations":[{"account":{"account_id":"account-1","calendars":[],"email":null,"revision":1,"state":"connected"},"op":"account_put"}]}"#,
+        r#"{"mutations":[{"due_at_ms":1795190400000,"op":"request_inserted","row":{"action":{"arguments":{"account_id":"account-1","calendar_id":"calendar-1","event":{"description":null,"end":{"date_time":"2026-11-20T17:00:00+00:00","zone":"Europe/Berlin"},"location":null,"start":{"date_time":"2026-11-20T16:00:00+00:00","zone":"Europe/Berlin"},"title":"Review"},"task":"plan the review"},"tool":"fabric_calendar_propose_create"},"call_id":"call-request-1","request":{"account_id":"account-1","agent_id":"agent-1","received_at":"2026-11-20T16:00:00.000Z","request_digest":"sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","request_id":"request-1","revision":1,"status":{"state":"received"},"tool":"fabric_calendar_propose_create","updated_at":"2026-11-20T16:00:00.000Z"},"scope":null,"session_id":null}}]}"#,
+        r#"{"mutations":[{"at_ms":1795190400000,"due_at_ms":null,"op":"request_moved","request_id":"request-1","revision":4,"status":{"state":"undecided"}}]}"#,
+        r#"{"mutations":[{"at_ms":1795190400000,"due_at_ms":null,"op":"request_moved","request_id":"request-1","revision":4,"status":{"denial":{"explanation":"No.","proof_id":"proof-1","rule":"recurring_mutation_unsupported"},"state":"blocked"}}]}"#,
+        r#"{"mutations":[{"due_at_ms":1795190400010,"op":"request_scheduled","reproofs":{"classification":1,"fresh_permit":0},"request_id":"request-1"}]}"#,
+        r#"{"mutations":[{"card":{"expires_at":"2026-11-21T16:00:00.000Z","insufficiency":{"explanation":"Ask.","proof_id":"proof-1","rule":"needs_approval"},"proposed_duration":{"kind":"one_request"},"scope":{"calendars":[{"account_id":"account-1","calendar_id":"calendar-1"}],"fields":null,"recipients":null,"send_updates":null,"window":null}},"op":"card_opened","opened_at_ms":1795190400000,"request_id":"request-1"}]}"#,
+        r#"{"mutations":[{"approval":{"approval_digest":"sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff","command_id":"command-1","decided_at":"2026-11-20T16:00:00.000Z","decision":"deny","duration":null,"effective_request_digest":null,"grant_id":null,"scope":null},"op":"approval_recorded","request_id":"request-1"}]}"#,
+        r#"{"mutations":[{"grant_ids":["grant-1"],"op":"relied_grant_set","request_id":"request-1"}]}"#,
+        r#"{"mutations":[{"at_ms":1795190400000,"op":"proof_recorded","proof":{"authorizing_grants":[],"check_theory_text":null,"fence":{"event_revision":null,"pause_epoch":0,"revocation_epoch":0},"prover":"isabelle","report":{"action_digest":"sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc","context_digest":"sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee","elapsed_ms":5,"failing_rule":null,"isabelle_version":"Isabelle2025","outcome":"permit","proof_id":"proof-1","purpose":"classification","request_id":"request-1","rule_verdicts":[],"started_at":"2026-11-20T16:00:00.000Z","theory_hash":"sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"},"ruling":null,"undecided_reason":null}}]}"#,
+        r#"{"mutations":[{"grant":{"agent_id":"agent-1","created_at":"2026-11-20T16:00:00.000Z","ended":null,"grant_id":"grant-1","origin":{"approval_digest":"sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","request_id":"request-1"},"policy":{"profile_id":"careful","version":1},"purpose":"plan the review","revision":1,"revocation_epoch":0,"scope":{"calendars":[{"account_id":"account-1","calendar_id":"calendar-1"}],"fields":null,"recipients":null,"send_updates":null,"window":null},"term":{"expires_at":null,"kind":"until_revoked"},"tools":["fabric_calendar_propose_create"]},"op":"grant_inserted"}]}"#,
+        r#"{"mutations":[{"end":{"at":"2026-11-20T16:00:00.000Z","reason":"revoked_by_owner"},"grant_id":"grant-1","op":"grant_ended","revision":2}]}"#,
+        r#"{"mutations":[{"op":"authorization_issued","record":{"attempt":1,"authorization":{"action_digest":"sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc","agent_id":"agent-1","authorization_id":"authz-1","consumed_at":null,"expires_at":"2026-11-20T16:01:00.000Z","grant_id":"grant-1","issued_at":"2026-11-20T16:00:00.000Z","lifetime_seconds":60,"profile":"fabric-broker-authorization/1","proof_id":"proof-1","request_id":"request-1"},"fence":{"event_revision":null,"pause_epoch":0,"revocation_epoch":0},"grant_ids":["grant-1"],"run_id":1,"state":"issued"}}]}"#,
+        r#"{"mutations":[{"at_ms":1795190400000,"authorization_id":"authz-1","op":"authorization_consumed"}]}"#,
+        r#"{"mutations":[{"at_ms":1795190400000,"authorization_id":"authz-1","op":"authorization_voided","reason":"fence_changed"}]}"#,
+        r#"{"mutations":[{"effect":{"account_id":"account-1","action_digest":"sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc","attempts_started":0,"calendar_id":"calendar-1","created_at_ms":1795190400000,"effect_id":"effect-1","first_attempt_at_ms":null,"provider_event_id":"fabriccreated0001","request_id":"request-1","tool":"fabric_calendar_propose_create"},"op":"effect_reserved"}]}"#,
+        r#"{"mutations":[{"attempt":{"attempt":{"finished_at":null,"number":1,"outcome":null,"proof_id":"proof-1","started_at":"2026-11-20T16:00:00.000Z"},"authorization_id":"authz-1","effect_id":"effect-1"},"op":"dispatch_intent"}]}"#,
+        r#"{"mutations":[{"effect_id":"effect-1","finished_at_ms":1795190400000,"number":1,"op":"attempt_finished","outcome":"applied"}]}"#,
+        r#"{"mutations":[{"op":"command_answered","row":{"answer":"{}","command_id":"command-1","digest":"sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd","method":"decide_request"}}]}"#,
+    ];
+
+    /// The payload of a ledger row holding `payload`.
+    fn row_of(payload: &str) -> Envelope {
+        Envelope {
+            payload: payload.to_owned(),
+            ..agent_call()
+        }
+    }
+
+    /// The old move of `request-1` to undecided, without a cause.
+    const OLD_UNDECIDED: &str = OLD_PAYLOADS[15];
+
+    /// A move of `request-1` to undecided with its cause, as this build writes it.
+    const NEW_PAYLOAD: &str = r#"{"mutations":[{"at_ms":1795190400000,"due_at_ms":null,"op":"request_moved","request_id":"request-1","revision":4,"status":{"state":"undecided"},"undecided_cause":"deadline_passed"}]}"#;
+
+    /// The cause of the payload's only mutation, a `request_moved`.
+    fn cause_of(payload: &str) -> Option<UndecidedCause> {
+        match mutations_of(&row_of(payload)).unwrap().as_slice() {
+            [
+                Mutation::RequestMoved {
+                    undecided_cause, ..
+                },
+            ] => *undecided_cause,
+            other => panic!("expected one request_moved, got {other:?}"),
+        }
+    }
+
+    /// A world whose `request-1` is proving its classification at revision 3.
+    fn proving() -> (TempDir, crate::Store) {
+        let dir = TempDir::new();
+        let mut store = testing::world(&dir);
+        let moved = |revision, state| Mutation::RequestMoved {
+            request_id: testing::id("request-1"),
+            revision,
+            status: testing::status(state),
+            at_ms: T0,
+            due_at_ms: None,
+            undecided_cause: None,
+        };
+        testing::apply_all(
+            &mut store,
+            T0,
+            vec![moved(2, "validating"), moved(3, "proving_classification")],
+        )
+        .unwrap();
+        (dir, store)
+    }
+
+    /// s18. 3.6: every payload written before a stored shape gained a member decodes and encodes
+    /// again to the same bytes, so its hashes and its replay stay as they were; an old move has no
+    /// cause. A move with its cause also keeps its bytes, and the reader finds the cause.
+    #[test]
+    fn old_payloads_decode_and_encode_to_the_same_bytes() {
+        for payload in OLD_PAYLOADS {
+            let mutations = mutations_of(&row_of(payload)).unwrap();
+            assert_eq!(payload_text(&mutations).unwrap(), payload);
+            if payload.contains("request_moved") {
+                assert_eq!(cause_of(payload), None);
+            }
+        }
+        let mutations = mutations_of(&row_of(NEW_PAYLOAD)).unwrap();
+        assert_eq!(payload_text(&mutations).unwrap(), NEW_PAYLOAD);
+        assert_eq!(cause_of(NEW_PAYLOAD), Some(UndecidedCause::DeadlinePassed));
+        let (_dir, store) = proving();
+        testing::forge_row(&store, Some("request-1"), NEW_PAYLOAD);
+        assert_eq!(
+            store
+                .read(|r| r.undecided_cause_of(&testing::id("request-1")))
+                .unwrap(),
+            Some(UndecidedCause::DeadlinePassed)
+        );
+    }
+
+    /// s21. 3.6: a cause this build does not know, another JSON type, `null`, or a member of a
+    /// newer build decodes; the cause is then `None`.
+    #[test]
+    fn an_unknown_or_odd_cause_decodes_as_none() {
+        for odd in [
+            r#""undecided_cause":"a_cause_of_a_newer_build""#,
+            r#""undecided_cause":7"#,
+            r#""undecided_cause":null"#,
+            r#""future_member":1,"undecided_cause":"deadline_passed""#,
+        ] {
+            let payload = NEW_PAYLOAD.replace(r#""undecided_cause":"deadline_passed""#, odd);
+            let expected = odd
+                .contains("future_member")
+                .then_some(UndecidedCause::DeadlinePassed);
+            assert_eq!(cause_of(&payload), expected, "{odd}");
+        }
+    }
+
+    /// s23. Section 4: replay accepts a verified row whose cause this build does not know and an old
+    /// move to undecided without a cause; the requests row is the same with and without a cause.
+    #[test]
+    fn a_store_with_causes_replays() {
+        let request_row = |store: &crate::Store| -> Vec<rusqlite::types::Value> {
+            store
+                .connection()
+                .query_row(
+                    "SELECT * FROM requests WHERE request_id = 'request-1'",
+                    [],
+                    |row| {
+                        (0..row.as_ref().column_count())
+                            .map(|i| row.get(i))
+                            .collect()
+                    },
+                )
+                .unwrap()
+        };
+        let (_old_dir, old) = proving();
+        testing::forge_row(&old, Some("request-1"), OLD_UNDECIDED);
+        old.verify_chain().unwrap();
+        old.verify_replay().unwrap();
+        assert_eq!(
+            old.read(|r| r.undecided_cause_of(&testing::id("request-1")))
+                .unwrap(),
+            None
+        );
+        let (_unknown_dir, unknown) = proving();
+        testing::forge_row(
+            &unknown,
+            Some("request-1"),
+            &NEW_PAYLOAD.replace("deadline_passed", "a_cause_of_a_newer_build"),
+        );
+        unknown.verify_chain().unwrap();
+        unknown.verify_replay().unwrap();
+        let (_new_dir, mut new) = proving();
+        new.write(testing::meta_of("request.advance", T0, "request-1"), |tx| {
+            tx.apply(mutations_of(&row_of(NEW_PAYLOAD)).unwrap().remove(0))?;
+            Ok::<_, crate::TxError<()>>(())
+        })
+        .unwrap();
+        new.verify_chain().unwrap();
+        new.verify_replay().unwrap();
+        assert_eq!(request_row(&old), request_row(&new));
+        assert_eq!(request_row(&unknown), request_row(&new));
+    }
+
+    /// A move that names its cause is appended only in a commit correlated to its request.
+    #[test]
+    fn a_move_that_names_its_cause_is_correlated_to_its_request() {
+        let (_dir, mut store) = proving();
+        let moved = || mutations_of(&row_of(NEW_PAYLOAD)).unwrap().remove(0);
+        for meta in [
+            testing::meta("request.advance", T0),
+            testing::meta_of("request.advance", T0, "request-2"),
+        ] {
+            let result = store.write(meta, |tx| {
+                tx.apply(moved())?;
+                Ok::<_, crate::TxError<()>>(())
+            });
+            assert_eq!(
+                testing::refused_with(result),
+                "a move that names its cause is correlated to its request"
+            );
+        }
+        let head = store.read(|r| r.meta()).unwrap().ledger_head_seq;
+        store
+            .write(testing::meta_of("request.advance", T0, "request-1"), |tx| {
+                tx.apply(moved())?;
+                Ok::<_, crate::TxError<()>>(())
+            })
+            .unwrap();
+        assert_eq!(store.read(|r| r.meta()).unwrap().ledger_head_seq, head + 1);
     }
 }

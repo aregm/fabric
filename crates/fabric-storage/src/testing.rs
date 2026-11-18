@@ -362,3 +362,68 @@ pub(crate) fn world(dir: &TempDir) -> Store {
     .expect("the test world commits");
     store
 }
+
+/// Appends a ledger row holding `payload` as a build with other write rules could have written it:
+/// its mutations applied to the projection with the code replay runs, every hash valid, the head
+/// moved, committed at the last row's time. No write rule of `WriteTx` or `append` is checked.
+pub(crate) fn forge_row(store: &Store, correlation_id: Option<&str>, payload: &str) {
+    use crate::ledger::{Envelope, GENESIS_HASH, PAYLOAD_VERSION, mutations_of, random_id};
+    use crate::tx::{meta_count, meta_value, set_meta};
+    let connection = store.connection();
+    let head = meta_count(connection, "ledger_head_seq").unwrap();
+    let committed_at_ms = store.read(|r| r.last_committed_ms()).unwrap().unwrap_or(T0);
+    let mut envelope = Envelope {
+        seq: head + 1,
+        operation_id: random_id("op-").unwrap(),
+        operation_type: "request.advance".to_owned(),
+        payload_version: PAYLOAD_VERSION,
+        committed_at_ms,
+        run_id: None,
+        actor_kind: "broker".to_owned(),
+        actor_agent_id: None,
+        idempotency_scope: None,
+        idempotency_key: None,
+        causation_id: None,
+        correlation_id: correlation_id.map(str::to_owned),
+        payload: payload.to_owned(),
+        payload_hash: fabric_desktop_contracts::digest::sha256_hex(payload),
+        previous_hash: meta_value(connection, "ledger_head_hash")
+            .unwrap()
+            .unwrap_or_else(|| GENESIS_HASH.to_owned()),
+        envelope_hash: String::new(),
+    };
+    envelope.envelope_hash = envelope.computed_hash();
+    for mutation in mutations_of(&envelope).unwrap() {
+        crate::apply::apply(connection, &mutation).unwrap();
+    }
+    connection
+        .execute(
+            "INSERT INTO ledger (seq, operation_id, operation_type, payload_version, \
+             committed_at_ms, actor_kind, correlation_id, payload, payload_hash, previous_hash, \
+             envelope_hash) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+            rusqlite::params![
+                i64::try_from(envelope.seq).unwrap(),
+                envelope.operation_id,
+                envelope.operation_type,
+                envelope.payload_version,
+                envelope.committed_at_ms,
+                envelope.actor_kind,
+                envelope.correlation_id,
+                envelope.payload,
+                envelope.payload_hash,
+                envelope.previous_hash,
+                envelope.envelope_hash,
+            ],
+        )
+        .unwrap();
+    set_meta(connection, "ledger_head_seq", &envelope.seq.to_string()).unwrap();
+    set_meta(connection, "ledger_head_hash", &envelope.envelope_hash).unwrap();
+}
+
+/// The metadata of a broker write at `now_ms` correlated to `request_id`.
+pub(crate) fn meta_of(operation_type: &'static str, now_ms: i64, request_id: &str) -> OpMeta {
+    OpMeta {
+        correlation_id: Some(id(request_id)),
+        ..meta(operation_type, now_ms)
+    }
+}

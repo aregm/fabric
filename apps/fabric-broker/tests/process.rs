@@ -12,7 +12,7 @@
 //! unknown, or `keychain` on a platform that has no Keychain.
 //!
 //! Bare numbers and the test ids p01 to p08 cite the CD-W04 design
-//! (`docs/plans/calendar-desktop-w04-design.md`); "PW" numbers, such as PW p40 to PW p45,
+//! (`docs/plans/calendar-desktop-w04-design.md`); "PW" numbers, such as PW p40 to PW p48,
 //! cite the prover wiring's design (`docs/plans/calendar-desktop-prover-wiring-design.md`).
 
 use std::ffi::OsString;
@@ -25,10 +25,11 @@ use std::sync::{Mutex, PoisonError};
 use std::thread;
 use std::time::{Duration, Instant};
 
+use fabric_desktop_contracts::common::UndecidedReason;
 use fabric_desktop_contracts::error::{ErrorCode, Fault};
 use fabric_desktop_contracts::owner::{
     Approval, Change, Grant, GrantEndReason, GrantTerm, OwnerNotice, OwnerResponse, OwnerResult,
-    Request,
+    ProverHealth, Request,
 };
 use fabric_desktop_contracts::{
     Entry, Frame, MAX_FRAME_BYTES, RequestState, canonical, decode, first_invalid, parse_strict,
@@ -161,7 +162,42 @@ fn decode_line(line: &[u8]) -> Frame {
         line,
         "the line is not canonical"
     );
+    assert_cross_member_rules(&frame, &text);
     frame
+}
+
+/// PW p48: the two rules between members of contract schema version 2 (README section 7),
+/// on every owner line: a health names a problem only while the prover is unavailable, and
+/// request details name an `undecided_reason` only while the request is `undecided`.
+fn assert_cross_member_rules(frame: &Frame, text: &str) {
+    let health = match frame {
+        Frame::OwnerResponse(OwnerResponse::Result {
+            result: OwnerResult::GetSnapshot(snapshot),
+            ..
+        }) => Some(&snapshot.health),
+        Frame::OwnerNotice(OwnerNotice {
+            change: Change::Health(health),
+            ..
+        }) => Some(health),
+        Frame::OwnerResponse(OwnerResponse::Result {
+            result: OwnerResult::GetRequestDetails(details),
+            ..
+        }) => {
+            assert!(
+                details.request.status.state() == RequestState::Undecided
+                    || details.undecided_reason.is_none(),
+                "a reason on a request that is not undecided: {text}"
+            );
+            None
+        }
+        _ => None,
+    };
+    if let Some(health) = health {
+        assert!(
+            health.prover == ProverHealth::Unavailable || health.prover_problem.is_none(),
+            "a problem while the prover is not unavailable: {text}"
+        );
+    }
 }
 
 struct Broker {
@@ -559,10 +595,15 @@ fn the_first_run_snapshot() {
     let mut broker = Broker::start();
     let value = broker.snapshot();
     assert_eq!(value["cursor"], 0);
+    // PW p46: a run without a prover says why, as the contract's fixture does.
     assert_eq!(
         value["health"],
-        json!({"prover": "unavailable", "prover_problem": null, "store": "ready"})
+        json!({"prover": "unavailable", "prover_problem": "not_configured", "store": "ready"})
     );
+    let fixture = contract_dir()
+        .join("fixtures/messages/accept-owner-notice-health-prover-not-configured.json");
+    let fixture: Value = serde_json::from_str(&std::fs::read_to_string(fixture).unwrap()).unwrap();
+    assert_eq!(value["health"], fixture["value"]["change"]["health"]);
     assert_eq!(value["profiles"]["revision"], 0);
     assert_eq!(value["profiles"]["active_profile_id"], "careful");
     let ids: Vec<&Value> = value["profiles"]["items"]
@@ -697,6 +738,23 @@ fn an_approval_of_a_synthetic_request_creates_a_grant_and_ends_undecided() {
             RequestState::Undecided
         ]
     );
+    // PW p47: the classifier is not Isabelle, so its permit is never acted on, and the redacted
+    // details say why. A synthetic proof is never listed.
+    let details = request(
+        "details-2",
+        "get_request_details",
+        json!({"request_id": request_id, "redaction": "redacted"}),
+    );
+    let OwnerResult::GetRequestDetails(details) = broker.result(&details) else {
+        panic!()
+    };
+    assert_eq!(details.request.status.state(), RequestState::Undecided);
+    assert_eq!(
+        details.undecided_reason,
+        Some(UndecidedReason::ProverUnavailable)
+    );
+    assert!(details.private.is_none());
+    assert!(details.proof_ids.is_empty());
     // A one-request grant ends with its request (D18).
     let ended = broker.grant(&grant_id, |g| g.ended.is_some());
     assert_eq!(
@@ -1702,10 +1760,11 @@ impl Broker {
     }
 }
 
-/// PW p41: an Isabelle that cannot start leaves the prover unavailable: the synthetic agent of the
-/// practice run proposes nothing, no request is made, stderr names no path, and after quit the
-/// prover's work directory is gone. (A request made while the prover is down ends `undecided`:
-/// the shell's unit test PW sh06, since the practice script never proposes then.)
+/// PW p41: an Isabelle that cannot start leaves the prover unavailable, with the problem
+/// `failed_will_retry`: the synthetic agent of the practice run proposes nothing, no request is
+/// made, stderr names no path, and after quit the prover's work directory is gone. (A request
+/// made while the prover is down ends `undecided`: the shell's unit test PW sh06, since the
+/// practice script never proposes then.)
 #[cfg(unix)]
 #[test]
 fn an_isabelle_that_cannot_start_leaves_the_prover_unavailable_and_proposes_nothing() {
@@ -1721,7 +1780,14 @@ fn an_isabelle_that_cannot_start_leaves_the_prover_unavailable_and_proposes_noth
     );
     let snapshot = broker.snapshot();
     broker.result(&subscribe(snapshot["cursor"].as_u64().unwrap()));
-    broker.prover_becomes("unavailable", PROMPT);
+    // Asserted on the snapshot, not on a notice: the fake may fail before the subscription's
+    // cursor. The first failure leaves a restart wait, so the broker will try again.
+    let unavailable = broker.prover_becomes("unavailable", PROMPT);
+    assert_eq!(
+        unavailable["health"]["prover_problem"], "failed_will_retry",
+        "{}",
+        unavailable["health"]
+    );
     // Longer than the agent's pace: it would have proposed by now if it could.
     thread::sleep(Duration::from_millis(2500));
     let snapshot = broker.snapshot();

@@ -174,3 +174,160 @@ fn the_manifest_scan_reads_every_dependency_form() {
     }
     assert!(!names.iter().any(|n| n == "name" || n == "workspace"));
 }
+
+/// The production text of a source file: comment lines, out-of-line test module declarations
+/// and a trailing inline test module left out.
+fn production(path: &Path) -> String {
+    let text = std::fs::read_to_string(path)
+        .unwrap_or_else(|e| panic!("cannot read {}: {e}", path.display()));
+    production_text(&text)
+}
+
+/// `production` on a file's text. A test-gated `mod x;` drops only its two lines; a test-gated
+/// `mod x {` ends the production text.
+fn production_text(text: &str) -> String {
+    let lines: Vec<&str> = text.lines().collect();
+    let gated = |at: usize| {
+        let (cfg, module) = (lines[at], lines.get(at + 1).copied().unwrap_or(""));
+        cfg.starts_with("#[cfg(")
+            && cfg.contains("test")
+            && (module.starts_with("mod ") || module.starts_with("pub(crate) mod "))
+    };
+    let mut kept = Vec::new();
+    let mut at = 0;
+    while at < lines.len() {
+        if gated(at) {
+            if lines[at + 1].trim_end().ends_with('{') {
+                break;
+            }
+            at += 2;
+            continue;
+        }
+        if !lines[at].trim_start().starts_with("//") {
+            kept.push(lines[at]);
+        }
+        at += 1;
+    }
+    kept.join("\n")
+}
+
+/// The source scan reads past an out-of-line test module declaration and stops at an inline one.
+#[test]
+fn the_source_scan_reads_past_a_test_module_declaration() {
+    let sample = "mod a;\n#[cfg(all(test, debug_assertions))]\nmod tests;\n\
+                  fn f() { Event::Undecide }\n#[cfg(test)]\nmod tests {\n    fn g() {}\n}\n";
+    let text = production_text(sample);
+    assert!(text.contains("Event::Undecide"), "{text}");
+    assert!(!text.contains("mod tests"), "{text}");
+    assert!(!text.contains("fn g"), "{text}");
+    let src = root().join("crates/fabric-broker-core/src");
+    assert!(production(&src.join("service/mod.rs")).contains("struct OwnerRefusal"));
+    assert!(production(&src.join("owner/mod.rs")).contains("fn serve("));
+}
+
+/// The body of the first `fn name(` in `text`, braces included.
+fn body<'a>(text: &'a str, name: &str) -> &'a str {
+    let at = text
+        .find(&format!("fn {name}("))
+        .unwrap_or_else(|| panic!("no fn {name}"));
+    let open = at + text[at..].find('{').expect("a body");
+    let mut depth = 0;
+    for (i, c) in text[open..].char_indices() {
+        match c {
+            '{' => depth += 1,
+            '}' => {
+                depth -= 1;
+                if depth == 0 {
+                    return &text[open..=open + i];
+                }
+            }
+            _ => {}
+        }
+    }
+    panic!("the body of fn {name} does not end")
+}
+
+/// Every production source file of the core, by its path under `src`.
+fn sources(dir: &Path, base: &Path, out: &mut Vec<(String, String)>) {
+    let mut entries: Vec<PathBuf> = std::fs::read_dir(dir)
+        .expect("read the source directory")
+        .map(|e| e.expect("a directory entry").path())
+        .collect();
+    entries.sort();
+    for path in entries {
+        if path.is_dir() {
+            sources(&path, base, out);
+        } else if path.extension().is_some_and(|e| e == "rs")
+            && path.file_name().is_some_and(|n| n != "tests.rs")
+        {
+            let name = path
+                .strip_prefix(base)
+                .expect("under src")
+                .to_string_lossy()
+                .replace('\\', "/");
+            out.push((name, production(&path)));
+        }
+    }
+}
+
+/// c34. 5.7: only `undecide` moves a request to `undecided`, so every such move states its
+/// cause. No production file but the reducer and `undecide` names the event, and only `undecide`
+/// passes a cause to `move_request_with`; `move_request` passes none.
+#[test]
+fn only_undecide_moves_a_request_to_undecided() {
+    let src = root().join("crates/fabric-broker-core/src");
+    let mut files = Vec::new();
+    sources(&src, &src, &mut files);
+    assert!(files.len() > 10, "the scan read {} files", files.len());
+    let event = "Event::Undecide";
+    let call = "move_request_with(";
+    for (name, text) in &files {
+        let mut allowed_events = 0;
+        let mut allowed_calls = 0;
+        match name.as_str() {
+            "service/reducer.rs" => allowed_events = text.matches(event).count(),
+            "service/pipeline.rs" => {
+                let undecide = body(text, "undecide");
+                assert_eq!(
+                    undecide.matches(event).count(),
+                    1,
+                    "undecide names the event"
+                );
+                assert!(
+                    undecide.contains("Some(cause)"),
+                    "undecide passes its cause"
+                );
+                allowed_events = 1;
+                allowed_calls = undecide.matches(call).count();
+                let advance = body(text, "advance");
+                assert_eq!(advance.matches(call).count(), 1);
+                assert!(
+                    advance.contains("due_at_ms, None)"),
+                    "advance passes a cause to move_request_with"
+                );
+                allowed_calls += 1;
+            }
+            "service/requests.rs" => {
+                let wrapper = body(text, "move_request");
+                assert_eq!(wrapper.matches(call).count(), 1);
+                assert!(
+                    wrapper.contains("due_at_ms, None)"),
+                    "move_request passes a cause to move_request_with"
+                );
+                // The wrapper's call and the definition.
+                allowed_calls = 2;
+            }
+            _ => {}
+        }
+        assert_eq!(
+            text.matches(event).count(),
+            allowed_events,
+            "{name} names {event} outside the reducer and undecide"
+        );
+        assert_eq!(
+            text.matches(call).count(),
+            allowed_calls,
+            "{name} calls move_request_with outside undecide, advance and move_request"
+        );
+    }
+}
