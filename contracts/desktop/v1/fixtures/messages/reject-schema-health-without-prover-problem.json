@@ -8,7 +8,9 @@
       "kind": "health",
       "health": {
         "prover": "unavailable",
-        "store": "ready"
+        "store": "ready",
+        "agent_channel": "listening",
+        "agent_channel_problem": null
       }
     }
   },

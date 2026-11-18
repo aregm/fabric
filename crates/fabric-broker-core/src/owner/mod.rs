@@ -152,6 +152,7 @@ impl OwnerChannel {
             )),
             // not implemented in this build (contract schema version 3)
             OwnerCall::SelectCalendars(_)
+            | OwnerCall::RefreshCalendars(_)
             | OwnerCall::ResolveOutcome(_)
             | OwnerCall::AddAgent(_)
             | OwnerCall::ApproveAgent(_)

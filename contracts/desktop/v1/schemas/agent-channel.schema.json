@@ -539,12 +539,13 @@
       "additionalProperties": false
     },
     "result_agent_prove": {
-      "description": "`approved`: the session has started. `pending`: the proved key is now the waiting agent's key, and the owner has not approved yet.",
+      "description": "`approved`: the session has started. `pending`: the proved key is now the waiting agent's key, and the owner has not approved yet. `practice` is true exactly when the broker runs with the practice calendar.",
       "type": "object",
       "properties": {
-        "enrollment": { "enum": ["approved", "pending"] }
+        "enrollment": { "enum": ["approved", "pending"] },
+        "practice": { "type": "boolean" }
       },
-      "required": ["enrollment"],
+      "required": ["enrollment", "practice"],
       "additionalProperties": false
     },
 

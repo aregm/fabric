@@ -10,7 +10,9 @@
       "health": {
         "prover": "starting",
         "prover_problem": null,
-        "store": "ready"
+        "store": "ready",
+        "agent_channel": "listening",
+        "agent_channel_problem": null
       },
       "profiles": {
         "revision": 0,
@@ -55,6 +57,7 @@
         ]
       },
       "accounts": [],
+      "provider_accounts": [],
       "agents": [],
       "recipient_sets": [],
       "preferences": {

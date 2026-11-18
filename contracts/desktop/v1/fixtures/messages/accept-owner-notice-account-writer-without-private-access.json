@@ -1,0 +1,39 @@
+{
+  "description": "An account change with a calendar the account may change but whose private events it sees without their details.",
+  "schema": "owner-channel.schema.json#/$defs/owner_notice",
+  "value": {
+    "protocol": "fabric-desktop/1",
+    "sequence": 1344,
+    "change": {
+      "kind": "account",
+      "account": {
+        "account_id": "acct-1",
+        "revision": 5,
+        "state": "connected",
+        "email": "owner@example.com",
+        "calendars": [
+          {
+            "calendar_id": "cal-primary",
+            "name": "Owner",
+            "access": "owner",
+            "selected": true,
+            "agent_drafts": false
+          },
+          {
+            "calendar_id": "cal-family",
+            "name": "Family",
+            "access": "writer_without_private_access",
+            "selected": false,
+            "agent_drafts": false
+          }
+        ]
+      }
+    }
+  },
+  "expect": {
+    "verdict": "accept",
+    "canonical": "{\"change\":{\"account\":{\"account_id\":\"acct-1\",\"calendars\":[{\"access\":\"owner\",\"agent_drafts\":false,\"calendar_id\":\"cal-primary\",\"name\":\"Owner\",\"selected\":true},{\"access\":\"writer_without_private_access\",\"agent_drafts\":false,\"calendar_id\":\"cal-family\",\"name\":\"Family\",\"selected\":false}],\"email\":\"owner@example.com\",\"revision\":5,\"state\":\"connected\"},\"kind\":\"account\"},\"protocol\":\"fabric-desktop/1\",\"sequence\":1344}",
+    "command_digest": null,
+    "action_digest": null
+  }
+}

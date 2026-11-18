@@ -151,7 +151,7 @@ pub(crate) fn agent_view(
         destination: row.destination,
         enrollment: AgentEnrollment::Approved,
         pairing_code: None,
-        added_at: enrolled_at.clone(),
+        added_at: Some(enrolled_at.clone()),
         key_proven_at: None,
         approved_at: Some(enrolled_at),
         removed_at: None,

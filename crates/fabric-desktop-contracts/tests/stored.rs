@@ -5,7 +5,9 @@
 //! The values are in `tests/data/stored-version-2.json`, taken from the accepted fixtures at
 //! schema version 2. `command_answers` are the whole answer frames of the commands: the
 //! broker stores each and decodes it again when the command id comes back
-//! (`crates/fabric-broker-core/src/owner/dedup.rs`).
+//! (`crates/fabric-broker-core/src/owner/dedup.rs`). A version 2 answer to `pause_agent` holds
+//! agent records without the members version 3 added; the broker reads it with
+//! [`decode_stored_owner_response`], which adds them, while the channel's decoders refuse it.
 
 use std::path::Path;
 
@@ -15,8 +17,11 @@ use fabric_desktop_contracts::owner::{
     LifecycleStatus, Preferences, PreferencesSettings, Profile, ProofReport, RecipientSet, Request,
     Ruling, Scope,
 };
-use fabric_desktop_contracts::suite::read_json;
-use fabric_desktop_contracts::{Entry, decode, decode_record, encode};
+use fabric_desktop_contracts::suite::{message_files, read_json, source_bytes};
+use fabric_desktop_contracts::{
+    Entry, Frame, canonical, decode, decode_record, decode_stored_agent,
+    decode_stored_owner_response, encode,
+};
 use serde::Serialize;
 use serde::de::DeserializeOwned;
 use serde_json::Value;
@@ -130,12 +135,67 @@ fn every_stored_command_answer_of_version_2_except_pause_agent_reads_back_unchan
     assert!(failures.is_empty(), "{}", failures.join("\n"));
 }
 
-/// This is an open finding of the draft, not a wanted property. A version 2 broker stores the
-/// answer to `pause_agent` (`crates/fabric-broker-core/src/owner/dedup.rs`), which holds agent
-/// records, and version 3 adds required members to the agent record. If the draft or the store
-/// is changed so that these read back, this test must be turned around.
+/// A version 2 agent record with the members version 3 added: `enrollment` `approved`, and
+/// null for the other five.
+fn upgraded_agent(agent: &Value) -> Value {
+    let mut agent = agent.clone();
+    let record = agent.as_object_mut().unwrap();
+    assert!(!record.contains_key("enrollment"));
+    record.insert("enrollment".into(), "approved".into());
+    for member in [
+        "pairing_code",
+        "added_at",
+        "key_proven_at",
+        "approved_at",
+        "removed_at",
+    ] {
+        record.insert(member.into(), Value::Null);
+    }
+    agent
+}
+
+/// A version 2 `pause_agent` answer with every agent record upgraded.
+fn upgraded_answer(text: &str) -> Value {
+    let mut frame: Value = serde_json::from_str(text).unwrap();
+    for agent in frame["result"]["agents"].as_array_mut().unwrap() {
+        *agent = upgraded_agent(agent);
+    }
+    frame
+}
+
+/// The frame as the value of its canonical line.
+fn frame_value(frame: &Frame) -> Value {
+    serde_json::from_str(frame.to_line().trim_end()).unwrap()
+}
+
+/// The canonical text of each accepted owner response fixture whose method is `pause_agent`.
+fn current_pause_agent_answers() -> Vec<String> {
+    let contract = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../contracts/desktop/v1");
+    let mut answers = Vec::new();
+    for name in message_files(&contract).unwrap() {
+        if !name.starts_with("accept-") {
+            continue;
+        }
+        let fixture = read_json(&contract.join("fixtures/messages").join(&name)).unwrap();
+        if fixture["schema"] != Entry::OwnerResponse.reference()
+            || fixture["value"]["method"] != "pause_agent"
+        {
+            continue;
+        }
+        let bytes = source_bytes(fixture.as_object().unwrap()).unwrap();
+        answers.push(String::from_utf8(bytes).unwrap());
+    }
+    assert!(
+        !answers.is_empty(),
+        "no pause_agent answer among the fixtures"
+    );
+    answers
+}
+
+/// The wire stays strict: the decoders of the channels refuse a version 2 agent record and a
+/// version 2 answer to `pause_agent`.
 #[test]
-fn a_version_2_agent_and_a_stored_pause_agent_answer_do_not_decode_under_version_3() {
+fn the_strict_decoders_refuse_a_version_2_agent_and_a_version_2_pause_agent_answer() {
     let stored = stored();
     for text in values(&stored, "agent") {
         assert!(decode_record::<Agent>(text.as_bytes()).is_err(), "{text}");
@@ -144,6 +204,83 @@ fn a_version_2_agent_and_a_stored_pause_agent_answer_do_not_decode_under_version
     for text in pause {
         assert!(
             decode(Entry::OwnerResponse, text.as_bytes()).is_err(),
+            "{text}"
+        );
+    }
+}
+
+#[test]
+fn a_stored_version_2_agent_reads_back_with_the_members_version_3_added() {
+    for text in values(&stored(), "agent") {
+        let agent = decode_stored_agent(text.as_bytes()).unwrap_or_else(|e| panic!("{text}: {e}"));
+        let again: Value = serde_json::from_str(&encode(&agent)).unwrap();
+        let v2: Value = serde_json::from_str(&text).unwrap();
+        assert_eq!(again, upgraded_agent(&v2), "{text}");
+        // What it reads back as is a valid version 3 record.
+        assert_eq!(
+            decode_record::<Agent>(encode(&agent).as_bytes()).unwrap(),
+            agent
+        );
+    }
+}
+
+#[test]
+fn a_stored_version_2_pause_agent_answer_reads_back_with_the_members_version_3_added() {
+    let (pause, _) = command_answers(&stored());
+    for text in pause {
+        let frame =
+            decode_stored_owner_response(text.as_bytes()).unwrap_or_else(|e| panic!("{text}: {e}"));
+        assert_eq!(frame_value(&frame), upgraded_answer(&text), "{text}");
+        // What it reads back as is a valid version 3 frame.
+        let line = frame.to_line();
+        assert_eq!(
+            decode(Entry::OwnerResponse, line.trim_end().as_bytes()).unwrap(),
+            frame
+        );
+    }
+}
+
+#[test]
+fn every_other_stored_command_answer_of_version_2_reads_as_the_strict_decoder_reads_it() {
+    let (_, answers) = command_answers(&stored());
+    for text in answers {
+        let strict = decode(Entry::OwnerResponse, text.as_bytes()).unwrap();
+        let read = decode_stored_owner_response(text.as_bytes()).unwrap();
+        assert_eq!(read, strict, "{text}");
+    }
+}
+
+#[test]
+fn a_version_3_pause_agent_answer_reads_as_the_strict_decoder_reads_it() {
+    for text in current_pause_agent_answers() {
+        let strict = decode(Entry::OwnerResponse, text.as_bytes()).unwrap();
+        let read = decode_stored_owner_response(text.as_bytes()).unwrap();
+        assert_eq!(read, strict, "{text}");
+    }
+}
+
+/// Only a record without `enrollment` is upgraded: a record that has it but lacks another
+/// member of version 3 is refused by both stored readers.
+#[test]
+fn an_agent_with_enrollment_but_without_another_member_is_refused_by_the_stored_readers() {
+    let answer: Value = serde_json::from_str(&current_pause_agent_answers()[0]).unwrap();
+    let agent = &answer["result"]["agents"][0];
+    for member in [
+        "pairing_code",
+        "added_at",
+        "key_proven_at",
+        "approved_at",
+        "removed_at",
+    ] {
+        let mut lacking = agent.clone();
+        assert!(lacking.as_object_mut().unwrap().remove(member).is_some());
+        let text = canonical(&lacking);
+        assert!(decode_stored_agent(text.as_bytes()).is_err(), "{text}");
+        let mut frame = answer.clone();
+        frame["result"]["agents"][0] = lacking;
+        let text = canonical(&frame);
+        assert!(
+            decode_stored_owner_response(text.as_bytes()).is_err(),
             "{text}"
         );
     }

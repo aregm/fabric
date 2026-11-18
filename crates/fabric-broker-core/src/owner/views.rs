@@ -61,6 +61,8 @@ fn read_snapshot(
         health,
         profiles: r.profiles()?,
         accounts: any_list(r.accounts()?)?,
+        // The broker keeps nothing of an account's connection beyond its state yet.
+        provider_accounts: any_list(Vec::new())?,
         agents: any_list(agents)?,
         recipient_sets: any_list(r.recipient_sets()?)?,
         preferences: r.preferences()?,
@@ -160,6 +162,10 @@ fn read_details(
         provider_event: None,
         // The broker does not map its recorded reason to the contract's list yet.
         undecided_reason: None,
+        // The broker records no notification, no proof of its own actions and no release yet.
+        notification: None,
+        system_proofs: List::new(Vec::new()).map_err(|_| invariant("no system proofs"))?,
+        releases: List::new(Vec::new()).map_err(|_| invariant("no releases"))?,
     }))
 }
 

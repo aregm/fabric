@@ -70,6 +70,14 @@ test("vocabularies equal the schema enums", () => {
     ["duration kind", c.DURATION_KINDS, owner.duration.properties.kind.enum],
     ["grant_end reason", c.GRANT_END_REASONS, owner.grant_end.properties.reason.enum],
     ["account state", c.ACCOUNT_STATES, owner.account.properties.state.enum],
+    [
+      "provider_account last_connect_problem",
+      c.CONNECT_PROBLEMS,
+      owner.provider_account.properties.last_connect_problem.oneOf[1].enum,
+    ],
+    ["provider_account revocation", c.REVOCATIONS, owner.provider_account.properties.revocation.enum],
+    ["health agent_channel_problem", c.AGENT_CHANNEL_PROBLEMS, owner.health.properties.agent_channel_problem.oneOf[1].enum],
+    ["release_record kind", c.RELEASE_KINDS, owner.release_record.properties.kind.enum],
     ["response_status", c.RESPONSE_STATUSES, agent.response_status.enum],
     ["owner_request methods", c.OWNER_METHODS, owner.owner_request.oneOf.map((b: any) => b.properties.method.const)],
     [
@@ -156,6 +164,16 @@ test("the built-in profiles", () => {
     assert.ok(validate("owner-channel.schema.json#/$defs/profile", p), `${column} is a profile`);
     const rows = Object.fromEntries(matrix.rows.map((r: any) => [r.row, r[column].mode]));
     assert.deepEqual(p.rows, rows, `${column} equals the policy matrix`);
+  }
+});
+
+test("the agent clients", () => {
+  const clients = data("agent-clients.json").clients;
+  assert.deepEqual(clients.map((e: any) => e.client), owner.params_add_agent.properties.client.enum);
+  assert.deepEqual(clients.map((e: any) => e.client), [...c.AGENT_CLIENTS]);
+  const validate = createValidator(files);
+  for (const e of clients) {
+    assert.ok(validate("owner-channel.schema.json#/$defs/destination", e.destination), `${e.client} destination`);
   }
 });
 

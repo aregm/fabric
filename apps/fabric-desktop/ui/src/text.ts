@@ -100,6 +100,7 @@ export const ACCOUNT_TEXT: Record<AccountState, string> = {
 export const ACCESS_TEXT: Record<CalendarAccess, string> = {
   owner: "you own it",
   writer: "you can change its events",
+  writer_without_private_access: "you can change its events, but you see private ones without their details",
   reader: "you can see its events",
   free_busy_reader: "you can see only when it is free or busy",
 };
@@ -139,6 +140,7 @@ export const UNDECIDED_REASON: Record<UndecidedReason, string> = {
   prover_unavailable: "The rule checker was starting or not running.",
   out_of_time: "The rule checker did not finish within its time limit.",
   failed: "The rule checker ran and did not decide the request, or its report could not be used.",
+  provider_unreachable: "The calendar could not be reached to look at the event.",
 };
 export const UNDECIDED_REASON_UNKNOWN = "The broker did not record why.";
 
@@ -370,6 +372,7 @@ export const GRANT_END_TEXT: Record<GrantEndReason, string> = {
   session_idle_timeout: "The agent's session ended after a long time without activity.",
   app_quit: "The agent's session ended because the app was quit.",
   broker_restart: "The agent's session ended because the broker restarted.",
+  result_expired: "The result was not collected in time.",
 };
 
 export function termText(term: GrantTerm, agent: string): string {
@@ -510,6 +513,7 @@ export function agentFacts(a: Agent, zone: string): Fact[] {
 export function changeText(change: Change, names: Names): string {
   switch (change.kind) {
     case "account": return `Account ${change.account.email ?? change.account.account_id}: ${ACCOUNT_TEXT[change.account.state]}`;
+    case "provider_account": return `Account ${change.provider_account.account_id}: what the broker knows of its connection changed`;
     case "agent": return `Agent ${change.agent.registered_name}${change.agent.paused ? " (paused)" : ""}`;
     case "profiles": return "Your permission profiles changed";
     case "recipient_set": return `Group ${change.recipient_set.definition.name} changed`;

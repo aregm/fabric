@@ -561,7 +561,8 @@ fn the_first_run_snapshot() {
     assert_eq!(value["cursor"], 0);
     assert_eq!(
         value["health"],
-        json!({"prover": "unavailable", "prover_problem": null, "store": "ready"})
+        json!({"prover": "unavailable", "prover_problem": null, "store": "ready",
+            "agent_channel": "not_listening", "agent_channel_problem": null})
     );
     assert_eq!(value["profiles"]["revision"], 0);
     assert_eq!(value["profiles"]["active_profile_id"], "careful");
@@ -572,7 +573,14 @@ fn the_first_run_snapshot() {
         .map(|p| &p["profile_id"])
         .collect();
     assert_eq!(ids, [&json!("careful"), &json!("flexible")]);
-    for empty in ["accounts", "agents", "recipient_sets", "requests", "grants"] {
+    for empty in [
+        "accounts",
+        "provider_accounts",
+        "agents",
+        "recipient_sets",
+        "requests",
+        "grants",
+    ] {
         assert_eq!(value[empty], json!([]), "{empty}");
     }
     assert_eq!(

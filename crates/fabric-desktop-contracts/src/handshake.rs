@@ -51,11 +51,13 @@ pub enum ProvedEnrollment {
     Pending,
 }
 
-/// `agent#/$defs/result_agent_prove`.
+/// `agent#/$defs/result_agent_prove`. `practice` is true exactly when the broker runs with
+/// the practice calendar.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct AgentProveResult {
     pub enrollment: ProvedEnrollment,
+    pub practice: bool,
 }
 
 /// The text an agent signs: `fabric-desktop/1`, `agent_handshake`, each ended by a line feed,

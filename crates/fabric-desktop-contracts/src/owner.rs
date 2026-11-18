@@ -18,7 +18,7 @@ use crate::lifecycle::{PlainRequestState, RequestState};
 use crate::scalar::{
     AnyList, ConfigurationText, ConstText, Count, CustomProfileId, Digest, DomainName, Email,
     Explanation, Fixed, IanaZone, Id, Integer, Label, List, LocalTime, MethodText, NameToken,
-    PairingCode, PositiveCount, Task, Timestamp, nullable,
+    PairingCode, PositiveCount, ProviderRef, Task, Timestamp, nullable,
 };
 use crate::tagged;
 
@@ -543,6 +543,7 @@ pub enum GrantEndReason {
     SessionIdleTimeout,
     AppQuit,
     BrokerRestart,
+    ResultExpired,
 }
 
 /// `owner#/$defs/grant_end`.
@@ -710,7 +711,8 @@ pub enum AgentEnrollment {
 }
 
 /// `owner#/$defs/agent`: an agent the owner added. `pairing_code` is the code of the key the
-/// agent proved, and `None` until it has proved one.
+/// agent proved, and `None` until it has proved one. `added_at` is `None` only in an answer
+/// that a broker stored under schema version 2 and gives again ([`crate::stored`]).
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Agent {
@@ -721,7 +723,8 @@ pub struct Agent {
     pub enrollment: AgentEnrollment,
     #[serde(deserialize_with = "nullable")]
     pub pairing_code: Option<PairingCode>,
-    pub added_at: Timestamp,
+    #[serde(deserialize_with = "nullable")]
+    pub added_at: Option<Timestamp>,
     #[serde(deserialize_with = "nullable")]
     pub key_proven_at: Option<Timestamp>,
     #[serde(deserialize_with = "nullable")]
@@ -773,6 +776,52 @@ pub struct Account {
     pub calendars: AnyList<Calendar>,
 }
 
+/// Why the last attempt to connect an account to Google ended
+/// (`owner#/$defs/provider_account.last_connect_problem`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ConnectProblem {
+    TimedOut,
+    Superseded,
+    BrowserNotOpened,
+    GoogleError,
+    ClientRejected,
+    Network,
+    IdentityCheckFailed,
+    UnexpectedScope,
+    NoRefreshToken,
+    TokenStore,
+    AlreadyAnAccount,
+}
+
+/// Whether Google confirmed a revocation of an account's connection.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Revocation {
+    NotRequested,
+    Pending,
+    Revoked,
+    NotConfirmed,
+}
+
+/// `owner#/$defs/provider_account`: what the broker knows about an account's connection to
+/// Google beyond its state: why the last attempt to connect ended, which permission a partial
+/// grant lacked (Google's name of the scope), when the connection is due to end, and whether
+/// Google confirmed a revocation. Owner only.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ProviderAccount {
+    pub account_id: Id,
+    #[serde(deserialize_with = "nullable")]
+    pub last_connect_problem: Option<ConnectProblem>,
+    /// A string of 1 to 200 characters, the constraint of `label`.
+    #[serde(deserialize_with = "nullable")]
+    pub missing_scope: Option<Label>,
+    #[serde(deserialize_with = "nullable")]
+    pub refresh_token_ends_at: Option<Timestamp>,
+    pub revocation: Revocation,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ProverHealth {
@@ -815,6 +864,31 @@ pub struct Health {
     #[serde(deserialize_with = "nullable")]
     pub prover_problem: Option<ProverProblem>,
     pub store: StoreHealth,
+    pub agent_channel: AgentChannelHealth,
+    /// Null while the agent channel is listening; names the cause while it is not, or is null
+    /// when there is none to name.
+    #[serde(deserialize_with = "nullable")]
+    pub agent_channel_problem: Option<AgentChannelProblem>,
+}
+
+/// Whether agents can connect (`owner#/$defs/health.agent_channel`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AgentChannelHealth {
+    Listening,
+    NotListening,
+}
+
+/// Why the agent channel is not listening (`owner#/$defs/health.agent_channel_problem`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AgentChannelProblem {
+    PathTooLong,
+    RunDirUnsafe,
+    RunDirOwner,
+    StaleNotSocket,
+    SocketMode,
+    BindFailed,
 }
 
 /// `owner#/$defs/time_range`.
@@ -1192,6 +1266,71 @@ pub struct ProofReport {
     pub elapsed_ms: Count,
 }
 
+/// The kind of an action the broker took itself (`owner#/$defs/system_proof_report.action`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SystemActionKind {
+    Refresh,
+    Reconcile,
+    ListCalendars,
+}
+
+/// An action the broker took itself for a request.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SystemAction {
+    pub kind: SystemActionKind,
+    pub account_id: Id,
+    #[serde(deserialize_with = "nullable")]
+    pub calendar_id: Option<Id>,
+    #[serde(deserialize_with = "nullable")]
+    pub event_id: Option<ProviderRef>,
+}
+
+/// The prover that decided a system proof.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ProverKind {
+    Isabelle,
+    Synthetic,
+}
+
+/// `owner#/$defs/system_proof_report`: the record of one proof of an action the broker took
+/// itself for a request: a read to look at an event, a reconciliation, a calendar list. It
+/// holds no calendar content.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SystemProofReport {
+    pub proof_id: Id,
+    pub action: SystemAction,
+    pub outcome: ProofOutcome,
+    pub prover_kind: ProverKind,
+    pub recorded_at: Timestamp,
+}
+
+/// What a release gave the agent (`owner#/$defs/release_record.kind`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ReleaseKind {
+    Calendars,
+    Availability,
+    Events,
+    Effect,
+}
+
+/// `owner#/$defs/release_record`: one release of a result to the agent, under its own proof.
+/// `request_id` is the request that asked for the release.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ReleaseRecord {
+    pub release_id: Id,
+    pub request_id: Id,
+    pub kind: ReleaseKind,
+    pub proof_id: Id,
+    pub grant_ids: List<Id, 0, 50, true>,
+    pub released_at: Timestamp,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum AttemptOutcome {
@@ -1280,6 +1419,19 @@ pub struct RequestDetails {
     /// when the broker did not record why.
     #[serde(deserialize_with = "nullable")]
     pub undecided_reason: Option<UndecidedReason>,
+    #[serde(deserialize_with = "nullable")]
+    pub notification: Option<Notification>,
+    pub system_proofs: List<SystemProofReport, 0, 200, false>,
+    pub releases: List<ReleaseRecord, 0, 200, false>,
+}
+
+/// Whether the attendees were notified of a change (`owner#/$defs/request_details.notification`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Notification {
+    Sent,
+    NotRequested,
+    Unknown,
 }
 
 /// `owner#/$defs/snapshot`: the broker's state at one cursor (README section 14).
@@ -1290,6 +1442,7 @@ pub struct Snapshot {
     pub health: Health,
     pub profiles: Profiles,
     pub accounts: AnyList<Account>,
+    pub provider_accounts: AnyList<ProviderAccount>,
     pub agents: AnyList<Agent>,
     pub recipient_sets: AnyList<RecipientSet>,
     pub preferences: Preferences,
@@ -1301,6 +1454,7 @@ pub struct Snapshot {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Change {
     Account(Account),
+    ProviderAccount(ProviderAccount),
     Agent(Agent),
     Profiles(Profiles),
     RecipientSet(RecipientSet),
@@ -1318,6 +1472,7 @@ impl Change {
     pub const fn kind(&self) -> &'static str {
         match self {
             Change::Account(_) => "account",
+            Change::ProviderAccount(_) => "provider_account",
             Change::Agent(_) => "agent",
             Change::Profiles(_) => "profiles",
             Change::RecipientSet(_) => "recipient_set",
@@ -1336,6 +1491,7 @@ impl Serialize for Change {
         let kind = self.kind();
         let body = match self {
             Change::Account(v) => json!({ "account": v }),
+            Change::ProviderAccount(v) => json!({ "provider_account": v }),
             Change::Agent(v) => json!({ "agent": v }),
             Change::Profiles(v) => json!({ "profiles": v }),
             Change::RecipientSet(v) => json!({ "recipient_set": v }),
@@ -1356,6 +1512,9 @@ impl<'de> Deserialize<'de> for Change {
         let mut member = |name| tagged::take::<D::Error>(&mut rest, name);
         let change = match kind.as_str() {
             "account" => Change::Account(tagged::read(member("account")?)?),
+            "provider_account" => {
+                Change::ProviderAccount(tagged::read(member("provider_account")?)?)
+            }
             "agent" => Change::Agent(tagged::read(member("agent")?)?),
             "profiles" => Change::Profiles(tagged::read(member("profiles")?)?),
             "recipient_set" => Change::RecipientSet(tagged::read(member("recipient_set")?)?),
@@ -1847,7 +2006,7 @@ pub struct DisconnectGoogleResult {
 pub struct SelectCalendarsParams {
     pub account_id: Id,
     pub expected_revision: Count,
-    pub selected: List<Id, 0, 200, true>,
+    pub selected: List<Id, 0, 250, true>,
     #[serde(deserialize_with = "nullable")]
     pub agent_drafts: Option<Id>,
 }
@@ -1858,6 +2017,21 @@ pub struct SelectCalendarsParams {
 pub struct SelectCalendarsResult {
     pub commit_sequence: PositiveCount,
     pub account: Account,
+}
+
+/// `owner#/$defs/params_refresh_calendars`: asks the broker to list one account's calendars
+/// again. The list arrives later, as changes of the account.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct RefreshCalendarsParams {
+    pub account_id: Id,
+}
+
+/// `owner#/$defs/result_refresh_calendars`.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct RefreshCalendarsResult {
+    pub commit_sequence: PositiveCount,
 }
 
 /// The owner's statement in `resolve_outcome`: the change is at Google, or it is not.
@@ -1922,12 +2096,14 @@ pub struct ApproveAgentParams {
     pub pairing_code: PairingCode,
 }
 
-/// `owner#/$defs/result_approve_agent`.
+/// `owner#/$defs/result_approve_agent`. `grant` is the calendar list grant made in the same
+/// commit.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ApproveAgentResult {
     pub commit_sequence: PositiveCount,
     pub agent: Agent,
+    pub grant: Grant,
 }
 
 /// `owner#/$defs/params_remove_agent`: removes an agent, waiting or approved. Ends its
@@ -2010,6 +2186,7 @@ pub enum OwnerMethod {
     Subscribe,
     DisconnectGoogle,
     SelectCalendars,
+    RefreshCalendars,
     ResolveOutcome,
     AddAgent,
     ApproveAgent,
@@ -2020,7 +2197,7 @@ pub enum OwnerMethod {
 
 impl OwnerMethod {
     /// Every method, in the order of `data/owner-methods.json`.
-    pub const ALL: [OwnerMethod; 20] = [
+    pub const ALL: [OwnerMethod; 21] = [
         OwnerMethod::Hello,
         OwnerMethod::GetSnapshot,
         OwnerMethod::ConnectGoogle,
@@ -2035,6 +2212,7 @@ impl OwnerMethod {
         OwnerMethod::Subscribe,
         OwnerMethod::DisconnectGoogle,
         OwnerMethod::SelectCalendars,
+        OwnerMethod::RefreshCalendars,
         OwnerMethod::ResolveOutcome,
         OwnerMethod::AddAgent,
         OwnerMethod::ApproveAgent,
@@ -2060,6 +2238,7 @@ impl OwnerMethod {
             OwnerMethod::Subscribe => "subscribe",
             OwnerMethod::DisconnectGoogle => "disconnect_google",
             OwnerMethod::SelectCalendars => "select_calendars",
+            OwnerMethod::RefreshCalendars => "refresh_calendars",
             OwnerMethod::ResolveOutcome => "resolve_outcome",
             OwnerMethod::AddAgent => "add_agent",
             OwnerMethod::ApproveAgent => "approve_agent",
@@ -2089,6 +2268,7 @@ impl OwnerMethod {
                 | OwnerMethod::RevokeGrant
                 | OwnerMethod::DisconnectGoogle
                 | OwnerMethod::SelectCalendars
+                | OwnerMethod::RefreshCalendars
                 | OwnerMethod::ResolveOutcome
                 | OwnerMethod::AddAgent
                 | OwnerMethod::ApproveAgent
@@ -2114,6 +2294,7 @@ impl OwnerMethod {
             OwnerMethod::Subscribe => "params_subscribe",
             OwnerMethod::DisconnectGoogle => "params_disconnect_google",
             OwnerMethod::SelectCalendars => "params_select_calendars",
+            OwnerMethod::RefreshCalendars => "params_refresh_calendars",
             OwnerMethod::ResolveOutcome => "params_resolve_outcome",
             OwnerMethod::AddAgent => "params_add_agent",
             OwnerMethod::ApproveAgent => "params_approve_agent",
@@ -2141,6 +2322,7 @@ impl OwnerMethod {
             OwnerMethod::Subscribe => "result_subscribe",
             OwnerMethod::DisconnectGoogle => "result_disconnect_google",
             OwnerMethod::SelectCalendars => "result_select_calendars",
+            OwnerMethod::RefreshCalendars => "result_refresh_calendars",
             OwnerMethod::ResolveOutcome => "result_resolve_outcome",
             OwnerMethod::AddAgent => "result_add_agent",
             OwnerMethod::ApproveAgent => "result_approve_agent",
@@ -2168,6 +2350,7 @@ pub enum OwnerCall {
     Subscribe(SubscribeParams),
     DisconnectGoogle(DisconnectGoogleParams),
     SelectCalendars(SelectCalendarsParams),
+    RefreshCalendars(RefreshCalendarsParams),
     ResolveOutcome(ResolveOutcomeParams),
     AddAgent(AddAgentParams),
     ApproveAgent(ApproveAgentParams),
@@ -2194,6 +2377,7 @@ impl OwnerCall {
             OwnerCall::Subscribe(_) => OwnerMethod::Subscribe,
             OwnerCall::DisconnectGoogle(_) => OwnerMethod::DisconnectGoogle,
             OwnerCall::SelectCalendars(_) => OwnerMethod::SelectCalendars,
+            OwnerCall::RefreshCalendars(_) => OwnerMethod::RefreshCalendars,
             OwnerCall::ResolveOutcome(_) => OwnerMethod::ResolveOutcome,
             OwnerCall::AddAgent(_) => OwnerMethod::AddAgent,
             OwnerCall::ApproveAgent(_) => OwnerMethod::ApproveAgent,
@@ -2220,6 +2404,7 @@ impl OwnerCall {
             OwnerCall::Subscribe(p) => to_value(p),
             OwnerCall::DisconnectGoogle(p) => to_value(p),
             OwnerCall::SelectCalendars(p) => to_value(p),
+            OwnerCall::RefreshCalendars(p) => to_value(p),
             OwnerCall::ResolveOutcome(p) => to_value(p),
             OwnerCall::AddAgent(p) => to_value(p),
             OwnerCall::ApproveAgent(p) => to_value(p),
@@ -2246,6 +2431,7 @@ impl OwnerCall {
             OwnerMethod::Subscribe => OwnerCall::Subscribe(read(params)?),
             OwnerMethod::DisconnectGoogle => OwnerCall::DisconnectGoogle(read(params)?),
             OwnerMethod::SelectCalendars => OwnerCall::SelectCalendars(read(params)?),
+            OwnerMethod::RefreshCalendars => OwnerCall::RefreshCalendars(read(params)?),
             OwnerMethod::ResolveOutcome => OwnerCall::ResolveOutcome(read(params)?),
             OwnerMethod::AddAgent => OwnerCall::AddAgent(read(params)?),
             OwnerMethod::ApproveAgent => OwnerCall::ApproveAgent(read(params)?),
@@ -2324,6 +2510,7 @@ pub enum OwnerResult {
     Subscribe(SubscribeResult),
     DisconnectGoogle(DisconnectGoogleResult),
     SelectCalendars(SelectCalendarsResult),
+    RefreshCalendars(RefreshCalendarsResult),
     ResolveOutcome(ResolveOutcomeResult),
     AddAgent(AddAgentResult),
     ApproveAgent(ApproveAgentResult),
@@ -2350,6 +2537,7 @@ impl OwnerResult {
             OwnerResult::Subscribe(_) => OwnerMethod::Subscribe,
             OwnerResult::DisconnectGoogle(_) => OwnerMethod::DisconnectGoogle,
             OwnerResult::SelectCalendars(_) => OwnerMethod::SelectCalendars,
+            OwnerResult::RefreshCalendars(_) => OwnerMethod::RefreshCalendars,
             OwnerResult::ResolveOutcome(_) => OwnerMethod::ResolveOutcome,
             OwnerResult::AddAgent(_) => OwnerMethod::AddAgent,
             OwnerResult::ApproveAgent(_) => OwnerMethod::ApproveAgent,
@@ -2376,6 +2564,7 @@ impl OwnerResult {
             OwnerResult::Subscribe(r) => to_value(r),
             OwnerResult::DisconnectGoogle(r) => to_value(r),
             OwnerResult::SelectCalendars(r) => to_value(r),
+            OwnerResult::RefreshCalendars(r) => to_value(r),
             OwnerResult::ResolveOutcome(r) => to_value(r),
             OwnerResult::AddAgent(r) => to_value(r),
             OwnerResult::ApproveAgent(r) => to_value(r),
@@ -2402,6 +2591,7 @@ impl OwnerResult {
             OwnerMethod::Subscribe => OwnerResult::Subscribe(read(result)?),
             OwnerMethod::DisconnectGoogle => OwnerResult::DisconnectGoogle(read(result)?),
             OwnerMethod::SelectCalendars => OwnerResult::SelectCalendars(read(result)?),
+            OwnerMethod::RefreshCalendars => OwnerResult::RefreshCalendars(read(result)?),
             OwnerMethod::ResolveOutcome => OwnerResult::ResolveOutcome(read(result)?),
             OwnerMethod::AddAgent => OwnerResult::AddAgent(read(result)?),
             OwnerMethod::ApproveAgent => OwnerResult::ApproveAgent(read(result)?),

@@ -324,7 +324,8 @@
             "session_disconnected",
             "session_idle_timeout",
             "app_quit",
-            "broker_restart"
+            "broker_restart",
+            "result_expired"
           ]
         }
       },
@@ -438,7 +439,7 @@
       "additionalProperties": false
     },
     "agent": {
-      "description": "An agent the owner added. `enrollment` says whether it waits for the owner's approval, is approved, or was removed. `pairing_code` is the code of the key the agent proved, and null until it has proved one.",
+      "description": "An agent the owner added. `enrollment` says whether it waits for the owner's approval, is approved, or was removed. `pairing_code` is the code of the key the agent proved, and null until it has proved one. `added_at` is null only in an answer that a broker stored under schema version 2 and gives again.",
       "type": "object",
       "properties": {
         "agent_id": { "$ref": "common.schema.json#/$defs/id" },
@@ -447,7 +448,7 @@
         "destination": { "$ref": "#/$defs/destination" },
         "enrollment": { "enum": ["pending", "approved", "removed"] },
         "pairing_code": { "oneOf": [{ "type": "null" }, { "$ref": "common.schema.json#/$defs/pairing_code" }] },
-        "added_at": { "$ref": "common.schema.json#/$defs/timestamp" },
+        "added_at": { "$ref": "common.schema.json#/$defs/nullable_timestamp" },
         "key_proven_at": { "$ref": "common.schema.json#/$defs/nullable_timestamp" },
         "approved_at": { "$ref": "common.schema.json#/$defs/nullable_timestamp" },
         "removed_at": { "$ref": "common.schema.json#/$defs/nullable_timestamp" },
@@ -511,15 +512,63 @@
       "required": ["account_id", "revision", "state", "email", "calendars"],
       "additionalProperties": false
     },
+    "provider_account": {
+      "description": "What the broker knows about an account's connection to Google beyond its state: why the last attempt to connect ended, which permission a partial grant lacked (Google's name of the scope), when the connection is due to end, and whether Google confirmed a revocation. Owner only.",
+      "type": "object",
+      "properties": {
+        "account_id": { "$ref": "common.schema.json#/$defs/id" },
+        "last_connect_problem": {
+          "oneOf": [
+            { "type": "null" },
+            {
+              "enum": [
+                "timed_out",
+                "superseded",
+                "browser_not_opened",
+                "google_error",
+                "client_rejected",
+                "network",
+                "identity_check_failed",
+                "unexpected_scope",
+                "no_refresh_token",
+                "token_store",
+                "already_an_account"
+              ]
+            }
+          ]
+        },
+        "missing_scope": { "oneOf": [{ "type": "null" }, { "type": "string", "minLength": 1, "maxLength": 200 }] },
+        "refresh_token_ends_at": { "$ref": "common.schema.json#/$defs/nullable_timestamp" },
+        "revocation": { "enum": ["not_requested", "pending", "revoked", "not_confirmed"] }
+      },
+      "required": ["account_id", "last_connect_problem", "missing_scope", "refresh_token_ends_at", "revocation"],
+      "additionalProperties": false
+    },
     "health": {
-      "description": "The state of the rule prover and of the store. prover_problem is null while the prover is ready or starting; while it is unavailable it names the cause, or is null when the broker does not know it.",
+      "description": "The state of the rule prover and of the store. prover_problem is null while the prover is ready or starting; while it is unavailable it names the cause, or is null when the broker does not know it. agent_channel says whether agents can connect; while it is not_listening, agent_channel_problem names the cause, or is null when there is none to name.",
       "type": "object",
       "properties": {
         "prover": { "enum": ["ready", "starting", "unavailable"] },
         "prover_problem": { "oneOf": [{ "type": "null" }, { "$ref": "#/$defs/prover_problem" }] },
-        "store": { "enum": ["ready", "locked", "keychain_refused"] }
+        "store": { "enum": ["ready", "locked", "keychain_refused"] },
+        "agent_channel": { "enum": ["listening", "not_listening"] },
+        "agent_channel_problem": {
+          "oneOf": [
+            { "type": "null" },
+            {
+              "enum": [
+                "path_too_long",
+                "run_dir_unsafe",
+                "run_dir_owner",
+                "stale_not_socket",
+                "socket_mode",
+                "bind_failed"
+              ]
+            }
+          ]
+        }
       },
-      "required": ["prover", "prover_problem", "store"],
+      "required": ["prover", "prover_problem", "store", "agent_channel", "agent_channel_problem"],
       "additionalProperties": false
     },
     "prover_problem": {
@@ -835,6 +884,48 @@
       ],
       "additionalProperties": false
     },
+    "system_proof_report": {
+      "description": "The record of one proof of an action the broker took itself for this request: a read to look at an event, a reconciliation, a calendar list. It holds no calendar content.",
+      "type": "object",
+      "properties": {
+        "proof_id": { "$ref": "common.schema.json#/$defs/id" },
+        "action": {
+          "type": "object",
+          "properties": {
+            "kind": { "enum": ["refresh", "reconcile", "list_calendars"] },
+            "account_id": { "$ref": "common.schema.json#/$defs/id" },
+            "calendar_id": { "$ref": "common.schema.json#/$defs/nullable_id" },
+            "event_id": { "oneOf": [{ "type": "null" }, { "$ref": "common.schema.json#/$defs/provider_ref" }] }
+          },
+          "required": ["kind", "account_id", "calendar_id", "event_id"],
+          "additionalProperties": false
+        },
+        "outcome": { "enum": ["permit", "need_approval", "block", "undecided"] },
+        "prover_kind": { "enum": ["isabelle", "synthetic"] },
+        "recorded_at": { "$ref": "common.schema.json#/$defs/timestamp" }
+      },
+      "required": ["proof_id", "action", "outcome", "prover_kind", "recorded_at"],
+      "additionalProperties": false
+    },
+    "release_record": {
+      "description": "One release of a result to the agent, under its own proof. `request_id` is the request that asked for the release.",
+      "type": "object",
+      "properties": {
+        "release_id": { "$ref": "common.schema.json#/$defs/id" },
+        "request_id": { "$ref": "common.schema.json#/$defs/id" },
+        "kind": { "enum": ["calendars", "availability", "events", "effect"] },
+        "proof_id": { "$ref": "common.schema.json#/$defs/id" },
+        "grant_ids": {
+          "type": "array",
+          "items": { "$ref": "common.schema.json#/$defs/id" },
+          "uniqueItems": true,
+          "maxItems": 50
+        },
+        "released_at": { "$ref": "common.schema.json#/$defs/timestamp" }
+      },
+      "required": ["release_id", "request_id", "kind", "proof_id", "grant_ids", "released_at"],
+      "additionalProperties": false
+    },
     "attempt": {
       "description": "One dispatch to the provider. Each has its own fresh proof.",
       "type": "object",
@@ -903,7 +994,10 @@
         "undecided_reason": {
           "description": "Why no proof decided the request. Null unless the request is undecided, and null there when the broker did not record why.",
           "oneOf": [{ "type": "null" }, { "$ref": "common.schema.json#/$defs/undecided_reason" }]
-        }
+        },
+        "notification": { "oneOf": [{ "type": "null" }, { "enum": ["sent", "not_requested", "unknown"] }] },
+        "system_proofs": { "type": "array", "items": { "$ref": "#/$defs/system_proof_report" }, "maxItems": 200 },
+        "releases": { "type": "array", "items": { "$ref": "#/$defs/release_record" }, "maxItems": 200 }
       },
       "required": [
         "request",
@@ -915,7 +1009,10 @@
         "authorization",
         "attempts",
         "provider_event",
-        "undecided_reason"
+        "undecided_reason",
+        "notification",
+        "system_proofs",
+        "releases"
       ],
       "additionalProperties": false
     },
@@ -928,6 +1025,7 @@
         "health": { "$ref": "#/$defs/health" },
         "profiles": { "$ref": "#/$defs/profiles" },
         "accounts": { "type": "array", "items": { "$ref": "#/$defs/account" } },
+        "provider_accounts": { "type": "array", "items": { "$ref": "#/$defs/provider_account" } },
         "agents": { "type": "array", "items": { "$ref": "#/$defs/agent" } },
         "recipient_sets": { "type": "array", "items": { "$ref": "#/$defs/recipient_set" } },
         "preferences": { "$ref": "#/$defs/preferences" },
@@ -939,6 +1037,7 @@
         "health",
         "profiles",
         "accounts",
+        "provider_accounts",
         "agents",
         "recipient_sets",
         "preferences",
@@ -954,6 +1053,15 @@
           "type": "object",
           "properties": { "kind": { "const": "account" }, "account": { "$ref": "#/$defs/account" } },
           "required": ["kind", "account"],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": { "const": "provider_account" },
+            "provider_account": { "$ref": "#/$defs/provider_account" }
+          },
+          "required": ["kind", "provider_account"],
           "additionalProperties": false
         },
         {
@@ -1358,7 +1466,7 @@
         "selected": {
           "type": "array",
           "items": { "$ref": "common.schema.json#/$defs/id" },
-          "maxItems": 200,
+          "maxItems": 250,
           "uniqueItems": true
         },
         "agent_drafts": { "$ref": "common.schema.json#/$defs/nullable_id" }
@@ -1373,6 +1481,23 @@
         "account": { "$ref": "#/$defs/account" }
       },
       "required": ["commit_sequence", "account"],
+      "additionalProperties": false
+    },
+    "params_refresh_calendars": {
+      "description": "Asks the broker to list one account's calendars again. The list arrives later, as changes of the account.",
+      "type": "object",
+      "properties": {
+        "account_id": { "$ref": "common.schema.json#/$defs/id" }
+      },
+      "required": ["account_id"],
+      "additionalProperties": false
+    },
+    "result_refresh_calendars": {
+      "type": "object",
+      "properties": {
+        "commit_sequence": { "$ref": "common.schema.json#/$defs/positive_count" }
+      },
+      "required": ["commit_sequence"],
       "additionalProperties": false
     },
     "params_resolve_outcome": {
@@ -1426,12 +1551,14 @@
       "additionalProperties": false
     },
     "result_approve_agent": {
+      "description": "`grant` is the calendar list grant made in the same commit.",
       "type": "object",
       "properties": {
         "commit_sequence": { "$ref": "common.schema.json#/$defs/positive_count" },
-        "agent": { "$ref": "#/$defs/agent" }
+        "agent": { "$ref": "#/$defs/agent" },
+        "grant": { "$ref": "#/$defs/grant" }
       },
-      "required": ["commit_sequence", "agent"],
+      "required": ["commit_sequence", "agent", "grant"],
       "additionalProperties": false
     },
     "params_remove_agent": {
@@ -1672,6 +1799,17 @@
           "properties": {
             "protocol": { "$ref": "common.schema.json#/$defs/protocol" },
             "id": { "$ref": "common.schema.json#/$defs/id" },
+            "method": { "const": "refresh_calendars" },
+            "params": { "$ref": "#/$defs/params_refresh_calendars" }
+          },
+          "required": ["protocol", "id", "method", "params"],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "protocol": { "$ref": "common.schema.json#/$defs/protocol" },
+            "id": { "$ref": "common.schema.json#/$defs/id" },
             "method": { "const": "resolve_outcome" },
             "params": { "$ref": "#/$defs/params_resolve_outcome" }
           },
@@ -1888,6 +2026,17 @@
             "id": { "$ref": "common.schema.json#/$defs/id" },
             "method": { "const": "select_calendars" },
             "result": { "$ref": "#/$defs/result_select_calendars" }
+          },
+          "required": ["protocol", "id", "method", "result"],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "protocol": { "$ref": "common.schema.json#/$defs/protocol" },
+            "id": { "$ref": "common.schema.json#/$defs/id" },
+            "method": { "const": "refresh_calendars" },
+            "result": { "$ref": "#/$defs/result_refresh_calendars" }
           },
           "required": ["protocol", "id", "method", "result"],
           "additionalProperties": false

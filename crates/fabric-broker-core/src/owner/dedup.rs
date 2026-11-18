@@ -14,7 +14,7 @@ use fabric_desktop_contracts::owner::{
     OwnerCall, OwnerMethod, OwnerNotice, OwnerRequest, OwnerResult,
 };
 use fabric_desktop_contracts::scalar::{Digest, Id};
-use fabric_desktop_contracts::{Entry, Frame, decode};
+use fabric_desktop_contracts::{Frame, decode_stored_owner_response};
 use fabric_storage::{
     Actor, AuditEntry, CommandRow, IdempotencyScope, Mutation, OpMeta, StoreFault, TxError, WriteTx,
 };
@@ -46,6 +46,7 @@ fn operation_type(method: OwnerMethod) -> Option<&'static str> {
         | OwnerMethod::Subscribe
         // not implemented in this build (contract schema version 3)
         | OwnerMethod::SelectCalendars
+        | OwnerMethod::RefreshCalendars
         | OwnerMethod::ResolveOutcome
         | OwnerMethod::AddAgent
         | OwnerMethod::ApproveAgent
@@ -104,6 +105,7 @@ fn execute(
         | OwnerCall::Subscribe(_)
         // not implemented in this build (contract schema version 3): answered before dedup
         | OwnerCall::SelectCalendars(_)
+        | OwnerCall::RefreshCalendars(_)
         | OwnerCall::ResolveOutcome(_)
         | OwnerCall::AddAgent(_)
         | OwnerCall::ApproveAgent(_)
@@ -136,7 +138,7 @@ fn store_answer(
 
 /// The stored answer of a command, as a frame again.
 fn stored_frame(answer: &str) -> Result<Frame, StoreFault> {
-    decode(Entry::OwnerResponse, answer.as_bytes()).map_err(|_| StoreFault::Decode {
+    decode_stored_owner_response(answer.as_bytes()).map_err(|_| StoreFault::Decode {
         table: "commands",
         column: "answer",
     })
@@ -200,5 +202,30 @@ pub(crate) fn command(
                 Err(TxError::Refused(never)) => match never {},
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use fabric_desktop_contracts::owner::{AgentEnrollment, OwnerResponse};
+
+    use super::*;
+
+    /// An answer to `pause_agent` as a schema version 2 broker stored it.
+    const VERSION_2_PAUSE_AGENT: &str = r#"{"id":"command-47","method":"pause_agent","protocol":"fabric-desktop/1","result":{"agents":[{"agent_id":"agent-claude-code","destination":{"kind":"cloud","processor":"Anthropic"},"last_tool_call_at":"2026-11-20T15:12:41.503Z","paused":true,"registered_name":"Claude Code","revision":6,"session":{"last_active_at":"2026-11-20T15:12:41.503Z","session_id":"session-claude-code-7","started_at":"2026-11-20T14:00:00.000Z"}}],"commit_sequence":1295}}"#;
+
+    #[test]
+    fn a_pause_agent_answer_stored_under_schema_version_2_is_given_again() {
+        let Ok(Frame::OwnerResponse(OwnerResponse::Result {
+            result: OwnerResult::PauseAgent(result),
+            ..
+        })) = stored_frame(VERSION_2_PAUSE_AGENT)
+        else {
+            panic!("the stored answer does not read back as a pause_agent answer");
+        };
+        let agent = result.agents.iter().next().expect("one agent");
+        assert_eq!(agent.enrollment, AgentEnrollment::Approved);
+        assert_eq!(agent.added_at, None);
+        assert_eq!(agent.pairing_code, None);
     }
 }

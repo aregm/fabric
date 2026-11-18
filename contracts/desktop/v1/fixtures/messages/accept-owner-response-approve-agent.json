@@ -24,12 +24,42 @@
         "paused": false,
         "session": null,
         "last_tool_call_at": null
+      },
+      "grant": {
+        "grant_id": "grant-31",
+        "revision": 1,
+        "agent_id": "agent-0123456789abcdef0123456789abcdef",
+        "purpose": "List the calendars this agent may ask about.",
+        "tools": [
+          "fabric_calendar_list"
+        ],
+        "scope": {
+          "calendars": [],
+          "window": null,
+          "fields": null,
+          "recipients": null,
+          "send_updates": null
+        },
+        "term": {
+          "kind": "until_revoked",
+          "expires_at": null
+        },
+        "origin": {
+          "enrollment_id": "agent-0123456789abcdef0123456789abcdef"
+        },
+        "policy": {
+          "profile_id": "careful",
+          "version": 1
+        },
+        "revocation_epoch": 0,
+        "created_at": "2026-11-20T16:05:40.000Z",
+        "ended": null
       }
     }
   },
   "expect": {
     "verdict": "accept",
-    "canonical": "{\"id\":\"command-82\",\"method\":\"approve_agent\",\"protocol\":\"fabric-desktop/1\",\"result\":{\"agent\":{\"added_at\":\"2026-11-20T16:00:00.000Z\",\"agent_id\":\"agent-0123456789abcdef0123456789abcdef\",\"approved_at\":\"2026-11-20T16:05:40.000Z\",\"destination\":{\"kind\":\"cloud\",\"processor\":\"Anthropic\"},\"enrollment\":\"approved\",\"key_proven_at\":\"2026-11-20T16:03:12.000Z\",\"last_tool_call_at\":null,\"pairing_code\":\"4E7A-9852-EC06\",\"paused\":false,\"registered_name\":\"Claude Code (calendar folder)\",\"removed_at\":null,\"revision\":3,\"session\":null},\"commit_sequence\":1312}}",
+    "canonical": "{\"id\":\"command-82\",\"method\":\"approve_agent\",\"protocol\":\"fabric-desktop/1\",\"result\":{\"agent\":{\"added_at\":\"2026-11-20T16:00:00.000Z\",\"agent_id\":\"agent-0123456789abcdef0123456789abcdef\",\"approved_at\":\"2026-11-20T16:05:40.000Z\",\"destination\":{\"kind\":\"cloud\",\"processor\":\"Anthropic\"},\"enrollment\":\"approved\",\"key_proven_at\":\"2026-11-20T16:03:12.000Z\",\"last_tool_call_at\":null,\"pairing_code\":\"4E7A-9852-EC06\",\"paused\":false,\"registered_name\":\"Claude Code (calendar folder)\",\"removed_at\":null,\"revision\":3,\"session\":null},\"commit_sequence\":1312,\"grant\":{\"agent_id\":\"agent-0123456789abcdef0123456789abcdef\",\"created_at\":\"2026-11-20T16:05:40.000Z\",\"ended\":null,\"grant_id\":\"grant-31\",\"origin\":{\"enrollment_id\":\"agent-0123456789abcdef0123456789abcdef\"},\"policy\":{\"profile_id\":\"careful\",\"version\":1},\"purpose\":\"List the calendars this agent may ask about.\",\"revision\":1,\"revocation_epoch\":0,\"scope\":{\"calendars\":[],\"fields\":null,\"recipients\":null,\"send_updates\":null,\"window\":null},\"term\":{\"expires_at\":null,\"kind\":\"until_revoked\"},\"tools\":[\"fabric_calendar_list\"]}}}",
     "command_digest": null,
     "action_digest": null
   }

@@ -149,7 +149,7 @@ test("an undecided request is read redacted for its recorded reason, and its row
 
 test("an undecided request without a recorded reason has no reason line, also while the rule checker is not running, and is not asked again", () => {
   const { host, model, review, notice } = live();
-  notice({ kind: "health", health: { prover: "unavailable", prover_problem: null, store: "ready" } });
+  notice({ kind: "health", health: { prover: "unavailable", prover_problem: null, store: "ready", agent_channel: "listening", agent_channel_problem: null } });
   const d = UNDECIDED("reason-unknown");
   notice({ kind: "request", request: d.request });
   host.reply("get_request_details", d);

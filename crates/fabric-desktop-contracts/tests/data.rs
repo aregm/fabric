@@ -9,12 +9,12 @@ use fabric_desktop_contracts::common::ToolName;
 use fabric_desktop_contracts::error::ErrorCode;
 use fabric_desktop_contracts::handshake::HANDSHAKE_METHODS;
 use fabric_desktop_contracts::owner::{
-    AgentClient, AgentEnrollment, BuiltInProfile, Mode, OwnerMethod, PolicyRow,
+    AgentClient, AgentEnrollment, BuiltInProfile, Destination, Mode, OwnerMethod, PolicyRow,
 };
 use fabric_desktop_contracts::suite::read_json;
 use fabric_desktop_contracts::{
     AUTHORIZATION_LIFETIME_SECONDS, AUTHORIZATION_PROFILE, Limits, PROTOCOL, PlainRequestState,
-    RequestState, SCHEMA_VERSION, canonical, encode,
+    RequestState, SCHEMA_VERSION, canonical, decode_record, encode, typed,
 };
 use serde_json::Value;
 
@@ -156,6 +156,23 @@ fn agent_enrollments_and_clients_match_the_schema() {
     .map(|c| encode(c).trim_matches('"').to_owned())
     .collect();
     assert_eq!(rust, names(&client["enum"]));
+}
+
+#[test]
+fn agent_clients_are_the_add_agent_clients_with_valid_destinations() {
+    let file = data("agent-clients.json");
+    let clients = file["clients"].as_array().unwrap();
+    let schema =
+        schema_def("owner-channel.schema.json#/$defs/params_add_agent/properties/client").unwrap();
+    let named: Vec<Value> = clients.iter().map(|e| e["client"].clone()).collect();
+    assert_eq!(&named, schema["enum"].as_array().unwrap());
+    for entry in clients {
+        let client: AgentClient = typed::from_value(&entry["client"]).unwrap();
+        assert_eq!(encode(&client), canonical(&entry["client"]));
+        let destination: Destination =
+            decode_record(canonical(&entry["destination"]).as_bytes()).unwrap();
+        assert_eq!(encode(&destination), canonical(&entry["destination"]));
+    }
 }
 
 #[test]

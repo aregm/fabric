@@ -1,0 +1,35 @@
+{
+  "description": "An approve_agent answer without the grant made in the same commit.",
+  "schema": "owner-channel.schema.json#/$defs/owner_response",
+  "value": {
+    "protocol": "fabric-desktop/1",
+    "id": "command-82",
+    "method": "approve_agent",
+    "result": {
+      "commit_sequence": 1312,
+      "agent": {
+        "agent_id": "agent-0123456789abcdef0123456789abcdef",
+        "revision": 3,
+        "registered_name": "Claude Code (calendar folder)",
+        "destination": {
+          "kind": "cloud",
+          "processor": "Anthropic"
+        },
+        "enrollment": "approved",
+        "pairing_code": "4E7A-9852-EC06",
+        "added_at": "2026-11-20T16:00:00.000Z",
+        "key_proven_at": "2026-11-20T16:03:12.000Z",
+        "approved_at": "2026-11-20T16:05:40.000Z",
+        "removed_at": null,
+        "paused": false,
+        "session": null,
+        "last_tool_call_at": null
+      }
+    }
+  },
+  "expect": {
+    "verdict": "reject",
+    "layer": "schema",
+    "error": "invalid_params"
+  }
+}

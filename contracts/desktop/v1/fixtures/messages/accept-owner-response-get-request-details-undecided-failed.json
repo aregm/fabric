@@ -27,12 +27,15 @@
       "authorization": null,
       "attempts": [],
       "provider_event": null,
-      "undecided_reason": "failed"
+      "undecided_reason": "failed",
+      "notification": null,
+      "system_proofs": [],
+      "releases": []
     }
   },
   "expect": {
     "verdict": "accept",
-    "canonical": "{\"id\":\"details-30\",\"method\":\"get_request_details\",\"protocol\":\"fabric-desktop/1\",\"result\":{\"approval\":null,\"attempts\":[],\"authorization\":null,\"card\":null,\"private\":null,\"proof_ids\":[],\"provider_event\":null,\"redaction\":\"redacted\",\"request\":{\"account_id\":\"acct-1\",\"agent_id\":\"agent-claude-desktop\",\"received_at\":\"2026-11-20T17:00:00.000Z\",\"request_digest\":\"sha256:9911dcca0cc270f88cbd3b82afc1ffe5c0dc4f41b2c3efc9398967d0c6740a56\",\"request_id\":\"request-30\",\"revision\":3,\"status\":{\"state\":\"undecided\"},\"tool\":\"fabric_calendar_propose_response\",\"updated_at\":\"2026-11-20T17:00:30.000Z\"},\"undecided_reason\":\"failed\"}}",
+    "canonical": "{\"id\":\"details-30\",\"method\":\"get_request_details\",\"protocol\":\"fabric-desktop/1\",\"result\":{\"approval\":null,\"attempts\":[],\"authorization\":null,\"card\":null,\"notification\":null,\"private\":null,\"proof_ids\":[],\"provider_event\":null,\"redaction\":\"redacted\",\"releases\":[],\"request\":{\"account_id\":\"acct-1\",\"agent_id\":\"agent-claude-desktop\",\"received_at\":\"2026-11-20T17:00:00.000Z\",\"request_digest\":\"sha256:9911dcca0cc270f88cbd3b82afc1ffe5c0dc4f41b2c3efc9398967d0c6740a56\",\"request_id\":\"request-30\",\"revision\":3,\"status\":{\"state\":\"undecided\"},\"tool\":\"fabric_calendar_propose_response\",\"updated_at\":\"2026-11-20T17:00:30.000Z\"},\"system_proofs\":[],\"undecided_reason\":\"failed\"}}",
     "command_digest": null,
     "action_digest": null
   }

@@ -1,0 +1,18 @@
+{
+  "description": "refresh_calendars with expected_revision, which it does not take.",
+  "schema": "owner-channel.schema.json#/$defs/owner_request",
+  "value": {
+    "protocol": "fabric-desktop/1",
+    "id": "command-91",
+    "method": "refresh_calendars",
+    "params": {
+      "account_id": "acct-1",
+      "expected_revision": 5
+    }
+  },
+  "expect": {
+    "verdict": "reject",
+    "layer": "schema",
+    "error": "invalid_params"
+  }
+}

@@ -10,7 +10,9 @@
       "health": {
         "prover": "ready",
         "prover_problem": null,
-        "store": "ready"
+        "store": "ready",
+        "agent_channel": "listening",
+        "agent_channel_problem": null
       },
       "profiles": {
         "revision": 7,
@@ -96,6 +98,7 @@
           ]
         }
       ],
+      "provider_accounts": [],
       "agents": [
         {
           "agent_id": "agent-claude-desktop",

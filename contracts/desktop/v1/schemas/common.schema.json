@@ -181,7 +181,7 @@
     },
     "calendar_access": {
       "description": "What the connected account may do in a calendar, as the provider reports it.",
-      "enum": ["owner", "writer", "reader", "free_busy_reader"]
+      "enum": ["owner", "writer", "writer_without_private_access", "reader", "free_busy_reader"]
     },
     "calendar_ref": {
       "description": "One calendar, named together with its account: the same calendar shared into two accounts is two references.",
@@ -320,7 +320,7 @@
     },
     "undecided_reason": {
       "description": "Why no proof decided a request. The meaning of each value is in README section 7.",
-      "enum": ["prover_unavailable", "out_of_time", "failed"]
+      "enum": ["prover_unavailable", "out_of_time", "failed", "provider_unreachable"]
     },
     "busy_limit": {
       "description": "The limit a busy answer names.",
@@ -328,7 +328,8 @@
         "open_requests_total",
         "open_requests_per_agent",
         "requests_per_minute_per_agent",
-        "open_approval_cards_per_agent"
+        "open_approval_cards_per_agent",
+        "sessions_per_minute_per_agent"
       ]
     },
     "nullable_id": {
