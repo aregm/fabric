@@ -6,7 +6,8 @@ use fabric_desktop_contracts::scalar::{AnyList, Id, ProviderRef};
 use serde_json::Value;
 
 use super::{
-    CalendarTarget, EventsQuery, Google, Observed, ReadAnswer, check_effect, check_targets,
+    CalendarTarget, EventsQuery, EventsRead, Google, Observed, ReadAnswer, check_effect,
+    check_targets,
 };
 use crate::http::ids::EventId;
 use crate::http::{BodyBound, Method, Request, Target};
@@ -14,7 +15,8 @@ use crate::outcome::{ReadFailure, ReadKind, Sentence};
 use crate::reconcile::{Effect, ReadBack};
 use crate::secret::Secret;
 use crate::translate::{
-    GoogleEvent, Granted, ObserveError, ViewError, canonical_len, event_view, matches, observation,
+    GoogleEvent, Granted, ObserveError, ViewError, canonical_len, event_span, event_view, matches,
+    observation, occurrence_differs,
 };
 
 /// The most events one read returns (6.4, PD23).
@@ -94,13 +96,19 @@ impl Google {
     /// One item that is not a usable event fails the whole read as Rejected `invalid_arguments`
     /// with the "event cannot be read" sentence; a page that is not an answer at all is
     /// Transient.
+    ///
+    /// Beside the result it gives one [`Span`](super::Span) per event, in the result's order,
+    /// whatever the grant (18.7 point 4): `fields=` always asks for the start and end, and an
+    /// item whose start and end are not both times or both dates fails the read as an
+    /// unusable item. The result shows `time` and `occurrence` only when `time` is granted
+    /// (PD24).
     pub fn read_events(
         &mut self,
         account: &Id,
         query: &EventsQuery,
         deadline_ms: u64,
         still_allowed: &dyn Fn() -> bool,
-    ) -> Result<ToolResult, ReadFailure> {
+    ) -> Result<EventsRead, ReadFailure> {
         if query.targets.is_empty()
             || query.targets.len() > super::freebusy::MAX_FREE_BUSY_CALENDARS
         {
@@ -114,6 +122,7 @@ impl Google {
         let fields = granted.fields_param();
         let token = self.read_token(account, deadline_ms)?;
         let mut events = Vec::new();
+        let mut spans = Vec::new();
         let mut bytes = 0usize;
         for target in &query.targets {
             let mut page_token: Option<String> = None;
@@ -164,11 +173,14 @@ impl Google {
                         Err(ViewError::Bound) => return Err(window_too_large()),
                         Err(ViewError::Shape(_)) => return Err(unreadable()),
                     };
+                    // 18.7 point 4: every event has its span, or the read fails.
+                    let span = event_span(&event).map_err(|_| unreadable())?;
                     // The view and the comma before it; the wrapper is counted at the end.
                     bytes = bytes
                         .saturating_add(canonical_len(&view).unwrap_or(usize::MAX))
                         .saturating_add(usize::from(!events.is_empty()));
                     events.push(view);
+                    spans.push(span);
                     if events.len() > MAX_EVENTS || bytes > MAX_RESULT_BYTES {
                         return Err(window_too_large());
                     }
@@ -192,7 +204,7 @@ impl Google {
         if canonical_len(&result).is_none_or(|len| len > MAX_RESULT_BYTES) {
             return Err(window_too_large());
         }
-        Ok(result)
+        Ok(EventsRead { result, spans })
     }
 
     /// Observes one event (6.5, PO2): `GET` it in the calendar's zone and give the observation
@@ -252,9 +264,7 @@ impl Google {
             EventRead::Event(event) if event.cancelled => Ok(ReadBack::Cancelled),
             EventRead::Event(event) => {
                 let revision = ProviderRef::new(event.etag.as_str()).map_err(|_| unreadable())?;
-                let same_occurrence = ids
-                    .original_start_ms
-                    .is_none_or(|approved| event.original_start_ms() == Some(approved));
+                let same_occurrence = occurrence_differs(&event, ids.original_start_ms).is_none();
                 Ok(ReadBack::Found {
                     revision,
                     matches: same_occurrence && matches(&effect.action, &event, target),

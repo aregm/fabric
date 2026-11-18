@@ -544,3 +544,263 @@ fn g06_a_superseded_reconnect_never_deletes_the_token_of_the_flow_that_supersede
     assert!(rig.fake.log().revocations().is_empty());
     rig.check_log();
 }
+
+/// The access token the cache holds for an account, as text.
+fn cached(rig: &Rig, n: u32) -> Option<String> {
+    rig.cache
+        .get_valid(&account(n), 0, 0)
+        .map(|t| t.expose().to_owned())
+}
+
+/// 18.7 point 5(a): a reconnect held inside its token request is superseded by its generation
+/// (`true`); released, it ends `Superseded`, and the token store and the cache were never
+/// written: the account's earlier token and cached access token stay, nothing is forgotten. A
+/// supersede with another generation answers `false` and changes nothing; a second supersede
+/// of the same flow answers `false`.
+#[test]
+fn a_flow_superseded_by_its_generation_in_its_token_request_writes_nothing() {
+    let rig = Rig::new();
+    rig.connect(1, Decision::allow());
+    let stored = rig.store.token(&account(1)).expect("stored");
+    let access = cached(&rig, 1).expect("cached");
+    let proxy = HoldingProxy::start(rig.fake.port());
+    let flow = rig.flow_through(proxy.port());
+    let (a, a_address) = rig.start_on(&flow, ConnectJob::reconnect(account(1), SUB_A));
+    let generation = a.generation();
+    proxy.hold_next_token_request();
+    let (writes, deletes) = (rig.store.writes(), rig.store.deletes());
+    let cache = &rig.cache;
+    std::thread::scope(|scope| {
+        let mut a_store = rig.store.clone();
+        let waiter = scope.spawn(move || a.wait(&mut a_store, cache));
+        let visit = rig
+            .fake
+            .browser()
+            .visit(a_address.expose(), Decision::allow())
+            .expect("visit");
+        assert_eq!(visit.listener_answer().expect("answered").status, 200);
+        proxy.wait_until_holding();
+
+        assert!(!flow.supersede(generation + 1), "no such flow");
+        assert!(!flow.supersede(generation - 1), "no such flow");
+        assert!(!flow.supersede(0));
+        assert!(!waiter.is_finished());
+        assert!(flow.supersede(generation));
+        assert!(!flow.supersede(generation), "already superseded");
+        assert!(!flow.supersede_latest(), "already superseded");
+
+        proxy.release();
+        wait_until(Duration::from_secs(20), || waiter.is_finished());
+        assert_eq!(
+            waiter.join().expect("A ends"),
+            ConnectOutcome::Cancelled(CancelReason::Superseded)
+        );
+    });
+    assert_eq!(rig.store.writes(), writes, "the store was never written");
+    assert_eq!(rig.store.deletes(), deletes, "nothing was forgotten");
+    assert_eq!(rig.store.token(&account(1)), Some(stored));
+    assert_eq!(cached(&rig, 1), Some(access), "the cache was never written");
+    assert_eq!(rig.token_requests("authorization_code"), 2);
+    rig.check_log();
+}
+
+/// 18.7 point 5(a): `supersede_latest` with no flow started, and after the latest flow ended
+/// `Connected`, answers `false`, and the stored token stays.
+#[test]
+fn supersede_latest_with_no_flow_or_after_a_connected_flow_is_false_and_the_token_stays() {
+    let rig = Rig::new();
+    assert!(!rig.flow.supersede_latest(), "no flow was started");
+    assert!(!rig.flow.supersede(1));
+    let (pending, address) = rig.start(ConnectJob::new_account(account(1), []));
+    let generation = pending.generation();
+    let handle = pending.supersede_handle();
+    let (outcome, _) = rig.finish(pending, &address, Decision::allow());
+    assert!(outcome.is_connected(), "{outcome:?}");
+    let stored = rig.store.token(&account(1)).expect("stored");
+    assert!(!rig.flow.supersede_latest());
+    assert!(!rig.flow.supersede(generation));
+    assert!(!handle.supersede(), "the handle answers the same");
+    assert_eq!(rig.store.token(&account(1)), Some(stored));
+    assert!(cached(&rig, 1).is_some());
+    // A flow that ended without writing has ended too.
+    let (pending, address) = rig.start(ConnectJob::new_account(account(2), []));
+    let (outcome, _) = rig.finish(pending, &address, Decision::deny());
+    assert_eq!(outcome, ConnectOutcome::ConsentDenied);
+    assert!(!rig.flow.supersede_latest());
+    rig.check_log();
+}
+
+/// 18.7 point 5(a): a flow superseded before `wait` (by its generation, by `supersede_latest`
+/// or by its handle) ends `Superseded` at once: no listener is run, no token request reaches
+/// the fake, nothing is written or forgotten. `generation()` rises by one per start, and a
+/// start supersedes the flow before it.
+#[test]
+fn a_flow_superseded_before_wait_ends_at_once_without_a_request() {
+    let rig = Rig::new();
+    rig.connect(1, Decision::allow());
+    let stored = rig.store.token(&account(1)).expect("stored");
+    let (writes, deletes) = (rig.store.writes(), rig.store.deletes());
+    let token_requests = rig.token_requests("authorization_code");
+    for way in 0..3 {
+        let (pending, address) = rig.start(ConnectJob::reconnect(account(1), SUB_A));
+        assert!(pending.port().is_some());
+        let superseded = match way {
+            0 => rig.flow.supersede(pending.generation()),
+            1 => rig.flow.supersede_latest(),
+            _ => pending.supersede_handle().supersede(),
+        };
+        assert!(superseded, "way {way}");
+        let mut store = rig.store.clone();
+        assert_eq!(
+            pending.wait(&mut store, &rig.cache),
+            ConnectOutcome::Cancelled(CancelReason::Superseded),
+            "way {way}"
+        );
+        // The listener is closed: the browser's redirect finds nobody.
+        let visit = rig
+            .fake
+            .browser()
+            .visit(address.expose(), Decision::allow())
+            .expect("visit");
+        assert!(
+            !visit
+                .listener_answer()
+                .is_some_and(|a| a.status == 200 && a.text().contains(PAGE_TEXT)),
+            "way {way}: a superseded flow's listener answered"
+        );
+    }
+    assert_eq!(rig.token_requests("authorization_code"), token_requests);
+    assert_eq!((rig.store.writes(), rig.store.deletes()), (writes, deletes));
+    assert_eq!(rig.store.token(&account(1)), Some(stored));
+
+    // Generations rise by one per start; a start supersedes the flow before it.
+    let (first, _) = rig.start(ConnectJob::new_account(account(5), []));
+    let (second, _) = rig.start(ConnectJob::new_account(account(6), []));
+    let (third, _) = rig.start(ConnectJob::new_account(account(7), []));
+    assert_eq!(second.generation(), first.generation() + 1);
+    assert_eq!(third.generation(), second.generation() + 1);
+    assert!(
+        !rig.flow.supersede(first.generation()),
+        "superseded by the start"
+    );
+    let mut store = rig.store.clone();
+    assert_eq!(
+        first.wait(&mut store, &rig.cache),
+        ConnectOutcome::Cancelled(CancelReason::Superseded)
+    );
+    assert!(rig.flow.supersede(third.generation()));
+    drop((second, third));
+    rig.check_log();
+}
+
+/// A token store whose writes wait until the test releases them, over a [`CountingStore`].
+#[derive(Clone, Default)]
+struct BlockingStore {
+    inner: CountingStore,
+    /// (a write has begun, writes may go on).
+    gate: std::sync::Arc<(std::sync::Mutex<(bool, bool)>, std::sync::Condvar)>,
+}
+
+impl BlockingStore {
+    fn wait_until_writing(&self) {
+        let (state, signal) = &*self.gate;
+        let guard = state.lock().expect("unpoisoned");
+        let (guard, _) = signal
+            .wait_timeout_while(guard, Duration::from_secs(20), |s| !s.0)
+            .expect("unpoisoned");
+        assert!(guard.0, "no write began");
+    }
+
+    fn release(&self) {
+        let (state, signal) = &*self.gate;
+        state.lock().expect("unpoisoned").1 = true;
+        signal.notify_all();
+    }
+}
+
+impl TokenStore for BlockingStore {
+    fn read(
+        &self,
+        account: &fabric_desktop_contracts::scalar::Id,
+    ) -> Result<Option<fabric_google_calendar::Secret>, fabric_google_calendar::TokenStoreError>
+    {
+        self.inner.read(account)
+    }
+    fn write(
+        &mut self,
+        account: &fabric_desktop_contracts::scalar::Id,
+        token: &fabric_google_calendar::Secret,
+    ) -> Result<(), fabric_google_calendar::TokenStoreError> {
+        {
+            let (state, signal) = &*self.gate;
+            let mut guard = state.lock().expect("unpoisoned");
+            guard.0 = true;
+            signal.notify_all();
+            let _ = signal
+                .wait_timeout_while(guard, Duration::from_secs(20), |s| !s.1)
+                .expect("unpoisoned");
+        }
+        self.inner.write(account, token)
+    }
+    fn delete(
+        &mut self,
+        account: &fabric_desktop_contracts::scalar::Id,
+    ) -> Result<(), fabric_google_calendar::TokenStoreError> {
+        self.inner.delete(account)
+    }
+}
+
+/// 18.7 point 5(a), the lock. A supersede called while the flow is inside its write to the
+/// token store waits for the write to finish and answers `false`: the token is stored and the
+/// flow is `Connected`. (The other order, a supersede before the write, answers `true` and
+/// nothing is stored: `a_flow_superseded_by_its_generation_in_its_token_request_writes_nothing`.)
+/// So `true` with a stored token never happens. The supersede is shown blocked for 300 ms
+/// while the write is held; that check cannot fail against a correct lock.
+#[test]
+fn a_supersede_during_the_write_waits_for_it_and_answers_false_with_the_token_stored() {
+    let rig = Rig::new();
+    let store = BlockingStore {
+        inner: rig.store.clone(),
+        ..BlockingStore::default()
+    };
+    let (pending, address) = rig.start(ConnectJob::new_account(account(1), []));
+    let generation = pending.generation();
+    let handle = pending.supersede_handle();
+    let flow = rig.flow.clone();
+    let cache = &rig.cache;
+    std::thread::scope(|scope| {
+        let mut flow_store = store.clone();
+        let waiter = scope.spawn(move || pending.wait(&mut flow_store, cache));
+        let fake = &rig.fake;
+        let visit = scope.spawn(move || {
+            fake.browser()
+                .visit(address.expose(), Decision::allow())
+                .expect("visit")
+        });
+        store.wait_until_writing();
+        let by_generation = scope.spawn(move || flow.supersede(generation));
+        let by_handle = scope.spawn(move || handle.supersede());
+        let held = std::time::Instant::now() + Duration::from_millis(300);
+        while std::time::Instant::now() < held {
+            assert!(
+                !by_generation.is_finished() && !by_handle.is_finished(),
+                "a supersede returned while the flow was writing"
+            );
+            std::thread::yield_now();
+        }
+        assert!(rig.store.token(&account(1)).is_none(), "the write is held");
+        store.release();
+        assert!(!by_generation.join().expect("returns"));
+        assert!(!by_handle.join().expect("returns"));
+        let outcome = waiter.join().expect("the flow ends");
+        assert!(outcome.is_connected(), "{outcome:?}");
+        visit.join().expect("the browser thread ends");
+    });
+    assert!(
+        rig.store.token(&account(1)).is_some(),
+        "the token is stored"
+    );
+    assert!(cached(&rig, 1).is_some());
+    assert!(!rig.flow.supersede_latest());
+    rig.check_log();
+}

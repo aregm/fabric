@@ -5,7 +5,7 @@ use base64::Engine;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use serde_json::{Map, Value, json};
 
-use crate::faults::Plan;
+use crate::faults::{Plan, Rewrite};
 use crate::server::{Request, Response, media_type, message_for};
 use crate::state::{CalendarEntry, DeletedEventGet, State, StoredEvent, merge_patch};
 use crate::time::{format_utc, format_utc_millis, parse_date, parse_rfc3339};
@@ -722,6 +722,34 @@ fn mark_attendees(event: &mut Map<String, Value>, calendar: &str) {
     }
 }
 
+/// The rewritings armed for this insert or PATCH ([`crate::FaultAction::RewriteDescriptionTrimmed`],
+/// [`crate::FaultAction::RewriteZoneAlias`]): the event is stored and answered in the
+/// rewritten form.
+fn rewrite(event: &mut Map<String, Value>, plan: &Plan) {
+    for change in &plan.rewrites {
+        match change {
+            Rewrite::DescriptionTrimmed => {
+                if let Some(Value::String(text)) = event.get_mut("description") {
+                    let trimmed = text.trim_end().to_string();
+                    *text = trimmed;
+                }
+            }
+            Rewrite::ZoneAlias { from, to } => {
+                for member in ["start", "end"] {
+                    if let Some(zone) = event
+                        .get_mut(member)
+                        .and_then(Value::as_object_mut)
+                        .and_then(|time| time.get_mut("timeZone"))
+                        && zone.as_str() == Some(from.as_str())
+                    {
+                        *zone = json!(to);
+                    }
+                }
+            }
+        }
+    }
+}
+
 /// `POST /calendars/<id>/events` (6.6).
 fn insert(
     state: &mut State,
@@ -788,6 +816,7 @@ fn insert(
         .entry("organizer")
         .or_insert_with(|| json!({"email": entry.id, "self": true}));
     mark_attendees(&mut event, &entry.id);
+    rewrite(&mut event, plan);
     let rendered = render(&event, &entry.access_role, None, plan.cut_attendees);
     state
         .calendar_or_create(&entry.id)
@@ -930,6 +959,7 @@ fn patch(
         return r;
     }
     mark_attendees(&mut changed, &entry.id);
+    rewrite(&mut changed, plan);
     changed.insert("etag".into(), json!(etag));
     changed.insert("updated".into(), json!(now));
     stored.json = changed;

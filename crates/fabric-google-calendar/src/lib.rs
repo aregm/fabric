@@ -49,7 +49,8 @@ pub mod tokens;
 pub mod translate;
 
 pub use calendar::{
-    CalendarListEntry, CalendarTarget, ChangeOrder, EventsQuery, Google, Observed, ObservedEvent,
+    CalendarListEntry, CalendarTarget, ChangeOrder, EventsQuery, EventsRead, Google, Observed,
+    ObservedEvent, Span,
 };
 pub use client::{ClientConfig, ClientFileError, ClientFileProblem};
 #[cfg(debug_assertions)]
@@ -58,8 +59,8 @@ pub use clock::{Clock, SharedClock, SystemClock};
 pub use endpoints::{Endpoint, Endpoints, Scheme, Service};
 pub use http::ids::{CalendarId, EventId, IdError, ReservedEventId, Revision};
 pub use outcome::{
-    ChangeOutcome, ChangeReport, Notification, ReadFailure, RetryDecision, RetryPolicy, SideResult,
-    next_attempt,
+    ChangeOutcome, ChangeReport, Differs, Notification, ReadFailure, RetryDecision, RetryPolicy,
+    SideResult, next_attempt,
 };
 pub use reconcile::{Effect, ReadBack, Verdict};
 pub use secret::Secret;

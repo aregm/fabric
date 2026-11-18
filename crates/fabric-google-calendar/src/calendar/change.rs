@@ -9,6 +9,11 @@
 //! PATCH and DELETE carries `If-Match` with the approved revision (PD14) and every changing
 //! request an explicit `sendUpdates`. With fewer than 10 s of the deadline left when the
 //! changing request is due, nothing is sent and the order is Transient (6.10).
+//!
+//! A delete that Google answered 200 or 204 is followed by one read of the same event, which
+//! sets only `confirmed` (18.7 point 1). A create, an update, an invitation and a response
+//! answered 200 with the right id are `Applied` whatever the event holds; when it is not what
+//! was approved, `differs` names the first member that is not (18.7 point 2; 6.12).
 
 use fabric_desktop_contracts::agent::Action;
 use fabric_desktop_contracts::common::{FailureCode, SendUpdates};
@@ -18,15 +23,15 @@ use serde_json::Value;
 use super::events::EventRead;
 use super::{CalendarTarget, ChangeOrder, Google, check_effect};
 use crate::http::ids::{EventId, Revision};
-use crate::http::{BodyBound, Exchange, Method, Request, Target};
+use crate::http::{Answer, BodyBound, Exchange, Method, Request, Target};
 use crate::outcome::{
     ChangeKind, ChangeOutcome, ChangeReport, Notification, ReadFailure, Refusal, Sentence,
     change_access_failure, change_refusal,
 };
 use crate::secret::Secret;
 use crate::translate::{
-    GoogleEvent, changes_nothing, create_body, invitation_body, matches, names_an_address_twice,
-    own_entry, response_body, response_confirmed, update_body,
+    GoogleEvent, changes_nothing, create_body, differs, invitation_body, names_an_address_twice,
+    occurrence_differs, own_entry, response_body, response_differs, update_body,
 };
 
 /// The least time of the deadline that must be left when the changing request is due (6.10):
@@ -207,15 +212,17 @@ impl Google {
             ChangeKind::Patch | ChangeKind::Delete => notification(sent_updates),
         };
         if kind == ChangeKind::Delete {
-            // 6.8: 204 or 200; an answer with no body, so not `confirmed` (section 7).
-            return Ok(if matches!(answer.status(), 200 | 204) {
-                ChangeOutcome::Applied {
-                    event: None,
-                    confirmed: false,
-                    notification,
-                }
-            } else {
-                ChangeOutcome::NoAnswer
+            // 6.8: 204 or 200 is Applied. `confirmed` comes from one read of the event in the
+            // same order (18.7 point 1), which never changes the class.
+            if !matches!(answer.status(), 200 | 204) {
+                return Ok(ChangeOutcome::NoAnswer.into());
+            }
+            let confirmed = self.delete_read_back(account, &token, target, id, deadline_ms);
+            return Ok(ChangeOutcome::Applied {
+                event: None,
+                confirmed,
+                differs: None,
+                notification,
             }
             .into());
         }
@@ -235,18 +242,58 @@ impl Google {
         ) else {
             return Ok(ChangeOutcome::NoAnswer.into());
         };
-        let confirmed = match (action, &read) {
+        // 6.12; 18.7 point 2: a yes with the right id is Applied whatever the event holds;
+        // the comparison says whether it is what was approved and, if not, names the first
+        // member that is not.
+        let differs = match (action, &read) {
             (Action::ProposeResponse(_), Some(read)) => {
-                response_confirmed(action, read, &after, target)
+                response_differs(action, read, &after, target)
             }
-            _ => matches(action, &after, target),
-        };
+            _ => differs(action, &after, target),
+        }
+        .or_else(|| occurrence_differs(&after, ids.original_start_ms));
         Ok(ChangeOutcome::Applied {
             event: Some(fabric_desktop_contracts::common::EventRef { event_id, revision }),
-            confirmed,
+            confirmed: differs.is_none(),
+            differs,
             notification,
         }
         .into())
+    }
+
+    /// The read after a delete that Google answered 200 or 204 (6.8; 18.7 point 1): one `GET` of
+    /// the same event, with the access token the DELETE used, inside what is left of the
+    /// order's deadline, with no refresh and no retry. It is a read, so the order still makes
+    /// one changing request (PD13). Nothing is sent when no time is left. It gives only whether
+    /// the deletion is in effect ([`delete_confirmed`]); nothing of the event is kept.
+    fn delete_read_back(
+        &mut self,
+        account: &Id,
+        token: &Secret,
+        target: &CalendarTarget,
+        id: &EventId,
+        deadline_ms: u64,
+    ) -> bool {
+        if self.now_ms() >= deadline_ms {
+            return false;
+        }
+        let request = Request::new(
+            Method::Get,
+            Target::Event(target.provider_id.clone(), id.clone()),
+            BodyBound::Large,
+        )
+        .query("timeZone", target.time_zone.as_str())
+        .bearer(token);
+        let Ok(request) = request else {
+            return false;
+        };
+        let Exchange::Answer(answer) = self.transport.send(request, deadline_ms) else {
+            return false;
+        };
+        if answer.status() == 401 {
+            self.tokens.drop_cached(account);
+        }
+        delete_confirmed(&answer, id)
     }
 
     /// The read before an invitation or a response (6.7): it must return the approved
@@ -294,6 +341,24 @@ impl Google {
             ));
         }
         Ok(event)
+    }
+}
+
+/// Whether the answer to the read after a delete shows the deletion in effect (6.8; 18.7
+/// point 1): 404, 410, or 200 with a readable event whose `id` is the one asked for and whose
+/// `status` is `cancelled`, at any revision. Everything else is `false`: a live event, an
+/// event with another id, a body that cannot be read, and every other status. Its own
+/// mapping, apart from the read before a change and from `observe`: it gives a bool and
+/// nothing of the event.
+fn delete_confirmed(answer: &Answer, id: &EventId) -> bool {
+    match answer.status() {
+        404 | 410 => true,
+        200 => answer
+            .json()
+            .ok()
+            .and_then(|body: Value| GoogleEvent::read(&body).ok())
+            .is_some_and(|event| event.id == id.as_str() && event.cancelled),
+        _ => false,
     }
 }
 

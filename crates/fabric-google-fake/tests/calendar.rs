@@ -838,3 +838,123 @@ fn a_late_visible_insert_answers_404_to_its_first_reads() {
     assert_eq!(api(&fake, &t, "GET", &path, &[], None).status, 200);
     assert_eq!(fake.events(ALICE_EMAIL).len(), 1, "one event");
 }
+
+/// 18.7 point 2: the fault answers an insert and a PATCH with a fitting 200 (the change
+/// applied, the right id, a new etag) whose description has lost its trailing white space,
+/// and the fake stores that form too.
+#[test]
+fn a_rewrite_fault_trims_the_description_of_an_insert_and_a_patch() {
+    use fabric_google_fake::{Fault, FaultAction};
+    let fake = fake();
+    let t = token(&fake, ALICE);
+    let id = "abcdefghij0123456789abcdef";
+    let mut event = timed(id, "2026-11-18T10:00:00Z", "2026-11-18T11:00:00Z");
+    event["description"] = json!("Agenda \n\t ");
+    let fault = fake.arm(Fault::on(
+        "POST",
+        "/calendar/v3/calendars/",
+        FaultAction::RewriteDescriptionTrimmed,
+    ));
+    let path = format!("{}?sendUpdates=none", events_path(ALICE_EMAIL));
+    let created = api(&fake, &t, "POST", &path, &[], Some(&event));
+    assert_eq!(created.status, 200);
+    assert_eq!(fault.fired(), 1);
+    assert_eq!(created.json()["id"], id);
+    assert_eq!(created.json()["description"], "Agenda");
+    assert_eq!(created.json()["summary"], id, "the rest as sent");
+    assert_eq!(
+        fake.event(ALICE_EMAIL, id).unwrap()["description"],
+        "Agenda"
+    );
+
+    let etag = fake.with_state(|s| s.etag(ALICE_EMAIL, id)).unwrap();
+    fake.arm(Fault::on(
+        "PATCH",
+        "/calendar/v3/calendars/",
+        FaultAction::RewriteDescriptionTrimmed,
+    ));
+    let patched = api(
+        &fake,
+        &t,
+        "PATCH",
+        &event_path(ALICE_EMAIL, id),
+        &[("If-Match", etag.as_str())],
+        Some(&json!({"description": "  Notes  ", "summary": "Moved"})),
+    );
+    assert_eq!(patched.status, 200);
+    let answer = patched.json();
+    assert_eq!(answer["id"], id);
+    assert_eq!(answer["description"], "  Notes");
+    assert_eq!(answer["summary"], "Moved");
+    assert!(etag_number(answer["etag"].as_str().unwrap()) > etag_number(&etag));
+    assert_eq!(
+        fake.event(ALICE_EMAIL, id).unwrap()["description"],
+        "  Notes"
+    );
+    // Without the fault the text is kept as sent.
+    let etag = fake.with_state(|s| s.etag(ALICE_EMAIL, id)).unwrap();
+    let kept = api(
+        &fake,
+        &t,
+        "PATCH",
+        &event_path(ALICE_EMAIL, id),
+        &[("If-Match", etag.as_str())],
+        Some(&json!({"description": "Notes  "})),
+    );
+    assert_eq!(kept.json()["description"], "Notes  ");
+}
+
+/// 18.7 point 2: the fault answers an insert and a PATCH with a fitting 200 whose `start` and
+/// `end` name a zone alias where the request named the zone, and the fake stores the alias;
+/// another zone is left as sent.
+#[test]
+fn a_rewrite_fault_writes_a_zone_alias_in_an_insert_and_a_patch() {
+    use fabric_google_fake::{Fault, FaultAction};
+    let fake = fake();
+    let t = token(&fake, ALICE);
+    let alias = || FaultAction::RewriteZoneAlias {
+        from: "Asia/Kolkata".to_string(),
+        to: "Asia/Calcutta".to_string(),
+    };
+    let id = "abcdefghij0123456789abcdeg";
+    let event = json!({"id": id, "summary": "Call",
+        "start": {"dateTime": "2026-11-18T10:00:00+05:30", "timeZone": "Asia/Kolkata"},
+        "end": {"dateTime": "2026-11-18T11:00:00+05:30", "timeZone": "Asia/Kolkata"}});
+    fake.arm(Fault::on("POST", "/calendar/v3/calendars/", alias()));
+    let path = format!("{}?sendUpdates=none", events_path(ALICE_EMAIL));
+    let created = api(&fake, &t, "POST", &path, &[], Some(&event));
+    assert_eq!(created.status, 200);
+    let answer = created.json();
+    assert_eq!(answer["id"], id);
+    assert_eq!(answer["start"]["timeZone"], "Asia/Calcutta");
+    assert_eq!(answer["end"]["timeZone"], "Asia/Calcutta");
+    assert_eq!(answer["start"]["dateTime"], "2026-11-18T10:00:00+05:30");
+    let stored = fake.event(ALICE_EMAIL, id).unwrap();
+    assert_eq!(stored["start"]["timeZone"], "Asia/Calcutta");
+
+    let etag = fake.with_state(|s| s.etag(ALICE_EMAIL, id)).unwrap();
+    fake.arm(Fault::on("PATCH", "/calendar/v3/calendars/", alias()));
+    let patched = api(
+        &fake,
+        &t,
+        "PATCH",
+        &event_path(ALICE_EMAIL, id),
+        &[("If-Match", etag.as_str())],
+        Some(&json!({
+            "start": {"dateTime": "2026-11-18T12:00:00+05:30", "timeZone": "Asia/Kolkata"},
+            "end": {"dateTime": "2026-11-18T13:00:00+01:00", "timeZone": "Europe/Berlin"},
+        })),
+    );
+    assert_eq!(patched.status, 200);
+    let answer = patched.json();
+    assert_eq!(answer["id"], id);
+    assert!(etag_number(answer["etag"].as_str().unwrap()) > etag_number(&etag));
+    assert_eq!(answer["start"]["timeZone"], "Asia/Calcutta");
+    assert_eq!(
+        answer["end"]["timeZone"], "Europe/Berlin",
+        "another zone is kept"
+    );
+    let stored = fake.event(ALICE_EMAIL, id).unwrap();
+    assert_eq!(stored["start"]["timeZone"], "Asia/Calcutta");
+    assert_eq!(stored["start"]["dateTime"], "2026-11-18T12:00:00+05:30");
+}

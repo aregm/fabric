@@ -4,10 +4,11 @@
 //! call gets the token of its own account. Its only clock is the transport's (6.10). Its
 //! operations:
 //!
-//! - [`Google::list_calendars`] (6.2), every page, at most 250 calendars.
+//! - [`Google::list_calendars`] (6.2), every page, at most 250 calendars and 20 pages.
 //! - [`Google::free_busy`] (6.3).
 //! - [`Google::read_events`] (6.4): every page of every calendar in one order, asking
-//!   `still_allowed` before each page (PD35).
+//!   `still_allowed` before each page (PD35), with one [`Span`] per event beside the result
+//!   (18.7 point 4).
 //! - [`Google::observe`] (6.5).
 //! - [`Google::change`] (6.6 to 6.8): at most one changing request per order (PD13).
 //! - [`Google::reconcile_read`] (section 7).
@@ -24,14 +25,16 @@ mod events;
 mod freebusy;
 mod list;
 
+pub use list::MAX_LIST_PAGES;
+
 use std::fmt;
 use std::sync::Arc;
 
-use fabric_desktop_contracts::agent::{Action, EventView};
+use fabric_desktop_contracts::agent::{Action, EventView, ToolResult};
 use fabric_desktop_contracts::common::{
     CalendarAccess, CalendarRef, EventField, FailureCode, Window,
 };
-use fabric_desktop_contracts::scalar::{Email, IanaZone, Id, Label, ProviderRef};
+use fabric_desktop_contracts::scalar::{Date, Email, IanaZone, Id, Label, ProviderRef};
 use serde_json::Value;
 
 use crate::http::ids::CalendarId;
@@ -124,6 +127,63 @@ impl fmt::Debug for EventsQuery {
             .field("fields", &self.fields)
             .field("fabric_created", &self.fabric_created.len())
             .finish_non_exhaustive()
+    }
+}
+
+/// Where one event of a read lies (6.4; 18.7 point 4), so that the core can check the window
+/// itself. Built from the occurrence's own `start` and `end`, never from
+/// `originalStartTime`, with no widening and no zone arithmetic. It is given beside the read's
+/// result whatever fields were granted; the result itself shows a time only with `time`
+/// (PD24).
+#[derive(Clone, PartialEq, Eq)]
+pub enum Span {
+    /// Google's `dateTime` of `start` and `end`, as UTC milliseconds.
+    Timed {
+        /// The start.
+        start_ms: i64,
+        /// The end.
+        end_ms: i64,
+    },
+    /// Google's `date` of `start` and `end` exactly; the end is exclusive, as Google has it.
+    AllDay {
+        /// The first day.
+        start_date: Date,
+        /// The day after the last.
+        end_date: Date,
+    },
+}
+
+/// Prints the kind only; never a time.
+impl fmt::Debug for Span {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Span::Timed { .. } => f.write_str("Timed"),
+            Span::AllDay { .. } => f.write_str("AllDay"),
+        }
+    }
+}
+
+/// The answer to a read order (6.4): the contract's result and, beside it, one [`Span`] per
+/// event in the result's order (18.7 point 4).
+#[derive(Clone, PartialEq)]
+pub struct EventsRead {
+    /// The result for the agent, with the granted fields only (PD24).
+    pub result: ToolResult,
+    /// One span per event of `result`, in its order.
+    pub spans: Vec<Span>,
+}
+
+/// Prints counts only.
+impl fmt::Debug for EventsRead {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let events = match &self.result {
+            ToolResult::Events { events, .. } => events.len(),
+            _ => 0,
+        };
+        f.debug_struct("EventsRead")
+            .field("events", &events)
+            .field("spans", &self.spans.len())
+            .finish()
     }
 }
 

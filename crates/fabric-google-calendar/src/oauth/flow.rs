@@ -12,14 +12,17 @@
 //!   revocation (PD34).
 //! - A reconnect that does not end `Connected` forgets the account's old refresh token and
 //!   its cached access token ([`forget`]; 3.7, OQ12).
-//! - [`Supersede`] ends a waiting flow from another thread (PD5). A flow superseded after the
-//!   listener ended, but before the token store is written, ends `Cancelled(Superseded)` too.
+//! - [`Supersede`], [`Flow::supersede_latest`] and [`Flow::supersede`] end a flow from another
+//!   thread (PD5; 18.7 point 5(a)). A flow superseded after the listener ended, but before the
+//!   token store is written, ends `Cancelled(Superseded)` too, and so does one superseded
+//!   before [`PendingFlow::wait`] runs: it then runs no listener and makes no request.
 //! - The adapter keeps PD5 itself: [`Flow::start`] supersedes the flow that the same [`Flow`]
-//!   (or a clone) started before, and gives the new one the next generation. A flow whose
-//!   generation is no longer the latest never writes the token store and never forgets the
-//!   account, so a superseded flow cannot delete what the flow after it stored (3.3). Its last
-//!   "was I superseded" check and its write happen under one lock that `start` takes too, so a
-//!   write and a newer start cannot interleave.
+//!   (or a clone) started before, and gives the new one the next generation. A superseded
+//!   flow never writes the token store or the access cache and never forgets the account, so
+//!   it cannot delete what the flow after it stored (3.3). Its last "was I superseded" check
+//!   and its write happen under one lock, the turn's, that `start` and every supersede take
+//!   too: once a supersede has returned `true`, that flow writes nothing; when it returned
+//!   `false`, the flow had already ended, written or not.
 //!
 //! Order of the checks after the token answer: the shape of the answer and `token_type`, then
 //! the scopes (so that an unticked address scope is a partial grant and not an identity
@@ -325,19 +328,30 @@ impl fmt::Debug for ConnectJob {
     }
 }
 
-/// Ends a waiting flow from another thread (PD5). Clones share the flag.
+/// Ends one flow from another thread (PD5). Clones share the flag. A handle made with
+/// `default()` belongs to no flow and supersedes nothing.
 #[derive(Clone, Default)]
-pub struct Supersede(Arc<AtomicBool>);
+pub struct Supersede {
+    /// Set once the flow is superseded; the listener reads it (3.3).
+    flag: Arc<AtomicBool>,
+    /// The turn of the [`Flow`] that started the flow, whose lock every supersede takes.
+    turn: Arc<Mutex<Turn>>,
+    /// The flow's generation.
+    generation: u64,
+}
 
 impl Supersede {
-    /// Ends the flow: its listener stops within 250 ms, and the flow ends
-    /// `Cancelled(Superseded)` unless it has already written the token store.
-    pub fn supersede(&self) {
-        self.0.store(true, Ordering::SeqCst);
+    /// Ends the flow, as [`Flow::supersede`] with its generation does: under the lock under
+    /// which the flow writes the token store. `true` when the flow had not ended and was not
+    /// superseded yet; it then ends `Cancelled(Superseded)`, its listener stops within
+    /// 250 ms, and it never writes the token store or the access cache. `false` when it had
+    /// already ended (written or not), or was superseded before.
+    pub fn supersede(&self) -> bool {
+        supersede_generation(&mut lock(&self.turn), self.generation)
     }
 
     fn is_set(&self) -> bool {
-        self.0.load(Ordering::SeqCst)
+        self.flag.load(Ordering::SeqCst)
     }
 }
 
@@ -347,13 +361,31 @@ impl fmt::Debug for Supersede {
     }
 }
 
-/// Which flow is the latest (PD5): its generation and its supersede handle.
+/// Which flow is the latest (PD5): its generation, its supersede flag and whether it ended.
 #[derive(Default)]
 struct Turn {
     /// The generation of the latest flow started; 0 before the first.
     current: u64,
-    /// The supersede handle of the latest flow started.
-    latest: Option<Supersede>,
+    /// The supersede flag of the latest flow started.
+    latest: Option<Arc<AtomicBool>>,
+    /// Whether the latest flow ended: it wrote the token store, or `wait` finished it.
+    ended: bool,
+}
+
+/// Supersedes the flow of `generation` when it is the latest, has not ended and is not
+/// superseded yet; the caller holds the turn's lock. A flow that is no longer the latest was
+/// superseded by the start that followed it.
+fn supersede_generation(turn: &mut Turn, generation: u64) -> bool {
+    if generation == 0 || turn.current != generation || turn.ended {
+        return false;
+    }
+    match &turn.latest {
+        Some(flag) if !flag.load(Ordering::SeqCst) => {
+            flag.store(true, Ordering::SeqCst);
+            true
+        }
+        _ => false,
+    }
 }
 
 /// The sign-in part of the adapter: the transport, the client, the clock, Google's key set in
@@ -392,14 +424,20 @@ impl Flow {
     /// before `wait` runs it, so a browser that reaches it earlier waits in the system's
     /// backlog, and the 300 s run from here whether or not `wait` was called.
     pub fn start(&self, job: ConnectJob, browser: &mut dyn BrowserOpener) -> PendingFlow {
-        let supersede = Supersede::default();
+        let flag = Arc::new(AtomicBool::new(false));
         let generation = {
             let mut turn = lock(&self.turn);
-            if let Some(previous) = turn.latest.replace(supersede.clone()) {
-                previous.supersede();
-            }
+            let previous = turn.current;
+            supersede_generation(&mut turn, previous);
+            turn.latest = Some(Arc::clone(&flag));
+            turn.ended = false;
             turn.current = turn.current.wrapping_add(1);
             turn.current
+        };
+        let supersede = Supersede {
+            flag,
+            turn: Arc::clone(&self.turn),
+            generation,
         };
         let started_ms = self.clock.now_ms();
         let started_at = Instant::now();
@@ -447,6 +485,26 @@ impl Flow {
             secrets,
             redirect_uri,
         })
+    }
+
+    /// Supersedes the latest flow this `Flow` (or a clone) started, if it has not ended: for
+    /// a new connect and for the broker quitting (18.7 point 5(a)). It takes the lock under
+    /// which a flow makes its last "was I superseded" check and writes the token store, so
+    /// once it has returned `true` that flow never writes the token store or the access cache
+    /// and ends `Cancelled(Superseded)`. `false` when there is nothing to supersede: no flow
+    /// was started, or the latest one had already ended (written or not) or was superseded
+    /// before.
+    pub fn supersede_latest(&self) -> bool {
+        let mut turn = lock(&self.turn);
+        let latest = turn.current;
+        supersede_generation(&mut turn, latest)
+    }
+
+    /// Supersedes the flow of `generation` ([`PendingFlow::generation`]) and never another
+    /// one, under the same lock and with the same answer as [`Flow::supersede_latest`]. A flow
+    /// that is no longer the latest was superseded by the start that followed it: `false`.
+    pub fn supersede(&self, generation: u64) -> bool {
+        supersede_generation(&mut lock(&self.turn), generation)
     }
 
     fn deadline(&self) -> u64 {
@@ -497,6 +555,13 @@ impl PendingFlow {
         self.supersede.clone()
     }
 
+    /// This flow's generation: the count of flows its [`Flow`] (and every clone) started, this
+    /// one included. It names the flow for [`Flow::supersede`] (18.7 point 5(a)).
+    #[must_use]
+    pub fn generation(&self) -> u64 {
+        self.generation
+    }
+
     /// The listener's port, while it listens.
     #[must_use]
     pub fn port(&self) -> Option<u16> {
@@ -510,9 +575,10 @@ impl PendingFlow {
     /// to `store` only for `Connected`, and then keeps the new access token in `cache`. A
     /// reconnect that does not end `Connected` forgets the account in `store` and `cache`.
     ///
-    /// A flow that is no longer the latest its [`Flow`] started (PD5) ends
-    /// `Cancelled(Superseded)` without writing, and never forgets the account: the later flow
-    /// owns it now.
+    /// A flow that is superseded, by a newer start or by a supersede (PD5; 18.7 point 5(a)),
+    /// ends `Cancelled(Superseded)` without writing, and never forgets the account: the later
+    /// flow owns it now. One superseded before `wait` is called ends so at once: its listener
+    /// is closed without being run, and no request is made.
     pub fn wait(self, store: &mut dyn TokenStore, cache: &AccessCache) -> ConnectOutcome {
         let PendingFlow {
             flow,
@@ -531,23 +597,38 @@ impl PendingFlow {
             supersede: &supersede,
             generation,
         };
+        // Superseded before it ran (18.7 point 5(a)): the listener is dropped, and so closed,
+        // without being run, and nothing is asked or written.
+        if ours.superseded(&lock(&flow.turn)) {
+            drop(stage);
+            return ConnectOutcome::Cancelled(CancelReason::Superseded);
+        }
         let outcome = match stage {
             Stage::Ended(reason) => ConnectOutcome::Cancelled(reason),
             Stage::Listening(listening) => {
                 finish(&flow, &job, *listening, started, &ours, store, cache)
             }
         };
-        if job.is_reconnect() && !outcome.is_connected() {
-            // Fail closed (3.7, OQ12), but only while this flow is the latest: a later flow
-            // may have stored a token for the account (3.3). Under the turn's lock, so no
-            // newer start comes between the check and the forget. A store that fails here
-            // keeps the old token, but the account is not connected and the next connect
-            // replaces it; the cached access token is dropped in every case.
-            let turn = lock(&flow.turn);
-            if turn.current == generation {
-                let _ = forget(store, cache, &job.account);
-            }
+        if outcome.is_connected() {
+            // Ended under the turn's lock when the token was written (`finish`).
+            return outcome;
         }
+        // The end of a flow that wrote nothing, under the turn's lock that every supersede
+        // takes: a supersede that came first turns the outcome into `Cancelled(Superseded)`
+        // and the flow forgets nothing; one that comes later finds the flow ended.
+        let mut turn = lock(&flow.turn);
+        if ours.superseded(&turn) {
+            return ConnectOutcome::Cancelled(CancelReason::Superseded);
+        }
+        turn.ended = true;
+        if job.is_reconnect() {
+            // Fail closed (3.7, OQ12), only while this flow is the latest and not superseded:
+            // a later flow may have stored a token for the account (3.3). A store that fails
+            // here keeps the old token, but the account is not connected and the next connect
+            // replaces it; the cached access token is dropped in every case.
+            let _ = forget(store, cache, &job.account);
+        }
+        drop(turn);
         outcome
     }
 }
@@ -615,7 +696,7 @@ fn finish(
         flow.clock.as_ref(),
         started.ms,
         started.at,
-        &ours.supersede.0,
+        &ours.supersede.flag,
     ) {
         CallbackEnd::Code(code) => code,
         CallbackEnd::Denied => return ConnectOutcome::ConsentDenied,
@@ -691,13 +772,15 @@ fn finish(
     // newer start either comes first and this flow writes nothing, or comes after the write
     // and the newer flow owns the account from then on (PD5, 3.3).
     let now = {
-        let turn = lock(&flow.turn);
+        let mut turn = lock(&flow.turn);
         if ours.superseded(&turn) {
             return Cancelled(CancelReason::Superseded);
         }
         if let Err(error) = store.write(&job.account, refresh_token) {
             return Cancelled(CancelReason::TokenStore(error));
         }
+        // Ended: a supersede from now on finds nothing to supersede (18.7 point 5(a)).
+        turn.ended = true;
         let now = flow.clock.now_ms();
         cache.put(
             &job.account,

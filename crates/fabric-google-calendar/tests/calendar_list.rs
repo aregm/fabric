@@ -149,6 +149,53 @@ fn a_calendar_list_past_250_calendars_fails_and_250_is_listed() {
     world.check_log();
 }
 
+/// 6.2, 18.6: a listing that needs more than 20 pages fails as a whole, with the failure of a
+/// list past 250 calendars, and returns nothing; 20 pages are listed. The 21st page is never
+/// asked for.
+#[test]
+fn a_calendar_list_of_20_pages_is_listed_and_one_of_21_pages_fails() {
+    use fabric_google_calendar::calendar::MAX_LIST_PAGES;
+    assert_eq!(MAX_LIST_PAGES, 20);
+    let (mut world, alice) = World::with_alice();
+    for n in 1..20 {
+        world.fake.add_calendar(
+            &alice.subject,
+            CalendarEntry::new(&format!("c{n}@group.example.com"), "reader"),
+        );
+    }
+    // One entry a page: twenty calendars, twenty pages.
+    world
+        .fake
+        .with_state(|s| s.set_calendar_list_page_size(Some(1)));
+    let deadline = world.deadline();
+    let list = world
+        .as_account(&alice, |g| g.list_calendars(&alice.id, deadline))
+        .expect("20 pages are listed");
+    assert_eq!(list.len(), 20);
+    assert_eq!(world.fake.log().len(), 20);
+    world.fake.add_calendar(
+        &alice.subject,
+        CalendarEntry::new("c20@group.example.com", "reader"),
+    );
+    let before = world.fake.log().len();
+    let failure = world
+        .as_account(&alice, |g| g.list_calendars(&alice.id, deadline))
+        .expect_err("21 pages fail");
+    assert_eq!(
+        failure,
+        ReadFailure::rejected(
+            FailureCode::ProviderRejected,
+            fabric_google_calendar::outcome::Sentence::TooManyCalendars
+        )
+    );
+    assert_eq!(
+        world.fake.log().len() - before,
+        20,
+        "no 21st page is asked for"
+    );
+    world.check_log();
+}
+
 /// g19: each call carries its own account's token; A's token on a calendar only B has is
 /// refused by the fake as Google would (404, a calendar unknown to A).
 #[test]
