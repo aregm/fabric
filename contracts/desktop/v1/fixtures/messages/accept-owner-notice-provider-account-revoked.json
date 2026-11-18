@@ -9,6 +9,7 @@
       "provider_account": {
         "account_id": "acct-2",
         "last_connect_problem": null,
+        "last_list_problem": null,
         "missing_scope": null,
         "refresh_token_ends_at": null,
         "revocation": "revoked"
@@ -17,7 +18,7 @@
   },
   "expect": {
     "verdict": "accept",
-    "canonical": "{\"change\":{\"kind\":\"provider_account\",\"provider_account\":{\"account_id\":\"acct-2\",\"last_connect_problem\":null,\"missing_scope\":null,\"refresh_token_ends_at\":null,\"revocation\":\"revoked\"}},\"protocol\":\"fabric-desktop/1\",\"sequence\":1347}",
+    "canonical": "{\"change\":{\"kind\":\"provider_account\",\"provider_account\":{\"account_id\":\"acct-2\",\"last_connect_problem\":null,\"last_list_problem\":null,\"missing_scope\":null,\"refresh_token_ends_at\":null,\"revocation\":\"revoked\"}},\"protocol\":\"fabric-desktop/1\",\"sequence\":1347}",
     "command_digest": null,
     "action_digest": null
   }

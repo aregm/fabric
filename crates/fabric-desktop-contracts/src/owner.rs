@@ -798,6 +798,17 @@ pub enum ConnectProblem {
     AlreadyAnAccount,
 }
 
+/// Why the broker's last list of an account's calendars failed
+/// (`owner#/$defs/provider_account.last_list_problem`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ListProblem {
+    TooManyCalendars,
+    TooLarge,
+    Rejected,
+    Unreachable,
+}
+
 /// Whether Google confirmed a revocation of an account's connection.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -811,13 +822,16 @@ pub enum Revocation {
 /// `owner#/$defs/provider_account`: what the broker knows about an account's connection to
 /// Google beyond its state: why the last attempt to connect ended, which permission a partial
 /// grant lacked (Google's name of the scope), when the connection is due to end, and whether
-/// Google confirmed a revocation. Owner only.
+/// Google confirmed a revocation. Owner only. `last_list_problem` says why the broker's last
+/// list of the account's calendars failed, and is `None` after a list that succeeded.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ProviderAccount {
     pub account_id: Id,
     #[serde(deserialize_with = "nullable")]
     pub last_connect_problem: Option<ConnectProblem>,
+    #[serde(deserialize_with = "nullable")]
+    pub last_list_problem: Option<ListProblem>,
     /// A string of 1 to 200 characters, the constraint of `label`.
     #[serde(deserialize_with = "nullable")]
     pub missing_scope: Option<Label>,

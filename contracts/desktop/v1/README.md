@@ -164,6 +164,15 @@ Beside each account the snapshot holds a `provider_account`, announced by the ch
 | `token_store` | The access could not be kept in the Keychain. |
 | `already_an_account` | This Google account is connected already. |
 
+- `last_list_problem` says why the broker's last list of the account's calendars failed. It is null after a list that succeeded and after a disconnect:
+
+| `last_list_problem` | Meaning |
+|---|---|
+| `too_many_calendars` | The account has more calendars than Fabric can list. |
+| `too_large` | Its calendars do not fit the space Fabric keeps for one account. |
+| `rejected` | Google refused the list. |
+| `unreachable` | Google could not be reached, or did not answer in time. |
+
 - `missing_scope` names, for an account in the state `partial_grant`, the permission the owner did not grant, by Google's name of the scope.
 - `refresh_token_ends_at` is when the connection is due to end, or null when no end is known.
 - `revocation` says whether Google confirmed that Fabric's access was revoked at a disconnect: `not_requested`, `pending`, `revoked`, `not_confirmed`. It is not in the answer to `disconnect_google`, because the broker answers after its commit and asks Google afterwards.

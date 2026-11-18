@@ -9,6 +9,7 @@
       "provider_account": {
         "account_id": "acct-3",
         "last_connect_problem": null,
+        "last_list_problem": null,
         "missing_scope": "https://www.googleapis.com/auth/calendar.events",
         "refresh_token_ends_at": null,
         "revocation": "not_requested"
@@ -17,7 +18,7 @@
   },
   "expect": {
     "verdict": "accept",
-    "canonical": "{\"change\":{\"kind\":\"provider_account\",\"provider_account\":{\"account_id\":\"acct-3\",\"last_connect_problem\":null,\"missing_scope\":\"https://www.googleapis.com/auth/calendar.events\",\"refresh_token_ends_at\":null,\"revocation\":\"not_requested\"}},\"protocol\":\"fabric-desktop/1\",\"sequence\":1346}",
+    "canonical": "{\"change\":{\"kind\":\"provider_account\",\"provider_account\":{\"account_id\":\"acct-3\",\"last_connect_problem\":null,\"last_list_problem\":null,\"missing_scope\":\"https://www.googleapis.com/auth/calendar.events\",\"refresh_token_ends_at\":null,\"revocation\":\"not_requested\"}},\"protocol\":\"fabric-desktop/1\",\"sequence\":1346}",
     "command_digest": null,
     "action_digest": null
   }

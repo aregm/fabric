@@ -76,6 +76,11 @@ test("vocabularies equal the schema enums", () => {
       c.CONNECT_PROBLEMS,
       owner.provider_account.properties.last_connect_problem.oneOf[1].enum,
     ],
+    [
+      "provider_account last_list_problem",
+      c.LIST_PROBLEMS,
+      owner.provider_account.properties.last_list_problem.oneOf[1].enum,
+    ],
     ["provider_account revocation", c.REVOCATIONS, owner.provider_account.properties.revocation.enum],
     ["health agent_channel_problem", c.AGENT_CHANNEL_PROBLEMS, owner.health.properties.agent_channel_problem.oneOf[1].enum],
     ["health agent_channel", c.AGENT_CHANNEL_STATES, owner.health.properties.agent_channel.enum],

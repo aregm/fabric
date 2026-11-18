@@ -515,7 +515,7 @@
       "additionalProperties": false
     },
     "provider_account": {
-      "description": "What the broker knows about an account's connection to Google beyond its state: why the last attempt to connect ended, which permission a partial grant lacked (Google's name of the scope), when the connection is due to end, and whether Google confirmed a revocation. Owner only.",
+      "description": "What the broker knows about an account's connection to Google beyond its state: why the last attempt to connect ended, which permission a partial grant lacked (Google's name of the scope), when the connection is due to end, and whether Google confirmed a revocation. Owner only. `last_list_problem` says why the broker's last list of the account's calendars failed, and is null after a list that succeeded.",
       "type": "object",
       "properties": {
         "account_id": { "$ref": "common.schema.json#/$defs/id" },
@@ -539,11 +539,21 @@
             }
           ]
         },
+        "last_list_problem": {
+          "oneOf": [{ "type": "null" }, { "enum": ["too_many_calendars", "too_large", "rejected", "unreachable"] }]
+        },
         "missing_scope": { "oneOf": [{ "type": "null" }, { "type": "string", "minLength": 1, "maxLength": 200 }] },
         "refresh_token_ends_at": { "$ref": "common.schema.json#/$defs/nullable_timestamp" },
         "revocation": { "enum": ["not_requested", "pending", "revoked", "not_confirmed"] }
       },
-      "required": ["account_id", "last_connect_problem", "missing_scope", "refresh_token_ends_at", "revocation"],
+      "required": [
+        "account_id",
+        "last_connect_problem",
+        "last_list_problem",
+        "missing_scope",
+        "refresh_token_ends_at",
+        "revocation"
+      ],
       "additionalProperties": false
     },
     "health": {

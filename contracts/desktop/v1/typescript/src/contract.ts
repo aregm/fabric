@@ -450,12 +450,15 @@ export const CONNECT_PROBLEMS = [
   "identity_check_failed", "unexpected_scope", "no_refresh_token", "token_store", "already_an_account",
 ] as const;
 export type ConnectProblem = (typeof CONNECT_PROBLEMS)[number];
+export const LIST_PROBLEMS = ["too_many_calendars", "too_large", "rejected", "unreachable"] as const;
+export type ListProblem = (typeof LIST_PROBLEMS)[number];
 export const REVOCATIONS = ["not_requested", "pending", "revoked", "not_confirmed"] as const;
 export type Revocation = (typeof REVOCATIONS)[number];
 // What the broker knows about an account's connection to Google beyond its state. Owner only.
 export interface ProviderAccount {
   readonly account_id: Id;
   readonly last_connect_problem: ConnectProblem | null;
+  readonly last_list_problem: ListProblem | null; // null after a list that succeeded
   readonly missing_scope: string | null; // 1..=200 characters, Google's name of the scope
   readonly refresh_token_ends_at: Timestamp | null;
   readonly revocation: Revocation;

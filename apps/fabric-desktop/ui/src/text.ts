@@ -3,8 +3,8 @@
 import type {
   Account, AccountState, Action, Agent, AgentChannelProblem, AgentChannelState, AgentClient, Approval, Attempt, Authorization,
   CalendarAccess, CalendarRef, Change, ConnectProblem, DurationKind, EventField, EventTime, EventView, Grant, GrantEndReason, GrantTerm,
-  Health, Notification, OwnerResolutionReason, ProofReport, ProverProblem, RecipientSet, RequestDetails, RequestState, ResponseStatus,
-  Revocation, Scope, SendUpdates, SystemActionKind, ToolName, UndecidedReason, Window as TimeWindow,
+  Health, ListProblem, Notification, OwnerResolutionReason, ProofReport, ProverProblem, RecipientSet, RequestDetails, RequestState,
+  ResponseStatus, Revocation, Scope, SendUpdates, SystemActionKind, ToolName, UndecidedReason, Window as TimeWindow,
 } from "../../../../contracts/desktop/v1/typescript/src/contract.ts";
 import type { HostState } from "./host.ts";
 
@@ -165,6 +165,14 @@ export const CONNECT_PROBLEM_TEXT: Record<ConnectProblem, string> = {
   no_refresh_token: "Google gave Fabric no way to stay connected, so Fabric kept nothing from this sign-in.",
   token_store: "Fabric could not keep the access in the Keychain, so it kept nothing from this sign-in.",
   already_an_account: "This Google account is connected already.",
+};
+
+// Why the broker's last list of an account's calendars failed (not shown yet).
+export const LIST_PROBLEM_TEXT: Record<ListProblem, string> = {
+  too_many_calendars: "This account has more calendars than Fabric can list.",
+  too_large: "The list of this account's calendars is larger than Fabric can keep for one account.",
+  rejected: "Google refused to give Fabric the list of this account's calendars.",
+  unreachable: "Google could not be reached, or did not answer in time, when Fabric asked for this account's calendars.",
 };
 
 // Whether Fabric's access to an account was taken back at Google (not shown yet).
