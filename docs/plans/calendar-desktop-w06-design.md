@@ -995,7 +995,8 @@ None of this is checked by phase 1 or phase 2:
   for `applied` and `reconciled` speaks of a change and must then tell a read from a change. Not changed here; it
   follows the lead's design for phase 2.
 - R14 A call that the client cancels still gets its result released by the broker, into an answer the bridge
-  drops (section 13). A cancel message in the contract would close it.
+  drops (section 13). The lead asked for a cancel message in schema version 3 to close it; until the contract has
+  one it is a residual.
 - R13 The bridge does not compile against a contract crate that has a request state its table lacks (3.7), and
   schema version 3 adds three. Whichever of the two pull requests reaches `main` second must add the three lines
   and their wording to `apps/fabric-mcp-bridge/src/mcp/render.rs` and to test r01. This session does it as soon
@@ -1071,10 +1072,19 @@ Three things this design said that the lead's design changes:
   limit).
 - The broker binds the socket by its full name and checks the length, so R7 stays for a user name over 18 bytes.
 
-One point the lead's design does not cover, recorded here as R14: when a client cancels a call (3.9), the broker
+One point the lead's design did not cover, recorded here as R14: when a client cancels a call (3.9), the broker
 is not told, because the contract has no cancel message. The broker still holds the answer and releases the
 result into an answer that the bridge drops. For a result given under a permission for one request, that
 permission is then used up and the agent must ask again.
+
+The lead ruled on these points on 2026-11-17. The three wordings above (W6-1, W6-3, W6-4) stand. For R14 the lead
+asks the contract session for a cancel message on the agent channel in schema version 3: the adapter names the id
+of a call it no longer waits for, the broker drops that held answer without a reply, and a release that finds no
+waiting call releases nothing and uses up no permission. The bridge will send it on `notifications/cancelled`
+once the contract has it. Until then, and for a cancel that arrives after the release was committed, R14 is a
+residual of the same kind as a lost answer, which is the owner's to decide. The socket path limit (R7) is
+accepted for version 1 and goes to the owner for CD-W11. Whichever of pull requests 36 and 38 merges second
+carries the bridge's lines for the three new states (R13); this session writes them.
 
 ---------------------------------------------------------------------------------------------------------------------
 
