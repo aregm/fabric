@@ -123,9 +123,15 @@ impl Plan {
     #[must_use]
     pub fn of(config: &Config, now_ms: u64) -> Plan {
         let prover = match &config.isabelle {
-            Some(isabelle) => {
-                ProverChoice::Isabelle(Box::new(ProverOptions::new(isabelle, &config.data_dir)))
-            }
+            Some(isabelle) => ProverChoice::Isabelle(Box::new(ProverOptions::with_installation(
+                isabelle,
+                &config.installation,
+                &config.data_dir,
+            ))),
+            // An installed Isabelle that is missing or another version leaves `isabelle` empty:
+            // a run without a rule prover, so the owner sees `not_configured`. Once contract
+            // schema version 3 is merged, a follow-up sends `not_installed` for those two cases of
+            // `config.installation` here.
             #[cfg(debug_assertions)]
             None if config.synthetic_agent => ProverChoice::Classifier,
             None => ProverChoice::None,
@@ -745,6 +751,7 @@ mod tests {
             key_source: key(),
             synthetic_agent,
             isabelle,
+            installation: crate::config::Installation::NotAsked,
         }
     }
 
@@ -934,8 +941,10 @@ mod tests {
     #[test]
     fn a_request_while_the_isabelle_prover_is_down_ends_undecided() {
         let dir = TempDir::new("down");
-        let config = config(&dir.data(), true, Some(nowhere(&dir.0)));
-        let mut options = ProverOptions::new(&nowhere(&dir.0), &config.data_dir);
+        // The repository's rules, so the pin passes and the start fails (PW I8: missing rules would
+        // be `wrong_rules`).
+        let config = config(&dir.data(), true, Some(pinned(&dir.0)));
+        let mut options = ProverOptions::new(&pinned(&dir.0), &config.data_dir);
         // No wait after the first failure: down for the rest of the run.
         options.restart_waits = Vec::new();
         let plan = Plan {

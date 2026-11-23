@@ -112,18 +112,40 @@ pub(crate) type Starter = std::sync::Arc<
     dyn Fn(&GateConfig, &KillHandle) -> Result<Box<dyn Gate>, PolicyError> + Send + Sync,
 >;
 
-/// The gate configuration: the three Isabelle paths, the work directory
-/// `<data_dir>/prover`, the server name of [`server_name`] and [`CHECK_TIMEOUT`].
+/// `headless_consolidate_delay` of the broker's gate, in seconds.
+const CONSOLIDATE_DELAY_SECONDS: f64 = 0.1;
+
+/// The gate configuration of both modes: the work directory `<data_dir>/prover`, the server name
+/// of [`server_name`], [`CHECK_TIMEOUT`] and the broker's consolidate delay. In the installed
+/// layout (`Installation::Found`) the folders are those of `GateConfig::for_installation`, which
+/// are the paths `isabelle` then holds; otherwise they are the three Isabelle paths.
 #[must_use]
-pub fn gate_config(isabelle: &crate::config::IsabelleSettings, data_dir: &Path) -> GateConfig {
+pub fn gate_config(
+    isabelle: &crate::config::IsabelleSettings,
+    installation: &crate::config::Installation,
+    data_dir: &Path,
+) -> GateConfig {
+    let work_dir = data_dir.join("prover");
+    let server_name = server_name(data_dir);
+    let folders = match installation {
+        crate::config::Installation::Found {
+            resources_dir,
+            support_dir,
+        } => GateConfig::for_installation(resources_dir, support_dir, &work_dir, &server_name),
+        _ => GateConfig {
+            isabelle_home: isabelle.isabelle_home.clone(),
+            user_home: isabelle.user_home.clone(),
+            rules_dir: isabelle.rules_dir.clone(),
+            work_dir,
+            server_name,
+            check_timeout: CHECK_TIMEOUT,
+            consolidate_delay_seconds: CONSOLIDATE_DELAY_SECONDS,
+        },
+    };
     GateConfig {
-        isabelle_home: isabelle.isabelle_home.clone(),
-        user_home: isabelle.user_home.clone(),
-        rules_dir: isabelle.rules_dir.clone(),
-        work_dir: data_dir.join("prover"),
-        server_name: server_name(data_dir),
         check_timeout: CHECK_TIMEOUT,
-        consolidate_delay_seconds: 0.1,
+        consolidate_delay_seconds: CONSOLIDATE_DELAY_SECONDS,
+        ..folders
     }
 }
 
@@ -145,11 +167,22 @@ pub struct ProverOptions {
 }
 
 impl ProverOptions {
-    /// `gate_config(..)`, `RESTART_WAITS`, and a starter calling `BrokerGate::start_with_kill`.
+    /// The options of the developer mode: [`ProverOptions::with_installation`] with
+    /// `Installation::NotAsked`.
     #[must_use]
     pub fn new(isabelle: &crate::config::IsabelleSettings, data_dir: &Path) -> ProverOptions {
+        ProverOptions::with_installation(isabelle, &crate::config::Installation::NotAsked, data_dir)
+    }
+
+    /// `gate_config(..)`, `RESTART_WAITS`, and a starter calling `BrokerGate::start_with_kill`.
+    #[must_use]
+    pub fn with_installation(
+        isabelle: &crate::config::IsabelleSettings,
+        installation: &crate::config::Installation,
+        data_dir: &Path,
+    ) -> ProverOptions {
         ProverOptions {
-            gate: gate_config(isabelle, data_dir),
+            gate: gate_config(isabelle, installation, data_dir),
             restart_waits: RESTART_WAITS.to_vec(),
             starter: Arc::new(|config: &GateConfig, kill: &KillHandle| {
                 BrokerGate::start_with_kill(config.clone(), kill)
@@ -173,8 +206,15 @@ pub type Emit = Box<dyn FnMut(ProverEvent) -> bool + Send>;
 /// How long [`IsabelleProver::stop`] waits for the acknowledgement between two drains.
 const STOP_SLICE: std::time::Duration = std::time::Duration::from_millis(20);
 
-/// The stderr line when the rule theory is not the one this broker was built with.
-const OTHER_THEORY_LINE: &str = "fabric-broker: the rule theory or its session files in FABRIC_BROKER_RULES_DIR are not the ones this broker was built with; the rule prover does not run in this run";
+/// The stderr line when the rule theory or its session files are not the ones this broker was
+/// built with. It names the rules folder the pin read, in both modes, printed with `{:?}` so that
+/// the line stays one line.
+fn other_theory_line(rules_dir: &Path) -> String {
+    format!(
+        "fabric-broker: the rule theory or its session files in {:?} are not the ones this broker was built with; the rule prover does not run in this run",
+        rules_dir.display()
+    )
+}
 
 /// The error of a gate start that panicked; never written anywhere, its category is `I/O`.
 const START_PANICKED: &str = "the gate's start panicked";
@@ -548,6 +588,12 @@ impl Worker {
             return;
         }
         match pin(&self.options.gate.rules_dir) {
+            // A rule file that does not exist is not the built theory: down for the run, in both
+            // modes. Every other read error is a failed start that is tried again.
+            Err(error) if error.kind() == io::ErrorKind::NotFound => {
+                self.other_theory();
+                return;
+            }
             Err(_) => {
                 self.fail(Failure::Start, "I/O");
                 return;
@@ -692,7 +738,7 @@ impl Worker {
     /// The rule theory is not the built one: down for the run, nothing is proved.
     fn other_theory(&mut self) {
         self.state = State::Down { retry_at: None };
-        stderr_line(OTHER_THEORY_LINE);
+        stderr_line(&other_theory_line(&self.options.gate.rules_dir));
         self.set_health(ProverStatus::Unavailable(Some(ProverProblem::WrongRules)));
     }
 
@@ -883,7 +929,7 @@ mod tests {
     use fabric_broker_policy::theory::THEORY_TEXT;
 
     use super::*;
-    use crate::config::IsabelleSettings;
+    use crate::config::{Installation, IsabelleSettings};
     use crate::prover::map::tests::{create, job_of};
 
     /// How long a test waits for an event that must come.
@@ -1078,7 +1124,7 @@ mod tests {
 
     fn options(data: &Path, waits: &[Duration], starter: Starter) -> ProverOptions {
         ProverOptions {
-            gate: gate_config(&settings(data), data),
+            gate: gate_config(&settings(data), &Installation::NotAsked, data),
             restart_waits: waits.to_vec(),
             starter,
         }
@@ -1392,16 +1438,67 @@ mod tests {
         );
 
         let settings = settings(one);
-        let config = gate_config(&settings, one);
+        let config = gate_config(&settings, &Installation::NotAsked, one);
         assert_eq!(config.isabelle_home, settings.isabelle_home);
         assert_eq!(config.user_home, settings.user_home);
         assert_eq!(config.rules_dir, settings.rules_dir);
         assert_eq!(config.work_dir, one.join("prover"));
         assert_eq!(config.server_name, name);
         assert_eq!(config.check_timeout, CHECK_TIMEOUT);
+        assert!(
+            (config.consolidate_delay_seconds - CONSOLIDATE_DELAY_SECONDS).abs() < f64::EPSILON
+        );
         let options = ProverOptions::new(&settings, one);
         assert_eq!(options.restart_waits, RESTART_WAITS);
         assert_eq!(options.gate.server_name, name);
+    }
+
+    /// PW I4: in the installed layout the gate's folders are those of
+    /// `GateConfig::for_installation`, not the paths `isabelle` holds, with the broker's work
+    /// directory, server name, check limit and consolidate delay.
+    #[test]
+    fn the_installed_gate_is_the_installed_layout() {
+        let data = Path::new("/Users/someone/Library/Application Support/x/broker");
+        let resources = Path::new("/Applications/Fabric Calendar.app/Contents/Resources");
+        let support = Path::new("/Users/someone/Library/Application Support/x");
+        let expected = GateConfig::for_installation(
+            resources,
+            support,
+            &data.join("prover"),
+            &server_name(data),
+        );
+        let installation = Installation::Found {
+            resources_dir: resources.to_path_buf(),
+            support_dir: support.to_path_buf(),
+        };
+        // Paths outside the installed layout, so a gate that ignored the installation would fail.
+        let settings = IsabelleSettings {
+            isabelle_home: PathBuf::from("/elsewhere/home"),
+            user_home: PathBuf::from("/elsewhere/user"),
+            rules_dir: PathBuf::from("/elsewhere/rules"),
+        };
+        let options = ProverOptions::with_installation(&settings, &installation, data);
+        let config = &options.gate;
+        assert_eq!(config.isabelle_home, support.join("Isabelle2025-2"));
+        assert_eq!(config.user_home, support.join("isabelle-user-home"));
+        assert_eq!(config.rules_dir, resources.join("isabelle"));
+        assert_eq!(config.isabelle_home, expected.isabelle_home);
+        assert_eq!(config.user_home, expected.user_home);
+        assert_eq!(config.rules_dir, expected.rules_dir);
+        assert_eq!(config.work_dir, data.join("prover"));
+        assert_eq!(config.server_name, server_name(data));
+        assert_eq!(config.check_timeout, CHECK_TIMEOUT);
+        assert!(
+            (config.consolidate_delay_seconds - CONSOLIDATE_DELAY_SECONDS).abs() < f64::EPSILON
+        );
+        assert_eq!(options.restart_waits, RESTART_WAITS);
+        // The developer mode takes the three paths it is given.
+        let developer = gate_config(&settings, &Installation::NotAsked, data);
+        assert_eq!(developer.isabelle_home, settings.isabelle_home);
+        assert_eq!(developer.user_home, settings.user_home);
+        assert_eq!(developer.rules_dir, settings.rules_dir);
+        assert_eq!(developer.work_dir, config.work_dir);
+        assert_eq!(developer.server_name, config.server_name);
     }
 
     #[test]
@@ -2192,12 +2289,13 @@ mod tests {
     }
 
     /// PW w37 (PW 2.2): a pin that cannot read its files is a failed start, so it will retry while
-    /// a wait is left; it is not another theory.
+    /// a wait is left; it is not another theory. The theory here is a directory, which exists
+    /// but cannot be read as a file (PW I8: a file that does not exist is another theory).
     #[test]
     fn a_pin_that_cannot_read_its_files_will_retry() {
         let data = TempDir::new("w37");
         let rules = data.path().join("rules");
-        fs::create_dir_all(rules.join("Fabric_Broker")).unwrap();
+        fs::create_dir_all(rules.join("Fabric_Broker").join("Fabric_Broker.thy")).unwrap();
         fs::write(rules.join("Fabric_Broker").join("ROOT"), SESSION_ROOT).unwrap();
         let calls = Arc::new(AtomicUsize::new(0));
         let starter = counting(&calls, |_, _| Err(isabelle()));
@@ -2213,6 +2311,39 @@ mod tests {
         assert!(prover.prove(job()));
         assert_eq!(refusal(&done(&events)), map::NOT_RUNNING);
         assert!(stop(prover));
+    }
+
+    /// PW I8: a rule file that does not exist, or a rules directory that does not exist, is not the
+    /// built theory: the prover is unavailable for the run with `wrong_rules`, no gate starts and
+    /// nothing is tried again.
+    #[test]
+    fn a_missing_rule_file_leaves_the_prover_unavailable_with_wrong_rules() {
+        for missing in ["Fabric_Broker.thy", "ROOT", "the rules directory"] {
+            let data = TempDir::new("d8");
+            let rules = data.path().join("rules");
+            if missing != "the rules directory" {
+                let session = rules.join("Fabric_Broker");
+                fs::create_dir_all(&session).unwrap();
+                fs::write(session.join("Fabric_Broker.thy"), THEORY_TEXT).unwrap();
+                fs::write(session.join("ROOT"), SESSION_ROOT).unwrap();
+                fs::remove_file(session.join(missing)).unwrap();
+            }
+            let calls = Arc::new(AtomicUsize::new(0));
+            let starter = counting(&calls, |_, _| Err(isabelle()));
+            let mut options = options(data.path(), &[Duration::from_millis(10)], starter);
+            options.gate.rules_dir = rules;
+            let (prover, events) = spawn(options);
+            assert_eq!(
+                status(&events),
+                ProverStatus::Unavailable(Some(ProverProblem::WrongRules)),
+                "{missing}"
+            );
+            quiet(&events);
+            assert_eq!(calls.load(Ordering::SeqCst), 0, "{missing}");
+            assert!(prover.prove(job()));
+            assert_eq!(refusal(&done(&events)), map::NOT_RUNNING);
+            assert!(stop(prover));
+        }
     }
 
     /// PW w38 (PW 2.3): the overrun poll says the prover is unavailable without a cause; when the

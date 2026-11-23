@@ -16,7 +16,7 @@
 //! Isabelle too, it runs the practice calendar, so a request the prover proves allowed is carried
 //! out on practice data held in memory. Nothing else an agent asks is carried out.
 //!
-//! - [`config`]: the six variables the broker reads, and its exit codes.
+//! - [`config`]: the eight variables the broker reads, and its exit codes.
 //! - [`reader`]: the bounded line reader for stdin.
 //! - [`prover`]: the Isabelle prover adapter, pinned to the rule theory the broker was built
 //!   with.

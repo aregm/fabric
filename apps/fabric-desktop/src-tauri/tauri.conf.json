@@ -27,6 +27,10 @@
     "active": true,
     "targets": ["app"],
     "externalBin": ["binaries/fabric-broker"],
+    "resources": {
+      "../../../isabelle/Fabric_Broker/ROOT": "isabelle/Fabric_Broker/ROOT",
+      "../../../isabelle/Fabric_Broker/Fabric_Broker.thy": "isabelle/Fabric_Broker/Fabric_Broker.thy"
+    },
     "macOS": {
       "minimumSystemVersion": "15.0",
       "signingIdentity": "-"

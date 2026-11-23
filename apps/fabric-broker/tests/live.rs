@@ -39,7 +39,7 @@ use std::thread;
 use std::time::{Duration, Instant, SystemTime};
 
 use fabric_broker::config::{
-    Config, ISABELLE_HOME, ISABELLE_USER_HOME, IsabelleSettings, KeySource, RULES_DIR,
+    Config, ISABELLE_HOME, ISABELLE_USER_HOME, Installation, IsabelleSettings, KeySource, RULES_DIR,
 };
 use fabric_broker::practice::{FOREIGN_EVENT_ID, FOREIGN_TITLE, Faults, PracticeCalendar};
 use fabric_broker::prover::{ProverOptions, QUIT_BOUND, built_theory_sha256, server_name};
@@ -332,6 +332,7 @@ impl Live {
             key_source: KeySource::Test,
             synthetic_agent: true,
             isabelle: Some(isabelle.clone()),
+            installation: Installation::NotAsked,
         };
         assert!(config.practice());
         let mut options = ProverOptions::new(&isabelle, &config.data_dir);
