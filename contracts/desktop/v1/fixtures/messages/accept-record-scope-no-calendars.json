@@ -1,0 +1,17 @@
+{
+  "description": "A scope naming no calendar: the scope of the calendar list grant.",
+  "schema": "owner-channel.schema.json#/$defs/scope",
+  "value": {
+    "calendars": [],
+    "window": null,
+    "fields": null,
+    "recipients": null,
+    "send_updates": null
+  },
+  "expect": {
+    "verdict": "accept",
+    "canonical": "{\"calendars\":[],\"fields\":null,\"recipients\":null,\"send_updates\":null,\"window\":null}",
+    "command_digest": null,
+    "action_digest": null
+  }
+}

@@ -1,0 +1,25 @@
+{
+  "description": "A provider_account change after the broker's list of the account's calendars failed because Google could not be reached or did not answer in time.",
+  "schema": "owner-channel.schema.json#/$defs/owner_notice",
+  "value": {
+    "protocol": "fabric-desktop/1",
+    "sequence": 1348,
+    "change": {
+      "kind": "provider_account",
+      "provider_account": {
+        "account_id": "acct-1",
+        "last_connect_problem": null,
+        "last_list_problem": "unreachable",
+        "missing_scope": null,
+        "refresh_token_ends_at": "2027-05-20T15:00:00.000Z",
+        "revocation": "not_requested"
+      }
+    }
+  },
+  "expect": {
+    "verdict": "accept",
+    "canonical": "{\"change\":{\"kind\":\"provider_account\",\"provider_account\":{\"account_id\":\"acct-1\",\"last_connect_problem\":null,\"last_list_problem\":\"unreachable\",\"missing_scope\":null,\"refresh_token_ends_at\":\"2027-05-20T15:00:00.000Z\",\"revocation\":\"not_requested\"}},\"protocol\":\"fabric-desktop/1\",\"sequence\":1348}",
+    "command_digest": null,
+    "action_digest": null
+  }
+}

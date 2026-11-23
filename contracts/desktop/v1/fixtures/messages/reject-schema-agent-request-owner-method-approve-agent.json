@@ -1,0 +1,19 @@
+{
+  "description": "An agent asks for the owner method approve_agent.",
+  "schema": "agent-channel.schema.json#/$defs/agent_request",
+  "value": {
+    "protocol": "fabric-desktop/1",
+    "id": "call-32",
+    "method": "approve_agent",
+    "params": {
+      "agent_id": "agent-0123456789abcdef0123456789abcdef",
+      "expected_revision": 2,
+      "pairing_code": "4E7A-9852-EC06"
+    }
+  },
+  "expect": {
+    "verdict": "reject",
+    "layer": "schema",
+    "error": "unknown_method"
+  }
+}

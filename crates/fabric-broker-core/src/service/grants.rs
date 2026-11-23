@@ -60,7 +60,7 @@ pub(crate) fn create_grant(
             .map_err(|_| invariant("a grant names one tool"))?,
         scope: scope.clone(),
         term,
-        origin: GrantOrigin {
+        origin: GrantOrigin::Approval {
             request_id: request.row.request.request_id.clone(),
             approval_digest: approval_digest.clone(),
         },

@@ -63,6 +63,7 @@ test("vocabularies equal the schema enums", () => {
     ["failure_code", c.FAILURE_CODES, common.failure_code.enum],
     ["busy_limit", c.BUSY_LIMITS, common.busy_limit.enum],
     ["undecided_reason", c.UNDECIDED_REASONS, common.undecided_reason.enum],
+    ["owner_resolution_reason", c.OWNER_RESOLUTION_REASONS, common.owner_resolution_reason.enum],
     ["prover_problem", c.PROVER_PROBLEMS, owner.prover_problem.enum],
     ["mode", c.MODES, owner.mode.enum],
     ["policy_row", c.POLICY_ROWS, owner.policy_row.enum],
@@ -70,9 +71,36 @@ test("vocabularies equal the schema enums", () => {
     ["duration kind", c.DURATION_KINDS, owner.duration.properties.kind.enum],
     ["grant_end reason", c.GRANT_END_REASONS, owner.grant_end.properties.reason.enum],
     ["account state", c.ACCOUNT_STATES, owner.account.properties.state.enum],
+    [
+      "provider_account last_connect_problem",
+      c.CONNECT_PROBLEMS,
+      owner.provider_account.properties.last_connect_problem.oneOf[1].enum,
+    ],
+    [
+      "provider_account last_list_problem",
+      c.LIST_PROBLEMS,
+      owner.provider_account.properties.last_list_problem.oneOf[1].enum,
+    ],
+    ["provider_account revocation", c.REVOCATIONS, owner.provider_account.properties.revocation.enum],
+    ["health agent_channel_problem", c.AGENT_CHANNEL_PROBLEMS, owner.health.properties.agent_channel_problem.oneOf[1].enum],
+    ["health agent_channel", c.AGENT_CHANNEL_STATES, owner.health.properties.agent_channel.enum],
+    ["system_proof_report action kind", c.SYSTEM_ACTION_KINDS, owner.system_proof_report.properties.action.properties.kind.enum],
+    ["request_details notification", c.NOTIFICATIONS, owner.request_details.properties.notification.oneOf[1].enum],
+    ["release_record kind", c.RELEASE_KINDS, owner.release_record.properties.kind.enum],
     ["response_status", c.RESPONSE_STATUSES, agent.response_status.enum],
     ["owner_request methods", c.OWNER_METHODS, owner.owner_request.oneOf.map((b: any) => b.properties.method.const)],
-    ["agent_request methods", c.TOOL_NAMES, agent.agent_request.oneOf.map((b: any) => b.properties.method.const)],
+    [
+      "agent_request methods",
+      [...c.NON_TOOL_METHODS, ...c.TOOL_NAMES],
+      agent.agent_request.oneOf.map((b: any) => b.properties.method.const),
+    ],
+    [
+      "agent_response methods that are not tools",
+      c.NON_TOOL_METHODS,
+      agent.agent_response.oneOf.map((b: any) => b.properties.method.const).filter((x: unknown) => x !== undefined),
+    ],
+    ["agent enrollment", c.AGENT_ENROLLMENTS, owner.agent.properties.enrollment.enum],
+    ["agent_client", c.AGENT_CLIENTS, owner.agent_client.enum],
     ["action tools", c.ACTION_TOOLS, agent.action.oneOf.map((b: any) => b.properties.tool.const)],
     ["limits", Object.keys(c.LIMITS), Object.keys(common.limits.properties)],
   ];
@@ -87,10 +115,10 @@ test("vocabularies equal the schema enums", () => {
   assert.deepEqual(sorted(c.ERROR_CODES), sorted(defined), "error_* definitions");
 });
 
-test("the plain states and the three carrying states are exactly the 23 states", () => {
+test("the plain states and the three carrying states are exactly the 26 states", () => {
   const carrying = ["pending_approval", "blocked", "terminal_failure"];
   const all = sorted([...c.PLAIN_REQUEST_STATES, ...carrying]);
-  assert.equal(all.length, 23);
+  assert.equal(all.length, 26);
   assert.deepEqual(all, sorted(common.request_state.enum));
   assert.deepEqual(all, sorted(data("request-lifecycle.json").states.map((s: any) => s.state)));
   for (const d of [owner.lifecycle_status, agent.agent_lifecycle_status]) {
@@ -145,6 +173,16 @@ test("the built-in profiles", () => {
     assert.ok(validate("owner-channel.schema.json#/$defs/profile", p), `${column} is a profile`);
     const rows = Object.fromEntries(matrix.rows.map((r: any) => [r.row, r[column].mode]));
     assert.deepEqual(p.rows, rows, `${column} equals the policy matrix`);
+  }
+});
+
+test("the agent clients", () => {
+  const clients = data("agent-clients.json").clients;
+  assert.deepEqual(clients.map((e: any) => e.client), owner.agent_client.enum);
+  assert.deepEqual(clients.map((e: any) => e.client), [...c.AGENT_CLIENTS]);
+  const validate = createValidator(files);
+  for (const e of clients) {
+    assert.ok(validate("owner-channel.schema.json#/$defs/destination", e.destination), `${e.client} destination`);
   }
 });
 

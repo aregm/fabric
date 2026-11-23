@@ -1,0 +1,118 @@
+{
+  "description": "Request details without owner_resolution_reason: the member is required, null when the request was not handed to the owner.",
+  "schema": "owner-channel.schema.json#/$defs/owner_response",
+  "value": {
+    "protocol": "fabric-desktop/1",
+    "id": "details-40",
+    "method": "get_request_details",
+    "result": {
+      "request": {
+        "request_id": "request-37",
+        "revision": 11,
+        "agent_id": "agent-claude-desktop",
+        "tool": "fabric_calendar_propose_create",
+        "account_id": "acct-1",
+        "received_at": "2026-11-20T16:04:00.000Z",
+        "updated_at": "2026-11-20T16:06:00.000Z",
+        "request_digest": "sha256:0126e89a9089f4435814cb881464cd3a765e70b60de8b0f42259f4801e0633f1",
+        "status": {
+          "state": "needs_owner_resolution"
+        }
+      },
+      "redaction": "redacted",
+      "private": null,
+      "card": {
+        "scope": {
+          "calendars": [
+            {
+              "account_id": "acct-1",
+              "calendar_id": "cal-primary"
+            }
+          ],
+          "window": null,
+          "fields": null,
+          "recipients": null,
+          "send_updates": null
+        },
+        "proposed_duration": {
+          "kind": "one_request"
+        },
+        "insufficiency": {
+          "rule": "owner_approval_required",
+          "explanation": "Creating in an existing calendar asks in the Careful profile.",
+          "proof_id": "proof-37-classification"
+        },
+        "expires_at": "2026-11-21T16:04:00.000Z"
+      },
+      "approval": {
+        "decision": "approve",
+        "command_id": "command-60",
+        "decided_at": "2026-11-20T16:04:50.000Z",
+        "approval_digest": "sha256:c68bbb19b1dc47e0d54ace6f051b24b481ed088298d607a7fccf5b257a5a87b5",
+        "scope": {
+          "calendars": [
+            {
+              "account_id": "acct-1",
+              "calendar_id": "cal-primary"
+            }
+          ],
+          "window": null,
+          "fields": null,
+          "recipients": null,
+          "send_updates": null
+        },
+        "duration": {
+          "kind": "one_request"
+        },
+        "effective_request_digest": "sha256:0126e89a9089f4435814cb881464cd3a765e70b60de8b0f42259f4801e0633f1",
+        "grant_id": "grant-8"
+      },
+      "proof_ids": [
+        "proof-37-classification",
+        "proof-37-permit-1",
+        "proof-37-permit-2"
+      ],
+      "authorization": {
+        "profile": "fabric-broker-authorization/1",
+        "authorization_id": "authz-37-2",
+        "request_id": "request-37",
+        "agent_id": "agent-claude-desktop",
+        "action_digest": "sha256:4a1ac4edd8a9d518f2c1406e814ebb82d7acb81ef2c1095458a62a3d0f5bce75",
+        "proof_id": "proof-37-permit-2",
+        "grant_id": "grant-8",
+        "issued_at": "2026-11-20T16:05:02.000Z",
+        "expires_at": "2026-11-20T16:06:02.000Z",
+        "lifetime_seconds": 60,
+        "consumed_at": "2026-11-20T16:05:02.350Z"
+      },
+      "attempts": [
+        {
+          "number": 1,
+          "proof_id": "proof-37-permit-1",
+          "started_at": "2026-11-20T16:04:51.000Z",
+          "finished_at": "2026-11-20T16:04:52.100Z",
+          "outcome": "transient_failure"
+        },
+        {
+          "number": 2,
+          "proof_id": "proof-37-permit-2",
+          "started_at": "2026-11-20T16:05:02.000Z",
+          "finished_at": "2026-11-20T16:05:03.100Z",
+          "outcome": "outcome_unknown"
+        }
+      ],
+      "provider_event": null,
+      "undecided_reason": null,
+      "notification": "unknown",
+      "system_proofs": [],
+      "more_system_proofs": false,
+      "releases": [],
+      "more_releases": false
+    }
+  },
+  "expect": {
+    "verdict": "reject",
+    "layer": "schema",
+    "error": "invalid_params"
+  }
+}

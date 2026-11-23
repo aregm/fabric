@@ -1,0 +1,19 @@
+{
+  "description": "list_ended_requests answers with no ended request.",
+  "schema": "owner-channel.schema.json#/$defs/owner_response",
+  "value": {
+    "protocol": "fabric-desktop/1",
+    "id": "ended-2",
+    "method": "list_ended_requests",
+    "result": {
+      "requests": [],
+      "more": false
+    }
+  },
+  "expect": {
+    "verdict": "accept",
+    "canonical": "{\"id\":\"ended-2\",\"method\":\"list_ended_requests\",\"protocol\":\"fabric-desktop/1\",\"result\":{\"more\":false,\"requests\":[]}}",
+    "command_digest": null,
+    "action_digest": null
+  }
+}

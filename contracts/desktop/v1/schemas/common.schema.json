@@ -21,6 +21,32 @@
       "type": "string",
       "pattern": "^sha256:[0-9a-f]{64}$"
     },
+    "public_key": {
+      "description": "An agent's Ed25519 public key: `ed25519:` and its 32 bytes in lowercase hexadecimal.",
+      "type": "string",
+      "pattern": "^ed25519:[0-9a-f]{64}$"
+    },
+    "nonce": {
+      "description": "256 random bits the broker makes for one connection, in lowercase hexadecimal.",
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "signature": {
+      "description": "An Ed25519 signature: its 64 bytes in lowercase hexadecimal.",
+      "type": "string",
+      "pattern": "^[0-9a-f]{128}$"
+    },
+    "pairing_code": {
+      "description": "The code of a public key, as the owner reads it: twelve hexadecimal digits in capitals, in three groups of four (README section 8).",
+      "type": "string",
+      "pattern": "^[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}$"
+    },
+    "configuration_text": {
+      "description": "A text the owner copies into an agent client's configuration. Rendered as plain text.",
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 8192
+    },
     "count": {
       "description": "A non-negative integer that every JSON implementation represents exactly.",
       "type": "integer",
@@ -154,8 +180,8 @@
       "enum": ["all", "external_only", "none"]
     },
     "calendar_access": {
-      "description": "What the connected account may do in a calendar, as the provider reports it.",
-      "enum": ["owner", "writer", "reader", "free_busy_reader"]
+      "description": "What the connected account may do in a calendar, as the provider reports it. With `writer_without_private_access` the account may change events and sees private events without their details.",
+      "enum": ["owner", "writer", "writer_without_private_access", "reader", "free_busy_reader"]
     },
     "calendar_ref": {
       "description": "One calendar, named together with its account: the same calendar shared into two accounts is two references.",
@@ -221,7 +247,10 @@
         "terminal_failure",
         "reconciling",
         "absence_confirmed",
-        "needs_owner_resolution"
+        "needs_owner_resolution",
+        "resolved_as_applied",
+        "resolved_as_absent",
+        "completed"
       ]
     },
     "plain_request_state": {
@@ -246,7 +275,10 @@
         "outcome_unknown",
         "reconciling",
         "absence_confirmed",
-        "needs_owner_resolution"
+        "needs_owner_resolution",
+        "resolved_as_applied",
+        "resolved_as_absent",
+        "completed"
       ]
     },
     "failure_code": {
@@ -288,7 +320,11 @@
     },
     "undecided_reason": {
       "description": "Why no proof decided a request. The meaning of each value is in README section 7.",
-      "enum": ["prover_unavailable", "out_of_time", "failed"]
+      "enum": ["prover_unavailable", "out_of_time", "failed", "provider_unreachable"]
+    },
+    "owner_resolution_reason": {
+      "description": "Why the broker handed a request to the owner to resolve. The meaning of each value is in README section 7.",
+      "enum": ["applied_differs", "event_changed", "event_gone", "reads_failed", "account_disconnected"]
     },
     "busy_limit": {
       "description": "The limit a busy answer names.",
@@ -296,7 +332,8 @@
         "open_requests_total",
         "open_requests_per_agent",
         "requests_per_minute_per_agent",
-        "open_approval_cards_per_agent"
+        "open_approval_cards_per_agent",
+        "sessions_per_minute_per_agent"
       ]
     },
     "nullable_id": {

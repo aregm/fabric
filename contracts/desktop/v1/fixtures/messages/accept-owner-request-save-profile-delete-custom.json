@@ -1,0 +1,22 @@
+{
+  "description": "save_profile deletes a custom profile.",
+  "schema": "owner-channel.schema.json#/$defs/owner_request",
+  "value": {
+    "protocol": "fabric-desktop/1",
+    "id": "command-78",
+    "method": "save_profile",
+    "params": {
+      "expected_revision": 8,
+      "change": {
+        "kind": "delete_custom",
+        "profile_id": "custom-assistant"
+      }
+    }
+  },
+  "expect": {
+    "verdict": "accept",
+    "canonical": "{\"id\":\"command-78\",\"method\":\"save_profile\",\"params\":{\"change\":{\"kind\":\"delete_custom\",\"profile_id\":\"custom-assistant\"},\"expected_revision\":8},\"protocol\":\"fabric-desktop/1\"}",
+    "command_digest": "sha256:a985d1089a8a0149f764a41fdf95dcf63c0b390ecca12511d713517c15ee4ac3",
+    "action_digest": null
+  }
+}

@@ -37,7 +37,7 @@ const EVENT_TIMEOUT: Duration = Duration::from_secs(15);
 /// test run for long.
 const CHILD_LIFETIME: Duration = Duration::from_secs(30);
 
-const REQUEST_HELLO: &str = r#"{"id":"hello-1","method":"hello","params":{"client":{"build":"0.1.0-dev+20261115","name":"Fabric Calendar"},"schema_version":2},"protocol":"fabric-desktop/1"}"#;
+const REQUEST_HELLO: &str = r#"{"id":"hello-1","method":"hello","params":{"client":{"build":"0.1.0-dev+20261115","name":"Fabric Calendar"},"schema_version":3},"protocol":"fabric-desktop/1"}"#;
 const REQUEST_SNAPSHOT: &str =
     r#"{"id":"snapshot-1","method":"get_snapshot","params":{},"protocol":"fabric-desktop/1"}"#;
 const REQUEST_SUBSCRIBE: &str = r#"{"id":"subscribe-1","method":"subscribe","params":{"cursor":0},"protocol":"fabric-desktop/1"}"#;

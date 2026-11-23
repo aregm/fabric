@@ -1,0 +1,18 @@
+{
+  "description": "refresh_calendars asks the broker to list one account's calendars again.",
+  "schema": "owner-channel.schema.json#/$defs/owner_request",
+  "value": {
+    "protocol": "fabric-desktop/1",
+    "id": "command-90",
+    "method": "refresh_calendars",
+    "params": {
+      "account_id": "acct-1"
+    }
+  },
+  "expect": {
+    "verdict": "accept",
+    "canonical": "{\"id\":\"command-90\",\"method\":\"refresh_calendars\",\"params\":{\"account_id\":\"acct-1\"},\"protocol\":\"fabric-desktop/1\"}",
+    "command_digest": "sha256:f6546fdd939d319c3114e758c5137e7284a6928fa6a3f4c020e6dc1ef9023010",
+    "action_digest": null
+  }
+}

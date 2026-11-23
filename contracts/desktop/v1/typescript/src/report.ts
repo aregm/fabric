@@ -4,6 +4,7 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { canonical, digest, sha256Hex } from "./canonical.ts";
+import { handshakeText, pairingCode } from "./handshake.ts";
 import { CONTRACT_ROOT, checkLifecycle, judge, loadContract } from "./judge.ts";
 import type { Contract } from "./judge.ts";
 import { parseStrict } from "./strict-json.ts";
@@ -111,6 +112,14 @@ export function report(root: string): { lines: string[]; problems: string[] } {
     const r = checkLifecycle(contract, e.states);
     lines.push(`lifecycle\t${e.name}\t${r.valid ? "valid" : "invalid"}\t${r.firstInvalid ?? "-"}`);
     if (r.valid !== e.valid || r.firstInvalid !== e.first_invalid) problems.push(`lifecycle ${e.name}: differs`);
+  }
+
+  for (const e of readJson(join(fixtures, "handshake.json"))) {
+    const code = pairingCode(e.public_key);
+    const text = handshakeText(e.schema_version, e.enrollment_id, e.public_key, e.broker_nonce);
+    lines.push(`handshake\t${e.name}\t${code}\t${sha256Hex(text)}`);
+    if (code !== e.pairing_code) problems.push(`handshake ${e.name}: pairing code differs`);
+    if (text !== e.text) problems.push(`handshake ${e.name}: text differs`);
   }
 
   const messages = join(fixtures, "messages");

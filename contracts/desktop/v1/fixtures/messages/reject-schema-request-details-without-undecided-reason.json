@@ -26,7 +26,13 @@
       "proof_ids": [],
       "authorization": null,
       "attempts": [],
-      "provider_event": null
+      "provider_event": null,
+      "owner_resolution_reason": null,
+      "notification": null,
+      "system_proofs": [],
+      "more_system_proofs": false,
+      "releases": [],
+      "more_releases": false
     }
   },
   "expect": {

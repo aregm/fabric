@@ -21,6 +21,8 @@ export const ENTRY_TYPES: Readonly<Record<string, string>> = {
   [AGENT + "agent_response"]: "AgentResponse",
   [OWNER + "profile"]: "Profile",
   [OWNER + "grant"]: "Grant",
+  [OWNER + "scope"]: "Scope",
+  [OWNER + "agent"]: "Agent",
   [OWNER + "authorization"]: "Authorization",
   [OWNER + "recipient_set"]: "RecipientSet",
   [OWNER + "request"]: "Request",

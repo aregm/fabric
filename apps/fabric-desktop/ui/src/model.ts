@@ -11,7 +11,7 @@ import { ALLOWED_TEXT, CHECKING_STATES, OPERATION, STATE_TEXT, STORE_PROBLEM, TE
 import type { Names } from "./text.ts";
 
 const PROTOCOL: Protocol = "fabric-desktop/1";
-const SCHEMA_VERSION: typeof SchemaVersion = 2;
+const SCHEMA_VERSION: typeof SchemaVersion = 3;
 export const CLIENT: Party = { name: "Fabric Calendar", build: "CD-W08 webview" };
 export const ACTIVITY_LIMIT = 200;
 export const ENDED_GRANT_LIMIT = 200; // grants that ended while this window was open

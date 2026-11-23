@@ -4,13 +4,17 @@
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 
-use fabric_desktop_contracts::common::ToolName;
+use fabric_desktop_contracts::agent::{AgentCall, NON_TOOL_METHODS};
+use fabric_desktop_contracts::common::{OwnerResolutionReason, ToolName};
 use fabric_desktop_contracts::error::ErrorCode;
-use fabric_desktop_contracts::owner::{BuiltInProfile, Mode, OwnerMethod, PolicyRow};
+use fabric_desktop_contracts::handshake::HANDSHAKE_METHODS;
+use fabric_desktop_contracts::owner::{
+    AgentClient, AgentEnrollment, BuiltInProfile, Destination, Mode, OwnerMethod, PolicyRow,
+};
 use fabric_desktop_contracts::suite::read_json;
 use fabric_desktop_contracts::{
     AUTHORIZATION_LIFETIME_SECONDS, AUTHORIZATION_PROFILE, Limits, PROTOCOL, PlainRequestState,
-    RequestState, SCHEMA_VERSION, canonical, encode,
+    RequestState, SCHEMA_VERSION, canonical, decode_record, encode, typed,
 };
 use serde_json::Value;
 
@@ -93,6 +97,81 @@ fn tool_names_and_actions_match_the_catalog() {
     }
     let schema_enum = schema_def("common.schema.json#/$defs/tool_name").unwrap();
     assert_eq!(names(&schema_enum["enum"]), listed);
+}
+
+#[test]
+fn agent_request_methods_are_the_handshake_the_cancel_and_the_tools() {
+    let schema = schema_def("agent-channel.schema.json#/$defs/agent_request").unwrap();
+    let listed: Vec<String> = schema["oneOf"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|b| {
+            b["properties"]["method"]["const"]
+                .as_str()
+                .unwrap()
+                .to_owned()
+        })
+        .collect();
+    let rust: Vec<String> = NON_TOOL_METHODS
+        .iter()
+        .map(|m| (*m).to_owned())
+        .chain(ToolName::ALL.iter().map(|t| t.as_str().to_owned()))
+        .collect();
+    assert_eq!(rust, listed);
+    for method in &listed {
+        assert!(AgentCall::is_method(method), "{method}");
+    }
+    let response = schema_def("agent-channel.schema.json#/$defs/agent_response").unwrap();
+    let not_tools: Vec<&str> = response["oneOf"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter_map(|b| b["properties"]["method"]["const"].as_str())
+        .collect();
+    assert_eq!(not_tools, NON_TOOL_METHODS);
+    assert_eq!(NON_TOOL_METHODS[..2], HANDSHAKE_METHODS);
+}
+
+#[test]
+fn agent_enrollments_and_clients_match_the_schema() {
+    let enrollment =
+        schema_def("owner-channel.schema.json#/$defs/agent/properties/enrollment").unwrap();
+    let rust: Vec<String> = [
+        AgentEnrollment::Pending,
+        AgentEnrollment::Approved,
+        AgentEnrollment::Removed,
+    ]
+    .iter()
+    .map(|e| encode(e).trim_matches('"').to_owned())
+    .collect();
+    assert_eq!(rust, names(&enrollment["enum"]));
+    let client = schema_def("owner-channel.schema.json#/$defs/agent_client").unwrap();
+    let rust: Vec<String> = [
+        AgentClient::ClaudeDesktop,
+        AgentClient::ClaudeCode,
+        AgentClient::CodexDesktop,
+    ]
+    .iter()
+    .map(|c| encode(c).trim_matches('"').to_owned())
+    .collect();
+    assert_eq!(rust, names(&client["enum"]));
+}
+
+#[test]
+fn agent_clients_are_the_add_agent_clients_with_valid_destinations() {
+    let file = data("agent-clients.json");
+    let clients = file["clients"].as_array().unwrap();
+    let schema = schema_def("owner-channel.schema.json#/$defs/agent_client").unwrap();
+    let named: Vec<Value> = clients.iter().map(|e| e["client"].clone()).collect();
+    assert_eq!(&named, schema["enum"].as_array().unwrap());
+    for entry in clients {
+        let client: AgentClient = typed::from_value(&entry["client"]).unwrap();
+        assert_eq!(encode(&client), canonical(&entry["client"]));
+        let destination: Destination =
+            decode_record(canonical(&entry["destination"]).as_bytes()).unwrap();
+        assert_eq!(encode(&destination), canonical(&entry["destination"]));
+    }
 }
 
 #[test]
@@ -238,7 +317,17 @@ fn lifecycle_transitions_match_exactly() {
         }
     }
     assert_eq!(rust, listed);
-    assert_eq!(rust.len(), 39);
+    assert_eq!(rust.len(), 43);
+}
+
+#[test]
+fn owner_resolution_reason_enum_matches_the_schema() {
+    let schema = schema_def("common.schema.json#/$defs/owner_resolution_reason").unwrap();
+    let rust: Vec<String> = OwnerResolutionReason::ALL
+        .iter()
+        .map(|r| encode(r).trim_matches('"').to_owned())
+        .collect();
+    assert_eq!(rust, names(&schema["enum"]));
 }
 
 #[test]
@@ -249,14 +338,14 @@ fn request_state_enum_matches_the_schema() {
 }
 
 #[test]
-fn plain_and_carrying_states_are_the_23_states() {
+fn plain_and_carrying_states_are_the_26_states() {
     let schema = schema_def("common.schema.json#/$defs/plain_request_state").unwrap();
     let plain: Vec<&str> = PlainRequestState::ALL
         .iter()
         .map(|p| p.state().as_str())
         .collect();
     assert_eq!(names(&schema["enum"]), plain);
-    assert_eq!(plain.len(), 20);
+    assert_eq!(plain.len(), 23);
     let carrying = ["pending_approval", "blocked", "terminal_failure"];
     let mut all: BTreeSet<&str> = plain.iter().copied().collect();
     for c in carrying {

@@ -1,0 +1,19 @@
+{
+  "description": "list_ended_requests asks for the page after request-17.",
+  "schema": "owner-channel.schema.json#/$defs/owner_request",
+  "value": {
+    "protocol": "fabric-desktop/1",
+    "id": "ended-2",
+    "method": "list_ended_requests",
+    "params": {
+      "before": "request-17",
+      "limit": 3
+    }
+  },
+  "expect": {
+    "verdict": "accept",
+    "canonical": "{\"id\":\"ended-2\",\"method\":\"list_ended_requests\",\"params\":{\"before\":\"request-17\",\"limit\":3},\"protocol\":\"fabric-desktop/1\"}",
+    "command_digest": null,
+    "action_digest": null
+  }
+}

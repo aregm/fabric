@@ -1,0 +1,21 @@
+{
+  "description": "select_calendars clears the selection of an account: no calendar and no Agent Drafts.",
+  "schema": "owner-channel.schema.json#/$defs/owner_request",
+  "value": {
+    "protocol": "fabric-desktop/1",
+    "id": "command-72",
+    "method": "select_calendars",
+    "params": {
+      "account_id": "acct-2",
+      "expected_revision": 9,
+      "selected": [],
+      "agent_drafts": null
+    }
+  },
+  "expect": {
+    "verdict": "accept",
+    "canonical": "{\"id\":\"command-72\",\"method\":\"select_calendars\",\"params\":{\"account_id\":\"acct-2\",\"agent_drafts\":null,\"expected_revision\":9,\"selected\":[]},\"protocol\":\"fabric-desktop/1\"}",
+    "command_digest": "sha256:62c6e38c440a92f67217d82ec113afbc84c164b0645129e2cb8e5ce61f2a3500",
+    "action_digest": null
+  }
+}

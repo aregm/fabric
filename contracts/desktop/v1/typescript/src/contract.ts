@@ -8,7 +8,7 @@
 
 export const PROTOCOL = "fabric-desktop/1";
 export type Protocol = typeof PROTOCOL;
-export const SCHEMA_VERSION = 2;
+export const SCHEMA_VERSION = 3;
 export const AUTHORIZATION_PROFILE = "fabric-broker-authorization/1";
 
 export interface Limits {
@@ -53,6 +53,11 @@ export type CalendarDate = string;
 export type LocalTime = string;
 export type OffsetDateTime = string;
 export type ProviderRef = string;
+export type PublicKey = `ed25519:${string}`; // ed25519: and 64 lowercase hexadecimal digits
+export type Nonce = string; // 64 lowercase hexadecimal digits
+export type Signature = string; // 128 lowercase hexadecimal digits
+export type PairingCode = string; // XXXX-XXXX-XXXX, hexadecimal digits in capitals
+export type ConfigurationText = string; // 1..=8192 code points
 
 // ---- Closed vocabularies ----
 
@@ -65,7 +70,9 @@ export type EventField = (typeof EVENT_FIELDS)[number];
 export const SEND_UPDATES = ["all", "external_only", "none"] as const;
 export type SendUpdates = (typeof SEND_UPDATES)[number];
 
-export const CALENDAR_ACCESS = ["owner", "writer", "reader", "free_busy_reader"] as const;
+export const CALENDAR_ACCESS = [
+  "owner", "writer", "writer_without_private_access", "reader", "free_busy_reader",
+] as const;
 export type CalendarAccess = (typeof CALENDAR_ACCESS)[number];
 
 export const TOOL_NAMES = [
@@ -87,7 +94,7 @@ export const REQUEST_STATES = [
   "received", "validating", "proving_classification", "allowed", "pending_approval", "blocked", "undecided",
   "approved", "denied", "expired", "cancelled", "stale", "proving_fresh_permit", "queued", "dispatching", "applied",
   "reconciled", "retry_wait", "outcome_unknown", "terminal_failure", "reconciling", "absence_confirmed",
-  "needs_owner_resolution",
+  "needs_owner_resolution", "resolved_as_applied", "resolved_as_absent", "completed",
 ] as const;
 export type RequestState = (typeof REQUEST_STATES)[number];
 
@@ -95,7 +102,8 @@ export type RequestState = (typeof REQUEST_STATES)[number];
 export const PLAIN_REQUEST_STATES = [
   "received", "validating", "proving_classification", "allowed", "undecided", "approved", "denied", "expired",
   "cancelled", "stale", "proving_fresh_permit", "queued", "dispatching", "applied", "reconciled", "retry_wait",
-  "outcome_unknown", "reconciling", "absence_confirmed", "needs_owner_resolution",
+  "outcome_unknown", "reconciling", "absence_confirmed", "needs_owner_resolution", "resolved_as_applied",
+  "resolved_as_absent", "completed",
 ] as const;
 export type PlainRequestState = (typeof PLAIN_REQUEST_STATES)[number];
 
@@ -107,11 +115,17 @@ export type FailureCode = (typeof FAILURE_CODES)[number];
 
 export const BUSY_LIMITS = [
   "open_requests_total", "open_requests_per_agent", "requests_per_minute_per_agent", "open_approval_cards_per_agent",
+  "sessions_per_minute_per_agent",
 ] as const;
 export type BusyLimit = (typeof BUSY_LIMITS)[number];
 
-export const UNDECIDED_REASONS = ["prover_unavailable", "out_of_time", "failed"] as const;
+export const UNDECIDED_REASONS = ["prover_unavailable", "out_of_time", "failed", "provider_unreachable"] as const;
 export type UndecidedReason = (typeof UNDECIDED_REASONS)[number];
+
+export const OWNER_RESOLUTION_REASONS = [
+  "applied_differs", "event_changed", "event_gone", "reads_failed", "account_disconnected",
+] as const;
+export type OwnerResolutionReason = (typeof OWNER_RESOLUTION_REASONS)[number];
 
 export const ERROR_CODES = [
   "malformed_frame", "unsupported_protocol", "unsupported_schema_version", "unknown_method", "invalid_params",
@@ -124,13 +138,16 @@ export type ErrorCode = (typeof ERROR_CODES)[number];
 export const OWNER_METHODS = [
   "hello", "get_snapshot", "connect_google", "save_profile", "save_preferences", "save_group", "decide_request",
   "pause_agent", "revoke_grant", "get_request_details", "get_proof", "subscribe", "disconnect_google",
+  "select_calendars", "refresh_calendars", "resolve_outcome", "add_agent", "approve_agent", "remove_agent",
+  "get_agent_configuration", "list_ended_requests",
 ] as const;
 export type OwnerMethod = (typeof OWNER_METHODS)[number];
 
 // Owner methods that change broker state. Their frame id is the command id.
 export const OWNER_COMMANDS = [
   "connect_google", "save_profile", "save_preferences", "save_group", "decide_request", "pause_agent",
-  "revoke_grant", "disconnect_google",
+  "revoke_grant", "disconnect_google", "select_calendars", "refresh_calendars", "resolve_outcome", "add_agent",
+  "approve_agent", "remove_agent",
 ] as const;
 export type OwnerCommand = (typeof OWNER_COMMANDS)[number];
 
@@ -149,7 +166,7 @@ export type DurationKind = (typeof DURATION_KINDS)[number];
 
 export const GRANT_END_REASONS = [
   "consumed", "revoked_by_owner", "account_disconnected", "authority_reduced", "agent_removed",
-  "session_disconnected", "session_idle_timeout", "app_quit", "broker_restart",
+  "session_disconnected", "session_idle_timeout", "app_quit", "broker_restart", "result_expired",
 ] as const;
 export type GrantEndReason = (typeof GRANT_END_REASONS)[number];
 
@@ -344,8 +361,9 @@ export type RecipientRule =
   | { readonly kind: "recipient_sets"; readonly recipient_set_ids: readonly Id[] };
 
 // A member that does not apply to the tools is null; one that applies and is null covers nothing.
+// A scope that names no calendar covers no calendar: the scope of a calendar list grant.
 export interface Scope {
-  readonly calendars: readonly CalendarRef[]; // 1..=200, unique
+  readonly calendars: readonly CalendarRef[]; // 0..=200, unique
   readonly window: Window | null;
   readonly fields: readonly EventField[] | null;
   readonly recipients: RecipientRule | null;
@@ -362,6 +380,11 @@ export interface GrantEnd {
   readonly at: Timestamp;
   readonly reason: GrantEndReason;
 }
+// What created a grant: the approval of a request, or the approval of the agent's enrollment,
+// whose `enrollment_id` is the agent's id.
+export type GrantOrigin =
+  | { readonly request_id: Id; readonly approval_digest: Digest }
+  | { readonly enrollment_id: Id };
 export interface Grant {
   readonly grant_id: Id;
   readonly revision: PositiveCount;
@@ -370,7 +393,7 @@ export interface Grant {
   readonly tools: readonly ToolName[];
   readonly scope: Scope;
   readonly term: GrantTerm;
-  readonly origin: { readonly request_id: Id; readonly approval_digest: Digest };
+  readonly origin: GrantOrigin;
   readonly policy: { readonly profile_id: Id; readonly version: PositiveCount };
   readonly revocation_epoch: Count;
   readonly created_at: Timestamp;
@@ -387,11 +410,23 @@ export interface Session {
   readonly started_at: Timestamp;
   readonly last_active_at: Timestamp;
 }
+export const AGENT_ENROLLMENTS = ["pending", "approved", "removed"] as const;
+export type AgentEnrollment = (typeof AGENT_ENROLLMENTS)[number];
+// An agent the owner added. `pairing_code` is the code of the key the agent proved, and
+// null until it has proved one. `added_at` is null only in an answer that a broker stored
+// under schema version 2 and gives again.
 export interface Agent {
   readonly agent_id: Id;
   readonly revision: PositiveCount;
   readonly registered_name: Label;
   readonly destination: Destination;
+  readonly client: AgentClient | null; // null only for an agent the owner did not add
+  readonly enrollment: AgentEnrollment;
+  readonly pairing_code: PairingCode | null;
+  readonly added_at: Timestamp | null;
+  readonly key_proven_at: Timestamp | null;
+  readonly approved_at: Timestamp | null;
+  readonly removed_at: Timestamp | null;
   readonly paused: boolean;
   readonly session: Session | null;
   readonly last_tool_call_at: Timestamp | null;
@@ -410,13 +445,42 @@ export interface Account {
   readonly email: Email | null;
   readonly calendars: readonly Calendar[];
 }
-export const PROVER_PROBLEMS = ["not_configured", "failed_will_retry", "failed", "wrong_rules"] as const;
+export const CONNECT_PROBLEMS = [
+  "timed_out", "superseded", "browser_not_opened", "google_error", "client_rejected", "network",
+  "identity_check_failed", "unexpected_scope", "no_refresh_token", "token_store", "already_an_account",
+] as const;
+export type ConnectProblem = (typeof CONNECT_PROBLEMS)[number];
+export const LIST_PROBLEMS = ["too_many_calendars", "too_large", "rejected", "unreachable"] as const;
+export type ListProblem = (typeof LIST_PROBLEMS)[number];
+export const REVOCATIONS = ["not_requested", "pending", "revoked", "not_confirmed"] as const;
+export type Revocation = (typeof REVOCATIONS)[number];
+// What the broker knows about an account's connection to Google beyond its state. Owner only.
+export interface ProviderAccount {
+  readonly account_id: Id;
+  readonly last_connect_problem: ConnectProblem | null;
+  readonly last_list_problem: ListProblem | null; // null after a list that succeeded
+  readonly missing_scope: string | null; // 1..=200 characters, Google's name of the scope
+  readonly refresh_token_ends_at: Timestamp | null;
+  readonly revocation: Revocation;
+}
+export const PROVER_PROBLEMS = [
+  "not_configured", "not_installed", "failed_will_retry", "failed", "wrong_rules",
+] as const;
 export type ProverProblem = (typeof PROVER_PROBLEMS)[number];
-// `prover_problem` is null while the prover is ready or starting.
+export const AGENT_CHANNEL_PROBLEMS = [
+  "path_too_long", "run_dir_unsafe", "run_dir_owner", "stale_not_socket", "socket_mode", "bind_failed",
+] as const;
+export type AgentChannelProblem = (typeof AGENT_CHANNEL_PROBLEMS)[number];
+export const AGENT_CHANNEL_STATES = ["listening", "not_listening"] as const;
+export type AgentChannelState = (typeof AGENT_CHANNEL_STATES)[number];
+// `prover_problem` is null while the prover is ready or starting. `agent_channel_problem` is
+// null while the agent channel is listening.
 export interface Health {
   readonly prover: "ready" | "starting" | "unavailable";
   readonly prover_problem: ProverProblem | null;
   readonly store: "ready" | "locked" | "keychain_refused";
+  readonly agent_channel: AgentChannelState;
+  readonly agent_channel_problem: AgentChannelProblem | null;
 }
 export interface TimeRange {
   readonly days: readonly Weekday[]; // 1..=7, unique
@@ -524,6 +588,33 @@ export interface ProofReport {
   readonly started_at: Timestamp;
   readonly elapsed_ms: Count;
 }
+export const SYSTEM_ACTION_KINDS = ["refresh", "reconcile", "list_calendars"] as const;
+export type SystemActionKind = (typeof SYSTEM_ACTION_KINDS)[number];
+// A proof of an action the broker took itself for a request. It holds no calendar content.
+export interface SystemProofReport {
+  readonly proof_id: Id;
+  readonly action: {
+    readonly kind: SystemActionKind;
+    readonly account_id: Id;
+    readonly calendar_id: Id | null;
+    readonly event_id: ProviderRef | null;
+  };
+  readonly outcome: "permit" | "need_approval" | "block" | "undecided";
+  readonly prover_kind: "isabelle" | "synthetic";
+  readonly recorded_at: Timestamp;
+}
+export const RELEASE_KINDS = ["calendars", "availability", "events", "effect"] as const;
+export type ReleaseKind = (typeof RELEASE_KINDS)[number];
+// One release of a result to the agent, under its own proof. `request_id` is the request that
+// asked for the release.
+export interface ReleaseRecord {
+  readonly release_id: Id;
+  readonly request_id: Id;
+  readonly kind: ReleaseKind;
+  readonly proof_id: Id;
+  readonly grant_ids: readonly Id[]; // 0..=50, unique
+  readonly released_at: Timestamp;
+}
 export interface Attempt {
   readonly number: PositiveCount;
   readonly proof_id: Id;
@@ -538,6 +629,8 @@ export interface Warning {
   readonly explanation: Explanation;
   readonly observed_at: Timestamp | null;
 }
+export const NOTIFICATIONS = ["sent", "not_requested", "unknown"] as const;
+export type Notification = (typeof NOTIFICATIONS)[number];
 // `private` is null when the retrieval was redacted.
 export interface RequestDetails {
   readonly request: Request;
@@ -545,6 +638,7 @@ export interface RequestDetails {
   readonly private: {
     readonly action: Action;
     readonly before: EventView | null;
+    readonly after: EventView | null; // as Google holds it, when the applied change differs from the approval; may be null then too
     readonly warnings: readonly Warning[];
   } | null;
   readonly card: ApprovalCard | null;
@@ -554,6 +648,12 @@ export interface RequestDetails {
   readonly attempts: readonly Attempt[];
   readonly provider_event: EventRef | null;
   readonly undecided_reason: UndecidedReason | null; // null unless the request is undecided
+  readonly owner_resolution_reason: OwnerResolutionReason | null; // why the owner is asked to resolve
+  readonly notification: Notification | null;
+  readonly system_proofs: readonly SystemProofReport[]; // 0..=200
+  readonly more_system_proofs: boolean; // older system proofs were left out
+  readonly releases: readonly ReleaseRecord[]; // 0..=200
+  readonly more_releases: boolean; // older releases were left out
 }
 
 // ---- Snapshot and changes ----
@@ -563,6 +663,7 @@ export interface Snapshot {
   readonly health: Health;
   readonly profiles: Profiles;
   readonly accounts: readonly Account[];
+  readonly provider_accounts: readonly ProviderAccount[];
   readonly agents: readonly Agent[];
   readonly recipient_sets: readonly RecipientSet[];
   readonly preferences: Preferences;
@@ -571,6 +672,7 @@ export interface Snapshot {
 }
 export type Change =
   | { readonly kind: "account"; readonly account: Account }
+  | { readonly kind: "provider_account"; readonly provider_account: ProviderAccount }
   | { readonly kind: "agent"; readonly agent: Agent }
   | { readonly kind: "profiles"; readonly profiles: Profiles }
   | { readonly kind: "recipient_set"; readonly recipient_set: RecipientSet }
@@ -609,7 +711,8 @@ export interface ParamsSaveProfile {
   readonly expected_revision: Count;
   readonly change:
     | { readonly kind: "activate"; readonly profile_id: Id }
-    | { readonly kind: "save_custom"; readonly profile: CustomProfileDraft; readonly acknowledged_expansion: Digest | null };
+    | { readonly kind: "save_custom"; readonly profile: CustomProfileDraft; readonly acknowledged_expansion: Digest | null }
+    | { readonly kind: "delete_custom"; readonly profile_id: CustomProfileId };
 }
 export interface ResultSaveProfile {
   readonly commit_sequence: PositiveCount;
@@ -697,6 +800,86 @@ export interface ResultDisconnectGoogle {
   readonly account: Account;
   readonly ended_grant_ids: readonly Id[];
 }
+// `selected` is the whole selection; `agent_drafts` must be in it, or is null for none.
+export interface ParamsSelectCalendars {
+  readonly account_id: Id;
+  readonly expected_revision: Count;
+  readonly selected: readonly Id[]; // 0..=250, unique
+  readonly agent_drafts: Id | null;
+}
+export interface ResultSelectCalendars {
+  readonly commit_sequence: PositiveCount;
+  readonly account: Account;
+}
+// Lists one account's calendars again. The list arrives later, as changes of the account.
+export interface ParamsRefreshCalendars {
+  readonly account_id: Id;
+}
+export interface ResultRefreshCalendars {
+  readonly commit_sequence: PositiveCount;
+}
+export type Resolution = "applied" | "absent";
+// The owner's own statement about a request in needs_owner_resolution. Nothing is sent to Google.
+export interface ParamsResolveOutcome {
+  readonly request_id: Id;
+  readonly expected_revision: Count;
+  readonly resolution: Resolution;
+}
+export interface ResultResolveOutcome {
+  readonly commit_sequence: PositiveCount;
+  readonly request: Request;
+}
+export const AGENT_CLIENTS = ["claude_desktop", "claude_code", "codex_desktop"] as const;
+export type AgentClient = (typeof AGENT_CLIENTS)[number];
+// The broker gives the agent an id and, from the kind of client, where its data goes.
+export interface ParamsAddAgent {
+  readonly registered_name: Label;
+  readonly client: AgentClient;
+}
+export interface ResultAddAgent {
+  readonly commit_sequence: PositiveCount;
+  readonly agent: Agent;
+}
+// `pairing_code` must be the code of the key the agent proved last.
+export interface ParamsApproveAgent {
+  readonly agent_id: Id;
+  readonly expected_revision: Count;
+  readonly pairing_code: PairingCode;
+}
+// `grant` is the calendar list grant made in the same commit.
+export interface ResultApproveAgent {
+  readonly commit_sequence: PositiveCount;
+  readonly agent: Agent;
+  readonly grant: Grant;
+}
+export interface ParamsRemoveAgent {
+  readonly agent_id: Id;
+  readonly expected_revision: Count;
+}
+// `agent` is the removed agent, whose record stays.
+export interface ResultRemoveAgent {
+  readonly commit_sequence: PositiveCount;
+  readonly agent: Agent;
+  readonly ended_grant_ids: readonly Id[];
+}
+export interface ParamsGetAgentConfiguration {
+  readonly agent_id: Id;
+}
+// The text that starts this agent's bridge in the client the owner named. `configuration` is
+// null when the broker cannot name an installed bridge.
+export interface ResultGetAgentConfiguration {
+  readonly configuration: ConfigurationText | null;
+}
+// `before` is null for the first page, or the id of the last request of the page before.
+export interface ParamsListEndedRequests {
+  readonly before: Id | null;
+  readonly limit: number; // 1..=100
+}
+// `more` is true when older ended requests remain.
+export interface ResultListEndedRequests {
+  readonly requests: readonly Request[]; // ..=100
+  readonly more: boolean;
+}
 
 // The params and result of each owner method (data/owner-methods.json).
 export interface OwnerMethods {
@@ -713,6 +896,17 @@ export interface OwnerMethods {
   readonly get_proof: { readonly params: ParamsGetProof; readonly result: ProofReport };
   readonly subscribe: { readonly params: ParamsSubscribe; readonly result: ResultSubscribe };
   readonly disconnect_google: { readonly params: ParamsDisconnectGoogle; readonly result: ResultDisconnectGoogle };
+  readonly select_calendars: { readonly params: ParamsSelectCalendars; readonly result: ResultSelectCalendars };
+  readonly refresh_calendars: { readonly params: ParamsRefreshCalendars; readonly result: ResultRefreshCalendars };
+  readonly resolve_outcome: { readonly params: ParamsResolveOutcome; readonly result: ResultResolveOutcome };
+  readonly add_agent: { readonly params: ParamsAddAgent; readonly result: ResultAddAgent };
+  readonly approve_agent: { readonly params: ParamsApproveAgent; readonly result: ResultApproveAgent };
+  readonly remove_agent: { readonly params: ParamsRemoveAgent; readonly result: ResultRemoveAgent };
+  readonly get_agent_configuration: {
+    readonly params: ParamsGetAgentConfiguration;
+    readonly result: ResultGetAgentConfiguration;
+  };
+  readonly list_ended_requests: { readonly params: ParamsListEndedRequests; readonly result: ResultListEndedRequests };
 }
 
 // ---- Owner frames ----
@@ -923,15 +1117,59 @@ export interface ToolOutcome {
 
 // ---- Agent frames ----
 
-export type AgentRequest = {
-  readonly [T in ToolName]: {
-    readonly protocol: Protocol;
-    readonly id: Id;
-    readonly method: T;
-    readonly params: ToolArguments[T];
-  };
-}[ToolName];
+// The two handshake methods, which come before any tool frame on a connection and are not
+// tools (README section 8).
+export const HANDSHAKE_METHODS = ["agent_hello", "agent_prove"] as const;
+export type HandshakeMethod = (typeof HANDSHAKE_METHODS)[number];
+// Every method of the agent channel that is not a tool: the handshake and the cancel message.
+export const NON_TOOL_METHODS = [...HANDSHAKE_METHODS, "agent_cancel"] as const;
+export type NonToolMethod = (typeof NON_TOOL_METHODS)[number];
+export interface ParamsAgentHello {
+  readonly schema_version: Count;
+  readonly enrollment_id: Id;
+  readonly public_key: PublicKey;
+}
+export interface ResultAgentHello {
+  readonly schema_version: PositiveCount;
+  readonly broker_nonce: Nonce;
+}
+// The Ed25519 signature over the handshake text, made with the key of the hello.
+export interface ParamsAgentProve {
+  readonly signature: Signature;
+}
+// approved: the session has started. pending: the owner has not approved yet. `practice` is
+// true exactly when the broker runs with the practice calendar.
+export interface ResultAgentProve {
+  readonly enrollment: "approved" | "pending";
+  readonly practice: boolean;
+}
+// The adapter no longer waits for the answer to the call whose frame id is `call_id`, on this
+// connection.
+export interface ParamsAgentCancel {
+  readonly call_id: Id;
+}
+// `held` is true when a call with that id was waiting for its answer and was dropped; false
+// when no such call was waiting.
+export interface ResultAgentCancel {
+  readonly held: boolean;
+}
+
+export type AgentRequest =
+  | { readonly protocol: Protocol; readonly id: Id; readonly method: "agent_hello"; readonly params: ParamsAgentHello }
+  | { readonly protocol: Protocol; readonly id: Id; readonly method: "agent_prove"; readonly params: ParamsAgentProve }
+  | { readonly protocol: Protocol; readonly id: Id; readonly method: "agent_cancel"; readonly params: ParamsAgentCancel }
+  | {
+      readonly [T in ToolName]: {
+        readonly protocol: Protocol;
+        readonly id: Id;
+        readonly method: T;
+        readonly params: ToolArguments[T];
+      };
+    }[ToolName];
 
 export type AgentResponse =
+  | { readonly protocol: Protocol; readonly id: Id; readonly method: "agent_hello"; readonly result: ResultAgentHello }
+  | { readonly protocol: Protocol; readonly id: Id; readonly method: "agent_prove"; readonly result: ResultAgentProve }
+  | { readonly protocol: Protocol; readonly id: Id; readonly method: "agent_cancel"; readonly result: ResultAgentCancel }
   | { readonly protocol: Protocol; readonly id: Id; readonly method: ToolName; readonly result: ToolOutcome }
   | { readonly protocol: Protocol; readonly id: Id | null; readonly method: string | null; readonly error: AgentError };

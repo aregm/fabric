@@ -32,7 +32,8 @@ export const DIGEST_B = `sha256:${"b".repeat(64)}` as const;
 
 export const AGENT: Agent = {
   agent_id: "spike-agent", revision: 1, registered_name: "Synthetic agent (spike)",
-  destination: { kind: "local", endpoint: "inside the broker spike" }, paused: false,
+  destination: { kind: "local", endpoint: "inside the broker spike" }, client: null, enrollment: "approved", pairing_code: null,
+  added_at: RECEIVED_AT, key_proven_at: null, approved_at: RECEIVED_AT, removed_at: null, paused: false,
   session: { session_id: "spike-session", started_at: RECEIVED_AT, last_active_at: RECEIVED_AT }, last_tool_call_at: null,
 };
 
@@ -63,7 +64,7 @@ export function details(r: Request): RequestDetails {
           task: "Block time to plan next week.",
         },
       },
-      before: null, warnings: [],
+      before: null, after: null, warnings: [],
     },
     card: {
       scope: { calendars: [{ account_id: "spike-account", calendar_id: "spike-calendar" }], window: null, fields: null, recipients: null, send_updates: null },
@@ -72,13 +73,14 @@ export function details(r: Request): RequestDetails {
       expires_at: "2026-11-21T16:00:00.000Z",
     },
     approval: null, proof_ids: [], authorization: null, attempts: [], provider_event: null, undecided_reason: null,
+    owner_resolution_reason: null, notification: null, system_proofs: [], more_system_proofs: false, releases: [], more_releases: false,
   };
 }
 
 // The first run's snapshot with a healthy broker, the test agent and these requests.
 export function snapshot(cursor: number, requests: Request[] = []): Snapshot {
   const first: Snapshot = fixture("accept-owner-response-get-snapshot-first-run.json").result;
-  return { ...first, cursor, health: { prover: "ready", prover_problem: null, store: "ready" }, agents: [AGENT], requests };
+  return { ...first, cursor, health: { prover: "ready", prover_problem: null, store: "ready", agent_channel: "listening", agent_channel_problem: null }, agents: [AGENT], requests };
 }
 
 // The error each code carries by the contract, with the test's message.

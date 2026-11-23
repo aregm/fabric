@@ -1,0 +1,195 @@
+{
+  "description": "A release record of kind warnings: warnings never reach an agent.",
+  "schema": "owner-channel.schema.json#/$defs/owner_response",
+  "value": {
+    "protocol": "fabric-desktop/1",
+    "id": "details-26",
+    "method": "get_request_details",
+    "result": {
+      "request": {
+        "request_id": "request-25",
+        "revision": 9,
+        "agent_id": "agent-claude-desktop",
+        "tool": "fabric_calendar_propose_create",
+        "account_id": "acct-1",
+        "received_at": "2026-11-20T16:04:00.000Z",
+        "updated_at": "2026-11-20T16:05:03.100Z",
+        "request_digest": "sha256:0126e89a9089f4435814cb881464cd3a765e70b60de8b0f42259f4801e0633f1",
+        "status": {
+          "state": "applied"
+        }
+      },
+      "redaction": "full",
+      "private": {
+        "action": {
+          "tool": "fabric_calendar_propose_create",
+          "arguments": {
+            "account_id": "acct-1",
+            "calendar_id": "cal-primary",
+            "event": {
+              "title": "Dentist",
+              "start": {
+                "date_time": "2026-11-20T14:00:00-06:00",
+                "zone": "America/Chicago"
+              },
+              "end": {
+                "date_time": "2026-11-20T15:00:00-06:00",
+                "zone": "America/Chicago"
+              },
+              "description": "Bring the insurance card.",
+              "location": "12 Main St"
+            },
+            "task": "Block time to plan next week."
+          }
+        },
+        "before": null,
+        "after": null,
+        "warnings": []
+      },
+      "card": {
+        "scope": {
+          "calendars": [
+            {
+              "account_id": "acct-1",
+              "calendar_id": "cal-primary"
+            }
+          ],
+          "window": null,
+          "fields": null,
+          "recipients": null,
+          "send_updates": null
+        },
+        "proposed_duration": {
+          "kind": "one_request"
+        },
+        "insufficiency": {
+          "rule": "owner_approval_required",
+          "explanation": "Creating in an existing calendar asks in the Careful profile.",
+          "proof_id": "proof-25-classification"
+        },
+        "expires_at": "2026-11-21T16:04:00.000Z"
+      },
+      "approval": {
+        "decision": "approve",
+        "command_id": "command-60",
+        "decided_at": "2026-11-20T16:04:50.000Z",
+        "approval_digest": "sha256:c68bbb19b1dc47e0d54ace6f051b24b481ed088298d607a7fccf5b257a5a87b5",
+        "scope": {
+          "calendars": [
+            {
+              "account_id": "acct-1",
+              "calendar_id": "cal-primary"
+            }
+          ],
+          "window": null,
+          "fields": null,
+          "recipients": null,
+          "send_updates": null
+        },
+        "duration": {
+          "kind": "one_request"
+        },
+        "effective_request_digest": "sha256:0126e89a9089f4435814cb881464cd3a765e70b60de8b0f42259f4801e0633f1",
+        "grant_id": "grant-8"
+      },
+      "proof_ids": [
+        "proof-25-classification",
+        "proof-25-permit-1",
+        "proof-25-permit-2"
+      ],
+      "authorization": {
+        "profile": "fabric-broker-authorization/1",
+        "authorization_id": "authz-25-2",
+        "request_id": "request-25",
+        "agent_id": "agent-claude-desktop",
+        "action_digest": "sha256:4a1ac4edd8a9d518f2c1406e814ebb82d7acb81ef2c1095458a62a3d0f5bce75",
+        "proof_id": "proof-25-permit-2",
+        "grant_id": "grant-8",
+        "issued_at": "2026-11-20T16:05:02.000Z",
+        "expires_at": "2026-11-20T16:06:02.000Z",
+        "lifetime_seconds": 60,
+        "consumed_at": "2026-11-20T16:05:02.350Z"
+      },
+      "attempts": [
+        {
+          "number": 1,
+          "proof_id": "proof-25-permit-1",
+          "started_at": "2026-11-20T16:04:51.000Z",
+          "finished_at": "2026-11-20T16:04:52.100Z",
+          "outcome": "transient_failure"
+        },
+        {
+          "number": 2,
+          "proof_id": "proof-25-permit-2",
+          "started_at": "2026-11-20T16:05:02.000Z",
+          "finished_at": "2026-11-20T16:05:03.100Z",
+          "outcome": "applied"
+        }
+      ],
+      "provider_event": {
+        "event_id": "evt-fabric-0051",
+        "revision": "3181162000000000"
+      },
+      "undecided_reason": null,
+      "owner_resolution_reason": null,
+      "notification": "unknown",
+      "system_proofs": [
+        {
+          "proof_id": "proof-25-system-1",
+          "action": {
+            "kind": "list_calendars",
+            "account_id": "acct-1",
+            "calendar_id": null,
+            "event_id": null
+          },
+          "outcome": "permit",
+          "prover_kind": "isabelle",
+          "recorded_at": "2026-11-20T16:04:01.000Z"
+        },
+        {
+          "proof_id": "proof-25-system-2",
+          "action": {
+            "kind": "refresh",
+            "account_id": "acct-1",
+            "calendar_id": "cal-primary",
+            "event_id": "evt-fabric-0051"
+          },
+          "outcome": "permit",
+          "prover_kind": "isabelle",
+          "recorded_at": "2026-11-20T16:04:52.200Z"
+        },
+        {
+          "proof_id": "proof-25-system-3",
+          "action": {
+            "kind": "reconcile",
+            "account_id": "acct-1",
+            "calendar_id": "cal-primary",
+            "event_id": "evt-fabric-0051"
+          },
+          "outcome": "permit",
+          "prover_kind": "isabelle",
+          "recorded_at": "2026-11-20T16:05:03.000Z"
+        }
+      ],
+      "more_system_proofs": false,
+      "releases": [
+        {
+          "release_id": "release-25-1",
+          "request_id": "request-25",
+          "kind": "warnings",
+          "proof_id": "proof-25-release-1",
+          "grant_ids": [
+            "grant-8"
+          ],
+          "released_at": "2026-11-20T16:05:03.100Z"
+        }
+      ],
+      "more_releases": false
+    }
+  },
+  "expect": {
+    "verdict": "reject",
+    "layer": "schema",
+    "error": "invalid_params"
+  }
+}

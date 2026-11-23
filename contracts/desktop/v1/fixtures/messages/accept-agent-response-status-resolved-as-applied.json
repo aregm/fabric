@@ -1,0 +1,25 @@
+{
+  "description": "A status answer for a request in state resolved_as_applied.",
+  "schema": "agent-channel.schema.json#/$defs/agent_response",
+  "value": {
+    "protocol": "fabric-desktop/1",
+    "id": "call-15",
+    "method": "fabric_request_status",
+    "result": {
+      "request": {
+        "request_id": "request-34",
+        "updated_at": "2026-11-20T18:02:00.000Z",
+        "status": {
+          "state": "resolved_as_applied"
+        }
+      },
+      "result": null
+    }
+  },
+  "expect": {
+    "verdict": "accept",
+    "canonical": "{\"id\":\"call-15\",\"method\":\"fabric_request_status\",\"protocol\":\"fabric-desktop/1\",\"result\":{\"request\":{\"request_id\":\"request-34\",\"status\":{\"state\":\"resolved_as_applied\"},\"updated_at\":\"2026-11-20T18:02:00.000Z\"},\"result\":null}}",
+    "command_digest": null,
+    "action_digest": null
+  }
+}

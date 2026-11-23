@@ -1,0 +1,8 @@
+{
+  "description": "Where data approved for an agent goes, by the kind of client the owner named in add_agent. It is a label for the client the owner named, not a checked fact: the broker cannot check which program holds the key or where it sends data.",
+  "clients": [
+    { "client": "claude_desktop", "destination": { "kind": "cloud", "processor": "Anthropic" } },
+    { "client": "claude_code", "destination": { "kind": "cloud", "processor": "Anthropic" } },
+    { "client": "codex_desktop", "destination": { "kind": "cloud", "processor": "OpenAI" } }
+  ]
+}

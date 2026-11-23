@@ -27,7 +27,13 @@
       "authorization": null,
       "attempts": [],
       "provider_event": null,
-      "undecided_reason": "crashed"
+      "undecided_reason": "crashed",
+      "owner_resolution_reason": null,
+      "notification": null,
+      "system_proofs": [],
+      "more_system_proofs": false,
+      "releases": [],
+      "more_releases": false
     }
   },
   "expect": {

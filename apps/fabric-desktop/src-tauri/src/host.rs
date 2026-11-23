@@ -620,7 +620,7 @@ mod tests {
         "/binaries/fabric-broker-aarch64-apple-darwin"
     );
 
-    const HELLO: &[u8] = br#"{"protocol":"fabric-desktop/1","id":"hello-1","method":"hello","params":{"client":{"name":"host test","build":"0"},"schema_version":2}}"#;
+    const HELLO: &[u8] = br#"{"protocol":"fabric-desktop/1","id":"hello-1","method":"hello","params":{"client":{"name":"host test","build":"0"},"schema_version":3}}"#;
     const SNAPSHOT: &[u8] =
         br#"{"protocol":"fabric-desktop/1","id":"snap-1","method":"get_snapshot","params":{}}"#;
 
@@ -760,7 +760,7 @@ mod tests {
                 assert_eq!(run, 1);
                 assert_eq!(frame["id"], "hello-1");
                 assert_eq!(frame["method"], "hello");
-                assert_eq!(frame["result"]["schema_version"], 2);
+                assert_eq!(frame["result"]["schema_version"], 3);
             }
             other => panic!("expected the hello answer, got {other:?}"),
         }

@@ -1,0 +1,24 @@
+{
+  "description": "A provider_account whose revocation is failed, which is not a state of a revocation.",
+  "schema": "owner-channel.schema.json#/$defs/owner_notice",
+  "value": {
+    "protocol": "fabric-desktop/1",
+    "sequence": 1348,
+    "change": {
+      "kind": "provider_account",
+      "provider_account": {
+        "account_id": "acct-3",
+        "last_connect_problem": null,
+        "last_list_problem": null,
+        "missing_scope": null,
+        "refresh_token_ends_at": null,
+        "revocation": "failed"
+      }
+    }
+  },
+  "expect": {
+    "verdict": "reject",
+    "layer": "schema",
+    "error": "invalid_params"
+  }
+}

@@ -9,13 +9,15 @@
       "health": {
         "prover": "unavailable",
         "prover_problem": "failed_will_retry",
-        "store": "ready"
+        "store": "ready",
+        "agent_channel": "listening",
+        "agent_channel_problem": null
       }
     }
   },
   "expect": {
     "verdict": "accept",
-    "canonical": "{\"change\":{\"health\":{\"prover\":\"unavailable\",\"prover_problem\":\"failed_will_retry\",\"store\":\"ready\"},\"kind\":\"health\"},\"protocol\":\"fabric-desktop/1\",\"sequence\":1321}",
+    "canonical": "{\"change\":{\"health\":{\"agent_channel\":\"listening\",\"agent_channel_problem\":null,\"prover\":\"unavailable\",\"prover_problem\":\"failed_will_retry\",\"store\":\"ready\"},\"kind\":\"health\"},\"protocol\":\"fabric-desktop/1\",\"sequence\":1321}",
     "command_digest": null,
     "action_digest": null
   }

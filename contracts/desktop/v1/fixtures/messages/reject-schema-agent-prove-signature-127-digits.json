@@ -1,0 +1,17 @@
+{
+  "description": "An agent prove whose signature has 127 digits.",
+  "schema": "agent-channel.schema.json#/$defs/agent_request",
+  "value": {
+    "protocol": "fabric-desktop/1",
+    "id": "prove-0a1b2c3d4e5f60718293a4b5c6d7e8f9",
+    "method": "agent_prove",
+    "params": {
+      "signature": "d5ba4c39e5a5c2ca8df6b302cc6515cd4b0213691a9146e59922cf042791c2967625fa44fe6d402e34419b967b3e74595b98101ba6466040344b62360896f20"
+    }
+  },
+  "expect": {
+    "verdict": "reject",
+    "layer": "schema",
+    "error": "invalid_params"
+  }
+}

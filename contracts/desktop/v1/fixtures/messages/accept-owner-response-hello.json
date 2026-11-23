@@ -10,7 +10,7 @@
         "name": "Fabric broker",
         "build": "0.1.0-dev+20261115"
       },
-      "schema_version": 2,
+      "schema_version": 3,
       "capabilities": [],
       "limits": {
         "max_frame_bytes": 1048576,
@@ -27,7 +27,7 @@
   },
   "expect": {
     "verdict": "accept",
-    "canonical": "{\"id\":\"hello-1\",\"method\":\"hello\",\"protocol\":\"fabric-desktop/1\",\"result\":{\"broker\":{\"build\":\"0.1.0-dev+20261115\",\"name\":\"Fabric broker\"},\"capabilities\":[],\"limits\":{\"approval_expiry_seconds\":86400,\"authorization_lifetime_seconds\":60,\"max_frame_bytes\":1048576,\"open_approval_cards_per_agent\":5,\"open_requests_per_agent\":25,\"open_requests_total\":100,\"requests_per_minute_per_agent\":15,\"session_idle_timeout_seconds\":1800,\"subscriber_queue_notices\":256},\"schema_version\":2}}",
+    "canonical": "{\"id\":\"hello-1\",\"method\":\"hello\",\"protocol\":\"fabric-desktop/1\",\"result\":{\"broker\":{\"build\":\"0.1.0-dev+20261115\",\"name\":\"Fabric broker\"},\"capabilities\":[],\"limits\":{\"approval_expiry_seconds\":86400,\"authorization_lifetime_seconds\":60,\"max_frame_bytes\":1048576,\"open_approval_cards_per_agent\":5,\"open_requests_per_agent\":25,\"open_requests_total\":100,\"requests_per_minute_per_agent\":15,\"session_idle_timeout_seconds\":1800,\"subscriber_queue_notices\":256},\"schema_version\":3}}",
     "command_digest": null,
     "action_digest": null
   }

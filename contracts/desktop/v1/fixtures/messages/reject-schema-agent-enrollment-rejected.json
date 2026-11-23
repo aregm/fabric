@@ -1,0 +1,28 @@
+{
+  "description": "An agent whose enrollment is rejected, which is not a state: a refused agent is removed.",
+  "schema": "owner-channel.schema.json#/$defs/agent",
+  "value": {
+    "agent_id": "agent-0123456789abcdef0123456789abcdef",
+    "revision": 2,
+    "registered_name": "Claude Code (calendar folder)",
+    "destination": {
+      "kind": "cloud",
+      "processor": "Anthropic"
+    },
+    "client": "claude_code",
+    "enrollment": "rejected",
+    "pairing_code": "4E7A-9852-EC06",
+    "added_at": "2026-11-20T16:00:00.000Z",
+    "key_proven_at": "2026-11-20T16:03:12.000Z",
+    "approved_at": null,
+    "removed_at": null,
+    "paused": false,
+    "session": null,
+    "last_tool_call_at": null
+  },
+  "expect": {
+    "verdict": "reject",
+    "layer": "schema",
+    "error": "invalid_params"
+  }
+}

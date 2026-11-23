@@ -9,7 +9,9 @@
       "health": {
         "prover": "unavailable",
         "prover_problem": "crashed",
-        "store": "ready"
+        "store": "ready",
+        "agent_channel": "listening",
+        "agent_channel_problem": null
       }
     }
   },

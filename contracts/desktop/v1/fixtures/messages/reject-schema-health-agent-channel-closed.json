@@ -1,0 +1,23 @@
+{
+  "description": "A health notice whose agent_channel is closed, which is not a state of the channel.",
+  "schema": "owner-channel.schema.json#/$defs/owner_notice",
+  "value": {
+    "protocol": "fabric-desktop/1",
+    "sequence": 1342,
+    "change": {
+      "kind": "health",
+      "health": {
+        "prover": "ready",
+        "prover_problem": null,
+        "store": "ready",
+        "agent_channel": "closed",
+        "agent_channel_problem": null
+      }
+    }
+  },
+  "expect": {
+    "verdict": "reject",
+    "layer": "schema",
+    "error": "invalid_params"
+  }
+}

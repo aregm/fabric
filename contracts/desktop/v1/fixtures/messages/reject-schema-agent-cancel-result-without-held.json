@@ -1,0 +1,15 @@
+{
+  "description": "An agent_cancel answer without held.",
+  "schema": "agent-channel.schema.json#/$defs/agent_response",
+  "value": {
+    "protocol": "fabric-desktop/1",
+    "id": "cancel-4",
+    "method": "agent_cancel",
+    "result": {}
+  },
+  "expect": {
+    "verdict": "reject",
+    "layer": "schema",
+    "error": "invalid_params"
+  }
+}

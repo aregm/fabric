@@ -369,10 +369,10 @@ fn error_parts(response: &Value) -> (Value, Value, Value, Value) {
 #[test]
 fn hello_reports_the_broker_the_build_and_the_limits() {
     let mut run = Run::new(testing::isabelle());
-    let answer = run.ok("hello", hello_params(2));
+    let answer = run.ok("hello", hello_params(3));
     assert_eq!(answer["broker"]["name"], json!("fabric-broker"));
     assert_eq!(answer["broker"]["build"], json!(BUILD));
-    assert_eq!(answer["schema_version"], json!(2));
+    assert_eq!(answer["schema_version"], json!(3));
     assert_eq!(answer["capabilities"], json!([]));
     assert_eq!(
         answer["limits"],
@@ -383,14 +383,14 @@ fn hello_reports_the_broker_the_build_and_the_limits() {
 #[test]
 fn hello_with_another_schema_version_is_refused() {
     let mut run = Run::new(testing::isabelle());
-    let output = run.send("h", "hello", hello_params(1));
+    let output = run.send("h", "hello", hello_params(2));
     assert_eq!(
         error_parts(&response(&output)),
         (
             json!("h"),
             json!("hello"),
             json!("unsupported_schema_version"),
-            json!({"received": 1, "supported": 2})
+            json!({"received": 2, "supported": 3})
         )
     );
 }

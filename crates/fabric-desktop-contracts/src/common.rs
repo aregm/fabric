@@ -12,7 +12,7 @@ use crate::scalar::{
 pub const PROTOCOL: &str = "fabric-desktop/1";
 
 /// The schema version of this contract (`data/version.json`, README section 12).
-pub const SCHEMA_VERSION: u64 = 2;
+pub const SCHEMA_VERSION: u64 = 3;
 
 /// The marker for `common#/$defs/protocol`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -114,6 +114,8 @@ pub enum SendUpdates {
 pub enum CalendarAccess {
     Owner,
     Writer,
+    /// The account may change events, and sees private events without their details.
+    WriterWithoutPrivateAccess,
     Reader,
     FreeBusyReader,
 }
@@ -230,6 +232,7 @@ pub enum BusyLimit {
     OpenRequestsPerAgent,
     RequestsPerMinutePerAgent,
     OpenApprovalCardsPerAgent,
+    SessionsPerMinutePerAgent,
 }
 
 /// `common#/$defs/undecided_reason`: why no proof decided a request (README section 7).
@@ -242,6 +245,31 @@ pub enum UndecidedReason {
     OutOfTime,
     /// The check ran and did not decide the request, or its report could not be used.
     Failed,
+    /// The calendar could not be reached to look at the event.
+    ProviderUnreachable,
+}
+
+/// `common#/$defs/owner_resolution_reason`: why the broker handed a request to the owner to
+/// resolve (README section 7).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum OwnerResolutionReason {
+    AppliedDiffers,
+    EventChanged,
+    EventGone,
+    ReadsFailed,
+    AccountDisconnected,
+}
+
+impl OwnerResolutionReason {
+    /// Every reason, in the order of the schema's `enum`.
+    pub const ALL: [OwnerResolutionReason; 5] = [
+        OwnerResolutionReason::AppliedDiffers,
+        OwnerResolutionReason::EventChanged,
+        OwnerResolutionReason::EventGone,
+        OwnerResolutionReason::ReadsFailed,
+        OwnerResolutionReason::AccountDisconnected,
+    ];
 }
 
 /// `common#/$defs/limits`: the numbers the broker enforces and reports in `hello`.

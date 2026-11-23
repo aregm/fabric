@@ -35,7 +35,7 @@ pub(crate) fn offered_grants(
             }
             g.ended.is_none()
                 && match g.term {
-                    GrantTerm::OneRequest { .. } => &g.origin.request_id == request_id,
+                    GrantTerm::OneRequest { .. } => g.origin.request_id() == Some(request_id),
                     GrantTerm::Session { .. } | GrantTerm::UntilRevoked => true,
                 }
         })
@@ -66,9 +66,11 @@ pub(crate) fn grant_facts(
 ) -> Result<Vec<GrantFact>, StoreFault> {
     let mut facts = Vec::with_capacity(grants.len());
     for grant in grants {
-        let origin_state = r
-            .request(&grant.origin.request_id)?
-            .map(|o| o.row.request.status.state());
+        // A grant with no origin request (an enrollment approval's) has no origin state.
+        let origin_state = match grant.origin.request_id() {
+            Some(origin) => r.request(origin)?.map(|o| o.row.request.status.state()),
+            None => None,
+        };
         let origin_open = origin_state.is_some_and(|s| !s.is_terminal());
         let used = matches!(grant.term, GrantTerm::OneRequest { .. })
             && matches!(

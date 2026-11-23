@@ -1,0 +1,20 @@
+{
+  "description": "select_calendars with a null selection.",
+  "schema": "owner-channel.schema.json#/$defs/owner_request",
+  "value": {
+    "protocol": "fabric-desktop/1",
+    "id": "command-71",
+    "method": "select_calendars",
+    "params": {
+      "account_id": "acct-1",
+      "expected_revision": 4,
+      "selected": null,
+      "agent_drafts": null
+    }
+  },
+  "expect": {
+    "verdict": "reject",
+    "layer": "schema",
+    "error": "invalid_params"
+  }
+}

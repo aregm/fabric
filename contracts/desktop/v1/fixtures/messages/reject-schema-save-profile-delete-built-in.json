@@ -1,0 +1,21 @@
+{
+  "description": "save_profile deleting the built-in profile Careful.",
+  "schema": "owner-channel.schema.json#/$defs/owner_request",
+  "value": {
+    "protocol": "fabric-desktop/1",
+    "id": "command-78",
+    "method": "save_profile",
+    "params": {
+      "expected_revision": 8,
+      "change": {
+        "kind": "delete_custom",
+        "profile_id": "careful"
+      }
+    }
+  },
+  "expect": {
+    "verdict": "reject",
+    "layer": "schema",
+    "error": "invalid_params"
+  }
+}
