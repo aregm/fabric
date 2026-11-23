@@ -6,7 +6,8 @@
 #   sh scripts/verify-desktop.sh --live-proofs  the broker with the real Isabelle (this Mac only)
 #   sh scripts/verify-desktop.sh --installed-proofs
 #                                               the bundle with an Isabelle that install-isabelle.sh
-#                                               installed (this Mac only, by hand)
+#                                               installed, and one request proved through it (this
+#                                               Mac only, by hand)
 #
 # scripts/verify.sh already checks the broker (apps/fabric-broker) and the host's relay
 # (apps/fabric-desktop/relay) on every platform, because they are members of the Cargo workspace.
@@ -66,12 +67,18 @@
 #   4. copies the bundle to a path with spaces, verifies its signature and its two rule files;
 #   5. starts the application with FABRIC_DESKTOP_DATA_DIR=<scratch>, the test key and the
 #      synthetic agent, the three variables above unset, and waits for the first request notice:
-#      the practice agent proposes only while the rule checker is ready, so the notice shows a live
-#      Isabelle from the installed layout. The first start builds the session heap and can take
-#      several minutes;
-#   6. kills the application it started (the broker then stops Isabelle), verifies the bundle's
-#      signature again, checks that a Fabric_Broker heap is in <scratch>/isabelle-user-home and
-#      that nothing was written below the bundle's Contents/Resources.
+#      the practice agent proposes only while the rule checker is ready, so the notice shows that
+#      the rule checker became ready in the installed layout (step 7 proves a request through it).
+#      The first start builds the session heap and can take several minutes;
+#   6. kills the application it started (the broker then stops Isabelle), waits until no process
+#      of this run is left, and checks that a Fabric_Broker heap is in
+#      <scratch>/isabelle-user-home;
+#   7. runs the broker's live test a_request_is_proved_through_the_installed_layout against the
+#      scratch installation and the copy's Contents/Resources (FABRIC_LIVE_INSTALLED_RESOURCES_DIR
+#      and FABRIC_LIVE_INSTALLED_SUPPORT_DIR), the three variables above unset: one request is
+#      proved by the installed Isabelle and applied; then no process of this run may be left, the
+#      bundle's signature must verify again and nothing may have been written below its
+#      Contents/Resources.
 # It removes its scratch directory on every exit. It never uses the Keychain and never touches the
 # real ~/Library/Application Support/ai.paracels.fabric.calendar. A Fabric Calendar that is
 # already running is left alone: this run has its own directory, store and Isabelle server.
@@ -395,6 +402,9 @@ live() {
 # check.
 FIRST_START_SECONDS=900
 
+# The live test that proves a request through the installed layout (step 7 of --installed-proofs).
+INSTALLED_LIVE_TEST=a_request_is_proved_through_the_installed_layout
+
 installed() {
     [ "$(uname -s)" = "Darwin" ] || die "the installed proofs run only on macOS."
     APP="$ROOT/target/debug/bundle/macos/Fabric Calendar.app"
@@ -443,7 +453,7 @@ installed() {
     SUPPORT="$SPACED/Application Support"
     ISABELLE="$SUPPORT/Isabelle2025-2"
 
-    echo "[1/6] The installer"
+    echo "[1/7] The installer"
     sh "$INSTALLER" --support-dir "$SUPPORT" --archive "$ARCHIVE" >"$WORK/install.log" 2>&1 \
         || { sed 's/^/    /' "$WORK/install.log" >&2; die "the installer failed."; }
     sed 's/^/    /' "$WORK/install.log"
@@ -455,14 +465,14 @@ installed() {
     [ "$(cat "$ISABELLE/etc/ISABELLE_IDENTIFIER")" = Isabelle2025-2 ] || die "the installation's etc/ISABELLE_IDENTIFIER is not Isabelle2025-2."
     echo "ok: Isabelle2025-2 is in $ISABELLE"
 
-    echo "[2/6] The installer again"
+    echo "[2/7] The installer again"
     output=$(sh "$INSTALLER" --support-dir "$SUPPORT" --archive "$ARCHIVE" 2>&1) \
         || die "the second run of the installer failed: $output"
     [ "$output" = "Isabelle2025-2 is already installed in $ISABELLE; nothing to do." ] \
         || die "the second run of the installer did not say that Isabelle is already installed: $output"
     echo "ok: $output"
 
-    echo "[3/6] The installer with a wrong archive"
+    echo "[3/7] The installer with a wrong archive"
     printf 'not the Isabelle archive\n' >"$WORK/wrong.tar.gz"
     mkdir "$WORK/second"
     status=0
@@ -489,7 +499,7 @@ installed() {
     rm -f "$WORK/wrong.tar.gz"
     echo "ok: the installer refused a small wrong archive and one of the pinned size, and left nothing behind"
 
-    echo "[4/6] The bundle"
+    echo "[4/7] The bundle"
     cp -R "$APP" "$SPACED/"
     COPY="$SPACED/Fabric Calendar.app"
     HOST="$COPY/Contents/MacOS/fabric-desktop"
@@ -502,7 +512,7 @@ installed() {
     }
     resources_state >"$WORK/resources.before"
 
-    echo "[5/6] The application with the installed Isabelle"
+    echo "[5/7] The application with the installed Isabelle"
     # The developer variables are unset, so the host passes the installed layout: the bundle's
     # resources and its own folder, which FABRIC_DESKTOP_DATA_DIR moves to the scratch directory.
     # The subshell ends in exec, so $! is the host's own process id.
@@ -535,7 +545,7 @@ installed() {
     fi
     echo "ok: a request notice arrived from broker $broker_pid with the rule checker of the installed layout"
 
-    echo "[6/6] Quit, then the bundle, the heap and the resources"
+    echo "[6/7] Quit, then the heap"
     kill -KILL "$host_pid" 2>/dev/null || true
     wait "$host_pid" 2>/dev/null || true
     host_pid=
@@ -547,15 +557,40 @@ installed() {
     done
     [ -z "$(started_here)" ] \
         || die "processes of this run still run 30 s after the application ended: $(started_here | tr '\n' ' ')"
+    heap=$(find "$SUPPORT/isabelle-user-home" -type f -path '*/heaps/*' -name Fabric_Broker 2>/dev/null | head -n 1)
+    [ -n "$heap" ] || die "there is no Fabric_Broker heap below $SUPPORT/isabelle-user-home."
+    echo "ok: the application ended, no process of this run is left, and the heap is $heap"
+
+    # The flags of the first live test of --live-proofs. The count must be exactly one, so a name
+    # that matches no test cannot pass. The test's Isabelle runs from the scratch installation, so
+    # the check of leftover processes below covers it too.
+    echo "[7/7] A request proved through the installed Isabelle ($INSTALLED_LIVE_TEST), then the bundle and the resources"
+    status=0
+    (
+        unset FABRIC_BROKER_ISABELLE_HOME FABRIC_BROKER_ISABELLE_USER_HOME FABRIC_BROKER_RULES_DIR
+        FABRIC_LIVE_INSTALLED_RESOURCES_DIR="$COPY/Contents/Resources" \
+            FABRIC_LIVE_INSTALLED_SUPPORT_DIR="$SUPPORT" \
+            sh "$RUN" cargo test --locked -p fabric-broker --test live -- \
+            --ignored --exact "$INSTALLED_LIVE_TEST"
+    ) >"$WORK/installed-test.log" 2>&1 || status=$?
+    cat "$WORK/installed-test.log"
+    [ "$status" -eq 0 ] || die "the live test $INSTALLED_LIVE_TEST failed."
+    grep -q 'test result: ok. 1 passed' "$WORK/installed-test.log" \
+        || die "the live test $INSTALLED_LIVE_TEST did not run exactly once."
+    tries=150
+    while [ -n "$(started_here)" ] && [ "$tries" -gt 0 ]; do
+        sleep 0.2
+        tries=$((tries - 1))
+    done
+    [ -z "$(started_here)" ] \
+        || die "processes of this run still run 30 s after the live test ended: $(started_here | tr '\n' ' ')"
     codesign --verify --deep --strict "$COPY" || die "the bundle's signature no longer verifies after the run."
     resources_state >"$WORK/resources.after"
     cmp -s "$WORK/resources.before" "$WORK/resources.after" || {
         diff "$WORK/resources.before" "$WORK/resources.after" | sed 's/^/    /' >&2 || true
         die "something was written below the bundle's Contents/Resources."
     }
-    heap=$(find "$SUPPORT/isabelle-user-home" -type f -path '*/heaps/*' -name Fabric_Broker 2>/dev/null | head -n 1)
-    [ -n "$heap" ] || die "there is no Fabric_Broker heap below $SUPPORT/isabelle-user-home."
-    echo "ok: the signature verifies, nothing changed below Contents/Resources, and the heap is $heap"
+    echo "ok: a request was proved through the installed Isabelle; no process of this run is left, the signature verifies and nothing changed below Contents/Resources"
 
     echo "The trace of the run:"
     sed 's/^/    /' "$WORK/app.trace"

@@ -1376,7 +1376,7 @@ the three variables of X1, stays as it is.
 | # | Topic | Chosen | Why |
 |---|---|---|---|
 | I1 | Two broker variables | `FABRIC_BROKER_APP_RESOURCES_DIR`, the application's resources folder (in a bundle `Contents/Resources`; the rule theory is `<it>/isabelle/Fabric_Broker/{ROOT,Fabric_Broker.thy}`), and `FABRIC_BROKER_APP_SUPPORT_DIR`, the application's own folder for this user (Isabelle is `<it>/Isabelle2025-2`, its user home `<it>/isabelle-user-home`); both or none, each absolute, never with any of the three developer variables; each refusal exit 78 with one stderr line naming the variable; read in every build, as X17 says of the three (10.2) | `for_installation` takes the two folders plus the broker's own work directory and server name, so the broker is its natural caller and the folder names stay in the policy crate. The broker can tell an installed application without Isabelle from a run without a prover, and the developer mode keeps its rules and its pinned tests |
-| I2 | The support folder | The host's own folder, `~/Library/Application Support/ai.paracels.fabric.calendar`, which already holds `instance.lock` and `broker/`; in a debug build `FABRIC_DESKTOP_DATA_DIR` moves it | A test's scratch folder is then also where Isabelle is looked for, so no test touches the real folder, and CI's packaged check finds no Isabelle. No administrator rights. Cost: 3.3 GB beside the store |
+| I2 | The support folder | The host's own folder, `~/Library/Application Support/ai.paracels.fabric.calendar`, which already holds `instance.lock` and `broker/`; in a debug build `FABRIC_DESKTOP_DATA_DIR` moves it | A test's scratch folder is then also where Isabelle is looked for, so no test touches the real folder, and CI's packaged check finds no Isabelle. No administrator rights. Cost: about 3.5 GB beside the store |
 | I3 | Which runs use it | The host passes the two in every build whenever it does not pass the three: a release host always, a debug host when none of the three is set; a debug host with all three set is the developer mode (X16); it computes the two and never reads them from its own environment | `build-desktop.sh` refuses the release configuration until CD-W11, so a release-only path could not be run before then |
 | I4 | One decision before the plan | With the two set, `config_from` calls `isabelle_installation(<support>/Isabelle2025-2)` once (10.3). `Found`: `Config.isabelle` holds the installed paths. `Missing`, `OtherVersion` or an error reading the two files: no rule checker, one stderr line, no exit, and not a practice run. `Config.installation` keeps what was found | The practice calendar and the classifier depend on whether Isabelle is configured (`Config::practice`, `Plan::of`); deciding in the worker would turn CI's packaged check into a practice run that never proposes. An installation finished while the application runs is seen at its next start |
 | I5 | The reason the owner sees on main | `not_configured`, as for any run without a rule checker (the core's first health with no prover attached); `not_installed` for `Missing` and `OtherVersion` is a follow-up once contract schema version 3 (pull request 36) is merged; a comment in `Plan::of` marks the place | This change lands on main at schema version 2 and uses no contract value main does not have |
@@ -1570,25 +1570,38 @@ archives (version, URL, size or SHA-256)."; the mode still needs Node, whose che
 macOS. `build-desktop.sh` and `--packaged` check the rule files (10.5). The repository has no harness
 for shell scripts, so the installer has no CI test.
 
+Live, with the real Isabelle and never in CI (`#[ignore]`; `--live-proofs` runs it with a stand-in of the installed
+layout, `--installed-proofs` in its step 7 with the scratch installation and the bundle copy):
+
+| Id | File | Test | Shows |
+|---|---|---|---|
+| p51 | `apps/fabric-broker/tests/live.rs` | `a_request_is_proved_through_the_installed_layout` | I1, I4, I7: a configuration from `config_from` with the two folders, the test key, the synthetic agent and a data directory of its own is `Found`; `Plan::of` gives the gate of `for_installation`; the first request asks on Isabelle's classification (`need_approval`, rule `authority`, a proof id) and, approved, is applied on Isabelle's fresh permit; the stop is acknowledged within `QUIT_BOUND`; a `Fabric_Broker` heap is then below `<support>/isabelle-user-home`, which is not the developer's user home. The folders are `FABRIC_LIVE_INSTALLED_RESOURCES_DIR` and `FABRIC_LIVE_INSTALLED_SUPPORT_DIR` when both are set (one alone fails the test); with neither, a stand-in in a temporary folder whose path has a space: `Isabelle2025-2` a symbolic link to the Isabelle of the other live tests, the two rule files copied read-only, and nothing may be created below them. The first start in a new user home builds the heap; its time is printed, not asserted |
+
 By hand, on a Mac, never in CI: `sh scripts/verify-desktop.sh --installed-proofs`. It needs the debug bundle, the
 pinned archive in `.tooling/isabelle/download/` (it never downloads) and about 4 GB free. In a new scratch folder
 (`mktemp -d`, its physical path):
-1. "[1/6] The installer": `install-isabelle.sh --support-dir "<scratch>/a path with spaces/Application Support"
+1. "[1/7] The installer": `install-isabelle.sh --support-dir "<scratch>/a path with spaces/Application Support"
    --archive <the archive>`; its last line, the folder's mode 700, and a folder that holds only `Isabelle2025-2`;
-2. "[2/6] The installer again": "already installed";
-3. "[3/6] The installer with a wrong archive": a small wrong file into a second scratch folder is refused by its size,
+2. "[2/7] The installer again": "already installed";
+3. "[3/7] The installer with a wrong archive": a small wrong file into a second scratch folder is refused by its size,
    then a sparse wrong file of exactly the pinned size by its SHA-256, and that folder stays empty;
-4. "[4/6] The bundle": the copy's signature and its rule files; a listing of `Contents/Resources` is taken;
-5. "[5/6] The application with the installed Isabelle": the copy started with `FABRIC_DESKTOP_DATA_DIR` set to the
+4. "[4/7] The bundle": the copy's signature and its rule files; a listing of `Contents/Resources` is taken;
+5. "[5/7] The application with the installed Isabelle": the copy started with `FABRIC_DESKTOP_DATA_DIR` set to the
    support folder, the test key, the synthetic agent, and the three developer variables and the two folders unset;
    it waits up to `FIRST_START_SECONDS` (900 s) for the first `change=request` notice, whose request the practice agent
    makes only once the rule checker is ready. A run that found no Isabelle is a synthetic run whose classifier also
    proposes, so the step then also requires the host's `connected` line to end in ` installed` and fails if the trace
-   holds the broker's "Isabelle2025-2 is not installed" or "is taken as not installed" line; together they show a live
-   Isabelle from the installed layout, and step 6's heap check backs them;
-6. "[6/6] Quit, then the bundle, the heap and the resources": the host this run started is killed, every process of
-   this run must end within 30 s, the signature must verify again, the listing of `Contents/Resources` must be
-   unchanged, and a `Fabric_Broker` heap must be below `<support>/isabelle-user-home`.
+   holds the broker's "Isabelle2025-2 is not installed" or "is taken as not installed" line; together they show
+   that the rule checker became ready in the installed layout, and step 6's heap check backs them; no proof result is
+   read in this step;
+6. "[6/7] Quit, then the heap": the host this run started is killed, every process of this run must end within 30 s,
+   and a `Fabric_Broker` heap must be below `<support>/isabelle-user-home`;
+7. "[7/7] A request proved through the installed Isabelle": p51 alone, by name, with the flags of the first live test
+   of `--live-proofs` (`cargo test --locked -p fabric-broker --test live -- --ignored --exact <name>`, exactly one
+   test passed), `FABRIC_LIVE_INSTALLED_RESOURCES_DIR` set to the copy's `Contents/Resources`,
+   `FABRIC_LIVE_INSTALLED_SUPPORT_DIR` to the support folder, and the three developer variables unset; it proves one
+   request through the installed layout. Then every process of this run must end within 30 s, the signature must
+   verify again, and the listing of `Contents/Resources` must be unchanged.
 It removes its scratch folders, kills only processes whose command line names its scratch folder, never uses the
 Keychain and never touches the real support folder.
 
@@ -1600,14 +1613,21 @@ Run on 2026-11-22 on one Mac, by the builders of this change: `cargo test -p fab
 archive into a scratch folder whose path has spaces (16 s, then "already installed"), and once stopped with TERM
 during the unpack (exit 143, nothing left).
 
-Run the same day by the lead on the final tree, after the review's fixes (process tests now 29): `sh
-scripts/verify.sh`, `sh scripts/build-desktop.sh --configuration debug` and `sh scripts/verify-desktop.sh
---packaged` passed. `sh scripts/verify-desktop.sh --installed-proofs` passed twice, before and after the fixes;
-the first request notice came 22.2 s and 21.5 s after the application started, which includes the first build of
-the heap. `sh scripts/verify-desktop.sh --live-proofs` failed its first run in one test, `checks_are_timed` (mean
-check 1726 ms against 1.5 s), while another session's builds ran on the same Mac (load average 15); the one rerun
-passed (1, 3 and 18 tests; mean 1286 ms). That the first failure was the load is likely and not proven. The
-download path of the installer was not run, and neither was a release build.
+Run by the lead on 2026-11-22 and in the first hour of 2026-11-23, on the same Mac. After the review's fixes
+(process tests now 29): `sh scripts/verify.sh`, `sh scripts/build-desktop.sh --configuration debug` and `sh
+scripts/verify-desktop.sh --packaged` passed, and `--installed-proofs` passed twice, before and after those
+fixes; in both runs the first request notice came about 22 s after the application started, which includes the
+first build of the heap. `--live-proofs` then failed its first run in one test, `checks_are_timed` (mean check
+1726 ms against 1.5 s); the one rerun passed (mean 1286 ms). The cause of that failure is not known: the logs hold
+only load averages, and that another session's builds slowed the run is the lead's belief.
+
+Two readers of the pull request's text then found that no check read a proof's result through the installed
+layout. After p51 and step 7 were added, on the final tree: `sh scripts/verify.sh` and `sh
+scripts/verify-desktop.sh` passed; `--installed-proofs` passed with its seven steps, the first request notice
+21.3 s after the start and p51 passing against the scratch installation and the bundle copy's resources;
+`--live-proofs` passed (1, 3 and 19 tests; mean check 1291 ms and 1299 ms), with p51 in its stand-in case ready
+after 19.2 s. The bundle of these last runs was the one built after the review's fixes; no product code changed
+after it. The download path of the installer was not run, and neither was a release build.
 
 ### 10.8 Not in this change
 

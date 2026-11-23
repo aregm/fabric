@@ -170,7 +170,7 @@ if [ ! -d "$support_dir" ]; then
 fi
 unpack_dir=$(mktemp -d "$support_dir/.install-isabelle.XXXXXX")
 
-echo "Unpacking $ISABELLE_VERSION (about 3.3 GB)..."
+echo "Unpacking $ISABELLE_VERSION (about 3.5 GB)..."
 tar -xzf "$archive" -C "$unpack_dir" || die "unpacking $archive failed; nothing was installed."
 unpacked="$unpack_dir/$ISABELLE_VERSION.app"
 [ -d "$unpacked" ] || die "the archive did not hold $ISABELLE_VERSION.app; nothing was installed."

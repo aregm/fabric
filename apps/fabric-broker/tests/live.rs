@@ -8,7 +8,8 @@
 //! and otherwise in the repository's development layout (`.tooling/isabelle`, installed by hand
 //! with `sh scripts/setup-demo.sh`). Every test takes the `LIVE` lock, uses the public test key
 //! and a temporary data directory of its own (hence an Isabelle server of its own), and never
-//! touches the Keychain.
+//! touches the Keychain. One test, `a_request_is_proved_through_the_installed_layout`, proves
+//! through the installed layout instead: its two folders, or a stand-in of them (PW 10.7).
 //!
 //! The in-process tests run the same code as the executable: `Plan`, `Shell::new`,
 //! `shell::next_event`, `shell::input_of`, `Shell::turn` and `Shell::stop`, with the practice
@@ -28,7 +29,7 @@
 
 #![cfg(all(unix, debug_assertions))]
 
-use std::ffi::OsString;
+use std::ffi::{OsStr, OsString};
 use std::io::{BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -39,7 +40,8 @@ use std::thread;
 use std::time::{Duration, Instant, SystemTime};
 
 use fabric_broker::config::{
-    Config, ISABELLE_HOME, ISABELLE_USER_HOME, Installation, IsabelleSettings, KeySource, RULES_DIR,
+    APP_RESOURCES_DIR, APP_SUPPORT_DIR, Config, DATA_DIR, ISABELLE_HOME, ISABELLE_USER_HOME,
+    Installation, IsabelleSettings, KEY_SOURCE, KeySource, RULES_DIR, SYNTHETIC_AGENT, config_from,
 };
 use fabric_broker::practice::{FOREIGN_EVENT_ID, FOREIGN_TITLE, Faults, PracticeCalendar};
 use fabric_broker::prover::{ProverOptions, QUIT_BOUND, built_theory_sha256, server_name};
@@ -47,6 +49,9 @@ use fabric_broker::shell::{self, Event, Plan, ProverChoice, QUEUED_EVENTS, Shell
 use fabric_broker::synthetic::{ACCOUNT_ID, AGENT_ID, CALENDAR_ID, SyntheticAgent, TITLE};
 use fabric_broker_core::{Broker, Input, Settings};
 use fabric_broker_policy::GateConfig;
+use fabric_broker_policy::gate::{
+    INSTALLED_ISABELLE_DIR, INSTALLED_RULES_DIR, INSTALLED_USER_HOME_DIR,
+};
 use fabric_desktop_contracts::owner::{
     Change, Health, LifecycleStatus, OwnerNotice, OwnerResponse, OwnerResult, ProverHealth,
     ProverProblem, Request,
@@ -84,11 +89,7 @@ fn isabelle() -> IsabelleSettings {
         .collect();
     let settings = match values.as_slice() {
         [None, None, None] => {
-            let root = Path::new(env!("CARGO_MANIFEST_DIR"))
-                .join("../..")
-                .canonicalize()
-                .expect("the repository root");
-            let gate = GateConfig::for_repository(&root);
+            let gate = GateConfig::for_repository(&repository_root());
             IsabelleSettings {
                 isabelle_home: gate.isabelle_home,
                 user_home: gate.user_home,
@@ -114,6 +115,14 @@ fn isabelle() -> IsabelleSettings {
         settings.isabelle_home.display()
     );
     settings
+}
+
+/// The repository's root, absolute.
+fn repository_root() -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../..")
+        .canonicalize()
+        .expect("the repository root")
 }
 
 static NEXT_DIR: AtomicU64 = AtomicU64::new(0);
@@ -334,21 +343,33 @@ impl Live {
             isabelle: Some(isabelle.clone()),
             installation: Installation::NotAsked,
         };
-        assert!(config.practice());
         let mut options = ProverOptions::new(&isabelle, &config.data_dir);
         tune(&mut options);
-        let server = options.gate.server_name.clone();
-        assert_eq!(server, server_name(&config.data_dir));
         let calendar = PracticeCalendar::new(now_ms(), faults);
         let plan = Plan {
             prover: ProverChoice::Isabelle(Box::new(options)),
             work_dir: config.data_dir.join("prover"),
             practice: Some(calendar.clone()),
-            agent: Some(SyntheticAgent::practice(calendar.clone())),
+            agent: Some(SyntheticAgent::practice(calendar)),
         };
+        Live::begin(dir, &config, plan)
+    }
+
+    /// Starts the broker of a practice run with Isabelle on `config` and `plan`, as main does,
+    /// and reads the frames of its start. `config.data_dir` is `dir`'s data directory.
+    fn begin(dir: TempDir, config: &Config, plan: Plan) -> Live {
+        assert!(config.practice());
+        assert_eq!(config.data_dir, dir.data());
+        let ProverChoice::Isabelle(options) = &plan.prover else {
+            panic!("the plan proves with Isabelle")
+        };
+        let server = options.gate.server_name.clone();
+        assert_eq!(server, server_name(&config.data_dir));
+        let calendar = plan.practice.clone().expect("the practice calendar");
+        let isabelle = config.isabelle.clone().expect("Isabelle is configured");
         let (broker, started) = Broker::start(
-            shell::opener(&config),
-            Settings::cd_w04(shell::build_label(&config)),
+            shell::opener(config),
+            Settings::cd_w04(shell::build_label(config)),
             plan.attachments(),
             now_ms(),
         )
@@ -2007,4 +2028,267 @@ fn checks_are_timed() {
         mean <= 1_500,
         "the mean check took {mean} ms, over 1.5 s: W03 reopens the proof timeout (PLAN 5)"
     );
+}
+
+/// The resources folder of the installed layout that
+/// [`a_request_is_proved_through_the_installed_layout`] proves through, with
+/// [`LIVE_INSTALLED_SUPPORT_DIR`]: both or none.
+const LIVE_INSTALLED_RESOURCES_DIR: &str = "FABRIC_LIVE_INSTALLED_RESOURCES_DIR";
+/// The support folder of that installed layout, with [`LIVE_INSTALLED_RESOURCES_DIR`].
+const LIVE_INSTALLED_SUPPORT_DIR: &str = "FABRIC_LIVE_INSTALLED_SUPPORT_DIR";
+
+/// A stand-in of the installed layout in a new temporary folder whose path has a space: a support
+/// folder whose `Isabelle2025-2` is a symbolic link to `isabelle_home`, and a resources folder
+/// with copies of the repository's two rule files, read-only (files 0444, folders 0555). Its drop
+/// restores the modes, then removes the folder.
+struct StandIn {
+    /// Removed after the drop restored the modes.
+    dir: TempDir,
+    resources: PathBuf,
+    support: PathBuf,
+}
+
+impl StandIn {
+    fn new(isabelle_home: &Path) -> StandIn {
+        let dir = TempDir::new("installed layout");
+        let support = dir.0.join("Application Support");
+        std::fs::create_dir(&support).expect("the stand-in's support folder");
+        std::os::unix::fs::symlink(isabelle_home, support.join(INSTALLED_ISABELLE_DIR))
+            .expect("the stand-in's link to Isabelle");
+        let resources = dir.0.join("Resources");
+        let theory = resources.join(INSTALLED_RULES_DIR).join("Fabric_Broker");
+        std::fs::create_dir_all(&theory).expect("the stand-in's rules folder");
+        let repository = repository_root().join("isabelle").join("Fabric_Broker");
+        for name in ["ROOT", "Fabric_Broker.thy"] {
+            std::fs::copy(repository.join(name), theory.join(name)).expect("a rule file copied");
+        }
+        let stand_in = StandIn {
+            dir,
+            resources,
+            support,
+        };
+        stand_in.set_modes(0o444, 0o555);
+        stand_in
+    }
+
+    /// Sets the mode of the two rule files to `file` and of the three folders above them to
+    /// `folder`.
+    fn set_modes(&self, file: u32, folder: u32) {
+        use std::os::unix::fs::PermissionsExt;
+        let rules = self.resources.join(INSTALLED_RULES_DIR);
+        let theory = rules.join("Fabric_Broker");
+        let set = |path: &Path, mode: u32| {
+            std::fs::set_permissions(path, std::fs::Permissions::from_mode(mode))
+                .unwrap_or_else(|e| panic!("the mode of {}: {e}", path.display()));
+        };
+        for name in ["ROOT", "Fabric_Broker.thy"] {
+            set(&theory.join(name), file);
+        }
+        for path in [&self.resources, &rules, &theory] {
+            set(path, folder);
+        }
+    }
+}
+
+impl Drop for StandIn {
+    fn drop(&mut self) {
+        use std::os::unix::fs::PermissionsExt;
+        let rules = self.resources.join(INSTALLED_RULES_DIR);
+        let theory = rules.join("Fabric_Broker");
+        for path in [&self.resources, &rules, &theory] {
+            let _ = std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o755));
+        }
+        for name in ["ROOT", "Fabric_Broker.thy"] {
+            let _ =
+                std::fs::set_permissions(theory.join(name), std::fs::Permissions::from_mode(0o644));
+        }
+        println!("LIVE removing the stand-in {}", self.dir.0.display());
+    }
+}
+
+/// The Isabelle user home of the other live tests, read without checking it:
+/// `FABRIC_BROKER_ISABELLE_USER_HOME` when it is set, else the repository's development layout's.
+fn developer_user_home() -> PathBuf {
+    std::env::var_os(ISABELLE_USER_HOME).map_or_else(
+        || GateConfig::for_repository(&repository_root()).user_home,
+        PathBuf::from,
+    )
+}
+
+/// The `Fabric_Broker` session heaps below an Isabelle user home.
+fn heaps_under(user_home: &Path) -> Vec<PathBuf> {
+    files_under(user_home)
+        .into_iter()
+        .filter(|path| {
+            path.file_name() == Some(OsStr::new("Fabric_Broker"))
+                && path.components().any(|c| c.as_os_str() == "heaps")
+        })
+        .collect()
+}
+
+/// Every path below `dir`, folders, files and links, sorted.
+fn entries_under(dir: &Path) -> Vec<PathBuf> {
+    let mut entries = Vec::new();
+    let mut open = vec![dir.to_path_buf()];
+    while let Some(dir) = open.pop() {
+        let Ok(read) = std::fs::read_dir(&dir) else {
+            continue;
+        };
+        for entry in read.flatten() {
+            if entry.file_type().is_ok_and(|kind| kind.is_dir()) {
+                open.push(entry.path());
+            }
+            entries.push(entry.path());
+        }
+    }
+    entries.sort();
+    entries
+}
+
+/// PW p51 (I1, I4, I7): a request is proved through the installed layout. The configuration comes
+/// from `config_from` with the two installed folders, the test key, the synthetic agent and a data
+/// directory of the test's own, so the whole installed path runs: `Installation::Found`,
+/// `Plan::of`, the gate of `GateConfig::for_installation`, and Isabelle's user home, which the
+/// gate creates below the support folder. The folders are those of
+/// `FABRIC_LIVE_INSTALLED_RESOURCES_DIR` and `FABRIC_LIVE_INSTALLED_SUPPORT_DIR` when both are set
+/// (`verify-desktop.sh --installed-proofs` passes its bundle copy's `Contents/Resources` and the
+/// folder its installer run filled); then the test needs none of the three developer variables.
+/// With neither set they are a [`StandIn`] whose Isabelle is the one the other live tests use.
+/// The first request asks on Isabelle's classification and, approved, is applied on Isabelle's
+/// fresh permit. Afterwards a `Fabric_Broker` heap is below `<support>/isabelle-user-home`, which
+/// is not the developer's user home, and, with the stand-in, nothing was created below the
+/// resources folder. The first start in a new user home builds the heap: its time is printed,
+/// not asserted.
+#[test]
+#[ignore = "live: needs Isabelle; run sh scripts/verify-desktop.sh --live-proofs"]
+fn a_request_is_proved_through_the_installed_layout() {
+    let _live = live_lock();
+    let given = match (
+        std::env::var_os(LIVE_INSTALLED_RESOURCES_DIR),
+        std::env::var_os(LIVE_INSTALLED_SUPPORT_DIR),
+    ) {
+        (Some(resources), Some(support)) => {
+            Some((PathBuf::from(resources), PathBuf::from(support)))
+        }
+        (None, None) => None,
+        _ => panic!(
+            "set {LIVE_INSTALLED_RESOURCES_DIR} and {LIVE_INSTALLED_SUPPORT_DIR} together, or none for a stand-in of the installed layout"
+        ),
+    };
+    let stand_in = given
+        .is_none()
+        .then(|| StandIn::new(&isabelle().isabelle_home));
+    let (resources, support) = given.unwrap_or_else(|| {
+        let stand_in = stand_in.as_ref().expect("the stand-in");
+        (stand_in.resources.clone(), stand_in.support.clone())
+    });
+    println!(
+        "LIVE installed layout: resources {}, support {}",
+        resources.display(),
+        support.display()
+    );
+    let user_home = support.join(INSTALLED_USER_HOME_DIR);
+    if stand_in.is_some() {
+        assert!(!user_home.exists(), "the stand-in has a user home already");
+    }
+    let resources_before = entries_under(&resources);
+    let developer = developer_user_home();
+
+    let dir = TempDir::new("installed");
+    let vars: Vec<(OsString, OsString)> = vec![
+        (DATA_DIR.into(), dir.data().into_os_string()),
+        (KEY_SOURCE.into(), "test".into()),
+        (SYNTHETIC_AGENT.into(), "1".into()),
+        (APP_RESOURCES_DIR.into(), resources.clone().into_os_string()),
+        (APP_SUPPORT_DIR.into(), support.clone().into_os_string()),
+    ];
+    let config = config_from(vars).unwrap_or_else(|e| panic!("the configuration is refused: {e}"));
+    assert_eq!(
+        config.installation,
+        Installation::Found {
+            resources_dir: resources.clone(),
+            support_dir: support.clone(),
+        },
+        "{}",
+        config.installation.line().unwrap_or_default()
+    );
+    let plan = Plan::of(&config, now_ms());
+    let ProverChoice::Isabelle(options) = &plan.prover else {
+        panic!("the installed layout's plan proves with Isabelle")
+    };
+    assert_eq!(
+        options.gate.isabelle_home,
+        support.join(INSTALLED_ISABELLE_DIR)
+    );
+    assert_eq!(options.gate.user_home, user_home);
+    assert_eq!(options.gate.rules_dir, resources.join(INSTALLED_RULES_DIR));
+    let mut live = Live::begin(dir, &config, plan);
+    live.subscribe();
+    let ready = live.health_becomes(ProverHealth::Ready, START);
+    println!(
+        "LIVE installed layout: prover ready after {} ms",
+        ready.as_millis()
+    );
+
+    // The first request asks, on the rule `authority`, by Isabelle's classification.
+    let a = live.pending(&[]);
+    let a_id = a.request_id.as_str().to_owned();
+    assert_eq!(a.tool.as_str(), "fabric_calendar_propose_create");
+    let card = live.details(&a_id)["card"].clone();
+    assert_eq!(card["insufficiency"]["rule"], "authority", "{card}");
+    let asked = card["insufficiency"]["proof_id"]
+        .as_str()
+        .expect("a proof id")
+        .to_owned();
+    let report = live.isabelle_proof(&asked, "need_approval");
+    assert_eq!(report["purpose"], "classification", "{report}");
+    assert_eq!(report["failing_rule"], "authority", "{report}");
+
+    // Approved, it is applied on Isabelle's fresh permit.
+    live.approve(&a, json!({"kind": "one_request"}));
+    live.request_in(&a_id, RequestState::Applied, STEP);
+    let details = live.details(&a_id);
+    let permit = details["authorization"]["proof_id"]
+        .as_str()
+        .expect("the authorization's proof id")
+        .to_owned();
+    let report = live.isabelle_proof(&permit, "permit");
+    assert_eq!(report["purpose"], "fresh_permit", "{report}");
+    assert_eq!(details["attempts"][0]["outcome"], "applied", "{details}");
+    assert_eq!(
+        details["attempts"][0]["proof_id"],
+        json!(permit),
+        "{details}"
+    );
+    assert_eq!(live.calendar.dispatches(), 1);
+
+    live.settle_all();
+    live.stop_within_bound();
+    assert!(!live.work_dir().exists(), "the prover's directory is left");
+    assert!(
+        servers_gone(&live.server, DRAIN),
+        "the Isabelle server is left"
+    );
+
+    let heaps = heaps_under(&user_home);
+    assert!(
+        !heaps.is_empty(),
+        "no Fabric_Broker heap below {}",
+        user_home.display()
+    );
+    println!("LIVE installed layout: heap {}", heaps[0].display());
+    let home = user_home.canonicalize().expect("the installed user home");
+    assert_ne!(
+        Some(home),
+        developer.canonicalize().ok(),
+        "the installed layout used the developer's user home {}",
+        developer.display()
+    );
+    if stand_in.is_some() {
+        assert_eq!(
+            entries_under(&resources),
+            resources_before,
+            "something was created below the resources folder"
+        );
+    }
 }
