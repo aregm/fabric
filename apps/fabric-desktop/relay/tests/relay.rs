@@ -17,9 +17,9 @@ use std::time::{Duration, Instant};
 
 use fabric_desktop_contracts::{Frame, Layer, MAX_FRAME_BYTES, canonical, parse_strict};
 use fabric_desktop_relay::{
-    BROKER_ISABELLE_HOME, BROKER_ISABELLE_USER_HOME, BROKER_RULES_DIR, BrokerConfig, ConfigError,
-    ENVIRONMENT_ALLOWLIST, Ending, Event, InstanceError, InstanceLock, QUIT_DRAIN, SendError,
-    Session,
+    BROKER_APP_RESOURCES_DIR, BROKER_APP_SUPPORT_DIR, BROKER_ISABELLE_HOME,
+    BROKER_ISABELLE_USER_HOME, BROKER_RULES_DIR, BrokerConfig, ConfigError, ENVIRONMENT_ALLOWLIST,
+    Ending, Event, InstanceError, InstanceLock, QUIT_DRAIN, SendError, Session,
 };
 
 /// The mode the re-executed child plays.
@@ -818,13 +818,16 @@ fn program_path_with_spaces(directory: &Path) -> Outcome {
     Ok(())
 }
 
-/// The host takes the three prover names from the relay's crate root instead of spelling them
-/// again, so the root exports them, with the broker's spelling, and the allowlist holds them.
+/// The host takes the five prover names (the three developer paths and the two folders of the
+/// installed layout) from the relay's crate root instead of spelling them again, so the root
+/// exports them, with the broker's spelling, and the allowlist holds them.
 fn prover_names_are_exported_and_allowlisted(_: &Path) -> Outcome {
     let names = [
         BROKER_ISABELLE_HOME,
         BROKER_ISABELLE_USER_HOME,
         BROKER_RULES_DIR,
+        BROKER_APP_RESOURCES_DIR,
+        BROKER_APP_SUPPORT_DIR,
     ];
     ensure!(
         names
@@ -832,6 +835,8 @@ fn prover_names_are_exported_and_allowlisted(_: &Path) -> Outcome {
                 "FABRIC_BROKER_ISABELLE_HOME",
                 "FABRIC_BROKER_ISABELLE_USER_HOME",
                 "FABRIC_BROKER_RULES_DIR",
+                "FABRIC_BROKER_APP_RESOURCES_DIR",
+                "FABRIC_BROKER_APP_SUPPORT_DIR",
             ],
         "the exported prover names are {names:?}"
     );

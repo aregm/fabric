@@ -10,9 +10,10 @@
 //!
 //! The host holds no Google credential and no database, and makes no policy decision: it tells
 //! the broker where its encrypted store lives and where its key comes from (work package
-//! CD-W04), and the broker opens it. A debug build may also tell the broker where Isabelle and
-//! the rule theory are, so that it proves requests (apps/fabric-desktop/README.md, "The practice
-//! run"). The relaying itself is the crate `fabric-desktop-relay`, which has no Tauri in it.
+//! CD-W04), and the broker opens it. It also tells the broker where the rule theory and Isabelle
+//! are: the application's resources folder and its own folder (the installed layout), or in a
+//! debug build the developer's three paths (apps/fabric-desktop/README.md, "The practice run").
+//! The relaying itself is the crate `fabric-desktop-relay`, which has no Tauri in it.
 
 mod bridge;
 mod host;
@@ -56,7 +57,15 @@ fn main() {
             // Application Support; a debug build started from a terminal may move both to a
             // scratch directory (`FABRIC_DESKTOP_DATA_DIR`, apps/fabric-desktop/README.md).
             let app_data_dir = application.path().app_data_dir()?;
-            let (root, store) = BrokerStore::from_environment(&app_data_dir, std::env::vars_os());
+            // The rule theory ships in the resources folder (`Contents/Resources` of the bundle).
+            // If Tauri cannot resolve it, the host reports a configuration error and starts no
+            // broker.
+            let resources_dir = application.path().resource_dir().ok();
+            let (root, store) = BrokerStore::from_environment(
+                &app_data_dir,
+                resources_dir.as_deref(),
+                std::env::vars_os(),
+            );
             // The broker ships beside the host executable, in Contents/MacOS of the bundle.
             let broker = broker_beside(&std::env::current_exe()?);
             application.state::<Host>().start(&root, &broker, store);

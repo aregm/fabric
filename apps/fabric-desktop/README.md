@@ -2,7 +2,7 @@
 
 Work packages CD-W02, CD-W04 and CD-W08 of the [Calendar Desktop plan](../../docs/plans/calendar-desktop-plan.md): the Tauri shell and the round trip to a Rust broker child (CD-W02, gate CD-G1b), the real broker behind it: the encrypted store, the authority core and the owner channel (CD-W04, gate CD-G2a), and the screens of the owner's interface (CD-W08, gate CD-G3a).
 
-The broker ([`apps/fabric-broker`](../fabric-broker)) keeps its state in an encrypted store and survives a restart. It has no Google access (CD-W05) and no agent channel (CD-W06), and the application does not ship Isabelle yet, so in the product nothing an agent asks is carried out: an approved request ends "undecided". A test build can run a synthetic agent so that a person sees requests; it runs only when asked for from a terminal, with a scratch data directory and the test key (see "The synthetic demonstration"). A test build given the paths of an Isabelle installed in the checkout also proves every request with the real rule prover and carries the approved ones out on a practice calendar held in memory (see "The practice run"). The strip at the top of the page says when the rule checker is not running, and a second line under the title (the practice line) says that a request is carried out only on practice data and that nothing changes a real calendar.
+The broker ([`apps/fabric-broker`](../fabric-broker)) keeps its state in an encrypted store and survives a restart. It has no Google access (CD-W05) and no agent channel (CD-W06), and the application does not ship Isabelle: the installed application looks for it in its own folder, where `sh scripts/install-isabelle.sh` puts it (see "Installing the rule checker for the installed application"). With or without it, in the product nothing an agent asks is carried out: an approved request ends "undecided". A test build can run a synthetic agent so that a person sees requests; it runs only when asked for from a terminal, with a scratch data directory and the test key (see "The synthetic demonstration"). A test build given the paths of an Isabelle installed in the checkout also proves every request with the real rule prover and carries the approved ones out on a practice calendar held in memory (see "The practice run"). The strip at the top of the page says when the rule checker is not running, and a second line under the title (the practice line) says that a request is carried out only on practice data and that nothing changes a real calendar.
 
 ## The three parts
 
@@ -15,7 +15,7 @@ broker child (Rust, apps/fabric-broker)
 ```
 
 - The webview reaches only the host, and only through `owner_attach`, `owner_send` and `broker_restart`. The capability file [`src-tauri/capabilities/owner-interface.json`](src-tauri/capabilities/owner-interface.json) allows these three and no command of Tauri itself (no window, event, path, shell or file command).
-- The host starts one broker with an empty environment except the broker's variables (the allowlist in [`relay/src/config.rs`](relay/src/config.rs)): its data directory and where its store key comes from; the synthetic agent only in a test run with a scratch directory and the test key; and, in a debug build, the three paths of the rule prover (Isabelle, Isabelle's per-user directory and the rule theory) when all three are set, with any store. With the real store nothing is carried out, so an approved request ends "undecided". On Unix it adds one fixed `PATH`, `/usr/bin:/bin:/usr/sbin:/sbin`, never its own, because Isabelle's scripts call system tools such as `/usr/sbin/sysctl` by name. It validates every frame in both directions with `fabric-desktop-contracts`, and relays. It builds no frame, answers nothing for the broker, holds no credential, never opens the store, and makes no policy decision.
+- The host starts one broker with an empty environment except the broker's variables (the allowlist in [`relay/src/config.rs`](relay/src/config.rs)): its data directory and where its store key comes from; the synthetic agent only in a test run with a scratch directory and the test key; and where the rule prover is. In a debug build with all three set, that is the three paths of the developer mode (Isabelle, Isabelle's per-user directory and the rule theory), with any store. Otherwise, in every release build and in a debug build with none of the three, it is the two folders of the installed layout: `FABRIC_BROKER_APP_RESOURCES_DIR`, the bundle's `Contents/Resources`, which holds the rule theory, and `FABRIC_BROKER_APP_SUPPORT_DIR`, the host's own folder, where the broker looks for Isabelle. The host computes these two itself and drops any it inherited; when it cannot find its resources folder it starts no broker. With the real store nothing is carried out, so an approved request ends "undecided". On Unix it adds one fixed `PATH`, `/usr/bin:/bin:/usr/sbin:/sbin`, never its own, because Isabelle's scripts call system tools such as `/usr/sbin/sysctl` by name. It validates every frame in both directions with `fabric-desktop-contracts`, and relays. It builds no frame, answers nothing for the broker, holds no credential, never opens the store, and makes no policy decision.
 - The contract is [`contracts/desktop/v1`](../../contracts/desktop/v1/README.md). The webview imports its TypeScript types; it does not copy them.
 
 | Path | What it holds |
@@ -54,11 +54,12 @@ sh scripts/verify-desktop.sh                      # typecheck, tests, host lint 
 sh scripts/build-desktop.sh --configuration debug # target/debug/bundle/macos/Fabric Calendar.app
 sh scripts/verify-desktop.sh --packaged           # the bundle, from a path with spaces
 sh scripts/verify-desktop.sh --live-proofs        # the broker with the real Isabelle, never in CI
+sh scripts/verify-desktop.sh --installed-proofs   # the bundle with an installed Isabelle, by hand, never in CI
 ```
 
 `--live-proofs` runs the tests that need the real rule prover: the broker's live tests ([`apps/fabric-broker/tests/live.rs`](../fabric-broker/tests/live.rs)), the first of them alone and by name, and the rule theory's corpus. Install Isabelle first, by hand, with `sh scripts/setup-demo.sh`; the script never installs it and stops if it is missing. It takes Isabelle's place from the three variables of "The practice run", all three or none; with none, from the checkout (`.tooling/isabelle` and `isabelle`). Every test uses the test key in a temporary directory. The first run can take several minutes while Isabelle builds its session heap. The live proofs assert that the in-process stop of the prover is acknowledged within 1.5 s (the prover gives Isabelle at most 1.2 s to stop and then ends it), so run them on an otherwise idle Mac.
 
-The bundle is arm64, for macOS 15.0 or later, and signed ad hoc. Developer ID signing, notarization and the DMG are CD-W11.
+The bundle is arm64, for macOS 15.0 or later, and signed ad hoc. It holds the rule theory's two files in `Contents/Resources/isabelle/Fabric_Broker` (`ROOT` and `Fabric_Broker.thy`); `build-desktop.sh` and `--packaged` check that they equal the repository's and that nothing else, no `ROOTS` either, is beside them. `--installed-proofs` is described in "Installing the rule checker for the installed application". Developer ID signing, notarization and the DMG are CD-W11.
 
 `verify-desktop.sh` also compiles the release broker, which has neither the test key nor the synthetic agent; it does not run it.
 
@@ -70,7 +71,7 @@ cd apps/fabric-desktop && npm ci && npm run build
 npm run harness -- --broker ../../target/debug/fabric-broker
 ```
 
-The harness always starts the broker with the test key and the synthetic agent, in a new temporary data directory that it removes when it stops. It never opens the real store. Started with the three variables of "The practice run" set, it passes them to the broker, which then proves requests and uses the practice calendar; with one or two of them set it starts nothing. On Unix it gives the broker the host's fixed `PATH` ("The three parts").
+The harness always starts the broker with the test key and the synthetic agent, in a new temporary data directory that it removes when it stops. It never opens the real store. Started with the three variables of "The practice run" set, it passes them to the broker, which then proves requests and uses the practice calendar; with one or two of them set it starts nothing. It never passes the two folders of the installed layout (`FABRIC_BROKER_APP_RESOURCES_DIR` and `FABRIC_BROKER_APP_SUPPORT_DIR`), which only the host sets, so without the three the broker it starts has no rule checker. On Unix it gives the broker the host's fixed `PATH` ("The three parts").
 
 The harness has switches for states that are hard to reach by hand:
 
@@ -111,9 +112,9 @@ FABRIC_DESKTOP_DATA_DIR="$(mktemp -d)" FABRIC_BROKER_KEY_SOURCE=test FABRIC_BROK
   "target/debug/bundle/macos/Fabric Calendar.app/Contents/MacOS/fabric-desktop"
 ```
 
-`FABRIC_DESKTOP_DATA_DIR` moves the single-instance lock and the store to that scratch directory; the store opens with the public test key, so it never touches the Keychain. Once the window has subscribed, "Synthetic agent (test build)" and a synthetic account appear, and about a second later the agent proposes an event; the request waits for your decision. Without the rule prover's variables ("The practice run") its classifier is a stand-in that always asks you and never permits, so an approval creates a grant and the request ends "undecided". The agent proposes once more after the first request ends, two requests per run. Quit and start again with the same directory (write it down instead of `$(mktemp -d)`): pending requests, until-revoked grants and decisions are still there.
+`FABRIC_DESKTOP_DATA_DIR` moves the single-instance lock and the store to that scratch directory; the store opens with the public test key, so it never touches the Keychain. Once the window has subscribed, "Synthetic agent (test build)" and a synthetic account appear, and about a second later the agent proposes an event; the request waits for your decision. Without the rule prover's variables ("The practice run") and with no Isabelle installed in the scratch directory, its classifier is a stand-in that always asks you and never permits, so an approval creates a grant and the request ends "undecided". The agent proposes once more after the first request ends, two requests per run. Quit and start again with the same directory (write it down instead of `$(mktemp -d)`): pending requests, until-revoked grants and decisions are still there.
 
-The host refuses the test key or the synthetic agent without `FABRIC_DESKTOP_DATA_DIR`, and the synthetic agent without the test key: the window then shows a configuration error and no broker starts. A release build ignores all of these variables, the rule prover's three too, and refuses the test key and the synthetic agent.
+The host refuses the test key or the synthetic agent without `FABRIC_DESKTOP_DATA_DIR`, and the synthetic agent without the test key: the window then shows a configuration error and no broker starts. A release build ignores all of these variables, the rule prover's three too, and refuses the test key and the synthetic agent; it always passes the installed layout ("Installing the rule checker for the installed application").
 
 ## The practice run
 
@@ -131,7 +132,7 @@ FABRIC_BROKER_RULES_DIR="$PWD/isabelle" \
   "target/debug/bundle/macos/Fabric Calendar.app/Contents/MacOS/fabric-desktop"
 ```
 
-The three `FABRIC_BROKER_ISABELLE_HOME`, `FABRIC_BROKER_ISABELLE_USER_HOME` and `FABRIC_BROKER_RULES_DIR` go together, as absolute paths: with one or two of them the host starts no broker. The broker never looks for Isabelle by itself. The host gives the broker no `PATH` of its own: on Unix the broker gets the fixed `/usr/bin:/bin:/usr/sbin:/sbin`, where Isabelle's scripts find the system tools they call ("The three parts"). The same run in a browser, once "Build and check" has built the broker and the page: from the checkout's root, keep the root in a variable before `cd`, because a `$PWD` written after it would point into `apps/fabric-desktop` and the broker would refuse the paths.
+The three `FABRIC_BROKER_ISABELLE_HOME`, `FABRIC_BROKER_ISABELLE_USER_HOME` and `FABRIC_BROKER_RULES_DIR` go together, as absolute paths: with one or two of them the host starts no broker. Without any of them the host passes the two folders of the installed layout instead, `FABRIC_BROKER_APP_RESOURCES_DIR` and `FABRIC_BROKER_APP_SUPPORT_DIR`, which it computes itself and never takes from its environment; the broker then looks for Isabelle only in `Isabelle2025-2` of the host's folder, here the scratch directory, and never anywhere else. The host gives the broker no `PATH` of its own: on Unix the broker gets the fixed `/usr/bin:/bin:/usr/sbin:/sbin`, where Isabelle's scripts find the system tools they call ("The three parts"). The same run in a browser, once "Build and check" has built the broker and the page: from the checkout's root, keep the root in a variable before `cd`, because a `$PWD` written after it would point into `apps/fabric-desktop` and the broker would refuse the paths.
 
 ```sh
 R="$PWD"
@@ -154,7 +155,7 @@ The words "the calendar" in the request states mean the practice calendar in thi
 
 If request A ends any other way, C and D are skipped and B still runs. When something fails, nothing is carried out:
 
-- Without the three variables the synthetic agent works as in "The synthetic demonstration": a card, then "Not done: Fabric could not prove that it is allowed".
+- Without the three variables (and with no Isabelle installed in the scratch directory) the synthetic agent works as in "The synthetic demonstration": a card, then "Not done: Fabric could not prove that it is allowed".
 - One or two of the variables, or a path that is not absolute: the strip says "Fabric Calendar is not installed correctly." with the host's reason under "Details", and no broker starts.
 - A path that holds no Isabelle or no rule theory stops the broker at start: the strip says "The broker stopped." with its exit code under "Details", and the Terminal shows the broker's one line naming the variable and the path.
 - A rule theory that is not the one the broker was built with leaves the rule checker not running for the run: the strip says "The rule checker is not running."
@@ -162,6 +163,28 @@ If request A ends any other way, C and D are skipped and B still runs. When some
 - A check that reaches its limit (30 s, or less for a request that waited behind other checks: its time ends at the request's deadline) ends the request the same way, and the rule checker keeps running. With the full 30 s the request has an undecided proof and the strip shows nothing. A request that waited ends at its deadline without a proof, since Isabelle's answer comes after it, and the strip may say for a moment, until Isabelle answers, that the rule checker is not running.
 
 Use a new scratch directory for every practice run. A restart of the broker starts a fresh practice calendar, while the store keeps the requests that were done: on a reused directory those requests show done for events the practice calendar no longer has. Requests that are done stay open until CD-W05 can confirm them, and each agent may have 25 open requests, so about eight runs fit in one directory before the agent is told it is busy.
+
+## Installing the rule checker for the installed application
+
+The application does not carry Isabelle. Opened from Finder, or from Terminal without the three variables of "The practice run", it looks for Isabelle2025-2 in its own folder, `~/Library/Application Support/ai.paracels.fabric.calendar/Isabelle2025-2`, once each time it starts. Install it there once, from the checkout's root:
+
+```sh
+sh scripts/install-isabelle.sh
+```
+
+The script downloads the pinned Isabelle2025-2 archive for macOS (about 1.7 GB) from the Isabelle site with curl, checks its size and SHA-256 (the same pin as `scripts/setup-demo.sh`) before it unpacks anything, unpacks it (about 3.5 GB) and moves it into place in one step. It creates the application's folder, with mode 0700, only when that folder is missing; it never touches the store in `broker/`, needs no administrator rights and runs nothing from the archive. `--archive <file>` takes an archive already on disk instead, for example `.tooling/isabelle/download/Isabelle2025-2_macos.tar.gz` after `sh scripts/setup-demo.sh`; `--url <url>` downloads from another place; `--support-dir <dir>` installs into another folder, given as an absolute path, for tests. When Isabelle2025-2 is already there it says so and changes nothing. When the folder `Isabelle2025-2` holds something else it stops and asks you to move that away; it deletes nothing it did not create. Its last line is "Isabelle2025-2 is installed in <folder>/Isabelle2025-2. Quit Fabric Calendar and open it again to use it.": the application looks for Isabelle only when it starts, so quit it and open it again.
+
+The first start after the installation builds Isabelle's session heap in `isabelle-user-home` beside it. Meanwhile the strip says "The rule checker is starting.", and a request made in that time ends "Not done: Fabric could not prove that it is allowed". The rule prover's own tests say that this build takes about half a minute; on a slower Mac it takes longer. Later starts take seconds. When the application has been moved to another folder, its first start builds the heap again.
+
+Without Isabelle in that folder, or with another version there, the application still opens, and nothing is carried out. The strip says "The rule checker is not running." and its text begins "This run has no rule checker. Nothing can be done about it in this run." That is the sentence for a run without a rule checker; here the remedy is the script above, and a sentence of its own comes with the next version of the contract. Started from Terminal, the broker writes one line that says why, for example `fabric-broker: Isabelle2025-2 is not installed: "<folder>/Isabelle2025-2" holds no file bin/isabelle; the rule prover does not run in this run`. A test build opened without the variables uses the same folder and the real store: with Isabelle installed it proves requests, and an approved request still ends "undecided", because nothing can carry it out before CD-W05.
+
+To check all of this by hand, never in CI:
+
+```sh
+sh scripts/verify-desktop.sh --installed-proofs
+```
+
+It needs the debug bundle ("Build and check"), the archive in `.tooling/isabelle/download/` (it never downloads) and about 4 GB free. It installs Isabelle with the script into a scratch folder, runs the script again and twice with a wrong archive (a small file, and one of the pinned size), then starts a copy of the bundle with that scratch folder, the test key and the synthetic agent, and waits up to 15 minutes for the first request, which the practice agent makes only once the rule checker is ready, so that request shows that the rule checker became ready in the installed layout; it also checks that the host passed the installed layout and that the broker did not report Isabelle as not installed, since a run without Isabelle is a synthetic run that proposes too. After it kills the application it started, it checks that the heap was built in the scratch folder. Its last step runs the broker's live test `a_request_is_proved_through_the_installed_layout` against the scratch installation and the copy's `Contents/Resources`, which proves one request through the installed Isabelle, and then checks that no process of the run is left, that the bundle's signature still verifies and that nothing was written into the bundle. It never uses the Keychain or the application's real folder.
 
 ## Identifiers
 
@@ -174,7 +197,7 @@ The owner's prefix is `ai.paracels.fabric`.
 | The MCP bridge | `ai.paracels.fabric.calendar.bridge` | Proposed for CD-W06 and CD-W11 |
 | The store key in the Keychain | service `ai.paracels.fabric.calendar.store`, account `database-key-v1` | Proposed in CD-W04; the names are open for the owner to confirm |
 
-Outside the bundle the host keeps `~/Library/Application Support/ai.paracels.fabric.calendar/instance.lock`, the single-instance lock, and the broker keeps its store in `broker/` beside it ("The store").
+Outside the bundle the host keeps `~/Library/Application Support/ai.paracels.fabric.calendar/instance.lock`, the single-instance lock, and the broker keeps its store in `broker/` beside it ("The store"); once the rule checker is installed, `Isabelle2025-2` and `isabelle-user-home` are there too ("Installing the rule checker for the installed application").
 
 ## What a person has to check
 
@@ -234,7 +257,7 @@ Do not touch the mouse or the trackpad after the window is in front.
 
    Expected: a second window whose strip says "Fabric Calendar is already open." and has no restart button. `pgrep -x fabric-broker` prints one process id. Close the second window.
 2. Press Command+Q in the first window. Expected: `pgrep -x fabric-broker` prints nothing within two seconds.
-3. Open the copied application from Finder, without the variables: this is the product's store. Expected: on the first launch macOS asks whether Fabric Calendar may use its Keychain item; allow it. The strip says "The rule checker is not running." and nothing else; the Status screen says "Running and up to date", the store "Open." and "No account is connected."; no request, permission or agent is listed. `ls -l "$HOME/Library/Application Support/ai.paracels.fabric.calendar/broker"` lists `broker.db` and `broker.lock`, owner-only. Quit.
+3. Open the copied application from Finder, without the variables: this is the product's store. Expected: on the first launch macOS asks whether Fabric Calendar may use its Keychain item; allow it. The strip says "The rule checker is not running." and nothing else (if Isabelle was installed with `sh scripts/install-isabelle.sh`, it says "The rule checker is starting." instead, and then nothing); the Status screen says "Running and up to date", the store "Open." and "No account is connected."; no request, permission or agent is listed. `ls -l "$HOME/Library/Application Support/ai.paracels.fabric.calendar/broker"` lists `broker.db` and `broker.lock`, owner-only. Quit.
 
 ### D. VoiceOver
 

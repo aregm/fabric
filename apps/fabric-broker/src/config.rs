@@ -3,8 +3,9 @@
 //!
 //! The host starts the broker with no arguments and an environment cleared of everything but,
 //! on Unix, the relay's fixed `PATH`, then adds the data directory and the key source, in a
-//! synthetic test run the synthetic agent, and where a rule prover runs the three Isabelle paths
-//! (the six variables below). The broker reads those six,
+//! synthetic test run the synthetic agent, and where a rule prover runs either the three Isabelle
+//! paths of the developer mode or the two folders of the installed layout (the eight variables
+//! below). The broker reads those eight,
 //! refuses any other name that starts with `FABRIC_BROKER_` (a misspelt name is an error, not a
 //! silent default), and ignores every variable outside that prefix. A refusal is one stderr line
 //! naming the variable and the reason, and exit code 78; it never prints the value of a variable
@@ -14,6 +15,12 @@
 //! than a look at the file system; whether Isabelle starts, and whether the rule theory is the one
 //! the broker was built with, the prover finds out after the store is open.
 //!
+//! The installed layout (plan Q09) is the two folders [`APP_RESOURCES_DIR`] and
+//! [`APP_SUPPORT_DIR`], both or none, and never with any of the three Isabelle paths. The broker
+//! looks once, here, whether Isabelle2025-2 is installed in the support folder. When it is not,
+//! or another version is there, the run has no rule prover and is not refused: main writes one
+//! stderr line that says why ([`Installation::line`]).
+//!
 //! Bare numbers here, such as (3.3) or (D27), cite the CD-W04 design
 //! (`docs/plans/calendar-desktop-w04-design.md`); "PW" numbers, such as the test ids PW c40 to
 //! PW c43, cite the prover wiring's design (`docs/plans/calendar-desktop-prover-wiring-design.md`).
@@ -21,6 +28,12 @@
 use std::ffi::{OsStr, OsString};
 use std::fmt;
 use std::path::PathBuf;
+
+use fabric_broker_policy::IsabelleInstallation;
+use fabric_broker_policy::gate::{
+    INSTALLED_ISABELLE_DIR, INSTALLED_RULES_DIR, INSTALLED_USER_HOME_DIR, ISABELLE_VERSION,
+    isabelle_installation,
+};
 
 /// The exit code when stdin or stdout fails (`EX_IOERR`); moved here from main.
 pub const EXIT_IO: u8 = 74;
@@ -42,6 +55,12 @@ pub const ISABELLE_HOME: &str = "FABRIC_BROKER_ISABELLE_HOME";
 pub const ISABELLE_USER_HOME: &str = "FABRIC_BROKER_ISABELLE_USER_HOME";
 /// The directory with `Fabric_Broker/`, which holds the session's `ROOT` and `Fabric_Broker.thy`.
 pub const RULES_DIR: &str = "FABRIC_BROKER_RULES_DIR";
+/// The installed layout: the application's resources folder, which holds
+/// `isabelle/Fabric_Broker/`.
+pub const APP_RESOURCES_DIR: &str = "FABRIC_BROKER_APP_RESOURCES_DIR";
+/// The installed layout: the application's own folder for this user, where Isabelle is looked for
+/// in `Isabelle2025-2` and Isabelle's user home is `isabelle-user-home`.
+pub const APP_SUPPORT_DIR: &str = "FABRIC_BROKER_APP_SUPPORT_DIR";
 
 /// Where the store key comes from.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -65,6 +84,74 @@ pub struct IsabelleSettings {
     pub rules_dir: PathBuf,
 }
 
+/// What the broker found of the installed layout, once, before its plan.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Installation {
+    /// [`APP_RESOURCES_DIR`] and [`APP_SUPPORT_DIR`] are not set: the developer mode, or no
+    /// rule prover.
+    NotAsked,
+    /// Isabelle2025-2 is in the support folder. [`Config::isabelle`] holds the installed
+    /// layout's three paths.
+    Found {
+        /// The value of [`APP_RESOURCES_DIR`], absolute.
+        resources_dir: PathBuf,
+        /// The value of [`APP_SUPPORT_DIR`], absolute.
+        support_dir: PathBuf,
+    },
+    /// No Isabelle in `isabelle_home`, or its files could not be read (`unreadable` then holds
+    /// the error). The run has no rule prover.
+    Missing {
+        /// `<support>/Isabelle2025-2`.
+        isabelle_home: PathBuf,
+        /// The error reading the two files, when there was one.
+        unreadable: Option<String>,
+    },
+    /// Another Isabelle is in `isabelle_home`. It is never started; the run has no rule prover.
+    OtherVersion {
+        /// `<support>/Isabelle2025-2`.
+        isabelle_home: PathBuf,
+        /// The name the distribution gives itself, empty when it gives none.
+        name: String,
+    },
+}
+
+impl Installation {
+    /// The one stderr line of a run whose installed Isabelle is missing or another version;
+    /// `None` otherwise. Main writes it once, before the plan.
+    ///
+    /// The contract on main has no reason for this: the owner sees `not_configured`, as for any
+    /// run without a rule prover. A follow-up sends `not_installed` for `Missing` and
+    /// `OtherVersion` once contract schema version 3 is merged.
+    #[must_use]
+    pub fn line(&self) -> Option<String> {
+        match self {
+            Installation::NotAsked | Installation::Found { .. } => None,
+            Installation::Missing {
+                isabelle_home,
+                unreadable: None,
+            } => Some(format!(
+                "fabric-broker: {ISABELLE_VERSION} is not installed: {:?} holds no file bin/isabelle; the rule prover does not run in this run",
+                isabelle_home.display()
+            )),
+            Installation::Missing {
+                isabelle_home,
+                unreadable: Some(error),
+            } => Some(format!(
+                "fabric-broker: {ISABELLE_VERSION} is taken as not installed: {:?} could not be read ({}); the rule prover does not run in this run",
+                isabelle_home.display(),
+                error.replace(['\n', '\r'], " ")
+            )),
+            Installation::OtherVersion {
+                isabelle_home,
+                name,
+            } => Some(format!(
+                "fabric-broker: {ISABELLE_VERSION} is not installed: {:?} holds {name:?}, another version, which is not started; the rule prover does not run in this run",
+                isabelle_home.display()
+            )),
+        }
+    }
+}
+
 /// A checked configuration.
 #[derive(Clone, Debug)]
 pub struct Config {
@@ -74,8 +161,11 @@ pub struct Config {
     pub key_source: KeySource,
     /// True when the synthetic agent runs (debug builds, test key only).
     pub synthetic_agent: bool,
-    /// `Some` when the three Isabelle variables are set (all or none).
+    /// `Some` when the three Isabelle variables are set (all or none), or when the installed
+    /// layout's two are set and Isabelle2025-2 is installed there.
     pub isabelle: Option<IsabelleSettings>,
+    /// What was found of the installed layout.
+    pub installation: Installation,
 }
 
 impl Config {
@@ -127,14 +217,17 @@ fn refuse(variable: &str, reason: &str) -> ConfigError {
     ConfigError(format!("fabric-broker: {variable} {reason}"))
 }
 
-/// Reads the six names (3.3); refuses any other `FABRIC_BROKER_*` name, the
-/// synthetic agent without the test key, and one or two of the Isabelle paths without the
-/// others; ignores every variable outside the prefix.
+/// Reads the eight names (3.3); refuses any other `FABRIC_BROKER_*` name, the
+/// synthetic agent without the test key, one or two of the Isabelle paths without the
+/// others, one of the two installed folders without the other, and either of those with any of
+/// the three Isabelle paths; ignores every variable outside the prefix.
 ///
 /// The data directory must be absolute and, when something exists at the path, a directory.
 /// Whether a missing directory can be created, and the mode of an existing one, are checked by
 /// the store when it opens, before any frame (exit 78 too). The Isabelle paths must be absolute
-/// and lead to what Isabelle and the rule theory need.
+/// and lead to what Isabelle and the rule theory need. The two installed folders must be
+/// absolute; whether Isabelle is installed is read here ([`Installation`]) and is never a
+/// refusal.
 ///
 /// # Errors
 ///
@@ -148,6 +241,8 @@ pub fn config_from(
     let mut isabelle_home = None;
     let mut user_home = None;
     let mut rules_dir = None;
+    let mut resources_dir = None;
+    let mut support_dir = None;
     for (name, value) in vars {
         if !is_broker_variable(&name) {
             continue;
@@ -164,9 +259,13 @@ pub fn config_from(
             user_home = Some(value);
         } else if is(&name, RULES_DIR) {
             rules_dir = Some(value);
+        } else if is(&name, APP_RESOURCES_DIR) {
+            resources_dir = Some(value);
+        } else if is(&name, APP_SUPPORT_DIR) {
+            support_dir = Some(value);
         } else {
             return Err(ConfigError(format!(
-                "fabric-broker: {} is not a variable of the broker; it reads only {DATA_DIR}, {KEY_SOURCE}, {SYNTHETIC_AGENT}, {ISABELLE_HOME}, {ISABELLE_USER_HOME} and {RULES_DIR}",
+                "fabric-broker: {} is not a variable of the broker; it reads only {DATA_DIR}, {KEY_SOURCE}, {SYNTHETIC_AGENT}, {ISABELLE_HOME}, {ISABELLE_USER_HOME}, {RULES_DIR}, {APP_RESOURCES_DIR} and {APP_SUPPORT_DIR}",
                 name.to_string_lossy()
             )));
         }
@@ -174,13 +273,108 @@ pub fn config_from(
     let data_dir = data_dir_from(data_dir)?;
     let key_source = key_source_from(key_source)?;
     let synthetic_agent = synthetic_from(synthetic, key_source)?;
-    let isabelle = isabelle_from(isabelle_home, user_home, rules_dir)?;
+    let developer = [
+        (ISABELLE_HOME, isabelle_home.is_some()),
+        (ISABELLE_USER_HOME, user_home.is_some()),
+        (RULES_DIR, rules_dir.is_some()),
+    ];
+    let folders = [
+        (APP_RESOURCES_DIR, resources_dir.is_some()),
+        (APP_SUPPORT_DIR, support_dir.is_some()),
+    ];
+    if let (Some((app, _)), Some((path, _))) = (
+        folders.iter().find(|(_, set)| *set),
+        developer.iter().find(|(_, set)| *set),
+    ) {
+        return Err(refuse(
+            app,
+            &format!(
+                "is set with {path}; the rule prover takes the installed layout or the three Isabelle paths, not both"
+            ),
+        ));
+    }
+    let (isabelle, installation) = match installed_from(resources_dir, support_dir)? {
+        Some((resources_dir, support_dir)) => installed(resources_dir, support_dir),
+        None => (
+            isabelle_from(isabelle_home, user_home, rules_dir)?,
+            Installation::NotAsked,
+        ),
+    };
     Ok(Config {
         data_dir,
         key_source,
         synthetic_agent,
         isabelle,
+        installation,
     })
+}
+
+/// The refusal of one of the two installed folders without the other.
+const APP_NOT_TOGETHER: &str = "fabric-broker: the installed rule prover needs FABRIC_BROKER_APP_RESOURCES_DIR and FABRIC_BROKER_APP_SUPPORT_DIR together, or none";
+
+/// The two installed folders: none, or both, each absolute. Nothing on disk is looked at here.
+///
+/// # Errors
+///
+/// A [`ConfigError`] naming the folder refused, or both when only one is set.
+fn installed_from(
+    resources_dir: Option<OsString>,
+    support_dir: Option<OsString>,
+) -> Result<Option<(PathBuf, PathBuf)>, ConfigError> {
+    match (resources_dir, support_dir) {
+        (None, None) => Ok(None),
+        (Some(resources), Some(support)) => Ok(Some((
+            absolute(APP_RESOURCES_DIR, resources)?,
+            absolute(APP_SUPPORT_DIR, support)?,
+        ))),
+        _ => Err(ConfigError(APP_NOT_TOGETHER.to_owned())),
+    }
+}
+
+/// Looks once whether Isabelle2025-2 is installed in `support_dir`, reading two files and
+/// running nothing. When it is, the three paths are those of the installed layout
+/// (`GateConfig::for_installation`): Isabelle's user home need not exist, since the gate creates
+/// it, and the rule files are not looked at, since the prover's theory pin reads them. When it is
+/// not, or another version is there, or its files cannot be read, the run has no rule prover.
+fn installed(
+    resources_dir: PathBuf,
+    support_dir: PathBuf,
+) -> (Option<IsabelleSettings>, Installation) {
+    let isabelle_home = support_dir.join(INSTALLED_ISABELLE_DIR);
+    match isabelle_installation(&isabelle_home) {
+        Ok(IsabelleInstallation::Found) => (
+            Some(IsabelleSettings {
+                isabelle_home,
+                user_home: support_dir.join(INSTALLED_USER_HOME_DIR),
+                rules_dir: resources_dir.join(INSTALLED_RULES_DIR),
+            }),
+            Installation::Found {
+                resources_dir,
+                support_dir,
+            },
+        ),
+        Ok(IsabelleInstallation::Missing) => (
+            None,
+            Installation::Missing {
+                isabelle_home,
+                unreadable: None,
+            },
+        ),
+        Ok(IsabelleInstallation::OtherVersion(name)) => (
+            None,
+            Installation::OtherVersion {
+                isabelle_home,
+                name,
+            },
+        ),
+        Err(error) => (
+            None,
+            Installation::Missing {
+                isabelle_home,
+                unreadable: Some(error.to_string()),
+            },
+        ),
+    }
 }
 
 /// The refusal of one or two Isabelle paths without the others.
@@ -760,13 +954,14 @@ mod tests {
                 user_home: layout.user.clone(),
                 rules_dir: layout.rules.clone(),
             }),
+            installation: Installation::NotAsked,
         };
         assert!(!config.practice());
     }
 
-    /// PW c43: the refusal of an unknown name lists the six names the broker reads (D27).
+    /// PW c43: the refusal of an unknown name lists the eight names the broker reads (D27).
     #[test]
-    fn the_refusal_lists_six_names() {
+    fn the_refusal_lists_eight_names() {
         let dir = absolute();
         let line = refused(&[(DATA_DIR, &dir), ("FABRIC_BROKER_ISABELLE", "x")]);
         for name in [
@@ -776,6 +971,8 @@ mod tests {
             ISABELLE_HOME,
             ISABELLE_USER_HOME,
             RULES_DIR,
+            APP_RESOURCES_DIR,
+            APP_SUPPORT_DIR,
         ] {
             assert!(line.contains(name), "{name}: {line}");
         }
@@ -792,6 +989,280 @@ mod tests {
         assert_eq!(ISABELLE_HOME, "FABRIC_BROKER_ISABELLE_HOME");
         assert_eq!(ISABELLE_USER_HOME, "FABRIC_BROKER_ISABELLE_USER_HOME");
         assert_eq!(RULES_DIR, "FABRIC_BROKER_RULES_DIR");
+        assert_eq!(APP_RESOURCES_DIR, "FABRIC_BROKER_APP_RESOURCES_DIR");
+        assert_eq!(APP_SUPPORT_DIR, "FABRIC_BROKER_APP_SUPPORT_DIR");
+    }
+
+    /// A stand-in for the installed layout: a support folder, empty until [`Installed::install`]
+    /// puts a stand-in Isabelle in it, and a resources folder that does not exist. No Isabelle
+    /// runs from it. Removed on drop.
+    #[cfg(any(debug_assertions, target_os = "macos"))]
+    struct Installed {
+        root: PathBuf,
+        resources: PathBuf,
+        support: PathBuf,
+    }
+
+    #[cfg(any(debug_assertions, target_os = "macos"))]
+    impl Installed {
+        fn new(label: &str) -> Installed {
+            static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+            let n = NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            let root = std::env::temp_dir().join(format!(
+                "fabric-broker-installed-{label}-{}-{n}",
+                std::process::id()
+            ));
+            let _ = std::fs::remove_dir_all(&root);
+            let support = root.join("support");
+            std::fs::create_dir_all(&support).unwrap();
+            Installed {
+                resources: root.join("resources"),
+                support,
+                root,
+            }
+        }
+
+        /// `<support>/Isabelle2025-2` with a `bin/isabelle` and, when `identifier` is given, an
+        /// `etc/ISABELLE_IDENTIFIER` holding it. No user home is made.
+        fn install(&self, identifier: Option<&str>) -> PathBuf {
+            let home = self.support.join(INSTALLED_ISABELLE_DIR);
+            std::fs::create_dir_all(home.join("bin")).unwrap();
+            std::fs::create_dir_all(home.join("etc")).unwrap();
+            std::fs::write(home.join("bin").join("isabelle"), b"#!/bin/sh\nexit 1\n").unwrap();
+            if let Some(identifier) = identifier {
+                std::fs::write(home.join("etc").join("ISABELLE_IDENTIFIER"), identifier).unwrap();
+            }
+            home
+        }
+
+        /// The two variables with this layout's folders.
+        fn variables(&self) -> Vec<(&'static str, String)> {
+            vec![
+                (APP_RESOURCES_DIR, Layout::text(&self.resources)),
+                (APP_SUPPORT_DIR, Layout::text(&self.support)),
+            ]
+        }
+
+        fn config(&self, synthetic: bool) -> Config {
+            let all = self.variables();
+            let mut pairs: Vec<(&str, &str)> = all.iter().map(|(k, v)| (*k, v.as_str())).collect();
+            if synthetic {
+                pairs.push((SYNTHETIC_AGENT, "1"));
+            }
+            config_from(vars(&with_base(&absolute(), &pairs))).unwrap()
+        }
+    }
+
+    #[cfg(any(debug_assertions, target_os = "macos"))]
+    impl Drop for Installed {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.root);
+        }
+    }
+
+    /// PW I1: the two installed folders are read together or not at all.
+    #[cfg(any(debug_assertions, target_os = "macos"))]
+    #[test]
+    fn installed_folders_are_both_or_none() {
+        let dir = absolute();
+        let installed = Installed::new("both-or-none");
+        let none = config_from(vars(&with_base(&dir, &[]))).unwrap();
+        assert_eq!(none.installation, Installation::NotAsked);
+        let all = installed.variables();
+        for (name, value) in &all {
+            let line = refused(&with_base(&dir, &[(*name, value.as_str())]));
+            assert_eq!(line, APP_NOT_TOGETHER, "{name}");
+            assert!(
+                line.contains(APP_RESOURCES_DIR) && line.contains(APP_SUPPORT_DIR),
+                "{line}"
+            );
+        }
+        let pairs: Vec<(&str, &str)> = all.iter().map(|(k, v)| (*k, v.as_str())).collect();
+        assert!(config_from(vars(&with_base(&dir, &pairs))).is_ok());
+    }
+
+    /// PW I1: either installed folder with any of the three Isabelle paths is refused, naming both.
+    #[cfg(any(debug_assertions, target_os = "macos"))]
+    #[test]
+    fn installed_folders_and_isabelle_paths_are_exclusive() {
+        let dir = absolute();
+        let layout = Layout::new("exclusive");
+        let installed = Installed::new("exclusive");
+        let paths = layout.variables();
+        let folders = installed.variables();
+        for (app, folder) in &folders {
+            for (path, value) in &paths {
+                let line = refused(&with_base(
+                    &dir,
+                    &[(*app, folder.as_str()), (*path, value.as_str())],
+                ));
+                assert!(
+                    line.starts_with(&format!("fabric-broker: {app} is set with {path};")),
+                    "{line}"
+                );
+                assert!(!line.contains('\n'), "{line}");
+            }
+        }
+        // All five set: still refused, not a choice of one.
+        let mut all: Vec<(&str, &str)> = paths.iter().map(|(k, v)| (*k, v.as_str())).collect();
+        all.extend(folders.iter().map(|(k, v)| (*k, v.as_str())));
+        assert!(refused(&with_base(&dir, &all)).contains("not both"));
+    }
+
+    /// PW I1: each installed folder must be an absolute path.
+    #[cfg(any(debug_assertions, target_os = "macos"))]
+    #[test]
+    fn a_relative_installed_folder_is_refused() {
+        let dir = absolute();
+        let installed = Installed::new("relative");
+        let resources = Layout::text(&installed.resources);
+        let support = Layout::text(&installed.support);
+        for (case, r, s, named) in [
+            (
+                "resources",
+                "Resources",
+                support.as_str(),
+                APP_RESOURCES_DIR,
+            ),
+            ("support", resources.as_str(), "support", APP_SUPPORT_DIR),
+        ] {
+            let line = refused(&with_base(
+                &dir,
+                &[(APP_RESOURCES_DIR, r), (APP_SUPPORT_DIR, s)],
+            ));
+            assert!(
+                line.starts_with(&format!("fabric-broker: {named} is ")),
+                "{case}: {line}"
+            );
+            assert!(line.contains("not an absolute path"), "{case}: {line}");
+        }
+    }
+
+    /// PW I4, I7, I8: Isabelle2025-2 in the support folder gives the paths of
+    /// `GateConfig::for_installation`; the user home need not exist and the rule files are not
+    /// looked at.
+    #[cfg(any(debug_assertions, target_os = "macos"))]
+    #[test]
+    fn an_installed_isabelle_gives_the_installed_layout() {
+        let installed = Installed::new("found");
+        installed.install(Some(ISABELLE_VERSION));
+        let config = installed.config(false);
+        let gate = fabric_broker_policy::GateConfig::for_installation(
+            &installed.resources,
+            &installed.support,
+            Path::new("/work"),
+            "name",
+        );
+        assert_eq!(
+            config.isabelle,
+            Some(IsabelleSettings {
+                isabelle_home: gate.isabelle_home,
+                user_home: gate.user_home.clone(),
+                rules_dir: gate.rules_dir.clone(),
+            })
+        );
+        assert!(!gate.user_home.exists(), "the user home need not exist");
+        assert!(!gate.rules_dir.exists(), "the rule files are not looked at");
+        assert_eq!(
+            config.installation,
+            Installation::Found {
+                resources_dir: installed.resources.clone(),
+                support_dir: installed.support.clone(),
+            }
+        );
+        assert_eq!(config.installation.line(), None);
+        // The identifier as the distribution writes it, with no line feed, and with one.
+        installed.install(Some("Isabelle2025-2\n"));
+        assert!(installed.config(false).isabelle.is_some());
+    }
+
+    /// PW I4: an empty support folder is a run without a rule prover, not a refusal; the line names
+    /// the folder.
+    #[cfg(any(debug_assertions, target_os = "macos"))]
+    #[test]
+    fn a_missing_installation_is_a_run_without_a_rule_prover() {
+        let installed = Installed::new("missing");
+        let config = installed.config(false);
+        let home = installed.support.join(INSTALLED_ISABELLE_DIR);
+        assert_eq!(config.isabelle, None);
+        assert_eq!(
+            config.installation,
+            Installation::Missing {
+                isabelle_home: home.clone(),
+                unreadable: None,
+            }
+        );
+        let line = config.installation.line().unwrap();
+        assert_eq!(
+            line,
+            format!(
+                "fabric-broker: Isabelle2025-2 is not installed: {:?} holds no file bin/isabelle; the rule prover does not run in this run",
+                home.display()
+            )
+        );
+        assert!(!config.practice());
+    }
+
+    /// PW I4, I6: another Isabelle in the folder is not installed; the line names the name found.
+    #[cfg(any(debug_assertions, target_os = "macos"))]
+    #[test]
+    fn another_isabelle_version_is_not_installed() {
+        for (written, name) in [(Some("Isabelle2024"), "Isabelle2024"), (None, "")] {
+            let installed = Installed::new("other");
+            let home = installed.install(written);
+            let config = installed.config(false);
+            assert_eq!(config.isabelle, None, "{name}");
+            assert_eq!(
+                config.installation,
+                Installation::OtherVersion {
+                    isabelle_home: home.clone(),
+                    name: name.to_owned(),
+                }
+            );
+            let line = config.installation.line().unwrap();
+            assert!(
+                line.contains(&format!("holds {name:?}, another version")),
+                "{line}"
+            );
+            assert!(line.contains(&format!("{:?}", home.display())), "{line}");
+            assert!(!line.contains('\n'), "{line}");
+        }
+    }
+
+    /// PW I4: an identifier that cannot be read is taken as not installed, with the error in the
+    /// line.
+    #[cfg(any(debug_assertions, target_os = "macos"))]
+    #[test]
+    fn an_unreadable_installation_is_taken_as_missing() {
+        let installed = Installed::new("unreadable");
+        let home = installed.install(None);
+        std::fs::create_dir(home.join("etc").join("ISABELLE_IDENTIFIER")).unwrap();
+        let config = installed.config(false);
+        assert_eq!(config.isabelle, None);
+        let Installation::Missing {
+            isabelle_home,
+            unreadable: Some(_),
+        } = &config.installation
+        else {
+            panic!("{:?}", config.installation);
+        };
+        assert_eq!(isabelle_home, &home);
+        let line = config.installation.line().unwrap();
+        assert!(line.contains("taken as not installed"), "{line}");
+        assert!(!line.contains('\n'), "{line}");
+    }
+
+    /// PW I4: a synthetic run whose installation is missing keeps its classifier: it is not a
+    /// practice run.
+    #[cfg(debug_assertions)]
+    #[test]
+    fn a_synthetic_run_with_a_missing_installation_is_not_practice() {
+        let installed = Installed::new("synthetic");
+        let config = installed.config(true);
+        assert!(config.synthetic_agent);
+        assert!(!config.practice());
+        installed.install(Some(ISABELLE_VERSION));
+        assert!(installed.config(true).practice());
     }
 
     #[test]

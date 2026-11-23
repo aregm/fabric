@@ -23,6 +23,14 @@ pub const BROKER_ISABELLE_HOME: &str = "FABRIC_BROKER_ISABELLE_HOME";
 pub const BROKER_ISABELLE_USER_HOME: &str = "FABRIC_BROKER_ISABELLE_USER_HOME";
 /// The directory that holds the rule theory: `Fabric_Broker/` with its `ROOT` and `Fabric_Broker.thy`.
 pub const BROKER_RULES_DIR: &str = "FABRIC_BROKER_RULES_DIR";
+// The two names of the installed layout are defined by the broker in the same file
+// (`APP_RESOURCES_DIR`, `APP_SUPPORT_DIR`) and repeated here for the same reason.
+/// The application's resources folder (`Contents/Resources` in a bundle), which holds the rule
+/// theory in `isabelle/Fabric_Broker/`.
+pub const BROKER_APP_RESOURCES_DIR: &str = "FABRIC_BROKER_APP_RESOURCES_DIR";
+/// The application's own folder for this user, where the broker looks for `Isabelle2025-2` and
+/// Isabelle's user home.
+pub const BROKER_APP_SUPPORT_DIR: &str = "FABRIC_BROKER_APP_SUPPORT_DIR";
 
 /// The names of the host's environment variables that the broker child receives. Every other
 /// variable of the host is left out.
@@ -33,9 +41,15 @@ pub const BROKER_RULES_DIR: &str = "FABRIC_BROKER_RULES_DIR";
 /// run sets. The host sets these itself (the synthetic agent only in a test run) and drops any it
 /// inherited. Then the three that say where the rule prover is: `FABRIC_BROKER_ISABELLE_HOME`,
 /// `FABRIC_BROKER_ISABELLE_USER_HOME` and `FABRIC_BROKER_RULES_DIR`, absolute paths, all or none.
-/// The broker never looks for Isabelle by itself, so without them it runs no prover; only a debug
-/// host passes them, and only when all three are set. On Windows also `SystemRoot`, without which a process can fail to start. A later
-/// work package that needs another variable adds its name here with the reason.
+/// Only a debug host passes them, and only when all three are set: the developer mode. Every
+/// other host passes the two of the installed layout instead: `FABRIC_BROKER_APP_RESOURCES_DIR`,
+/// the application's resources folder, which holds the rule theory, and
+/// `FABRIC_BROKER_APP_SUPPORT_DIR`, the host's own folder, where the broker looks for Isabelle
+/// (installed there by `scripts/install-isabelle.sh`). The host computes both, never takes them
+/// from its own environment, and drops any it inherited. The broker never looks for Isabelle
+/// anywhere else, so without these five it runs no prover. On Windows also `SystemRoot`,
+/// without which a process can fail to start. A later work package that needs another variable
+/// adds its name here with the reason.
 #[cfg(windows)]
 pub const ENVIRONMENT_ALLOWLIST: &[&str] = &[
     "SystemRoot",
@@ -45,6 +59,8 @@ pub const ENVIRONMENT_ALLOWLIST: &[&str] = &[
     BROKER_ISABELLE_HOME,
     BROKER_ISABELLE_USER_HOME,
     BROKER_RULES_DIR,
+    BROKER_APP_RESOURCES_DIR,
+    BROKER_APP_SUPPORT_DIR,
 ];
 
 /// The names of the host's environment variables that the broker child receives. Every other
@@ -56,9 +72,14 @@ pub const ENVIRONMENT_ALLOWLIST: &[&str] = &[
 /// run sets. The host sets these itself (the synthetic agent only in a test run) and drops any it
 /// inherited. Then the three that say where the rule prover is: `FABRIC_BROKER_ISABELLE_HOME`,
 /// `FABRIC_BROKER_ISABELLE_USER_HOME` and `FABRIC_BROKER_RULES_DIR`, absolute paths, all or none.
-/// The broker never looks for Isabelle by itself, so without them it runs no prover; only a debug
-/// host passes them, and only when all three are set. A later work package that needs another variable adds its name here with the
-/// reason.
+/// Only a debug host passes them, and only when all three are set: the developer mode. Every
+/// other host passes the two of the installed layout instead: `FABRIC_BROKER_APP_RESOURCES_DIR`,
+/// the application's resources folder, which holds the rule theory, and
+/// `FABRIC_BROKER_APP_SUPPORT_DIR`, the host's own folder, where the broker looks for Isabelle
+/// (installed there by `scripts/install-isabelle.sh`). The host computes both, never takes them
+/// from its own environment, and drops any it inherited. The broker never looks for Isabelle
+/// anywhere else, so without these five it runs no prover. A later work package that needs
+/// another variable adds its name here with the reason.
 #[cfg(not(windows))]
 pub const ENVIRONMENT_ALLOWLIST: &[&str] = &[
     BROKER_DATA_DIR,
@@ -67,6 +88,8 @@ pub const ENVIRONMENT_ALLOWLIST: &[&str] = &[
     BROKER_ISABELLE_HOME,
     BROKER_ISABELLE_USER_HOME,
     BROKER_RULES_DIR,
+    BROKER_APP_RESOURCES_DIR,
+    BROKER_APP_SUPPORT_DIR,
 ];
 
 /// The `PATH` the broker child gets on Unix, a fixed value that never comes from the host.
@@ -256,6 +279,8 @@ mod tests {
             "FABRIC_BROKER_ISABELLE_HOME",
             "FABRIC_BROKER_ISABELLE_USER_HOME",
             "FABRIC_BROKER_RULES_DIR",
+            "FABRIC_BROKER_APP_RESOURCES_DIR",
+            "FABRIC_BROKER_APP_SUPPORT_DIR",
         ];
         if cfg!(windows) {
             assert_eq!(ENVIRONMENT_ALLOWLIST[0], "SystemRoot");
@@ -264,7 +289,7 @@ mod tests {
             assert_eq!(ENVIRONMENT_ALLOWLIST, &broker);
         }
         // Nothing that would let the broker find the owner's home or a key elsewhere, and none
-        // of Isabelle's own names: the broker learns where Isabelle is only from its three.
+        // of Isabelle's own names: the broker learns where Isabelle is only from its five.
         for name in [
             "HOME",
             "USERPROFILE",
@@ -288,6 +313,8 @@ mod tests {
             BROKER_ISABELLE_HOME,
             BROKER_ISABELLE_USER_HOME,
             BROKER_RULES_DIR,
+            BROKER_APP_RESOURCES_DIR,
+            BROKER_APP_SUPPORT_DIR,
         ] {
             assert!(is_broker_variable(OsStr::new(name)), "{name}");
             assert!(same_name(OsStr::new(name), name), "{name}");

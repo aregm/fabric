@@ -51,13 +51,15 @@ fn spawn_reader(events: SyncSender<Event>) {
 fn main() -> ExitCode {
     if std::env::args_os().len() > 1 {
         eprintln!(
-            "usage: fabric-broker (no arguments; it speaks the owner channel of fabric-desktop/1 on stdin and stdout, and reads {}, {}, {}, {}, {} and {})",
+            "usage: fabric-broker (no arguments; it speaks the owner channel of fabric-desktop/1 on stdin and stdout, and reads {}, {}, {}, {}, {}, {}, {} and {})",
             config::DATA_DIR,
             config::KEY_SOURCE,
             config::SYNTHETIC_AGENT,
             config::ISABELLE_HOME,
             config::ISABELLE_USER_HOME,
-            config::RULES_DIR
+            config::RULES_DIR,
+            config::APP_RESOURCES_DIR,
+            config::APP_SUPPORT_DIR
         );
         return ExitCode::from(EXIT_USAGE);
     }
@@ -68,6 +70,11 @@ fn main() -> ExitCode {
             return ExitCode::from(EXIT_CONFIG);
         }
     };
+    // An installed Isabelle that is missing or another version: a run without a rule prover,
+    // said once here.
+    if let Some(line) = config.installation.line() {
+        eprintln!("{line}");
+    }
     let plan = Plan::of(&config, now_ms());
     let settings = Settings::cd_w04(shell::build_label(&config));
     let (mut broker, started) = match Broker::start(

@@ -53,6 +53,8 @@ const SYNTHETIC_AGENT: &str = "FABRIC_BROKER_SYNTHETIC_AGENT";
 const ISABELLE_HOME: &str = "FABRIC_BROKER_ISABELLE_HOME";
 const ISABELLE_USER_HOME: &str = "FABRIC_BROKER_ISABELLE_USER_HOME";
 const RULES_DIR: &str = "FABRIC_BROKER_RULES_DIR";
+const APP_RESOURCES_DIR: &str = "FABRIC_BROKER_APP_RESOURCES_DIR";
+const APP_SUPPORT_DIR: &str = "FABRIC_BROKER_APP_SUPPORT_DIR";
 
 /// The title of every event the synthetic agent proposes (`fabric_broker::synthetic::TITLE`;
 /// the synthetic test checks they agree). It must never appear on stdout outside a full-detail
@@ -1009,6 +1011,18 @@ fn an_argument_is_a_usage_error() {
         .read_to_string(&mut stderr)
         .unwrap();
     assert!(stderr.starts_with("usage: fabric-broker"), "{stderr}");
+    for name in [
+        DATA_DIR,
+        KEY_SOURCE,
+        SYNTHETIC_AGENT,
+        ISABELLE_HOME,
+        ISABELLE_USER_HOME,
+        RULES_DIR,
+        APP_RESOURCES_DIR,
+        APP_SUPPORT_DIR,
+    ] {
+        assert!(stderr.contains(name), "{name}: {stderr}");
+    }
     assert!(!dir.data().exists(), "a usage error created the store");
 }
 
@@ -1220,6 +1234,59 @@ fn configuration_errors_exit_78_before_any_frame() {
             "a rules directory without the rule theory",
             isabelle(&home, &user, &user),
             RULES_DIR,
+        ),
+    ]);
+    // PW I1: the installed layout's two folders, both or none, absolute, and never with any of the
+    // three Isabelle paths.
+    let support = dir.0.join("support").into_os_string();
+    let resources = dir.0.join("resources").into_os_string();
+    cases.extend([
+        (
+            "a resources folder alone",
+            some(&[(APP_RESOURCES_DIR, &resources)]),
+            together,
+        ),
+        (
+            "a support folder alone",
+            some(&[(APP_SUPPORT_DIR, &support)]),
+            together,
+        ),
+        (
+            "a relative resources folder",
+            some(&[
+                (APP_RESOURCES_DIR, &os("Resources")),
+                (APP_SUPPORT_DIR, &support),
+            ]),
+            APP_RESOURCES_DIR,
+        ),
+        (
+            "a relative support folder",
+            some(&[
+                (APP_RESOURCES_DIR, &resources),
+                (APP_SUPPORT_DIR, &os("support")),
+            ]),
+            APP_SUPPORT_DIR,
+        ),
+        (
+            "a resources folder with an Isabelle home",
+            some(&[(APP_RESOURCES_DIR, &resources), (ISABELLE_HOME, &home)]),
+            "not both",
+        ),
+        (
+            "a support folder with a rules directory",
+            some(&[(APP_SUPPORT_DIR, &support), (RULES_DIR, &rules)]),
+            "not both",
+        ),
+        (
+            "both folders with the three Isabelle paths",
+            some(&[
+                (APP_RESOURCES_DIR, &resources),
+                (APP_SUPPORT_DIR, &support),
+                (ISABELLE_HOME, &home),
+                (ISABELLE_USER_HOME, &user),
+                (RULES_DIR, &rules),
+            ]),
+            "not both",
         ),
     ]);
     #[cfg(unix)]
@@ -1862,4 +1929,98 @@ fn a_start_without_isabelle_removes_a_check_theory_a_killed_broker_left() {
     assert!(!work_dir.exists(), "the left check theory stays");
     let (status, _, _) = broker.finish();
     assert_eq!(status.code(), Some(0));
+}
+
+/// PW I4, I5: the installed layout with an empty support folder is a run without a rule prover: the
+/// broker runs, reports the prover unavailable with `not_configured`, and says why on stderr
+/// once. The synthetic run keeps its classifier: it is not a practice run.
+#[test]
+fn an_installed_layout_without_isabelle_runs_without_a_rule_prover() {
+    let dir = TempDir::new("not-installed");
+    let support = dir.0.join("support");
+    std::fs::create_dir_all(&support).unwrap();
+    let mut command = command(&dir.data(), true);
+    command
+        .env(APP_RESOURCES_DIR, dir.0.join("resources"))
+        .env(APP_SUPPORT_DIR, &support);
+    let mut broker = Broker::spawn_from(command, true);
+    let OwnerResult::Hello(hello) = broker.result(&hello(2)) else {
+        panic!()
+    };
+    assert_eq!(
+        hello.broker.build.as_str(),
+        format!("{} CD-W04 synthetic", env!("CARGO_PKG_VERSION"))
+    );
+    let snapshot = broker.snapshot();
+    assert_eq!(
+        snapshot["health"]["prover"], "unavailable",
+        "{}",
+        snapshot["health"]
+    );
+    assert_eq!(
+        snapshot["health"]["prover_problem"], "not_configured",
+        "{}",
+        snapshot["health"]
+    );
+    let stderr = broker.stderr.take().expect("stderr is read");
+    let (status, _, _) = broker.finish();
+    assert_eq!(status.code(), Some(0));
+    let stderr = stderr.join().expect("stderr was read");
+    let line = format!(
+        "fabric-broker: Isabelle2025-2 is not installed: {:?} holds no file bin/isabelle; the rule prover does not run in this run",
+        support.join("Isabelle2025-2").display()
+    );
+    assert_eq!(stderr.matches(&line).count(), 1, "{stderr}");
+    // The data directory is beside the support folder, so nothing at all is created in it.
+    assert!(std::fs::read_dir(&support).unwrap().next().is_none());
+}
+
+/// PW I8: an installed layout whose Isabelle is found but whose resources folder holds no rule
+/// theory: the prover is unavailable with `wrong_rules` and no Isabelle starts. The stderr line
+/// names the rules folder the pin read, not a variable the installed layout does not set.
+#[test]
+fn an_installed_layout_without_its_rule_theory_is_wrong_rules() {
+    let dir = TempDir::new("no-rules");
+    let resources = dir.0.join("resources");
+    let support = dir.0.join("support");
+    let home = support.join("Isabelle2025-2");
+    std::fs::create_dir_all(&resources).unwrap();
+    std::fs::create_dir_all(home.join("bin")).unwrap();
+    std::fs::create_dir_all(home.join("etc")).unwrap();
+    // A stand-in: the broker looks only at these two files, and the pin stops before a start.
+    std::fs::write(home.join("bin").join("isabelle"), "").unwrap();
+    std::fs::write(
+        home.join("etc").join("ISABELLE_IDENTIFIER"),
+        "Isabelle2025-2",
+    )
+    .unwrap();
+    let mut command = command(&dir.data(), false);
+    command
+        .env(APP_RESOURCES_DIR, &resources)
+        .env(APP_SUPPORT_DIR, &support);
+    let mut broker = Broker::spawn_from(command, true);
+    let OwnerResult::Hello(_) = broker.result(&hello(2)) else {
+        panic!()
+    };
+    let deadline = Instant::now() + STEP;
+    loop {
+        let snapshot = broker.snapshot();
+        if snapshot["health"]["prover_problem"] == "wrong_rules" {
+            assert_eq!(snapshot["health"]["prover"], "unavailable");
+            break;
+        }
+        assert!(Instant::now() < deadline, "{}", snapshot["health"]);
+        thread::sleep(Duration::from_millis(20));
+    }
+    let stderr = broker.stderr.take().expect("stderr is read");
+    let (status, _, _) = broker.finish();
+    assert_eq!(status.code(), Some(0));
+    let stderr = stderr.join().expect("stderr was read");
+    let line = format!(
+        "fabric-broker: the rule theory or its session files in {:?} are not the ones this broker was built with; the rule prover does not run in this run",
+        resources.join("isabelle").display()
+    );
+    assert_eq!(stderr.matches(&line).count(), 1, "{stderr}");
+    assert!(!stderr.contains("FABRIC_BROKER_RULES_DIR"), "{stderr}");
+    assert!(!support.join("isabelle-user-home").exists());
 }

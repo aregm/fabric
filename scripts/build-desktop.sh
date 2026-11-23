@@ -10,7 +10,10 @@
 #   3. runs the Tauri CLI, which builds the webview files and the Tauri host and bundles
 #      "Fabric Calendar.app" with the broker in Contents/MacOS;
 #   4. checks the bundle: both executables are arm64 only, the name, the identifier and the
-#      minimum macOS version are the decided ones, and the signature is ad hoc and valid.
+#      minimum macOS version are the decided ones, the signature is ad hoc and valid, and the
+#      rule theory's two files (isabelle/Fabric_Broker/ROOT and Fabric_Broker.thy) are in
+#      Contents/Resources/isabelle/Fabric_Broker, equal to the repository's, with nothing beside
+#      them (no ROOTS).
 #
 # Everything is done from the command line. There is no Xcode project and no step in a GUI.
 #
@@ -111,6 +114,20 @@ codesign --verify --deep --strict "$APP" || die "the bundle's signature does not
 signature=$(codesign -dv "$APP" 2>&1)
 echo "$signature" | grep -q '^Signature=adhoc$' || die "the bundle is not signed ad hoc."
 echo "$signature" | grep -q '^TeamIdentifier=not set$' || die "the bundle carries a team identifier; this build must be ad hoc."
+# The installed application reads its rule theory from the bundle: exactly the repository's two
+# files of the Fabric_Broker session, and no ROOTS that would make Isabelle look for others.
+rules="$APP/Contents/Resources/isabelle"
+for name in ROOT Fabric_Broker.thy; do
+    [ -f "$rules/Fabric_Broker/$name" ] || die "the bundle has no rule file Contents/Resources/isabelle/Fabric_Broker/$name."
+    cmp -s "$ROOT/isabelle/Fabric_Broker/$name" "$rules/Fabric_Broker/$name" \
+        || die "the bundle's Contents/Resources/isabelle/Fabric_Broker/$name differs from the repository's isabelle/Fabric_Broker/$name."
+done
+for roots in "$rules/ROOTS" "$rules/Fabric_Broker/ROOTS"; do
+    [ ! -e "$roots" ] || die "the bundle has a ROOTS file beside the rule files: $roots"
+done
+listing=$(CDPATH= cd -- "$rules" && find . -mindepth 1 | LC_ALL=C sort | tr '\n' ' ')
+[ "$listing" = "./Fabric_Broker ./Fabric_Broker/Fabric_Broker.thy ./Fabric_Broker/ROOT " ] \
+    || die "the bundle's Contents/Resources/isabelle must hold only Fabric_Broker/ROOT and Fabric_Broker/Fabric_Broker.thy; it holds: $listing"
 
 echo "Built: $APP"
 echo "Check it with: sh scripts/verify-desktop.sh --packaged"
