@@ -203,7 +203,7 @@ export const AGENT_CHANNEL_PROBLEM: Record<AgentChannelProblem, string> = {
   run_dir_owner: "The folder of the file agents connect through belongs to another user of this computer.",
   stale_not_socket: "Something else is where the file agents connect through should be, and Fabric Calendar does not remove it.",
   socket_mode: "The file agents connect through could not be made private to you.",
-  bind_failed: "The system did not let Fabric Calendar make the file agents connect through.",
+  bind_failed: "The system did not let Fabric Calendar set up the file agents connect through.",
 };
 
 // Why the broker handed a request to the owner to resolve (contract README, section 7; not shown yet).

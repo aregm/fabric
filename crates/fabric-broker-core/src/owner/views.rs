@@ -176,7 +176,9 @@ fn read_details(
         // The broker records no notification, no proof of its own actions and no release yet.
         notification: None,
         system_proofs: List::new(Vec::new()).map_err(|_| invariant("no system proofs"))?,
+        more_system_proofs: false,
         releases: List::new(Vec::new()).map_err(|_| invariant("no releases"))?,
+        more_releases: false,
     }))
 }
 

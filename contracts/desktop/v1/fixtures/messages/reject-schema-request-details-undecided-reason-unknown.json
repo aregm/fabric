@@ -31,7 +31,9 @@
       "owner_resolution_reason": null,
       "notification": null,
       "system_proofs": [],
-      "releases": []
+      "more_system_proofs": false,
+      "releases": [],
+      "more_releases": false
     }
   },
   "expect": {

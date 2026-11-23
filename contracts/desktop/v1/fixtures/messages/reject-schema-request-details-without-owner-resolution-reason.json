@@ -105,7 +105,9 @@
       "undecided_reason": null,
       "notification": "unknown",
       "system_proofs": [],
-      "releases": []
+      "more_system_proofs": false,
+      "releases": [],
+      "more_releases": false
     }
   },
   "expect": {

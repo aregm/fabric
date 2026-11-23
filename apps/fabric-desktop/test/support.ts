@@ -73,7 +73,7 @@ export function details(r: Request): RequestDetails {
       expires_at: "2026-11-21T16:00:00.000Z",
     },
     approval: null, proof_ids: [], authorization: null, attempts: [], provider_event: null, undecided_reason: null,
-    owner_resolution_reason: null, notification: null, system_proofs: [], releases: [],
+    owner_resolution_reason: null, notification: null, system_proofs: [], more_system_proofs: false, releases: [], more_releases: false,
   };
 }
 

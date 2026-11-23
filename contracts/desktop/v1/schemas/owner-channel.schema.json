@@ -1016,7 +1016,15 @@
         },
         "notification": { "oneOf": [{ "type": "null" }, { "enum": ["sent", "not_requested", "unknown"] }] },
         "system_proofs": { "type": "array", "items": { "$ref": "#/$defs/system_proof_report" }, "maxItems": 200 },
-        "releases": { "type": "array", "items": { "$ref": "#/$defs/release_record" }, "maxItems": 200 }
+        "more_system_proofs": {
+          "description": "True exactly when the broker left out older entries of `system_proofs`.",
+          "type": "boolean"
+        },
+        "releases": { "type": "array", "items": { "$ref": "#/$defs/release_record" }, "maxItems": 200 },
+        "more_releases": {
+          "description": "True exactly when the broker left out older entries of `releases`.",
+          "type": "boolean"
+        }
       },
       "required": [
         "request",
@@ -1032,7 +1040,9 @@
         "owner_resolution_reason",
         "notification",
         "system_proofs",
-        "releases"
+        "more_system_proofs",
+        "releases",
+        "more_releases"
       ],
       "additionalProperties": false
     },

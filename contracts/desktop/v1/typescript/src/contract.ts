@@ -651,7 +651,9 @@ export interface RequestDetails {
   readonly owner_resolution_reason: OwnerResolutionReason | null; // why the owner is asked to resolve
   readonly notification: Notification | null;
   readonly system_proofs: readonly SystemProofReport[]; // 0..=200
+  readonly more_system_proofs: boolean; // older system proofs were left out
   readonly releases: readonly ReleaseRecord[]; // 0..=200
+  readonly more_releases: boolean; // older releases were left out
 }
 
 // ---- Snapshot and changes ----

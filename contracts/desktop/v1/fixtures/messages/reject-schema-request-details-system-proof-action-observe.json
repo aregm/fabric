@@ -171,6 +171,7 @@
           "recorded_at": "2026-11-20T16:05:03.000Z"
         }
       ],
+      "more_system_proofs": false,
       "releases": [
         {
           "release_id": "release-25-1",
@@ -182,7 +183,8 @@
           ],
           "released_at": "2026-11-20T16:05:03.100Z"
         }
-      ]
+      ],
+      "more_releases": false
     }
   },
   "expect": {

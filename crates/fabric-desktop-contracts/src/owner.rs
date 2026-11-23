@@ -1449,7 +1449,11 @@ pub struct RequestDetails {
     #[serde(deserialize_with = "nullable")]
     pub notification: Option<Notification>,
     pub system_proofs: List<SystemProofReport, 0, 200, false>,
+    /// True exactly when the broker left out older entries of `system_proofs`.
+    pub more_system_proofs: bool,
     pub releases: List<ReleaseRecord, 0, 200, false>,
+    /// True exactly when the broker left out older entries of `releases`.
+    pub more_releases: bool,
 }
 
 /// Whether the attendees were notified of a change (`owner#/$defs/request_details.notification`).

@@ -106,7 +106,9 @@
       "owner_resolution_reason": "google_changed_it",
       "notification": "unknown",
       "system_proofs": [],
-      "releases": []
+      "more_system_proofs": false,
+      "releases": [],
+      "more_releases": false
     }
   },
   "expect": {

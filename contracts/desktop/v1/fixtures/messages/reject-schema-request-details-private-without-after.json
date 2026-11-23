@@ -170,7 +170,9 @@
       "owner_resolution_reason": "applied_differs",
       "notification": "sent",
       "system_proofs": [],
-      "releases": []
+      "more_system_proofs": false,
+      "releases": [],
+      "more_releases": false
     }
   },
   "expect": {
