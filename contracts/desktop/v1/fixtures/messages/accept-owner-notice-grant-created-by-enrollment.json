@@ -10,7 +10,7 @@
         "grant_id": "grant-20",
         "revision": 1,
         "agent_id": "agent-cursor",
-        "purpose": "List the calendars this agent may ask about.",
+        "purpose": "",
         "tools": [
           "fabric_calendar_list"
         ],
@@ -40,7 +40,7 @@
   },
   "expect": {
     "verdict": "accept",
-    "canonical": "{\"change\":{\"grant\":{\"agent_id\":\"agent-cursor\",\"created_at\":\"2026-11-20T15:40:00.000Z\",\"ended\":null,\"grant_id\":\"grant-20\",\"origin\":{\"enrollment_id\":\"agent-cursor\"},\"policy\":{\"profile_id\":\"careful\",\"version\":1},\"purpose\":\"List the calendars this agent may ask about.\",\"revision\":1,\"revocation_epoch\":0,\"scope\":{\"calendars\":[],\"fields\":null,\"recipients\":null,\"send_updates\":null,\"window\":null},\"term\":{\"expires_at\":null,\"kind\":\"until_revoked\"},\"tools\":[\"fabric_calendar_list\"]},\"kind\":\"grant\"},\"protocol\":\"fabric-desktop/1\",\"sequence\":1338}",
+    "canonical": "{\"change\":{\"grant\":{\"agent_id\":\"agent-cursor\",\"created_at\":\"2026-11-20T15:40:00.000Z\",\"ended\":null,\"grant_id\":\"grant-20\",\"origin\":{\"enrollment_id\":\"agent-cursor\"},\"policy\":{\"profile_id\":\"careful\",\"version\":1},\"purpose\":\"\",\"revision\":1,\"revocation_epoch\":0,\"scope\":{\"calendars\":[],\"fields\":null,\"recipients\":null,\"send_updates\":null,\"window\":null},\"term\":{\"expires_at\":null,\"kind\":\"until_revoked\"},\"tools\":[\"fabric_calendar_list\"]},\"kind\":\"grant\"},\"protocol\":\"fabric-desktop/1\",\"sequence\":1338}",
     "command_digest": null,
     "action_digest": null
   }

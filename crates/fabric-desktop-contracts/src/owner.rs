@@ -1314,8 +1314,8 @@ pub enum ProverKind {
 }
 
 /// `owner#/$defs/system_proof_report`: the record of one proof of an action the broker took
-/// itself for a request: a read to look at an event, a reconciliation, a calendar list. It
-/// holds no calendar content.
+/// itself for a request: a read to look at an event, a reconciliation. It holds no calendar
+/// content.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct SystemProofReport {
@@ -1412,8 +1412,10 @@ pub struct PrivateDetails {
     pub action: Action,
     #[serde(deserialize_with = "nullable")]
     pub before: Option<EventView>,
-    /// The event as Google returned it after the change, for a request whose applied change
-    /// differs from what was approved.
+    /// The event as Google holds it, for a request whose applied change differs from what was
+    /// approved: the event Google returned in its answer to the change, or the event of the
+    /// broker's last read-back. Null for every other request, and null too when the broker kept
+    /// no view of the event or the view passes the broker's bound.
     #[serde(deserialize_with = "nullable")]
     pub after: Option<EventView>,
     pub warnings: List<Warning, 0, 50, false>,

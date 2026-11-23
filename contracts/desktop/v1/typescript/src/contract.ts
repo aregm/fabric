@@ -638,7 +638,7 @@ export interface RequestDetails {
   readonly private: {
     readonly action: Action;
     readonly before: EventView | null;
-    readonly after: EventView | null; // as Google returned it, when the applied change differs from the approval
+    readonly after: EventView | null; // as Google holds it, when the applied change differs from the approval; may be null then too
     readonly warnings: readonly Warning[];
   } | null;
   readonly card: ApprovalCard | null;

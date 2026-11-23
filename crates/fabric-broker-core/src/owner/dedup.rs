@@ -6,6 +6,11 @@
 //! before the answer. A new command runs in one write that also stores its answer; a refusal
 //! rolls that write back and is stored by its own `owner.refused` write. `store_unavailable` and
 //! `internal` are never stored, and nothing stored is ever pruned.
+//!
+//! "Byte for byte" has one exception. An answer to `pause_agent` stored under schema version 2
+//! holds agent records of that version. The contract's reader of stored answers
+//! (`decode_stored_owner_response`) gives it again with the members version 3 added:
+//! `enrollment` is `approved` and the six others are null (contract README, section 7).
 
 use std::convert::Infallible;
 

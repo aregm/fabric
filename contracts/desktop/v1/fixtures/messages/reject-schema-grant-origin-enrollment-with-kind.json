@@ -5,7 +5,7 @@
     "grant_id": "grant-20",
     "revision": 1,
     "agent_id": "agent-cursor",
-    "purpose": "List the calendars this agent may ask about.",
+    "purpose": "",
     "tools": [
       "fabric_calendar_list"
     ],

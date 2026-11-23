@@ -897,7 +897,7 @@
       "additionalProperties": false
     },
     "system_proof_report": {
-      "description": "The record of one proof of an action the broker took itself for this request: a read to look at an event, a reconciliation, a calendar list. It holds no calendar content.",
+      "description": "The record of one proof of an action the broker took itself for this request: a read to look at an event, a reconciliation. It holds no calendar content.",
       "type": "object",
       "properties": {
         "proof_id": { "$ref": "common.schema.json#/$defs/id" },
@@ -986,7 +986,7 @@
                   "oneOf": [{ "type": "null" }, { "$ref": "agent-channel.schema.json#/$defs/event_view" }]
                 },
                 "after": {
-                  "description": "The event as Google returned it after the change, for a request whose applied change differs from what was approved.",
+                  "description": "The event as Google holds it, for a request whose applied change differs from what was approved: the event Google returned in its answer to the change, or the event of the broker's last read-back. Null for every other request, and null too when the broker kept no view of the event or the view passes the broker's bound.",
                   "oneOf": [{ "type": "null" }, { "$ref": "agent-channel.schema.json#/$defs/event_view" }]
                 },
                 "warnings": { "type": "array", "items": { "$ref": "#/$defs/warning" }, "maxItems": 50 }

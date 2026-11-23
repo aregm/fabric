@@ -180,7 +180,7 @@
       "enum": ["all", "external_only", "none"]
     },
     "calendar_access": {
-      "description": "What the connected account may do in a calendar, as the provider reports it.",
+      "description": "What the connected account may do in a calendar, as the provider reports it. With `writer_without_private_access` the account may change events and sees private events without their details.",
       "enum": ["owner", "writer", "writer_without_private_access", "reader", "free_busy_reader"]
     },
     "calendar_ref": {
